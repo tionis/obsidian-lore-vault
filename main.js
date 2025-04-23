@@ -3081,12 +3081,21 @@ __export(main_exports, {
   default: () => LoreBookConverterPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
-var fs = __toESM(require("fs"));
-var path = __toESM(require("path"));
-var import_graphology = __toESM(require_graphology_umd_min());
-var import_pagerank = __toESM(require_pagerank());
-var import_betweenness = __toESM(require_betweenness());
+var import_obsidian5 = require("obsidian");
+
+// src/models.ts
+var DEFAULT_SETTINGS = {
+  weights: {
+    hierarchy: 8e3,
+    in_degree: 4e3,
+    pagerank: 2e3,
+    betweenness: 1e3,
+    out_degree: 500,
+    total_degree: 100,
+    file_depth: 2e3
+  },
+  outputPath: ""
+};
 
 // src/progress-bar.ts
 var import_obsidian = require("obsidian");
@@ -3095,17 +3104,50 @@ var ProgressBar = class {
     this.current = 0;
     this.total = total;
     this.notice = new import_obsidian.Notice("", 0);
-    const contentEl = this.notice.noticeEl.querySelector(".notice-content");
+    let contentEl = this.notice.noticeEl.querySelector(".notice-content");
     if (!contentEl) {
-      throw new Error("Could not find notice content element");
+      contentEl = this.notice.noticeEl.querySelector("div");
     }
-    contentEl.addClass("lorebook-progress-container");
-    this.statusEl = contentEl.createDiv({ cls: "lorebook-progress-status" });
+    if (!contentEl) {
+      contentEl = this.notice.noticeEl;
+    }
+    this.container = contentEl;
+    if (typeof this.container.addClass === "function") {
+      this.container.addClass("lorebook-progress-container");
+    } else {
+      this.container.classList.add("lorebook-progress-container");
+    }
+    if (typeof this.container.createDiv === "function") {
+      this.statusEl = this.container.createDiv({ cls: "lorebook-progress-status" });
+    } else {
+      this.statusEl = document.createElement("div");
+      this.statusEl.className = "lorebook-progress-status";
+      this.container.appendChild(this.statusEl);
+    }
     this.statusEl.textContent = initialMessage;
-    const progressContainer = contentEl.createDiv({ cls: "lorebook-progress-outer" });
-    this.progressEl = progressContainer.createDiv({ cls: "lorebook-progress-inner" });
+    let progressContainer;
+    if (typeof this.container.createDiv === "function") {
+      progressContainer = this.container.createDiv({ cls: "lorebook-progress-outer" });
+    } else {
+      progressContainer = document.createElement("div");
+      progressContainer.className = "lorebook-progress-outer";
+      this.container.appendChild(progressContainer);
+    }
+    if (typeof progressContainer.createDiv === "function") {
+      this.progressEl = progressContainer.createDiv({ cls: "lorebook-progress-inner" });
+    } else {
+      this.progressEl = document.createElement("div");
+      this.progressEl.className = "lorebook-progress-inner";
+      progressContainer.appendChild(this.progressEl);
+    }
     this.progressEl.style.width = "0%";
-    this.barEl = progressContainer.createDiv({ cls: "lorebook-progress-text" });
+    if (typeof progressContainer.createDiv === "function") {
+      this.barEl = progressContainer.createDiv({ cls: "lorebook-progress-text" });
+    } else {
+      this.barEl = document.createElement("div");
+      this.barEl.className = "lorebook-progress-text";
+      progressContainer.appendChild(this.barEl);
+    }
     this.barEl.textContent = "0%";
     this.update(0);
   }
@@ -3132,7 +3174,11 @@ var ProgressBar = class {
     this.current = this.total;
     this.progressEl.style.width = "100%";
     this.barEl.textContent = "100%";
-    this.progressEl.addClass("lorebook-progress-success");
+    if (typeof this.progressEl.addClass === "function") {
+      this.progressEl.addClass("lorebook-progress-success");
+    } else {
+      this.progressEl.classList.add("lorebook-progress-success");
+    }
     this.setStatus(message);
     setTimeout(() => {
       this.close();
@@ -3142,7 +3188,11 @@ var ProgressBar = class {
    * Show an error in the progress bar
    */
   error(message = "Error!") {
-    this.progressEl.addClass("lorebook-progress-error");
+    if (typeof this.progressEl.addClass === "function") {
+      this.progressEl.addClass("lorebook-progress-error");
+    } else {
+      this.progressEl.classList.add("lorebook-progress-error");
+    }
     this.setStatus(message);
     setTimeout(() => {
       this.close();
@@ -3243,101 +3293,16 @@ async function createTemplate(app) {
   });
 }
 
-// src/main.ts
-var DEFAULT_SETTINGS = {
-  weights: {
-    hierarchy: 8e3,
-    in_degree: 4e3,
-    pagerank: 2e3,
-    betweenness: 1e3,
-    out_degree: 500,
-    total_degree: 100,
-    file_depth: 2e3
-  },
-  outputPath: ""
-};
-var LoreBookConverterPlugin = class extends import_obsidian3.Plugin {
-  constructor() {
-    super(...arguments);
-    this.graph = new import_graphology.default({ type: "directed" });
-    this.entries = {};
+// src/file-processor.ts
+var import_obsidian3 = require("obsidian");
+var path = __toESM(require("path"));
+var FileProcessor = class {
+  constructor(app) {
     this.filenameToUid = {};
+    this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;
-  }
-  async onload() {
-    await this.loadSettings();
-    (0, import_obsidian3.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
-    </svg>`);
-    this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
-    this.addRibbonIcon("lorebook", "Convert to Lorebook", () => {
-      this.convertToLorebook();
-    });
-    this.addCommand({
-      id: "convert-to-lorebook",
-      name: "Convert Vault to Lorebook",
-      callback: () => {
-        this.convertToLorebook();
-      }
-    });
-    this.addCommand({
-      id: "create-lorebook-template",
-      name: "Create Lorebook Entry Template",
-      callback: async () => {
-        try {
-          const template = await createTemplate(this.app);
-          const activeFile = this.app.workspace.getActiveFile();
-          if (activeFile) {
-            await this.app.vault.modify(activeFile, template);
-            new import_obsidian3.Notice(`Template applied to ${activeFile.name}`);
-          } else {
-            const fileName = `Lorebook_Entry_${Date.now()}.md`;
-            await this.app.vault.create(fileName, template);
-            new import_obsidian3.Notice(`Created new template: ${fileName}`);
-          }
-        } catch (error) {
-          console.log("Template creation cancelled", error);
-        }
-      }
-    });
-  }
-  async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
-  async saveSettings() {
-    await this.saveData(this.settings);
-  }
-  // This is the main conversion function
-  async convertToLorebook() {
-    try {
-      this.graph = new import_graphology.default({ type: "directed" });
-      this.entries = {};
-      this.filenameToUid = {};
-      this.nextUid = 0;
-      this.rootUid = null;
-      const files = this.app.vault.getMarkdownFiles();
-      const progress = new ProgressBar(
-        files.length + 2,
-        // Files + graph building + exporting
-        "Analyzing vault structure..."
-      );
-      await this.findRootFile(progress);
-      await this.processFiles(files, progress);
-      progress.setStatus("Building relationship graph...");
-      this.buildGraph();
-      progress.update();
-      progress.setStatus("Calculating entry priorities...");
-      this.calculateEntryPriorities();
-      progress.setStatus("Exporting to JSON...");
-      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}.json`;
-      await this.exportLoreBookJson(outputPath);
-      progress.update();
-      progress.success(`Conversion complete! Processed ${Object.keys(this.entries).length} entries.`);
-    } catch (error) {
-      console.error("Conversion failed:", error);
-      new import_obsidian3.Notice(`Conversion failed: ${error.message}`);
-    }
+    this.app = app;
   }
   generateUid() {
     const uid = this.nextUid;
@@ -3497,6 +3462,35 @@ var LoreBookConverterPlugin = class extends import_obsidian3.Plugin {
       processed++;
     }
   }
+  getRootUid() {
+    return this.rootUid;
+  }
+  getFilenameToUid() {
+    return this.filenameToUid;
+  }
+  getEntries() {
+    return this.entries;
+  }
+  reset() {
+    this.filenameToUid = {};
+    this.entries = {};
+    this.nextUid = 0;
+    this.rootUid = null;
+  }
+};
+
+// src/graph-analyzer.ts
+var import_graphology = __toESM(require_graphology_umd_min());
+var import_pagerank = __toESM(require_pagerank());
+var import_betweenness = __toESM(require_betweenness());
+var GraphAnalyzer = class {
+  constructor(entries, filenameToUid, settings, rootUid) {
+    this.graph = new import_graphology.default({ type: "directed" });
+    this.entries = entries;
+    this.filenameToUid = filenameToUid;
+    this.settings = settings;
+    this.rootUid = rootUid;
+  }
   buildGraph() {
     this.graph = new import_graphology.default({ type: "directed" });
     for (const uid of Object.keys(this.entries).map(Number)) {
@@ -3624,9 +3618,21 @@ var LoreBookConverterPlugin = class extends import_obsidian3.Plugin {
       }
     }
   }
-  async exportLoreBookJson(outputPath) {
+  getGraph() {
+    return this.graph;
+  }
+};
+
+// src/lorebook-exporter.ts
+var fs = __toESM(require("fs"));
+var path2 = __toESM(require("path"));
+var LoreBookExporter = class {
+  constructor(app) {
+    this.app = app;
+  }
+  async exportLoreBookJson(entries, outputPath) {
     const entriesDict = {};
-    for (const [uid, entry] of Object.entries(this.entries)) {
+    for (const [uid, entry] of Object.entries(entries)) {
       const { wikilinks, ...entryWithoutWikilinks } = entry;
       entriesDict[uid] = entryWithoutWikilinks;
     }
@@ -3642,27 +3648,30 @@ var LoreBookConverterPlugin = class extends import_obsidian3.Plugin {
       }
     };
     try {
-      const isAbsolutePath = path.isAbsolute(outputPath);
+      const isAbsolutePath = path2.isAbsolute(outputPath);
       if (!isAbsolutePath) {
         await this.app.vault.adapter.write(
           outputPath,
           JSON.stringify(lorebook, null, 2)
         );
       } else {
-        const dirPath = path.dirname(outputPath);
+        const dirPath = path2.dirname(outputPath);
         if (!fs.existsSync(dirPath)) {
           fs.mkdirSync(dirPath, { recursive: true });
         }
         fs.writeFileSync(outputPath, JSON.stringify(lorebook, null, 2), "utf8");
       }
-      console.log(`Successfully exported ${Object.keys(this.entries).length} entries to ${outputPath}`);
+      console.log(`Successfully exported ${Object.keys(entries).length} entries to ${outputPath}`);
     } catch (e) {
       console.error(`Error writing JSON to ${outputPath}:`, e);
       throw e;
     }
   }
 };
-var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTab {
+
+// src/settings-tab.ts
+var import_obsidian4 = require("obsidian");
+var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -3672,7 +3681,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
     containerEl.empty();
     containerEl.addClass("lorebook-converter-settings");
     containerEl.createEl("h2", { text: "Lorebook Converter Settings" });
-    new import_obsidian3.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
       this.plugin.settings.outputPath = value;
       await this.plugin.saveSettings();
     }));
@@ -3681,7 +3690,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
       text: "These weights determine how entries are ordered in the lorebook. Higher weights give more importance to that factor."
     });
     const createWeightSetting = (key, name, desc) => {
-      new import_obsidian3.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
+      new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
         const numValue = parseInt(value);
         if (!isNaN(numValue)) {
           this.plugin.settings.weights[key] = numValue;
@@ -3724,5 +3733,86 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
       "File Depth",
       "Position in folder hierarchy"
     );
+  }
+};
+
+// src/main.ts
+var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
+  async onload() {
+    await this.loadSettings();
+    (0, import_obsidian5.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
+    </svg>`);
+    this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
+    this.addRibbonIcon("lorebook", "Convert to Lorebook", () => {
+      this.convertToLorebook();
+    });
+    this.addCommand({
+      id: "convert-to-lorebook",
+      name: "Convert Vault to Lorebook",
+      callback: () => {
+        this.convertToLorebook();
+      }
+    });
+    this.addCommand({
+      id: "create-lorebook-template",
+      name: "Create Lorebook Entry Template",
+      callback: async () => {
+        try {
+          const template = await createTemplate(this.app);
+          const activeFile = this.app.workspace.getActiveFile();
+          if (activeFile) {
+            await this.app.vault.modify(activeFile, template);
+            new import_obsidian5.Notice(`Template applied to ${activeFile.name}`);
+          } else {
+            const fileName = `Lorebook_Entry_${Date.now()}.md`;
+            await this.app.vault.create(fileName, template);
+            new import_obsidian5.Notice(`Created new template: ${fileName}`);
+          }
+        } catch (error) {
+          console.error("Template creation cancelled", error);
+        }
+      }
+    });
+  }
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+  // This is the main conversion function
+  async convertToLorebook() {
+    try {
+      const fileProcessor = new FileProcessor(this.app);
+      const files = this.app.vault.getMarkdownFiles();
+      const progress = new ProgressBar(
+        files.length + 2,
+        // Files + graph building + exporting
+        "Analyzing vault structure..."
+      );
+      await fileProcessor.findRootFile(progress);
+      await fileProcessor.processFiles(files, progress);
+      progress.setStatus("Building relationship graph...");
+      const graphAnalyzer = new GraphAnalyzer(
+        fileProcessor.getEntries(),
+        fileProcessor.getFilenameToUid(),
+        this.settings,
+        fileProcessor.getRootUid()
+      );
+      graphAnalyzer.buildGraph();
+      progress.update();
+      progress.setStatus("Calculating entry priorities...");
+      graphAnalyzer.calculateEntryPriorities();
+      progress.setStatus("Exporting to JSON...");
+      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}.json`;
+      const exporter = new LoreBookExporter(this.app);
+      await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath);
+      progress.update();
+      progress.success(`Conversion complete! Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
+    } catch (error) {
+      console.error("Conversion failed:", error);
+      new import_obsidian5.Notice(`Conversion failed: ${error.message}`);
+    }
   }
 };

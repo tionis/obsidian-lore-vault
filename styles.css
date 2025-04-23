@@ -1,0 +1,122 @@
+/* Lorebook Converter Plugin Styles */
+
+.lorebook-converter-settings .setting-item-description {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.lorebook-converter-settings .setting-item-control {
+  width: 50%;
+}
+
+.lorebook-converter-settings .slider-container {
+  width: 100%;
+}
+
+/* Progress Bar Styles */
+.lorebook-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.lorebook-progress-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.lorebook-progress-outer {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  background-color: var(--background-modifier-border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.lorebook-progress-inner {
+  height: 100%;
+  background-color: var(--interactive-accent);
+  border-radius: 9px;
+  transition: width 0.3s ease;
+}
+
+.lorebook-progress-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.lorebook-progress-success {
+  background-color: var(--color-green);
+}
+
+.lorebook-progress-error {
+  background-color: var(--color-red);
+}
+
+/* Template Modal Styles */
+.lorebook-template-modal {
+  width: 500px;
+  max-width: 90%;
+}
+
+.lorebook-template-modal .setting-item-info {
+  flex: 1;
+}
+
+.lorebook-template-modal .setting-item-control {
+  flex: 2;
+}
+
+.lorebook-template-modal textarea {
+  width: 100%;
+  height: 80px;
+  resize: vertical;
+}
+
+.lorebook-template-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.lorebook-template-button-create,
+.lorebook-template-button-cancel {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.lorebook-template-button-create {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.lorebook-template-button-cancel {
+  background-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.lorebook-template-button-create:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.lorebook-template-button-cancel:hover {
+  background-color: var(--background-modifier-border-hover);
+}

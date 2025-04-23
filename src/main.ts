@@ -1,8 +1,11 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, Notice, addIcon } from 'obsidian';
 import * as fs from 'fs';
 import * as path from 'path';
 import Graph from 'graphology';
-import * as centrality from 'graphology-centrality';
+import pagerank from 'graphology-metrics/centrality/pagerank';
+import betweenness from 'graphology-metrics/centrality/betweenness';
+import { ProgressBar } from './progress-bar';
+import { createTemplate } from './template-creator';
 
 // Define interfaces for our data structures
 interface LoreBookEntry {
@@ -91,11 +94,16 @@ export default class LoreBookConverterPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    // Add custom icon
+    addIcon('lorebook', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
+    </svg>`);
+
     // Add settings tab
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
 
     // Add ribbon icon
-    this.addRibbonIcon('book', 'Convert to Lorebook', () => {
+    this.addRibbonIcon('lorebook', 'Convert to Lorebook', () => {
       this.convertToLorebook();
     });
 
@@ -105,6 +113,33 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Convert Vault to Lorebook',
       callback: () => {
         this.convertToLorebook();
+      }
+    });
+    
+    // Add template creation command
+    this.addCommand({
+      id: 'create-lorebook-template',
+      name: 'Create Lorebook Entry Template',
+      callback: async () => {
+        try {
+          const template = await createTemplate(this.app);
+          
+          // Check if there's an active file
+          const activeFile = this.app.workspace.getActiveFile();
+          
+          if (activeFile) {
+            // If there's an active file, replace its content
+            await this.app.vault.modify(activeFile, template);
+            new Notice(`Template applied to ${activeFile.name}`);
+          } else {
+            // Otherwise create a new file
+            const fileName = `Lorebook_Entry_${Date.now()}.md`;
+            await this.app.vault.create(fileName, template);
+            new Notice(`Created new template: ${fileName}`);
+          }
+        } catch (error) {
+          console.log('Template creation cancelled', error);
+        }
       }
     });
   }
@@ -119,29 +154,46 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   // This is the main conversion function
   async convertToLorebook() {
-    new Notice('Starting conversion to Lorebook...');
-    
-    // Reset data structures
-    this.graph = new Graph({ type: 'directed' });
-    this.entries = {};
-    this.filenameToUid = {};
-    this.nextUid = 0;
-    this.rootUid = null;
-    
     try {
-      // Step 1: Build the graph
-      await this.buildGraph();
+      // Reset data structures
+      this.graph = new Graph({ type: 'directed' });
+      this.entries = {};
+      this.filenameToUid = {};
+      this.nextUid = 0;
+      this.rootUid = null;
       
-      // Step 2: Calculate priorities
+      // Stage 1: Count files and initialize progress
+      const files = this.app.vault.getMarkdownFiles();
+      const progress = new ProgressBar(
+        files.length + 2, // Files + graph building + exporting
+        'Analyzing vault structure...'
+      );
+      
+      // Stage 2: Find root file
+      await this.findRootFile(progress);
+      
+      // Stage 3: Process all files
+      await this.processFiles(files, progress);
+      
+      // Stage 4: Build graph
+      progress.setStatus('Building relationship graph...');
+      this.buildGraph();
+      progress.update();
+      
+      // Stage 5: Calculate priorities
+      progress.setStatus('Calculating entry priorities...');
       this.calculateEntryPriorities();
       
-      // Step 3: Export to JSON
+      // Stage 6: Export JSON
+      progress.setStatus('Exporting to JSON...');
       const outputPath = this.settings.outputPath || 
                          `${this.app.vault.getName()}.json`;
       
       await this.exportLoreBookJson(outputPath);
+      progress.update();
       
-      new Notice(`Conversion complete! Saved to ${outputPath}`);
+      // Complete
+      progress.success(`Conversion complete! Processed ${Object.keys(this.entries).length} entries.`);
     } catch (error) {
       console.error('Conversion failed:', error);
       new Notice(`Conversion failed: ${error.message}`);
@@ -200,7 +252,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const probMatch = content.match(/^# Probability: (\d+)$/m);
     const depthMatch = content.match(/^# Depth: (\d+)$/m);
     
-    const contentMatch = content.match(/^# Content:(?:[ \t]*\n)?(.+)/ms);
+    const contentMatch = content.match(/^# Content:(?:[ \t]*\n)?([\s\S]+)/);
     
     const parsed: any = {
       title: title,
@@ -223,70 +275,72 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   async parseMarkdownFile(file: TFile): Promise<LoreBookEntry | null> {
-    const content = await this.app.vault.read(file);
-    
-    if (!this.isValidLoreBookEntry(content)) {
-      console.log(`Skipping ${file.path}: Not valid format`);
+    try {
+      const content = await this.app.vault.read(file);
+      
+      if (!this.isValidLoreBookEntry(content)) {
+        return null;
+      }
+      
+      const parsed = this.parseDetailedMarkdown(content);
+      const uid = this.generateUid();
+      const name = file.basename;
+      const folder = file.parent ? file.parent.path : '';
+      
+      this.filenameToUid[name] = uid;
+      const wikilinks = this.extractWikilinks(content);
+      
+      const entry: LoreBookEntry = {
+        uid: uid,
+        key: [...parsed.keywords, name],
+        keysecondary: [],
+        comment: parsed.title,
+        content: parsed.content,
+        constant: parsed.trigger_method === 'constant',
+        vectorized: parsed.trigger_method === 'vectorized',
+        selective: parsed.trigger_method === 'selective',
+        selectiveLogic: 0,
+        addMemo: true,
+        order: 0,
+        position: 0,
+        disable: false,
+        excludeRecursion: false,
+        preventRecursion: false,
+        delayUntilRecursion: false,
+        probability: parsed.probability,
+        useProbability: true,
+        depth: parsed.depth,
+        group: folder,
+        groupOverride: false,
+        groupWeight: 100,
+        scanDepth: null,
+        caseSensitive: null,
+        matchWholeWords: null,
+        useGroupScoring: null,
+        automationId: "",
+        role: null,
+        sticky: 0,
+        cooldown: 0,
+        delay: 0,
+        displayIndex: 0,
+        wikilinks: wikilinks
+      };
+      
+      return entry;
+    } catch (e) {
+      console.error(`Error processing ${file.path}:`, e);
       return null;
     }
-    
-    const parsed = this.parseDetailedMarkdown(content);
-    const uid = this.generateUid();
-    const name = file.basename;
-    const folder = file.parent ? file.parent.path : '';
-    
-    this.filenameToUid[name] = uid;
-    const wikilinks = this.extractWikilinks(content);
-    
-    const entry: LoreBookEntry = {
-      uid: uid,
-      key: [...parsed.keywords, name],
-      keysecondary: [],
-      comment: parsed.title,
-      content: parsed.content,
-      constant: parsed.trigger_method === 'constant',
-      vectorized: parsed.trigger_method === 'vectorized',
-      selective: parsed.trigger_method === 'selective',
-      selectiveLogic: 0,
-      addMemo: true,
-      order: 0,
-      position: 0,
-      disable: false,
-      excludeRecursion: false,
-      preventRecursion: false,
-      delayUntilRecursion: false,
-      probability: parsed.probability,
-      useProbability: true,
-      depth: parsed.depth,
-      group: folder,
-      groupOverride: false,
-      groupWeight: 100,
-      scanDepth: null,
-      caseSensitive: null,
-      matchWholeWords: null,
-      useGroupScoring: null,
-      automationId: "",
-      role: null,
-      sticky: 0,
-      cooldown: 0,
-      delay: 0,
-      displayIndex: 0,
-      wikilinks: wikilinks
-    };
-    
-    return entry;
   }
 
-  async buildGraph() {
-    // Check for root file first
+  async findRootFile(progress: ProgressBar): Promise<void> {
     const rootCandidates = ['Root.md', 'root.md', 'index.md', 'World.md', 'world.md'];
     
     for (const rootFile of rootCandidates) {
-      const rootFilePath = rootFile;
-      const rootFileObj = this.app.vault.getAbstractFileByPath(rootFilePath);
+      const rootFileObj = this.app.vault.getAbstractFileByPath(rootFile);
       
       if (rootFileObj instanceof TFile) {
-        console.log(`Found designated root file: ${rootFilePath}`);
+        progress.setStatus(`Found root file: ${rootFile}`);
         
         try {
           const entry = await this.parseMarkdownFile(rootFileObj);
@@ -297,7 +351,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             this.entries[entry.uid] = entry;
           }
         } catch (e) {
-          console.error(`Error processing root file ${rootFilePath}:`, e);
+          console.error(`Error processing root file ${rootFile}:`, e);
         }
         
         if (this.rootUid !== null) {
@@ -311,37 +365,45 @@ export default class LoreBookConverterPlugin extends Plugin {
     } else {
       console.log("No designated root file found, will determine root based on graph metrics");
     }
-    
-    // Process all markdown files
-    const files = this.app.vault.getMarkdownFiles();
+  }
+
+  async processFiles(files: TFile[], progress: ProgressBar): Promise<void> {
+    const total = files.length;
+    let processed = 0;
     
     for (const file of files) {
       // Skip the root file if we already processed it
       if (this.rootUid !== null && 
           this.filenameToUid[file.basename] === this.rootUid) {
+        progress.update();
+        processed++;
         continue;
       }
       
-      try {
-        const entry = await this.parseMarkdownFile(file);
+      progress.setStatus(`Processing file ${processed+1}/${total}: ${file.basename}`);
+      
+      const entry = await this.parseMarkdownFile(file);
+      
+      if (entry) {
+        const baseName = file.basename;
+        this.filenameToUid[baseName] = entry.uid;
         
-        if (entry) {
-          const baseName = file.basename;
-          this.filenameToUid[baseName] = entry.uid;
-          
-          // Also store with folder path
-          if (file.parent && file.parent.path) {
-            const key = `${file.parent.path}/${baseName}`;
-            this.filenameToUid[key] = entry.uid;
-          }
-          
-          this.entries[entry.uid] = entry;
+        // Also store with folder path
+        if (file.parent && file.parent.path) {
+          const key = `${file.parent.path}/${baseName}`;
+          this.filenameToUid[key] = entry.uid;
         }
-      } catch (e) {
-        console.error(`Error processing ${file.path}:`, e);
+        
+        this.entries[entry.uid] = entry;
       }
+      
+      // Update progress
+      progress.update();
+      processed++;
     }
-    
+  }
+
+  buildGraph(): void {
     // Initialize the graphology graph
     this.graph = new Graph({ type: 'directed' });
     
@@ -362,7 +424,11 @@ export default class LoreBookConverterPlugin extends Plugin {
             const linkedUid = this.filenameToUid[link];
             if (linkedUid in this.entries) {
               // Create edge from source to target
-              this.graph.addEdge(uid, linkedUid.toString());
+              try {
+                this.graph.addEdge(uid, linkedUid.toString());
+              } catch (e) {
+                // Edge might already exist, ignore
+              }
             }
           }
         }
@@ -372,7 +438,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     console.log(`Created graph with ${this.graph.order} nodes and ${this.graph.size} edges`);
   }
 
-  calculateEntryPriorities() {
+  calculateEntryPriorities(): void {
     console.log("Calculating entry priorities with graphology");
     
     // Calculate BFS depths from root
@@ -424,32 +490,35 @@ export default class LoreBookConverterPlugin extends Plugin {
       maxTotalDegree = Math.max(maxTotalDegree, totalDegree[nodeId]);
     });
     
-    // Calculate PageRank using graphology-centrality
-    const pageRank = centrality.pagerank(this.graph, {
-      alpha: 0.85,           // Damping factor
-      tolerance: 1e-6,       // Convergence tolerance
-      maxIterations: 100     // Maximum number of iterations
-    });
+    // Calculate PageRank using graphology-metrics
+    const prOptions = {
+      alpha: 0.85,
+      tolerance: 1e-6,
+      maxIterations: 100,
+      getEdgeWeight: () => 1
+    };
+    
+    const pageRankResult = pagerank(this.graph, prOptions);
     
     // Convert the results from node strings to numeric UIDs
     const pageRankByUID: {[key: number]: number} = {};
     let maxPageRank = 0;
     
-    for (const [node, rank] of Object.entries(pageRank)) {
+    for (const [node, rank] of Object.entries(pageRankResult)) {
       const nodeId = parseInt(node);
       pageRankByUID[nodeId] = rank;
       maxPageRank = Math.max(maxPageRank, rank);
     }
     maxPageRank = maxPageRank || 1; // Avoid division by zero
     
-    // Calculate betweenness centrality using graphology-centrality
-    const betweenness = centrality.betweenness(this.graph);
+    // Calculate betweenness centrality using graphology-metrics
+    const betweennessResult = betweenness(this.graph);
     
     // Convert the results from node strings to numeric UIDs
     const betweennessByUID: {[key: number]: number} = {};
     let maxBetweenness = 0;
     
-    for (const [node, bc] of Object.entries(betweenness)) {
+    for (const [node, bc] of Object.entries(betweennessResult)) {
       const nodeId = parseInt(node);
       betweennessByUID[nodeId] = bc;
       maxBetweenness = Math.max(maxBetweenness, bc);
@@ -521,7 +590,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  async exportLoreBookJson(outputPath: string) {
+  async exportLoreBookJson(outputPath: string): Promise<void> {
     // Create entries dictionary with string keys and remove wikilinks
     const entriesDict: {[key: string]: Omit<LoreBookEntry, 'wikilinks'>} = {};
     
@@ -544,12 +613,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     
     // Save to file using Electron's fs module (available in Obsidian desktop)
     try {
-      // First check if we need to save inside or outside the vault
-      if (outputPath.startsWith(this.app.vault.adapter.getBasePath())) {
-        // Path is inside the vault
-        const relativePath = outputPath.slice(this.app.vault.adapter.getBasePath().length + 1);
+      // Check if path is absolute or relative
+      const isAbsolutePath = path.isAbsolute(outputPath);
+      
+      if (!isAbsolutePath) {
+        // Path is relative to vault - use Obsidian's API
         await this.app.vault.adapter.write(
-          relativePath,
+          outputPath,
           JSON.stringify(lorebook, null, 2)
         );
       } else {
@@ -600,17 +670,23 @@ class LoreBookConverterSettingTab extends PluginSettingTab {
       text: 'These weights determine how entries are ordered in the lorebook. Higher weights give more importance to that factor.'
     });
 
+    // The updated createWeightSetting function for LoreBookConverterSettingTab
+
     const createWeightSetting = (key: keyof typeof this.plugin.settings.weights, name: string, desc: string) => {
       new Setting(containerEl)
         .setName(name)
         .setDesc(desc)
-        .addSlider(slider => slider
-          .setLimits(0, 10000, 100)
-          .setValue(this.plugin.settings.weights[key])
-          .setDynamicTooltip()
+        .addText(text => text
+          .setValue(this.plugin.settings.weights[key].toString())
           .onChange(async (value) => {
-            this.plugin.settings.weights[key] = value;
-            await this.plugin.saveSettings();
+            // Parse the input to a number
+            const numValue = parseInt(value);
+            
+            // Validate the input is a valid number
+            if (!isNaN(numValue)) {
+              this.plugin.settings.weights[key] = numValue;
+              await this.plugin.saveSettings();
+            }
           }));
     };
 

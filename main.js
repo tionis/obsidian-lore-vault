@@ -3392,11 +3392,36 @@ var FileProcessor = class {
         parsed.content = content.trim();
       }
     }
-    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_]+): ?(.+?)$/gim;
+    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_\s]+): ?(.+?)$/gim;
     let fieldMatch;
     const arrayFields = ["key", "keysecondary", "keywords"];
+    const booleanFields = [
+      "constant",
+      "vectorized",
+      "selective",
+      "addmemo",
+      "useprobability",
+      "disable",
+      "excluderecursion",
+      "preventrecursion",
+      "delayuntilrecursion",
+      "groupoverride"
+    ];
+    const numericFields = [
+      "selectivelogic",
+      "order",
+      "position",
+      "probability",
+      "depth",
+      "groupweight",
+      "sticky",
+      "cooldown",
+      "delay",
+      "displayindex"
+    ];
     while ((fieldMatch = arbitraryFieldPattern.exec(content)) !== null) {
-      const fieldName = fieldMatch[1].toLowerCase();
+      const rawFieldName = fieldMatch[1].trim();
+      const fieldName = rawFieldName.toLowerCase().replace(/\s+/g, "");
       let fieldValue = fieldMatch[2].trim();
       if (fieldName === "content") {
         continue;
@@ -3405,39 +3430,48 @@ var FileProcessor = class {
         parsed[fieldName] = fieldValue.split(",").map((v) => v.trim()).filter((v) => v);
         continue;
       }
-      if (!isNaN(Number(fieldValue))) {
-        parsed[fieldName] = Number(fieldValue);
-      } else if (fieldValue.toLowerCase() === "true") {
-        parsed[fieldName] = true;
-      } else if (fieldValue.toLowerCase() === "false") {
-        parsed[fieldName] = false;
+      if (numericFields.includes(fieldName) || !isNaN(Number(fieldValue))) {
+        const numValue = Number(fieldValue);
+        parsed[fieldName] = !isNaN(numValue) ? numValue : fieldValue;
+      } else if (booleanFields.includes(fieldName) || /^(true|false)$/i.test(fieldValue)) {
+        parsed[fieldName] = /^true$/i.test(fieldValue);
       } else {
         parsed[fieldName] = fieldValue;
       }
+    }
+    if (parsed.triggermethod) {
+      parsed.trigger_method = parsed.triggermethod;
+      delete parsed.triggermethod;
     }
     if (parsed["trigger method"]) {
       const triggerMethod = parsed["trigger method"].toLowerCase();
       delete parsed["trigger method"];
       parsed.trigger_method = triggerMethod;
-      if (!["constant", "vectorized", "selective"].includes(parsed.trigger_method)) {
-        parsed.trigger_method = "selective";
-      }
-    } else if (!parsed.trigger_method) {
+    }
+    if (parsed.vectorized === true) {
+      parsed.trigger_method = "vectorized";
+      parsed.constant = false;
+      parsed.selective = false;
+    } else if (parsed.constant === true) {
+      parsed.trigger_method = "constant";
+      parsed.vectorized = false;
+      parsed.selective = false;
+    } else if (parsed.selective === true) {
       parsed.trigger_method = "selective";
+      parsed.vectorized = false;
+      parsed.constant = false;
+    } else if (parsed.trigger_method) {
+      parsed.constant = parsed.trigger_method === "constant";
+      parsed.vectorized = parsed.trigger_method === "vectorized";
+      parsed.selective = parsed.trigger_method === "selective";
+    } else {
+      parsed.trigger_method = null;
     }
     if (parsed.keywords && (!parsed.key || parsed.key.length === 0)) {
       parsed.key = parsed.keywords;
     }
     if (parsed.title && (!parsed.comment || parsed.comment === "")) {
       parsed.comment = parsed.title;
-    }
-    if (parsed.probability === void 0) parsed.probability = 100;
-    if (parsed.depth === void 0) parsed.depth = 4;
-    if (typeof parsed.probability === "number") {
-      parsed.probability = Math.max(0, Math.min(parsed.probability, 100));
-    }
-    if (typeof parsed.depth === "number") {
-      parsed.depth = Math.max(1, Math.min(parsed.depth, 10));
     }
     return parsed;
   }
@@ -3453,6 +3487,11 @@ var FileProcessor = class {
       const folder = file.parent ? file.parent.path : "";
       this.filenameToUid[name] = uid;
       const wikilinks = this.extractWikilinks(content);
+      const plugin = this.app.plugins.plugins["lorebook-converter"];
+      let defaultSettings = null;
+      if (plugin && plugin.settings) {
+        defaultSettings = plugin.settings.defaultEntry;
+      }
       const entry = {
         uid,
         key: parsed.key || [name],
@@ -3461,10 +3500,11 @@ var FileProcessor = class {
         comment: parsed.comment || parsed.title || name,
         // Use parsed comment/title or default to filename
         content: parsed.content,
-        constant: parsed.trigger_method === "constant",
-        vectorized: parsed.trigger_method === "vectorized",
-        selective: parsed.trigger_method === "selective",
-        selectiveLogic: parsed.selectivelogic !== void 0 ? parsed.selectivelogic : 0,
+        // Apply trigger method settings properly
+        constant: parsed.constant !== void 0 ? parsed.constant : parsed.trigger_method === "constant" ? true : defaultSettings ? defaultSettings.constant : false,
+        vectorized: parsed.vectorized !== void 0 ? parsed.vectorized : parsed.trigger_method === "vectorized" ? true : defaultSettings ? defaultSettings.vectorized : false,
+        selective: parsed.selective !== void 0 ? parsed.selective : parsed.trigger_method === "selective" ? true : defaultSettings ? defaultSettings.selective : true,
+        selectiveLogic: parsed.selectivelogic !== void 0 ? parsed.selectivelogic : defaultSettings ? defaultSettings.selectiveLogic : 0,
         addMemo: parsed.addmemo !== void 0 ? parsed.addmemo : true,
         order: parsed.order !== void 0 ? parsed.order : 0,
         position: parsed.position !== void 0 ? parsed.position : 0,
@@ -3472,12 +3512,12 @@ var FileProcessor = class {
         excludeRecursion: parsed.excluderecursion !== void 0 ? parsed.excluderecursion : false,
         preventRecursion: parsed.preventrecursion !== void 0 ? parsed.preventrecursion : false,
         delayUntilRecursion: parsed.delayuntilrecursion !== void 0 ? parsed.delayuntilrecursion : false,
-        probability: parsed.probability !== void 0 ? parsed.probability : 100,
+        probability: parsed.probability !== void 0 ? parsed.probability : defaultSettings ? defaultSettings.probability : 100,
         useProbability: parsed.useprobability !== void 0 ? parsed.useprobability : true,
-        depth: parsed.depth !== void 0 ? parsed.depth : 4,
+        depth: parsed.depth !== void 0 ? parsed.depth : defaultSettings ? defaultSettings.depth : 4,
         group: parsed.group !== void 0 ? parsed.group : folder,
         groupOverride: parsed.groupoverride !== void 0 ? parsed.groupoverride : false,
-        groupWeight: parsed.groupweight !== void 0 ? parsed.groupweight : 100,
+        groupWeight: parsed.groupweight !== void 0 ? parsed.groupweight : defaultSettings ? defaultSettings.groupWeight : 100,
         scanDepth: parsed.scandepth !== void 0 ? parsed.scandepth : null,
         caseSensitive: parsed.casesensitive !== void 0 ? parsed.casesensitive : null,
         matchWholeWords: parsed.matchwholewords !== void 0 ? parsed.matchwholewords : null,
@@ -3745,9 +3785,22 @@ var LoreBookExporter = class {
     const entriesDict = {};
     for (const [uid, entry] of Object.entries(entries)) {
       const { wikilinks, ...entryWithoutWikilinks } = entry;
-      if (entry.constant === void 0) entry.constant = settings.defaultEntry.constant;
-      if (entry.vectorized === void 0) entry.vectorized = settings.defaultEntry.vectorized;
-      if (entry.selective === void 0) entry.selective = settings.defaultEntry.selective;
+      if (!entry.constant && !entry.vectorized && !entry.selective) {
+        entry.constant = settings.defaultEntry.constant;
+        entry.vectorized = settings.defaultEntry.vectorized;
+        entry.selective = settings.defaultEntry.selective;
+      } else {
+        if (entry.constant) {
+          entry.vectorized = false;
+          entry.selective = false;
+        } else if (entry.vectorized) {
+          entry.constant = false;
+          entry.selective = false;
+        } else if (entry.selective) {
+          entry.constant = false;
+          entry.vectorized = false;
+        }
+      }
       if (entry.selectiveLogic === void 0) entry.selectiveLogic = settings.defaultEntry.selectiveLogic;
       if (entry.probability === void 0) entry.probability = settings.defaultEntry.probability;
       if (entry.depth === void 0) entry.depth = settings.defaultEntry.depth;

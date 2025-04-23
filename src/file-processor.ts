@@ -90,14 +90,29 @@ export class FileProcessor {
     }
     
     // Process all other fields with format: # fieldName: value
-    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_]+): ?(.+?)$/gim; // Case-insensitive, multiline
+    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_\s]+): ?(.+?)$/gim; // Case-insensitive, multiline, allow spaces
     let fieldMatch;
     
     // Known array fields that should be parsed as comma-separated values
     const arrayFields = ['key', 'keysecondary', 'keywords'];
     
+    // Known boolean fields for validation
+    const booleanFields = [
+      'constant', 'vectorized', 'selective', 'addmemo', 'useprobability', 
+      'disable', 'excluderecursion', 'preventrecursion', 'delayuntilrecursion', 
+      'groupoverride'
+    ];
+    
+    // Known numeric fields for validation
+    const numericFields = [
+      'selectivelogic', 'order', 'position', 'probability', 
+      'depth', 'groupweight', 'sticky', 'cooldown', 'delay', 'displayindex'
+    ];
+    
     while ((fieldMatch = arbitraryFieldPattern.exec(content)) !== null) {
-      const fieldName = fieldMatch[1].toLowerCase(); // Convert to lowercase for consistency
+      // Convert field name to lowercase and remove spaces
+      const rawFieldName = fieldMatch[1].trim();
+      const fieldName = rawFieldName.toLowerCase().replace(/\s+/g, ''); 
       let fieldValue = fieldMatch[2].trim();
       
       // Skip content field as it's handled separately
@@ -111,17 +126,21 @@ export class FileProcessor {
         continue;
       }
       
-      // Handle value types
-      if (!isNaN(Number(fieldValue))) {
-        // Convert to number
-        parsed[fieldName] = Number(fieldValue);
-      } else if (fieldValue.toLowerCase() === 'true') {
-        parsed[fieldName] = true;
-      } else if (fieldValue.toLowerCase() === 'false') {
-        parsed[fieldName] = false;
+      // Handle value types with validation
+      if (numericFields.includes(fieldName) || !isNaN(Number(fieldValue))) {
+        const numValue = Number(fieldValue);
+        parsed[fieldName] = !isNaN(numValue) ? numValue : fieldValue;
+      } else if (booleanFields.includes(fieldName) || /^(true|false)$/i.test(fieldValue)) {
+        parsed[fieldName] = /^true$/i.test(fieldValue);
       } else {
         parsed[fieldName] = fieldValue;
       }
+    }
+    
+    // Normalize trigger method fields
+    if (parsed.triggermethod) {
+      parsed.trigger_method = parsed.triggermethod;
+      delete parsed.triggermethod;
     }
     
     // Handle trigger method special case
@@ -130,13 +149,29 @@ export class FileProcessor {
       delete parsed['trigger method']; // Remove the space-containing key
       
       parsed.trigger_method = triggerMethod;
-      
-      // Validate trigger method
-      if (!['constant', 'vectorized', 'selective'].includes(parsed.trigger_method)) {
-        parsed.trigger_method = 'selective';
-      }
-    } else if (!parsed.trigger_method) {
-      parsed.trigger_method = 'selective'; // Default value
+    }
+    
+    // Ensure only one trigger method is active based on explicit flags
+    if (parsed.vectorized === true) {
+      parsed.trigger_method = 'vectorized';
+      parsed.constant = false;
+      parsed.selective = false;
+    } else if (parsed.constant === true) {
+      parsed.trigger_method = 'constant';
+      parsed.vectorized = false;
+      parsed.selective = false;
+    } else if (parsed.selective === true) {
+      parsed.trigger_method = 'selective';
+      parsed.vectorized = false;
+      parsed.constant = false;
+    } else if (parsed.trigger_method) {
+      // If no explicit boolean flags but trigger_method is set, apply it
+      parsed.constant = parsed.trigger_method === 'constant';
+      parsed.vectorized = parsed.trigger_method === 'vectorized';
+      parsed.selective = parsed.trigger_method === 'selective';
+    } else {
+      // Don't set defaults here - this allows the entry creation to use plugin settings
+      parsed.trigger_method = null;
     }
     
     // Legacy support for keywords -> key
@@ -147,18 +182,6 @@ export class FileProcessor {
     // Special handling for title -> comment
     if (parsed.title && (!parsed.comment || parsed.comment === '')) {
       parsed.comment = parsed.title;
-    }
-    
-    // Set default values if not specified
-    if (parsed.probability === undefined) parsed.probability = 100;
-    if (parsed.depth === undefined) parsed.depth = 4;
-    
-    // Ensure valid ranges for numeric values
-    if (typeof parsed.probability === 'number') {
-      parsed.probability = Math.max(0, Math.min(parsed.probability, 100));
-    }
-    if (typeof parsed.depth === 'number') {
-      parsed.depth = Math.max(1, Math.min(parsed.depth, 10));
     }
     
     return parsed;
@@ -182,6 +205,13 @@ export class FileProcessor {
       this.filenameToUid[name] = uid;
       const wikilinks = this.extractWikilinks(content);
       
+      // Get plugin settings from app
+      const plugin = (this.app as any).plugins.plugins['lorebook-converter'];
+      let defaultSettings = null;
+      if (plugin && plugin.settings) {
+        defaultSettings = plugin.settings.defaultEntry;
+      }
+      
       // Create base entry with default values
       const entry: LoreBookEntry = {
         uid: uid,
@@ -189,10 +219,22 @@ export class FileProcessor {
         keysecondary: parsed.keysecondary || [],
         comment: parsed.comment || parsed.title || name, // Use parsed comment/title or default to filename
         content: parsed.content,
-        constant: parsed.trigger_method === 'constant',
-        vectorized: parsed.trigger_method === 'vectorized',
-        selective: parsed.trigger_method === 'selective',
-        selectiveLogic: parsed.selectivelogic !== undefined ? parsed.selectivelogic : 0,
+        
+        // Apply trigger method settings properly
+        constant: parsed.constant !== undefined ? parsed.constant : 
+                 (parsed.trigger_method === 'constant') ? true : 
+                 (defaultSettings ? defaultSettings.constant : false),
+        
+        vectorized: parsed.vectorized !== undefined ? parsed.vectorized : 
+                   (parsed.trigger_method === 'vectorized') ? true : 
+                   (defaultSettings ? defaultSettings.vectorized : false),
+        
+        selective: parsed.selective !== undefined ? parsed.selective : 
+                  (parsed.trigger_method === 'selective') ? true : 
+                  (defaultSettings ? defaultSettings.selective : true),
+        
+        selectiveLogic: parsed.selectivelogic !== undefined ? parsed.selectivelogic : 
+                       (defaultSettings ? defaultSettings.selectiveLogic : 0),
         addMemo: parsed.addmemo !== undefined ? parsed.addmemo : true,
         order: parsed.order !== undefined ? parsed.order : 0,
         position: parsed.position !== undefined ? parsed.position : 0,
@@ -200,12 +242,15 @@ export class FileProcessor {
         excludeRecursion: parsed.excluderecursion !== undefined ? parsed.excluderecursion : false,
         preventRecursion: parsed.preventrecursion !== undefined ? parsed.preventrecursion : false,
         delayUntilRecursion: parsed.delayuntilrecursion !== undefined ? parsed.delayuntilrecursion : false,
-        probability: parsed.probability !== undefined ? parsed.probability : 100,
+        probability: parsed.probability !== undefined ? parsed.probability : 
+                   (defaultSettings ? defaultSettings.probability : 100),
         useProbability: parsed.useprobability !== undefined ? parsed.useprobability : true,
-        depth: parsed.depth !== undefined ? parsed.depth : 4,
+        depth: parsed.depth !== undefined ? parsed.depth : 
+              (defaultSettings ? defaultSettings.depth : 4),
         group: parsed.group !== undefined ? parsed.group : folder,
         groupOverride: parsed.groupoverride !== undefined ? parsed.groupoverride : false,
-        groupWeight: parsed.groupweight !== undefined ? parsed.groupweight : 100,
+        groupWeight: parsed.groupweight !== undefined ? parsed.groupweight : 
+                   (defaultSettings ? defaultSettings.groupWeight : 100),
         scanDepth: parsed.scandepth !== undefined ? parsed.scandepth : null,
         caseSensitive: parsed.casesensitive !== undefined ? parsed.casesensitive : null,
         matchWholeWords: parsed.matchwholewords !== undefined ? parsed.matchwholewords : null,

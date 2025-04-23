@@ -3497,24 +3497,49 @@ var FileProcessor = class {
     }
   }
   async findRootFile(progress) {
-    const rootCandidates = ["Root.md", "root.md", "index.md", "World.md", "world.md"];
-    for (const rootFile of rootCandidates) {
-      const rootFileObj = this.app.vault.getAbstractFileByPath(rootFile);
-      if (rootFileObj instanceof import_obsidian3.TFile) {
-        progress.setStatus(`Found root file: ${rootFile}`);
-        try {
-          const entry = await this.parseMarkdownFile(rootFileObj);
+    progress.setStatus("Searching for root file...");
+    const files = this.app.vault.getMarkdownFiles();
+    let rootFileFound = false;
+    for (const file of files) {
+      try {
+        const content = await this.app.vault.read(file);
+        if (/^# Root\s*$/m.test(content)) {
+          progress.setStatus(`Found root file with '# Root' marker: ${file.path}`);
+          const entry = await this.parseMarkdownFile(file);
           if (entry) {
             this.rootUid = entry.uid;
-            const baseName = rootFileObj.basename;
+            const baseName = file.basename;
             this.filenameToUid[baseName] = entry.uid;
             this.entries[entry.uid] = entry;
+            rootFileFound = true;
+            break;
           }
-        } catch (e) {
-          console.error(`Error processing root file ${rootFile}:`, e);
         }
-        if (this.rootUid !== null) {
-          break;
+      } catch (e) {
+        console.error(`Error checking file ${file.path} for Root marker:`, e);
+      }
+    }
+    if (!rootFileFound) {
+      const rootCandidates = ["Root.md", "root.md", "index.md", "World.md", "world.md"];
+      for (const rootFile of rootCandidates) {
+        const rootFileObj = this.app.vault.getAbstractFileByPath(rootFile);
+        if (rootFileObj instanceof import_obsidian3.TFile) {
+          progress.setStatus(`Found root file by name: ${rootFile}`);
+          try {
+            const entry = await this.parseMarkdownFile(rootFileObj);
+            if (entry) {
+              this.rootUid = entry.uid;
+              const baseName = rootFileObj.basename;
+              this.filenameToUid[baseName] = entry.uid;
+              this.entries[entry.uid] = entry;
+              rootFileFound = true;
+            }
+          } catch (e) {
+            console.error(`Error processing root file ${rootFile}:`, e);
+          }
+          if (this.rootUid !== null) {
+            break;
+          }
         }
       }
     }

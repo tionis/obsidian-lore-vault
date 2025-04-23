@@ -7,35 +7,76 @@ export class ProgressBar {
   private statusEl: HTMLElement;
   private total: number;
   private current: number = 0;
+  private container: HTMLElement;
   
   constructor(total: number, initialMessage: string = 'Processing...') {
     this.total = total;
     
-    // Create a long-lasting notice
+    // Create a long-lasting notice (0 means it stays until we hide it)
     this.notice = new Notice('', 0);
     
-    // Get the content element of the notice
-    const contentEl = this.notice.noticeEl.querySelector('.notice-content');
+    // Find the notice element's content area or create a fallback
+    // First try to find by class
+    let contentEl = this.notice.noticeEl.querySelector('.notice-content');
+    
+    // If not found, look for any div inside
     if (!contentEl) {
-      throw new Error('Could not find notice content element');
+      contentEl = this.notice.noticeEl.querySelector('div');
     }
     
-    // Style the notice container
-    contentEl.addClass('lorebook-progress-container');
+    // If still not found, use the notice element itself as container
+    if (!contentEl) {
+      contentEl = this.notice.noticeEl;
+    }
     
-    // Create status text element
-    this.statusEl = contentEl.createDiv({ cls: 'lorebook-progress-status' });
+    // Store reference to container
+    this.container = contentEl as HTMLElement;
+    
+    // Style the notice container - use addClass if available or fallback to classList
+    if (typeof this.container.addClass === 'function') {
+      this.container.addClass('lorebook-progress-container');
+    } else {
+      this.container.classList.add('lorebook-progress-container');
+    }
+    
+    // Create status text element - handle both Obsidian's createDiv and standard DOM methods
+    if (typeof this.container.createDiv === 'function') {
+      this.statusEl = this.container.createDiv({ cls: 'lorebook-progress-status' });
+    } else {
+      this.statusEl = document.createElement('div');
+      this.statusEl.className = 'lorebook-progress-status';
+      this.container.appendChild(this.statusEl);
+    }
     this.statusEl.textContent = initialMessage;
     
     // Create progress container
-    const progressContainer = contentEl.createDiv({ cls: 'lorebook-progress-outer' });
+    let progressContainer: HTMLElement;
+    if (typeof this.container.createDiv === 'function') {
+      progressContainer = this.container.createDiv({ cls: 'lorebook-progress-outer' });
+    } else {
+      progressContainer = document.createElement('div');
+      progressContainer.className = 'lorebook-progress-outer';
+      this.container.appendChild(progressContainer);
+    }
     
     // Create the actual progress bar
-    this.progressEl = progressContainer.createDiv({ cls: 'lorebook-progress-inner' });
+    if (typeof progressContainer.createDiv === 'function') {
+      this.progressEl = progressContainer.createDiv({ cls: 'lorebook-progress-inner' });
+    } else {
+      this.progressEl = document.createElement('div');
+      this.progressEl.className = 'lorebook-progress-inner';
+      progressContainer.appendChild(this.progressEl);
+    }
     this.progressEl.style.width = '0%';
     
     // Create text overlay for percentage
-    this.barEl = progressContainer.createDiv({ cls: 'lorebook-progress-text' });
+    if (typeof progressContainer.createDiv === 'function') {
+      this.barEl = progressContainer.createDiv({ cls: 'lorebook-progress-text' });
+    } else {
+      this.barEl = document.createElement('div');
+      this.barEl.className = 'lorebook-progress-text';
+      progressContainer.appendChild(this.barEl);
+    }
     this.barEl.textContent = '0%';
     
     // Update initial state
@@ -74,7 +115,11 @@ export class ProgressBar {
     this.barEl.textContent = '100%';
     
     // Add success class
-    this.progressEl.addClass('lorebook-progress-success');
+    if (typeof this.progressEl.addClass === 'function') {
+      this.progressEl.addClass('lorebook-progress-success');
+    } else {
+      this.progressEl.classList.add('lorebook-progress-success');
+    }
     
     // Update message
     this.setStatus(message);
@@ -90,7 +135,11 @@ export class ProgressBar {
    */
   error(message: string = 'Error!'): void {
     // Add error class
-    this.progressEl.addClass('lorebook-progress-error');
+    if (typeof this.progressEl.addClass === 'function') {
+      this.progressEl.addClass('lorebook-progress-error');
+    } else {
+      this.progressEl.classList.add('lorebook-progress-error');
+    }
     
     // Update message
     this.setStatus(message);

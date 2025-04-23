@@ -46,9 +46,13 @@ export class FileProcessor {
   }
 
   isValidLoreBookEntry(content: string): boolean {
-    return /^# Title:/m.test(content) && 
-           /^# Keywords:/m.test(content) && 
-           /^# Content:/m.test(content);
+    // Check if it has at least one of these tags: title, comment, key, keywords
+    // We don't require content tag anymore as we'll use the entire file as content if not specified
+    const hasIdentifier = /^# ([Tt]itle|[Cc]omment|[Kk]ey|[Kk]eywords):/m.test(content);
+    
+    // It's a valid entry if it has at least one identifier tag
+    // If no identifier tags, we'll still try to parse it but with lower threshold
+    return hasIdentifier || content.trim().length > 0;
   }
 
   parseDetailedMarkdown(content: string): any {
@@ -57,40 +61,59 @@ export class FileProcessor {
     
     // Helper function to get specific predefined tags
     const getTag = (tag: string) => {
-      const regex = new RegExp(`^# ${tag}: ?(.+)$`, 'm');
+      const regex = new RegExp(`^# ${tag}: ?(.+)$`, 'mi'); // Case-insensitive match
       const match = content.match(regex);
       return match ? match[1].trim() : '';
     };
     
-    // Parse standard fields
-    parsed.title = getTag('Title');
-    parsed.keywords = getTag('Keywords').split(',').map(k => k.trim()).filter(k => k);
-    parsed.overview = getTag('Overview');
-    parsed.trigger_method = (getTag('Trigger Method') || 'selective').toLowerCase();
+    // Try to extract content section first (special case due to multiline nature)
+    const contentMatch = content.match(/^# [Cc]ontent:(?:[ \t]*\n)?([\s\S]+?)(?=^#|\s*$)/m);
     
-    // Extract content section
-    const contentMatch = content.match(/^# Content:(?:[ \t]*\n)?([\s\S]+)/);
-    parsed.content = contentMatch ? contentMatch[1].trim() : content.trim();
-    
-    // Validate trigger method
-    if (!['constant', 'vectorized', 'selective'].includes(parsed.trigger_method)) {
-      parsed.trigger_method = 'selective';
+    // If content tag found, use that section. Otherwise use the entire file content
+    if (contentMatch && contentMatch[1]) {
+      parsed.content = contentMatch[1].trim();
+    } else {
+      // Check if there are any # tags in the file
+      const hasTags = /^# [A-Za-z0-9_]+:/m.test(content);
+      
+      if (hasTags) {
+        // Extract all lines that don't start with a # tag
+        const nonTagLines = content.split('\n')
+          .filter(line => !line.trim().startsWith('# '))
+          .join('\n');
+        
+        parsed.content = nonTagLines.trim();
+      } else {
+        // No tags at all, use entire content
+        parsed.content = content.trim();
+      }
     }
     
-    // Parse any arbitrary field with format: # fieldName: value
-    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_]+): ?(.+)$/gm;
+    // Process all other fields with format: # fieldName: value
+    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_]+): ?(.+?)$/gim; // Case-insensitive, multiline
     let fieldMatch;
+    
+    // Known array fields that should be parsed as comma-separated values
+    const arrayFields = ['key', 'keysecondary', 'keywords'];
+    
     while ((fieldMatch = arbitraryFieldPattern.exec(content)) !== null) {
-      const fieldName = fieldMatch[1].toLowerCase();
-      const fieldValue = fieldMatch[2].trim();
+      const fieldName = fieldMatch[1].toLowerCase(); // Convert to lowercase for consistency
+      let fieldValue = fieldMatch[2].trim();
       
-      // Skip fields we've already processed
-      if (['title', 'keywords', 'overview', 'trigger method', 'content'].includes(fieldName.toLowerCase())) {
+      // Skip content field as it's handled separately
+      if (fieldName === 'content') {
         continue;
       }
       
-      // Try to convert numeric values
+      // Special handling for array fields
+      if (arrayFields.includes(fieldName)) {
+        parsed[fieldName] = fieldValue.split(',').map((v: string) => v.trim()).filter((v: string) => v);
+        continue;
+      }
+      
+      // Handle value types
       if (!isNaN(Number(fieldValue))) {
+        // Convert to number
         parsed[fieldName] = Number(fieldValue);
       } else if (fieldValue.toLowerCase() === 'true') {
         parsed[fieldName] = true;
@@ -99,6 +122,31 @@ export class FileProcessor {
       } else {
         parsed[fieldName] = fieldValue;
       }
+    }
+    
+    // Handle trigger method special case
+    if (parsed['trigger method']) {
+      const triggerMethod = parsed['trigger method'].toLowerCase();
+      delete parsed['trigger method']; // Remove the space-containing key
+      
+      parsed.trigger_method = triggerMethod;
+      
+      // Validate trigger method
+      if (!['constant', 'vectorized', 'selective'].includes(parsed.trigger_method)) {
+        parsed.trigger_method = 'selective';
+      }
+    } else if (!parsed.trigger_method) {
+      parsed.trigger_method = 'selective'; // Default value
+    }
+    
+    // Legacy support for keywords -> key
+    if (parsed.keywords && (!parsed.key || parsed.key.length === 0)) {
+      parsed.key = parsed.keywords;
+    }
+    
+    // Special handling for title -> comment
+    if (parsed.title && (!parsed.comment || parsed.comment === '')) {
+      parsed.comment = parsed.title;
     }
     
     // Set default values if not specified
@@ -120,6 +168,8 @@ export class FileProcessor {
     try {
       const content = await this.app.vault.read(file);
       
+      // Only check validity if we're not accepting any field pattern
+      // This allows for much more flexible entry structure
       if (!this.isValidLoreBookEntry(content)) {
         return null;
       }
@@ -135,53 +185,39 @@ export class FileProcessor {
       // Create base entry with default values
       const entry: LoreBookEntry = {
         uid: uid,
-        key: [...parsed.keywords, name],
-        keysecondary: [],
-        comment: parsed.title,
+        key: parsed.key || [name], // Use parsed key if available, otherwise default to filename
+        keysecondary: parsed.keysecondary || [],
+        comment: parsed.comment || parsed.title || name, // Use parsed comment/title or default to filename
         content: parsed.content,
         constant: parsed.trigger_method === 'constant',
         vectorized: parsed.trigger_method === 'vectorized',
         selective: parsed.trigger_method === 'selective',
-        selectiveLogic: 0,
-        addMemo: true,
-        order: 0,
-        position: 0,
-        disable: false,
-        excludeRecursion: false,
-        preventRecursion: false,
-        delayUntilRecursion: false,
-        probability: parsed.probability,
-        useProbability: true,
-        depth: parsed.depth,
-        group: folder,
-        groupOverride: false,
-        groupWeight: 100,
-        scanDepth: null,
-        caseSensitive: null,
-        matchWholeWords: null,
-        useGroupScoring: null,
-        automationId: "",
-        role: null,
-        sticky: 0,
-        cooldown: 0,
-        delay: 0,
-        displayIndex: 0,
+        selectiveLogic: parsed.selectivelogic !== undefined ? parsed.selectivelogic : 0,
+        addMemo: parsed.addmemo !== undefined ? parsed.addmemo : true,
+        order: parsed.order !== undefined ? parsed.order : 0,
+        position: parsed.position !== undefined ? parsed.position : 0,
+        disable: parsed.disable !== undefined ? parsed.disable : false,
+        excludeRecursion: parsed.excluderecursion !== undefined ? parsed.excluderecursion : false,
+        preventRecursion: parsed.preventrecursion !== undefined ? parsed.preventrecursion : false,
+        delayUntilRecursion: parsed.delayuntilrecursion !== undefined ? parsed.delayuntilrecursion : false,
+        probability: parsed.probability !== undefined ? parsed.probability : 100,
+        useProbability: parsed.useprobability !== undefined ? parsed.useprobability : true,
+        depth: parsed.depth !== undefined ? parsed.depth : 4,
+        group: parsed.group !== undefined ? parsed.group : folder,
+        groupOverride: parsed.groupoverride !== undefined ? parsed.groupoverride : false,
+        groupWeight: parsed.groupweight !== undefined ? parsed.groupweight : 100,
+        scanDepth: parsed.scandepth !== undefined ? parsed.scandepth : null,
+        caseSensitive: parsed.casesensitive !== undefined ? parsed.casesensitive : null,
+        matchWholeWords: parsed.matchwholewords !== undefined ? parsed.matchwholewords : null,
+        useGroupScoring: parsed.usegroupscoring !== undefined ? parsed.usegroupscoring : null,
+        automationId: parsed.automationid !== undefined ? parsed.automationid : "",
+        role: parsed.role !== undefined ? parsed.role : null,
+        sticky: parsed.sticky !== undefined ? parsed.sticky : 0,
+        cooldown: parsed.cooldown !== undefined ? parsed.cooldown : 0,
+        delay: parsed.delay !== undefined ? parsed.delay : 0,
+        displayIndex: parsed.displayindex !== undefined ? parsed.displayindex : 0,
         wikilinks: wikilinks
       };
-      
-      // Apply any custom fields from parsing
-      for (const [key, value] of Object.entries(parsed)) {
-        // Skip fields we've already processed
-        if (['title', 'keywords', 'overview', 'trigger_method', 'content', 'probability', 'depth'].includes(key)) {
-          continue;
-        }
-        
-        // Check if this key exists in the entry object
-        if (key in entry) {
-          // Apply the value from the parsed data
-          (entry as any)[key] = value;
-        }
-      }
       
       return entry;
     } catch (e) {

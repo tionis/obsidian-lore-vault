@@ -22,10 +22,28 @@ export class LoreBookExporter {
       const { wikilinks, ...entryWithoutWikilinks } = entry;
       
       // Apply default entry settings for any entries that haven't set these properties yet
-      // This allows user-specified settings in entries to override the defaults
-      if (entry.constant === undefined) entry.constant = settings.defaultEntry.constant;
-      if (entry.vectorized === undefined) entry.vectorized = settings.defaultEntry.vectorized;
-      if (entry.selective === undefined) entry.selective = settings.defaultEntry.selective;
+      // Only apply defaults for trigger methods if NONE are set to true
+      if (!entry.constant && !entry.vectorized && !entry.selective) {
+        // Apply default trigger method from settings
+        entry.constant = settings.defaultEntry.constant;
+        entry.vectorized = settings.defaultEntry.vectorized;
+        entry.selective = settings.defaultEntry.selective;
+      } else {
+        // Ensure only one trigger method is active
+        // If multiple are somehow true, prioritize in this order: constant > vectorized > selective
+        if (entry.constant) {
+          entry.vectorized = false;
+          entry.selective = false;
+        } else if (entry.vectorized) {
+          entry.constant = false;
+          entry.selective = false;
+        } else if (entry.selective) {
+          entry.constant = false;
+          entry.vectorized = false;
+        }
+      }
+      
+      // Apply other defaults
       if (entry.selectiveLogic === undefined) entry.selectiveLogic = settings.defaultEntry.selectiveLogic;
       if (entry.probability === undefined) entry.probability = settings.defaultEntry.probability;
       if (entry.depth === undefined) entry.depth = settings.defaultEntry.depth;

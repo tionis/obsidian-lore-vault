@@ -1,0 +1,10 @@
+{
+  "id": "lorebook-converter",
+  "name": "Lorebook Converter",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Converts Obsidian vault notes into Lorebook JSON format",
+  "author": "Your Name",
+  "authorUrl": "https://yourwebsite.com",
+  "isDesktopOnly": false
+}

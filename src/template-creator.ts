@@ -1,4 +1,5 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal, Setting, Notice, Plugin } from 'obsidian';
+import { ConverterSettings, DEFAULT_SETTINGS } from './models';
 
 export class TemplateModal extends Modal {
   result: string = '';
@@ -9,9 +10,23 @@ export class TemplateModal extends Modal {
   probability: number = 75;
   depth: number = 4;
   isSubmitted: boolean = false;
+  settings: ConverterSettings;
 
-  constructor(app: App) {
+  constructor(app: App, settings: ConverterSettings) {
     super(app);
+    this.settings = settings;
+    
+    // Initialize with default values from settings
+    if (settings.defaultEntry.constant) {
+      this.triggerMethod = 'constant';
+    } else if (settings.defaultEntry.vectorized) {
+      this.triggerMethod = 'vectorized';
+    } else {
+      this.triggerMethod = 'selective';
+    }
+    
+    this.probability = settings.defaultEntry.probability;
+    this.depth = settings.defaultEntry.depth;
   }
 
   onOpen() {
@@ -108,6 +123,12 @@ export class TemplateModal extends Modal {
   }
 
   generateTemplate() {
+    // Determine the selective logic text
+    let selectiveLogicText = "OR";
+    if (this.triggerMethod === 'selective' && this.settings.defaultEntry.selectiveLogic === 1) {
+      selectiveLogicText = "AND";
+    }
+    
     this.result = `# Title: ${this.title}
 # Keywords: ${this.keywords}
 # Overview: ${this.overview}
@@ -115,6 +136,7 @@ export class TemplateModal extends Modal {
 # Trigger Method: ${this.triggerMethod}
 # Probability: ${this.probability}
 # Depth: ${this.depth}
+${this.triggerMethod === 'selective' ? `# Selective Logic: ${selectiveLogicText}` : ''}
 
 # Content:
 Enter your content here...
@@ -132,9 +154,25 @@ Enter your content here...
   }
 }
 
-export async function createTemplate(app: App): Promise<string> {
+export async function createTemplate(app: App, settings?: ConverterSettings): Promise<string> {
   return new Promise((resolve, reject) => {
-    const modal = new TemplateModal(app);
+    // Get plugin settings if not provided
+    let pluginSettings: ConverterSettings;
+    
+    if (!settings) {
+      // Try to get the plugin instance
+      const plugin = (app as any).plugins.plugins['lorebook-converter'];
+      if (plugin && plugin.settings) {
+        pluginSettings = plugin.settings;
+      } else {
+        // Fallback to default settings
+        pluginSettings = DEFAULT_SETTINGS;
+      }
+    } else {
+      pluginSettings = settings;
+    }
+    
+    const modal = new TemplateModal(app, pluginSettings);
     
     modal.onClose = () => {
       if (modal.isSubmitted && modal.result) {

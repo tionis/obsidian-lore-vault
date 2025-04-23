@@ -52,38 +52,66 @@ export class FileProcessor {
   }
 
   parseDetailedMarkdown(content: string): any {
+    // Create an object to store all parsed values
+    const parsed: any = {};
+    
+    // Helper function to get specific predefined tags
     const getTag = (tag: string) => {
       const regex = new RegExp(`^# ${tag}: ?(.+)$`, 'm');
       const match = content.match(regex);
       return match ? match[1].trim() : '';
     };
     
-    const title = getTag('Title');
-    const keywords = getTag('Keywords').split(',').map(k => k.trim()).filter(k => k);
-    const overview = getTag('Overview');
-    const trigger = getTag('Trigger Method');
+    // Parse standard fields
+    parsed.title = getTag('Title');
+    parsed.keywords = getTag('Keywords').split(',').map(k => k.trim()).filter(k => k);
+    parsed.overview = getTag('Overview');
+    parsed.trigger_method = (getTag('Trigger Method') || 'selective').toLowerCase();
     
-    const probMatch = content.match(/^# Probability: (\d+)$/m);
-    const depthMatch = content.match(/^# Depth: (\d+)$/m);
-    
+    // Extract content section
     const contentMatch = content.match(/^# Content:(?:[ \t]*\n)?([\s\S]+)/);
+    parsed.content = contentMatch ? contentMatch[1].trim() : content.trim();
     
-    const parsed: any = {
-      title: title,
-      keywords: keywords,
-      overview: overview,
-      trigger_method: (trigger ? trigger.toLowerCase() : 'selective')
-    };
-    
-    // Validate trigger
+    // Validate trigger method
     if (!['constant', 'vectorized', 'selective'].includes(parsed.trigger_method)) {
       parsed.trigger_method = 'selective';
     }
     
-    // Numeric values
-    parsed.probability = probMatch ? Math.max(0, Math.min(parseInt(probMatch[1]), 100)) : 100;
-    parsed.depth = depthMatch ? Math.max(1, Math.min(parseInt(depthMatch[1]), 10)) : 4;
-    parsed.content = contentMatch ? contentMatch[1].trim() : content.trim();
+    // Parse any arbitrary field with format: # fieldName: value
+    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_]+): ?(.+)$/gm;
+    let fieldMatch;
+    while ((fieldMatch = arbitraryFieldPattern.exec(content)) !== null) {
+      const fieldName = fieldMatch[1].toLowerCase();
+      const fieldValue = fieldMatch[2].trim();
+      
+      // Skip fields we've already processed
+      if (['title', 'keywords', 'overview', 'trigger method', 'content'].includes(fieldName.toLowerCase())) {
+        continue;
+      }
+      
+      // Try to convert numeric values
+      if (!isNaN(Number(fieldValue))) {
+        parsed[fieldName] = Number(fieldValue);
+      } else if (fieldValue.toLowerCase() === 'true') {
+        parsed[fieldName] = true;
+      } else if (fieldValue.toLowerCase() === 'false') {
+        parsed[fieldName] = false;
+      } else {
+        parsed[fieldName] = fieldValue;
+      }
+    }
+    
+    // Set default values if not specified
+    if (parsed.probability === undefined) parsed.probability = 100;
+    if (parsed.depth === undefined) parsed.depth = 4;
+    
+    // Ensure valid ranges for numeric values
+    if (typeof parsed.probability === 'number') {
+      parsed.probability = Math.max(0, Math.min(parsed.probability, 100));
+    }
+    if (typeof parsed.depth === 'number') {
+      parsed.depth = Math.max(1, Math.min(parsed.depth, 10));
+    }
     
     return parsed;
   }
@@ -104,6 +132,7 @@ export class FileProcessor {
       this.filenameToUid[name] = uid;
       const wikilinks = this.extractWikilinks(content);
       
+      // Create base entry with default values
       const entry: LoreBookEntry = {
         uid: uid,
         key: [...parsed.keywords, name],
@@ -139,6 +168,20 @@ export class FileProcessor {
         displayIndex: 0,
         wikilinks: wikilinks
       };
+      
+      // Apply any custom fields from parsing
+      for (const [key, value] of Object.entries(parsed)) {
+        // Skip fields we've already processed
+        if (['title', 'keywords', 'overview', 'trigger_method', 'content', 'probability', 'depth'].includes(key)) {
+          continue;
+        }
+        
+        // Check if this key exists in the entry object
+        if (key in entry) {
+          // Apply the value from the parsed data
+          (entry as any)[key] = value;
+        }
+      }
       
       return entry;
     } catch (e) {

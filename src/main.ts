@@ -11,7 +11,8 @@ export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
 
   async onload() {
-    await this.loadSettings();
+    // Load the settings
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
     // Add custom icon
     addIcon('lorebook', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -41,7 +42,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Create Lorebook Entry Template',
       callback: async () => {
         try {
-          const template = await createTemplate(this.app);
+          const template = await createTemplate(this.app, this.settings);
           
           // Check if there's an active file
           const activeFile = this.app.workspace.getActiveFile();
@@ -63,12 +64,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
   }
 
-  async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
-
-  async saveSettings() {
-    await this.saveData(this.settings);
+  async saveData(settings: any) {
+    await super.saveData(settings);
   }
   
   // This is the main conversion function
@@ -111,7 +108,7 @@ export default class LoreBookConverterPlugin extends Plugin {
                         `${this.app.vault.getName()}.json`;
       
       const exporter = new LoreBookExporter(this.app);
-      await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath);
+      await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath, this.settings);
       progress.update();
       
       // Complete

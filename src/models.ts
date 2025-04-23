@@ -59,6 +59,22 @@ export interface ConverterSettings {
     file_depth: number;
   };
   outputPath: string;
+  defaultLoreBook: {
+    orderByTitle: boolean;
+    useDroste: boolean;
+    useRecursion: boolean;
+    tokenBudget: number;
+    recursionBudget: number;
+  };
+  defaultEntry: {
+    constant: boolean;
+    vectorized: boolean;
+    selective: boolean;
+    selectiveLogic: number;
+    probability: number;
+    depth: number;
+    groupWeight: number;
+  };
 }
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
@@ -71,5 +87,21 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     total_degree: 100,
     file_depth: 2000
   },
-  outputPath: ''
+  outputPath: '',
+  defaultLoreBook: {
+    orderByTitle: false,
+    useDroste: true,
+    useRecursion: true,
+    tokenBudget: 2048,
+    recursionBudget: 100
+  },
+  defaultEntry: {
+    constant: false,
+    vectorized: false,
+    selective: true,
+    selectiveLogic: 0,
+    probability: 100,
+    depth: 4,
+    groupWeight: 100
+  }
 };

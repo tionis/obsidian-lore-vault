@@ -123,12 +123,6 @@ export class TemplateModal extends Modal {
   }
 
   generateTemplate() {
-    // Determine the selective logic text
-    let selectiveLogicText = "OR";
-    if (this.triggerMethod === 'selective' && this.settings.defaultEntry.selectiveLogic === 1) {
-      selectiveLogicText = "AND";
-    }
-    
     this.result = `# Title: ${this.title}
 # Keywords: ${this.keywords}
 # Overview: ${this.overview}
@@ -136,7 +130,7 @@ export class TemplateModal extends Modal {
 # Trigger Method: ${this.triggerMethod}
 # Probability: ${this.probability}
 # Depth: ${this.depth}
-${this.triggerMethod === 'selective' ? `# Selective Logic: ${selectiveLogicText}` : ''}
+${this.triggerMethod === 'selective' ? `# Selective Logic: ${this.settings.defaultEntry.selectiveLogic}` : ''}
 
 # Content:
 Enter your content here...

@@ -6,5 +6,5 @@
   "description": "Converts Obsidian vault notes into Lorebook JSON format",
   "author": "Your Name",
   "authorUrl": "https://yourwebsite.com",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }

@@ -1,22 +1,91 @@
-### What is this?
-This is a simple plugin for Obsidian that I use for exporting [World Info](https://docs.sillytavern.app/usage/core-concepts/worldinfo/) or [Lorebooks](https://docs.chub.ai/docs/advanced-setups/lorebooks) for use with AI roleplaying and chatbot systems like SillyTavern.
+# Lorebook Converter
 
-### But why?
-I built this tool mostly because I was disappointed with what the current offers were for visualizing the information kept within World Info / Lorebooks, with many of the current tools using simple nested lists. This means that it can be difficult to visualize how interconnected the various entries of the Lorebook are, and the potential consequences to context-size utilization that can arise due to recursive Lorebook calls. Additionally, I wanted to use this as a chance to stress-test using LLMs to generate and debug code with minimal operator intervention, with my main "role" in this instance being feeding the LLM with organizational notes in order to make it easier to debug any problems that did arise.
+Obsidian plugin that exports vault notes into SillyTavern-compatible lorebook JSON.
 
-### What does it do?
-The system is pretty simple at it's core. It takes .md files that follow some formatting rules, and converts them into a .json that can be used as World Info for SillyTavern. 
+## Current Status
 
-However, in addition to the .md to .json conversion, the system is capable of calculating the Priority or Order of a particular entry based on a variety of metrics that users can tweak the weighting of based on there preferences. This system creates a graph from the given .md files using embedded wikilinks within to determine the edges of the graph. From there, we can calculate a wide variety of metrics. Currently, there are 7 different metrics you can adjust the weighting for, they are as follows:
-- Hierarchy: How close a file is to a designated "root" document, with closer documents scoring higher.
-- In Degree: How many links point towards a document, so documents that are frequently referenced are scored higher.
-- Page Rank: A measurement of the overall importance of a file based on it's graph centrality, with the documents score increasing based on it's importance.
-- Betweenness: How important this document is as a connector or bridge between different parts of the graph.
-- Out Degree: How many outgoing links a document has. So, documents that reference a bunch of other documents have higher importance.
-- Total Degree: The total number of incoming and outgoing links a document has.
-- File Depth: How deep within the file or folder hierarchy a document is, with deeper files scoring higher values. Meant to increase the score of more specific documents
+- Desktop-only plugin (`manifest.json` sets `isDesktopOnly: true`)
+- Deterministic processing and tie-breaking
+- Fixture-backed regression tests for ranking determinism and wikilink resolution
 
-### TODO:
-- [ ] .json importing: Enable users to import World Info.
-- [ ] tune default weightings: The current default weightings aren't ideal, and I need to tune them some. However, users can already modify weighting on their own, so it's not a priority.
-- [ ] fix template exporter: The user should be able to generate a template file that they can use as a base for any World Info entries they want to make.
+## How Source Notes Are Selected
+
+The converter scans all markdown files in the vault, then includes a file only if one of these is true:
+
+1. It contains at least one top-level field line like `# Field: value`
+2. It contains a line exactly matching `# Root`
+3. Its frontmatter contains `lorebook: true`
+
+Files are processed in deterministic `path` order.
+
+## Parsing Rules
+
+- Field format: `# Field Name: value` (case-insensitive)
+- `# Content:` handling:
+  - If present, content is taken from that field to the next top-level field line
+  - Markdown headings like `## Heading` are preserved
+- Without `# Content:`, content becomes the note text with top-level field lines removed
+- `# Keywords:` and `# Key:` are parsed as comma-separated arrays
+- `# Selective Logic:` supports:
+  - `0` = AND ANY
+  - `1` = AND ALL
+  - `2` = NOT ANY
+  - `3` = NOT ALL
+  - Legacy text values (`OR`, `AND`, etc.) are normalized
+
+## Link Resolution Rules
+
+- Wikilink patterns: `[[Page]]`, `[[Page|Alias]]`, and embeds like `![[Page]]`
+- For graph linking, targets are normalized by:
+  - stripping heading/block refs (`#...`)
+  - stripping `.md`
+  - converting `\` to `/`
+- Each note is mapped by full path and basename
+- If two notes share the same basename, basename lookup is marked ambiguous and removed; full-path links continue to work
+
+## Root Selection
+
+Root is selected in this order:
+
+1. First file (by sorted path) containing a line `# Root`
+2. Fallback vault-root file name match: `Root.md`, `root.md`, `index.md`, `World.md`, `world.md`
+
+If no root is found, hierarchy depth contributes `0` for all notes.
+
+## Ranking / Order Calculation
+
+Order is computed from a weighted sum of normalized metrics:
+
+- hierarchy depth (from root via BFS)
+- in-degree
+- PageRank
+- betweenness
+- out-degree
+- total degree
+- file depth
+
+Implementation details:
+
+- `order = max(1, floor(weighted_score))`
+- ties are broken deterministically by ascending UID (`+1`, `+2`, ...)
+
+## Output Behavior
+
+- Exports `entries` + lorebook-level `settings`
+- Internal `wikilinks` are removed from exported entries
+- Trigger mode is normalized to exactly one of constant/vectorized/selective
+- Missing defaults are filled from plugin settings before serialization
+- Relative output path writes inside vault; absolute output path writes via Node `fs`
+
+## Development
+
+```bash
+npm install
+npm run build
+npm test
+```
+
+Detailed docs:
+
+- `docs/documentation.md`
+- `docs/installation-guide.md`

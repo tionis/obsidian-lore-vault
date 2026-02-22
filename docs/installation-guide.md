@@ -1,16 +1,17 @@
 # Lorebook Converter Plugin Installation Guide
 
-This guide will help you install the Lorebook Converter plugin for Obsidian. Since this is a custom plugin not yet available in the Obsidian Community Plugin marketplace, you'll need to follow these manual installation steps.
+This guide will help you install the Lorebook Converter plugin for Obsidian.
 
 ## Prerequisites
 
 - [Obsidian](https://obsidian.md/) (version 0.15.0 or higher)
+- Desktop environment (plugin is desktop-only)
 - A basic understanding of file management
 - Comfort with accessing hidden folders (like `.obsidian`)
 
 ## Installation Steps
 
-### Method 1: Manual Installation (Recommended)
+### Method 1: Manual Installation
 
 1. **Download the plugin files**
    - Create a new folder named `lorebook-converter` in your Obsidian vault's plugins directory:
@@ -58,9 +59,10 @@ If you prefer to build the plugin from source:
    npm install
    ```
 
-3. **Build the plugin**
+3. **Build and validate**
    ```bash
    npm run build
+   npm test
    ```
 
 4. **Copy the built files to your Obsidian vault**
@@ -81,7 +83,7 @@ If you prefer to build the plugin from source:
    - Fill in the form and create your first template
 
 3. **Convert your vault**
-   - Ensure your markdown files follow the required format (see README)
+   - Ensure your markdown files match one of the source-selection rules (see `docs/documentation.md`)
    - Click the book icon in the sidebar or use the command palette to start conversion
    - Monitor the progress bar as your vault is converted
 
@@ -90,7 +92,10 @@ If you prefer to build the plugin from source:
 - **Plugin doesn't appear in settings**: Make sure all files are in the correct location and properly named
 - **Command palette commands don't appear**: Try restarting Obsidian
 - **Conversion fails**: Check the console (Ctrl+Shift+I) for error messages
-- **Plugin doesn't recognize files**: Ensure your files follow the required format with Title, Keywords, and Content sections
+- **Plugin doesn't recognize files**:
+  - Ensure the file includes at least one `# Field: value` line, or
+  - add `# Root`, or
+  - set frontmatter `lorebook: true`
 
 ## Updates
 

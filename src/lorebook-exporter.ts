@@ -20,36 +20,45 @@ export class LoreBookExporter {
     
     for (const [uid, entry] of Object.entries(entries)) {
       const { wikilinks, ...entryWithoutWikilinks } = entry;
+      const normalizedEntry = { ...entryWithoutWikilinks };
       
       // Apply default entry settings for any entries that haven't set these properties yet
       // Only apply defaults for trigger methods if NONE are set to true
-      if (!entry.constant && !entry.vectorized && !entry.selective) {
+      if (!normalizedEntry.constant && !normalizedEntry.vectorized && !normalizedEntry.selective) {
         // Apply default trigger method from settings
-        entry.constant = settings.defaultEntry.constant;
-        entry.vectorized = settings.defaultEntry.vectorized;
-        entry.selective = settings.defaultEntry.selective;
+        normalizedEntry.constant = settings.defaultEntry.constant;
+        normalizedEntry.vectorized = settings.defaultEntry.vectorized;
+        normalizedEntry.selective = settings.defaultEntry.selective;
       } else {
         // Ensure only one trigger method is active
         // If multiple are somehow true, prioritize in this order: constant > vectorized > selective
-        if (entry.constant) {
-          entry.vectorized = false;
-          entry.selective = false;
-        } else if (entry.vectorized) {
-          entry.constant = false;
-          entry.selective = false;
-        } else if (entry.selective) {
-          entry.constant = false;
-          entry.vectorized = false;
+        if (normalizedEntry.constant) {
+          normalizedEntry.vectorized = false;
+          normalizedEntry.selective = false;
+        } else if (normalizedEntry.vectorized) {
+          normalizedEntry.constant = false;
+          normalizedEntry.selective = false;
+        } else if (normalizedEntry.selective) {
+          normalizedEntry.constant = false;
+          normalizedEntry.vectorized = false;
         }
       }
       
       // Apply other defaults
-      if (entry.selectiveLogic === undefined) entry.selectiveLogic = settings.defaultEntry.selectiveLogic;
-      if (entry.probability === undefined) entry.probability = settings.defaultEntry.probability;
-      if (entry.depth === undefined) entry.depth = settings.defaultEntry.depth;
-      if (entry.groupWeight === undefined) entry.groupWeight = settings.defaultEntry.groupWeight;
+      if (normalizedEntry.selectiveLogic === undefined) {
+        normalizedEntry.selectiveLogic = settings.defaultEntry.selectiveLogic;
+      }
+      if (normalizedEntry.probability === undefined) {
+        normalizedEntry.probability = settings.defaultEntry.probability;
+      }
+      if (normalizedEntry.depth === undefined) {
+        normalizedEntry.depth = settings.defaultEntry.depth;
+      }
+      if (normalizedEntry.groupWeight === undefined) {
+        normalizedEntry.groupWeight = settings.defaultEntry.groupWeight;
+      }
       
-      entriesDict[uid] = entryWithoutWikilinks;
+      entriesDict[uid] = normalizedEntry;
     }
     
     // Create the lorebook structure with default settings

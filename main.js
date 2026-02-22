@@ -3399,8 +3399,18 @@ var FileProcessor = class {
     return [...new Set(links)];
   }
   isValidLoreBookEntry(content) {
-    const hasIdentifier = /^# ([Tt]itle|[Cc]omment|[Kk]ey|[Kk]eywords):/m.test(content);
-    return hasIdentifier || content.trim().length > 0;
+    const hasLoreFieldTag = /^# [A-Za-z0-9_\s]+:/m.test(content);
+    if (hasLoreFieldTag) {
+      return true;
+    }
+    if (/^# Root\s*$/m.test(content)) {
+      return true;
+    }
+    const frontmatter = /^---\s*\n([\s\S]*?)\n---/m.exec(content);
+    if (frontmatter && /(?:^|\n)\s*lorebook\s*:\s*true\s*(?:\n|$)/i.test(frontmatter[1])) {
+      return true;
+    }
+    return false;
   }
   parseDetailedMarkdown(content) {
     const parsed = {};

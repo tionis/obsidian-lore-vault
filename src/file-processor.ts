@@ -93,13 +93,22 @@ export class FileProcessor {
   }
 
   isValidLoreBookEntry(content: string): boolean {
-    // Check if it has at least one of these tags: title, comment, key, keywords
-    // We don't require content tag anymore as we'll use the entire file as content if not specified
-    const hasIdentifier = /^# ([Tt]itle|[Cc]omment|[Kk]ey|[Kk]eywords):/m.test(content);
-    
-    // It's a valid entry if it has at least one identifier tag
-    // If no identifier tags, we'll still try to parse it but with lower threshold
-    return hasIdentifier || content.trim().length > 0;
+    const hasLoreFieldTag = /^# [A-Za-z0-9_\s]+:/m.test(content);
+    if (hasLoreFieldTag) {
+      return true;
+    }
+
+    if (/^# Root\s*$/m.test(content)) {
+      return true;
+    }
+
+    // Allow explicit frontmatter opt-in for looser notes.
+    const frontmatter = /^---\s*\n([\s\S]*?)\n---/m.exec(content);
+    if (frontmatter && /(?:^|\n)\s*lorebook\s*:\s*true\s*(?:\n|$)/i.test(frontmatter[1])) {
+      return true;
+    }
+
+    return false;
   }
 
   parseDetailedMarkdown(content: string): any {

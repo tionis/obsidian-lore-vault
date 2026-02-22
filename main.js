@@ -3281,10 +3281,6 @@ var TemplateModal = class extends import_obsidian2.Modal {
     });
   }
   generateTemplate() {
-    let selectiveLogicText = "OR";
-    if (this.triggerMethod === "selective" && this.settings.defaultEntry.selectiveLogic === 1) {
-      selectiveLogicText = "AND";
-    }
     this.result = `# Title: ${this.title}
 # Keywords: ${this.keywords}
 # Overview: ${this.overview}
@@ -3292,7 +3288,7 @@ var TemplateModal = class extends import_obsidian2.Modal {
 # Trigger Method: ${this.triggerMethod}
 # Probability: ${this.probability}
 # Depth: ${this.depth}
-${this.triggerMethod === "selective" ? `# Selective Logic: ${selectiveLogicText}` : ""}
+${this.triggerMethod === "selective" ? `# Selective Logic: ${this.settings.defaultEntry.selectiveLogic}` : ""}
 
 # Content:
 Enter your content here...
@@ -3481,6 +3477,23 @@ ${contentBlock}`.trim();
     if (parsed.triggermethod) {
       parsed.trigger_method = parsed.triggermethod;
       delete parsed.triggermethod;
+    }
+    if (typeof parsed.selectivelogic === "string") {
+      const normalized = parsed.selectivelogic.trim().toLowerCase();
+      const selectiveLogicMap = {
+        "or": 0,
+        "and any": 0,
+        "and": 1,
+        "and all": 1,
+        "not any": 2,
+        "not all": 3
+      };
+      if (normalized in selectiveLogicMap) {
+        parsed.selectivelogic = selectiveLogicMap[normalized];
+      }
+    }
+    if (typeof parsed.selectivelogic === "number") {
+      parsed.selectivelogic = Math.max(0, Math.min(3, Math.floor(parsed.selectivelogic)));
     }
     if (parsed["trigger method"]) {
       const triggerMethod = parsed["trigger method"].toLowerCase();
@@ -3979,9 +3992,11 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
       }
     });
     triggerSetting.settingEl.appendChild(triggerOptions);
-    new import_obsidian4.Setting(containerEl).setName("Selective Logic").setDesc("How to match keywords (AND = all keywords required, OR = any keyword will trigger)").addDropdown((dropdown) => dropdown.addOptions({
-      "0": "OR",
-      "1": "AND"
+    new import_obsidian4.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
+      "0": "AND ANY",
+      "1": "AND ALL",
+      "2": "NOT ANY",
+      "3": "NOT ALL"
     }).setValue(this.plugin.settings.defaultEntry.selectiveLogic.toString()).onChange(async (value) => {
       this.plugin.settings.defaultEntry.selectiveLogic = parseInt(value);
       await this.plugin.saveData(this.plugin.settings);

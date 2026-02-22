@@ -197,6 +197,27 @@ export class FileProcessor {
       parsed.trigger_method = parsed.triggermethod;
       delete parsed.triggermethod;
     }
+
+    // Support legacy string forms for selective logic and normalize into ST's 0..3 range.
+    if (typeof parsed.selectivelogic === 'string') {
+      const normalized = parsed.selectivelogic.trim().toLowerCase();
+      const selectiveLogicMap: {[key: string]: number} = {
+        'or': 0,
+        'and any': 0,
+        'and': 1,
+        'and all': 1,
+        'not any': 2,
+        'not all': 3
+      };
+
+      if (normalized in selectiveLogicMap) {
+        parsed.selectivelogic = selectiveLogicMap[normalized];
+      }
+    }
+
+    if (typeof parsed.selectivelogic === 'number') {
+      parsed.selectivelogic = Math.max(0, Math.min(3, Math.floor(parsed.selectivelogic)));
+    }
     
     // Handle trigger method special case
     if (parsed['trigger method']) {

@@ -176,11 +176,13 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     // Add selective logic dropdown (only relevant if selective is chosen)
     new Setting(containerEl)
       .setName('Selective Logic')
-      .setDesc('How to match keywords (AND = all keywords required, OR = any keyword will trigger)')
+      .setDesc('How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)')
       .addDropdown(dropdown => dropdown
         .addOptions({
-          '0': 'OR',
-          '1': 'AND'
+          '0': 'AND ANY',
+          '1': 'AND ALL',
+          '2': 'NOT ANY',
+          '3': 'NOT ALL'
         })
         .setValue(this.plugin.settings.defaultEntry.selectiveLogic.toString())
         .onChange(async (value) => {

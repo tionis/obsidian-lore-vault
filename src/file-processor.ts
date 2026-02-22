@@ -6,9 +6,11 @@ import { ProgressBar } from './progress-bar';
 export class FileProcessor {
   private app: App;
   private filenameToUid: {[key: string]: number} = {};
+  private ambiguousTargets: Set<string> = new Set();
   private entries: {[key: number]: LoreBookEntry} = {};
   private nextUid: number = 0;
   private rootUid: number | null = null;
+  private rootFilePath: string | null = null;
 
   constructor(app: App) {
     this.app = app;
@@ -20,13 +22,58 @@ export class FileProcessor {
     return uid;
   }
 
+  private normalizeLinkTarget(target: string): string {
+    // Obsidian-style link targets can include headings/block refs and optional .md suffixes.
+    return target
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/#.*$/, '')
+      .replace(/\.md$/i, '')
+      .trim();
+  }
+
+  private addTargetMapping(target: string, uid: number): void {
+    const normalized = this.normalizeLinkTarget(target);
+    if (!normalized) {
+      return;
+    }
+
+    if (this.ambiguousTargets.has(normalized)) {
+      return;
+    }
+
+    const existingUid = this.filenameToUid[normalized];
+    if (existingUid === undefined) {
+      this.filenameToUid[normalized] = uid;
+      return;
+    }
+
+    if (existingUid !== uid) {
+      delete this.filenameToUid[normalized];
+      this.ambiguousTargets.add(normalized);
+    }
+  }
+
+  private registerFileMappings(file: TFile, uid: number): void {
+    const normalizedPath = this.normalizeLinkTarget(file.path);
+    const normalizedBase = this.normalizeLinkTarget(file.basename);
+
+    this.addTargetMapping(normalizedPath, uid);
+    this.addTargetMapping(normalizedBase, uid);
+  }
+
   extractWikilinks(content: string): string[] {
     const pattern = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
     const links: string[] = [];
     let match;
     
     while ((match = pattern.exec(content)) !== null) {
-      let link = match[1].trim();
+      const rawLink = match[1].trim();
+      const link = this.normalizeLinkTarget(rawLink);
+      if (!link) {
+        continue;
+      }
+
       links.push(link);
       
       // Also add the base name
@@ -201,8 +248,6 @@ export class FileProcessor {
       const uid = this.generateUid();
       const name = file.basename;
       const folder = file.parent ? file.parent.path : '';
-      
-      this.filenameToUid[name] = uid;
       const wikilinks = this.extractWikilinks(content);
       
       // Get plugin settings from app
@@ -274,7 +319,8 @@ export class FileProcessor {
   async findRootFile(progress: ProgressBar): Promise<void> {
     // First search for files with '# Root' tag
     progress.setStatus("Searching for root file...");
-    const files = this.app.vault.getMarkdownFiles();
+    const files = this.app.vault.getMarkdownFiles()
+      .sort((a, b) => a.path.localeCompare(b.path));
     let rootFileFound = false;
     
     // First try to find a file with the '# Root' marker
@@ -289,8 +335,8 @@ export class FileProcessor {
           const entry = await this.parseMarkdownFile(file);
           if (entry) {
             this.rootUid = entry.uid;
-            const baseName = file.basename;
-            this.filenameToUid[baseName] = entry.uid;
+            this.rootFilePath = file.path;
+            this.registerFileMappings(file, entry.uid);
             this.entries[entry.uid] = entry;
             rootFileFound = true;
             break;
@@ -315,8 +361,8 @@ export class FileProcessor {
             const entry = await this.parseMarkdownFile(rootFileObj);
             if (entry) {
               this.rootUid = entry.uid;
-              const baseName = rootFileObj.basename;
-              this.filenameToUid[baseName] = entry.uid;
+              this.rootFilePath = rootFileObj.path;
+              this.registerFileMappings(rootFileObj, entry.uid);
               this.entries[entry.uid] = entry;
               rootFileFound = true;
             }
@@ -339,13 +385,13 @@ export class FileProcessor {
   }
 
   async processFiles(files: TFile[], progress: ProgressBar): Promise<void> {
-    const total = files.length;
+    const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path));
+    const total = sortedFiles.length;
     let processed = 0;
     
-    for (const file of files) {
+    for (const file of sortedFiles) {
       // Skip the root file if we already processed it
-      if (this.rootUid !== null && 
-          this.filenameToUid[file.basename] === this.rootUid) {
+      if (this.rootFilePath !== null && file.path === this.rootFilePath) {
         progress.update();
         processed++;
         continue;
@@ -356,15 +402,7 @@ export class FileProcessor {
       const entry = await this.parseMarkdownFile(file);
       
       if (entry) {
-        const baseName = file.basename;
-        this.filenameToUid[baseName] = entry.uid;
-        
-        // Also store with folder path
-        if (file.parent && file.parent.path) {
-          const key = `${file.parent.path}/${baseName}`;
-          this.filenameToUid[key] = entry.uid;
-        }
-        
+        this.registerFileMappings(file, entry.uid);
         this.entries[entry.uid] = entry;
       }
       
@@ -388,8 +426,10 @@ export class FileProcessor {
   
   reset(): void {
     this.filenameToUid = {};
+    this.ambiguousTargets = new Set();
     this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;
+    this.rootFilePath = null;
   }
 }

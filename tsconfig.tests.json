@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "target": "ES2019",
+    "lib": [
+      "DOM",
+      "ES2020"
+    ],
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "noEmit": false,
+    "inlineSourceMap": false,
+    "inlineSources": false,
+    "esModuleInterop": true,
+    "isolatedModules": false
+  },
+  "include": [
+    "src/models.ts",
+    "src/graph-analyzer.ts",
+    "src/link-target-index.ts",
+    "tests/**/*.ts"
+  ]
+}

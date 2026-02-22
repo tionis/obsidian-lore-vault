@@ -2,205 +2,190 @@
 
 ## Overview
 
-Lorebook Converter exports Obsidian markdown notes into a SillyTavern lorebook JSON file.
+Lorebook Converter compiles Obsidian markdown notes into SillyTavern lorebook JSON.
 
-Primary goals:
+Current architecture is:
 
-- stable/deterministic exports
-- practical link-driven prioritization
-- configurable defaults for lorebook and entry fields
+- frontmatter-driven metadata and inclusion
+- deterministic graph + ranking pipeline
+- configurable folder/tag source-selection rules
 
 ## Compatibility
 
-- Obsidian plugin id: `lorebook-converter`
+- Plugin id: `lorebook-converter`
 - Minimum Obsidian version: `0.15.0`
-- Platform: desktop only (`isDesktopOnly: true`)
+- Desktop only (`isDesktopOnly: true`)
 
 ## Conversion Pipeline
 
-When you run **Convert Vault to Lorebook**, the plugin does:
+When you run **Convert Vault to Lorebook**:
 
-1. Collect all markdown files from the vault
-2. Find a root file (if available)
-3. Parse valid source notes into lorebook entries
+1. Collect all markdown files
+2. Filter files using frontmatter + selection rules
+3. Parse selected files into lorebook entries
 4. Build a directed graph from wikilinks
-5. Calculate `order` using graph and folder metrics
-6. Export JSON to the configured output path
+5. Compute entry `order`
+6. Export lorebook JSON
 
-File processing order is deterministic (`path`-sorted).
+All file traversal is deterministic (`path` sorted).
 
-## Source Note Selection
+## Source Selection Rules
 
-A markdown file is treated as a source note only if at least one of these is true:
+Rules are configured in Settings under **Source Selection Rules**.
 
-1. It has a top-level field line in this form: `# Field: value`
-2. It contains a line exactly matching `# Root`
-3. Its YAML frontmatter contains `lorebook: true`
+### Rule Inputs
 
-Notes that do not match any of the above are skipped.
+- `requireLorebookFlag` (boolean)
+- `includeFolders` (list of folder prefixes)
+- `excludeFolders` (list of folder prefixes)
+- `includeTags` (list of tags)
+- `excludeTags` (list of tags)
 
-## Root Selection
+### Inclusion Logic
 
-Root file selection order:
+A note is excluded immediately if frontmatter says:
 
-1. First markdown file (in sorted path order) containing `# Root`
-2. Fallback to a vault-root file named one of:
-   - `Root.md`
-   - `root.md`
-   - `index.md`
-   - `World.md`
-   - `world.md`
+- `exclude: true`
+- `lorebook: false`
+- `lorebook: { enabled: false }`
+- `lorebook: { exclude: true }`
 
-If no root is found, hierarchy depth is effectively `0` for all nodes.
+Then folder and tag rules are applied:
 
-## Field Parsing Rules
+- excluded folders/tags remove the note
+- include folders/tags must match when configured
 
-## Field Syntax
+If `requireLorebookFlag` is true (default), note frontmatter must enable lorebook:
 
-- Top-level fields use: `# Name: value`
-- Parsing is case-insensitive on field names
-- Spaces in field names are normalized out (`Trigger Method` -> `triggermethod`)
+- `lorebook: true`
+- `lorebook: [ ... ]` (non-empty)
+- `lorebook: { ... }` (unless explicitly disabled)
 
-## Content Extraction
+## Frontmatter Parsing
 
-### If `# Content:` exists
+Structured metadata is frontmatter-only.
 
-- Content starts at `# Content:`
-- Inline text on the same line is included
-- Content continues until the next top-level field line (`# Something: ...`)
-- Markdown headings like `## Heading` are preserved
+Legacy `# Field: value` parsing is removed.
 
-### If `# Content:` does not exist
+### Key Fields
 
-- If any top-level field lines exist, content is the note with those field lines removed
-- Otherwise, content is the entire note text
+- `title` / `comment`
+- `aliases`
+- `keywords` / `key`
+- `keysecondary`
+- `summary`
+- `trigger_method`
+- `selectiveLogic`
+- `probability`
+- `depth`
+- `group`
+- `exclude`
+- `root` or `lorebookRoot`
 
-## Type Coercion
+### Content Rules
 
-- Arrays: `key`, `keysecondary`, `keywords` are split on commas
-- Booleans: known boolean fields or literal `true`/`false`
-- Numbers: known numeric fields or numeric-looking values
+- Markdown body is used as entry content (frontmatter stripped)
+- `summary` overrides body content when present
 
-## Normalization / Compatibility
+### Type Handling
 
-- `keywords` is used as `key` if `key` is missing
-- `title` is used as `comment` if `comment` is missing
-- Trigger method is normalized so only one of:
-  - `constant`
-  - `vectorized`
-  - `selective`
+- booleans: standard true/false style values
+- numbers: numeric parsing for numeric fields
+- arrays: comma-separated strings or YAML lists
 
-## Selective Logic
+## Trigger Mode and Selective Logic
 
-Supported values:
+Trigger mode is normalized to exactly one:
 
-- `0` => AND ANY
-- `1` => AND ALL
-- `2` => NOT ANY
-- `3` => NOT ALL
+- `constant`
+- `vectorized`
+- `selective`
 
-Legacy text values are normalized where possible (`OR`, `AND`, etc.).
+`selectiveLogic` supports `0..3`:
 
-## Wikilink Parsing and Graph Mapping
+- `0` AND ANY
+- `1` AND ALL
+- `2` NOT ANY
+- `3` NOT ALL
 
-## Detected Link Forms
+Legacy text forms like `OR` and `AND` are normalized.
+
+## Root Behavior
+
+Root used for hierarchy metric is chosen as:
+
+1. Explicit frontmatter root (`root: true` or `lorebookRoot: true`), first in deterministic file order
+2. If none exists, inferred deterministically from graph connectivity (highest in-degree, then total degree, then lowest UID)
+
+## Wikilink Normalization
+
+Detected forms:
 
 - `[[Page]]`
 - `[[Page|Alias]]`
-- embeds like `![[Page]]` (the inner wikilink is parsed)
+- embedded wikilinks (e.g. `![[Page]]`)
 
-## Target Normalization
+Normalization:
 
-For graph linking, targets are normalized by:
+- convert `\` to `/`
+- strip refs after `#`
+- strip trailing `.md`
+- trim whitespace
 
-- converting `\` to `/`
-- stripping heading/block refs after `#`
-- stripping trailing `.md`
-- trimming whitespace
+Indexing:
 
-Example:
+- each entry maps by normalized full path + basename
+- ambiguous basenames are removed from basename lookup
 
-- `[[Characters\Alice.md#Bio]]` -> `Characters/Alice`
+## Ranking / Order
 
-## Mapping Strategy
+`order` is based on weighted normalized metrics:
 
-Each parsed note is indexed by:
-
-1. normalized full path
-2. normalized basename
-
-If multiple notes share the same basename, basename mapping is removed as ambiguous. Full-path mapping remains.
-
-## Ranking / Order Calculation
-
-`order` is calculated from a weighted sum of normalized metrics:
-
-- hierarchy depth (BFS from root)
+- hierarchy depth
 - in-degree
 - PageRank
-- betweenness centrality
+- betweenness
 - out-degree
 - total degree
-- folder depth
+- file depth
 
-Formula behavior:
+Computation:
 
-- `score = Σ(weight_i * normalized_metric_i)`
 - `order = max(1, floor(score))`
-- ties are broken deterministically by ascending UID with small offsets
+- equal orders are resolved deterministically by ascending UID offsets
 
-No randomization is used in tie-breaking.
+## Export
 
-## Export Behavior
-
-## Entry Defaults
-
-Before serialization, each entry is normalized:
-
-- exactly one trigger mode is active
-- missing `selectiveLogic`, `probability`, `depth`, `groupWeight` are filled from settings
-
-## Output Structure
-
-Exports:
+Output includes:
 
 - `entries` dictionary keyed by UID string
-- `settings` object with lorebook defaults
+- lorebook `settings`
 
-Internal `wikilinks` are excluded from the final JSON.
+Before serialization:
 
-## Output Path Handling
+- `wikilinks` are removed
+- default entry values are filled where needed
+- trigger mode is normalized
 
-- Relative path: written via Obsidian vault adapter (inside vault)
-- Absolute path: written via Node `fs` (desktop)
+Path behavior:
 
-## Settings UI Notes
-
-Configurable groups:
-
-- output path
-- default lorebook settings
-- default entry settings
-- graph metric weights
-
-Default trigger method is mutually exclusive and saved as one of constant/vectorized/selective.
+- relative output path -> vault adapter write
+- absolute output path -> Node `fs` write
 
 ## Testing
-
-Run:
 
 ```bash
 npm run build
 npm test
 ```
 
-Current fixture-backed regression coverage includes:
+Current fixture-backed coverage includes:
 
-- deterministic tie behavior in graph ordering
-- wikilink normalization and ambiguous basename handling
+- graph-order determinism
+- wikilink normalization and ambiguity handling
+- source-selection rule behavior
 
 ## Known Limitations
 
-- Only top-level `# Field: value` syntax is parsed as structured metadata
-- Basename-only links are unresolved when basename collisions exist
-- Frontmatter parsing is currently only used for opt-in detection (`lorebook: true`)
+- Basename-only links can be unresolved when names collide (full-path links recommended)
+- Frontmatter parsing relies on Obsidian cache interpretation for runtime metadata

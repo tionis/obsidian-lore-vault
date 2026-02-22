@@ -3759,10 +3759,7 @@ var GraphAnalyzer = class {
     }
     for (const [val, nodes] of Object.entries(valueCounts)) {
       if (nodes.length > 1) {
-        for (let i = nodes.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [nodes[i], nodes[j]] = [nodes[j], nodes[i]];
-        }
+        nodes.sort((a, b) => a - b);
         for (let i = 0; i < nodes.length; i++) {
           this.entries[nodes[i]].order += i + 1;
         }

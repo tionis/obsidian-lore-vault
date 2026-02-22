@@ -180,7 +180,7 @@ export class GraphAnalyzer {
       this.entries[uid].order = Math.max(1, Math.floor(score));
     }
     
-    // Break ties with randomization
+    // Break ties deterministically to keep export output stable across runs
     const valueCounts: {[key: number]: number[]} = {};
     
     for (const [node, entry] of Object.entries(this.entries)) {
@@ -196,12 +196,8 @@ export class GraphAnalyzer {
     
     for (const [val, nodes] of Object.entries(valueCounts)) {
       if (nodes.length > 1) {
-        // Shuffle the nodes
-        for (let i = nodes.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [nodes[i], nodes[j]] = [nodes[j], nodes[i]];
-        }
-        
+        nodes.sort((a, b) => a - b);
+
         // Add small offset to break ties
         for (let i = 0; i < nodes.length; i++) {
           this.entries[nodes[i]].order += i + 1;

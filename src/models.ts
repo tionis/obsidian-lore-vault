@@ -49,6 +49,13 @@ export interface LoreBook {
 }
 
 export interface ConverterSettings {
+  sourceSelection: {
+    requireLorebookFlag: boolean;
+    includeFolders: string[];
+    excludeFolders: string[];
+    includeTags: string[];
+    excludeTags: string[];
+  };
   weights: {
     hierarchy: number;
     in_degree: number;
@@ -78,6 +85,13 @@ export interface ConverterSettings {
 }
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
+  sourceSelection: {
+    requireLorebookFlag: true,
+    includeFolders: [],
+    excludeFolders: ['.obsidian'],
+    includeTags: [],
+    excludeTags: []
+  },
   weights: {
     hierarchy: 8000,
     in_degree: 4000,

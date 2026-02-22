@@ -11,9 +11,22 @@ export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
 
   private mergeSettings(data: Partial<ConverterSettings> | null | undefined): ConverterSettings {
+    const normalizeStringList = (value: unknown): string[] => {
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      return value
+        .map(item => (typeof item === 'string' ? item.trim() : ''))
+        .filter(item => item.length > 0);
+    };
+
     const merged: ConverterSettings = {
       ...DEFAULT_SETTINGS,
       ...data,
+      sourceSelection: {
+        ...DEFAULT_SETTINGS.sourceSelection,
+        ...(data?.sourceSelection ?? {})
+      },
       weights: {
         ...DEFAULT_SETTINGS.weights,
         ...(data?.weights ?? {})
@@ -27,6 +40,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         ...(data?.defaultEntry ?? {})
       }
     };
+
+    merged.sourceSelection.requireLorebookFlag = Boolean(merged.sourceSelection.requireLorebookFlag);
+    merged.sourceSelection.includeFolders = normalizeStringList(merged.sourceSelection.includeFolders);
+    merged.sourceSelection.excludeFolders = normalizeStringList(merged.sourceSelection.excludeFolders);
+    merged.sourceSelection.includeTags = normalizeStringList(merged.sourceSelection.includeTags);
+    merged.sourceSelection.excludeTags = normalizeStringList(merged.sourceSelection.excludeTags);
 
     // Keep settings valid even when older config files contain incomplete trigger config.
     if (merged.defaultEntry.constant) {
@@ -112,7 +131,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   async convertToLorebook() {
     try {
       // Initialize processors
-      const fileProcessor = new FileProcessor(this.app);
+      const fileProcessor = new FileProcessor(this.app, this.settings);
       
       // Stage 1: Count files and initialize progress
       const files = this.app.vault.getMarkdownFiles();
@@ -121,13 +140,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         'Analyzing vault structure...'
       );
       
-      // Stage 2: Find root file
-      await fileProcessor.findRootFile(progress);
-      
-      // Stage 3: Process all files
+      // Stage 2: Process files based on frontmatter rules
       await fileProcessor.processFiles(files, progress);
       
-      // Stage 4: Build graph
+      // Stage 3: Build graph
       progress.setStatus('Building relationship graph...');
       const graphAnalyzer = new GraphAnalyzer(
         fileProcessor.getEntries(),
@@ -138,11 +154,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       graphAnalyzer.buildGraph();
       progress.update();
       
-      // Stage 5: Calculate priorities
+      // Stage 4: Calculate priorities
       progress.setStatus('Calculating entry priorities...');
       graphAnalyzer.calculateEntryPriorities();
       
-      // Stage 6: Export JSON
+      // Stage 5: Export JSON
       progress.setStatus('Exporting to JSON...');
       const outputPath = this.settings.outputPath || 
                         `${this.app.vault.getName()}.json`;

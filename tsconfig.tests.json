@@ -19,6 +19,8 @@
     "src/models.ts",
     "src/graph-analyzer.ts",
     "src/link-target-index.ts",
+    "src/frontmatter-utils.ts",
+    "src/source-selection.ts",
     "tests/**/*.ts"
   ]
 }

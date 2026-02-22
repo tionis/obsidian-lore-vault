@@ -3081,10 +3081,17 @@ __export(main_exports, {
   default: () => LoreBookConverterPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/models.ts
 var DEFAULT_SETTINGS = {
+  sourceSelection: {
+    requireLorebookFlag: true,
+    includeFolders: [],
+    excludeFolders: [".obsidian"],
+    includeTags: [],
+    excludeTags: []
+  },
   weights: {
     hierarchy: 8e3,
     in_degree: 4e3,
@@ -3281,16 +3288,21 @@ var TemplateModal = class extends import_obsidian2.Modal {
     });
   }
   generateTemplate() {
-    this.result = `# Title: ${this.title}
-# Keywords: ${this.keywords}
-# Overview: ${this.overview}
-
-# Trigger Method: ${this.triggerMethod}
-# Probability: ${this.probability}
-# Depth: ${this.depth}
-${this.triggerMethod === "selective" ? `# Selective Logic: ${this.settings.defaultEntry.selectiveLogic}` : ""}
-
-# Content:
+    const keywords = this.keywords.split(",").map((keyword) => keyword.trim()).filter((keyword) => keyword.length > 0);
+    const keywordBlock = keywords.length > 0 ? keywords.map((keyword) => `  - "${keyword.replace(/"/g, '\\"')}"`).join("\n") : '  - ""';
+    const selectiveLogicLine = this.triggerMethod === "selective" ? `selectiveLogic: ${this.settings.defaultEntry.selectiveLogic}
+` : "";
+    const summaryLine = this.overview.trim() ? `summary: "${this.overview.trim().replace(/"/g, '\\"')}"
+` : "";
+    this.result = `---
+lorebook: true
+title: "${this.title.replace(/"/g, '\\"')}"
+keywords:
+${keywordBlock}
+${summaryLine}trigger_method: ${this.triggerMethod}
+probability: ${this.probability}
+depth: ${this.depth}
+${selectiveLogicLine}---
 Enter your content here...
 
 ## Additional Notes
@@ -3330,9 +3342,6 @@ async function createTemplate(app, settings) {
     modal.open();
   });
 }
-
-// src/file-processor.ts
-var import_obsidian3 = require("obsidian");
 
 // src/link-target-index.ts
 var path = __toESM(require("path"));
@@ -3397,271 +3406,366 @@ var LinkTargetIndex = class {
   }
 };
 
+// src/frontmatter-utils.ts
+function stripFrontmatter(content) {
+  return content.replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*(?:\r?\n)?/, "");
+}
+function normalizeKey(key) {
+  return key.toLowerCase().replace(/[\s_-]/g, "");
+}
+function normalizeFrontmatter(frontmatter) {
+  const normalized = {};
+  if (!frontmatter) {
+    return normalized;
+  }
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (key === "position") {
+      continue;
+    }
+    normalized[normalizeKey(key)] = value;
+  }
+  return normalized;
+}
+function getFrontmatterValue(frontmatter, ...keys) {
+  for (const key of keys) {
+    const normalizedKey = normalizeKey(key);
+    if (normalizedKey in frontmatter) {
+      return frontmatter[normalizedKey];
+    }
+  }
+  return void 0;
+}
+function asString(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : void 0;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return void 0;
+}
+function asNumber(value) {
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return void 0;
+}
+function asBoolean(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "y", "1", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "no", "n", "0", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+  return void 0;
+}
+function asStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => asString(item)).filter((item) => Boolean(item)).map((item) => item.trim()).filter((item) => item.length > 0);
+  }
+  if (typeof value === "string") {
+    return value.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
+  }
+  const scalar = asString(value);
+  return scalar ? [scalar] : [];
+}
+function uniqueStrings(values) {
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+
+// src/source-selection.ts
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+}
+function normalizeFolder(folder) {
+  return normalizePath(folder).replace(/\/+$/, "");
+}
+function isPathInFolder(filePath, folder) {
+  const normalizedPath = normalizePath(filePath);
+  const normalizedFolder = normalizeFolder(folder);
+  if (!normalizedFolder) {
+    return false;
+  }
+  return normalizedPath === normalizedFolder || normalizedPath.startsWith(`${normalizedFolder}/`);
+}
+function normalizeTag(tag) {
+  return tag.trim().replace(/^#/, "").toLowerCase();
+}
+function getTags(frontmatter) {
+  const tagsValue = getFrontmatterValue(frontmatter, "tags");
+  const rawTags = asStringArray(tagsValue);
+  const tags = /* @__PURE__ */ new Set();
+  for (const rawTag of rawTags) {
+    for (const part of rawTag.split(/\s+/)) {
+      const normalized = normalizeTag(part);
+      if (normalized) {
+        tags.add(normalized);
+      }
+    }
+  }
+  return tags;
+}
+function hasAnyTag(tags, requiredTags) {
+  for (const requiredTag of requiredTags) {
+    if (tags.has(normalizeTag(requiredTag))) {
+      return true;
+    }
+  }
+  return false;
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isLorebookEnabled(frontmatter) {
+  const lorebookValue = getFrontmatterValue(frontmatter, "lorebook");
+  if (lorebookValue === void 0) {
+    return false;
+  }
+  const lorebookBoolean = asBoolean(lorebookValue);
+  if (lorebookBoolean !== void 0) {
+    return lorebookBoolean;
+  }
+  if (Array.isArray(lorebookValue)) {
+    return lorebookValue.length > 0;
+  }
+  if (isRecord(lorebookValue)) {
+    const enabled = asBoolean(lorebookValue.enabled);
+    if (enabled !== void 0) {
+      return enabled;
+    }
+    const exclude = asBoolean(lorebookValue.exclude);
+    if (exclude === true) {
+      return false;
+    }
+    return true;
+  }
+  return true;
+}
+function isExplicitlyExcluded(frontmatter) {
+  const exclude = asBoolean(getFrontmatterValue(frontmatter, "exclude"));
+  if (exclude === true) {
+    return true;
+  }
+  const lorebookValue = getFrontmatterValue(frontmatter, "lorebook");
+  if (lorebookValue === void 0) {
+    return false;
+  }
+  const lorebookBoolean = asBoolean(lorebookValue);
+  if (lorebookBoolean === false) {
+    return true;
+  }
+  if (isRecord(lorebookValue)) {
+    const nestedExclude = asBoolean(lorebookValue.exclude);
+    if (nestedExclude === true) {
+      return true;
+    }
+    const nestedEnabled = asBoolean(lorebookValue.enabled);
+    if (nestedEnabled === false) {
+      return true;
+    }
+  }
+  return false;
+}
+function shouldIncludeSourceFile(filePath, frontmatter, sourceSelection) {
+  if (isExplicitlyExcluded(frontmatter)) {
+    return { include: false, reason: "excluded-by-frontmatter" };
+  }
+  for (const folder of sourceSelection.excludeFolders) {
+    if (isPathInFolder(filePath, folder)) {
+      return { include: false, reason: `excluded-by-folder:${folder}` };
+    }
+  }
+  if (sourceSelection.includeFolders.length > 0) {
+    const matchesIncludedFolder = sourceSelection.includeFolders.some(
+      (folder) => isPathInFolder(filePath, folder)
+    );
+    if (!matchesIncludedFolder) {
+      return { include: false, reason: "not-in-included-folders" };
+    }
+  }
+  const tags = getTags(frontmatter);
+  if (sourceSelection.excludeTags.length > 0 && hasAnyTag(tags, sourceSelection.excludeTags)) {
+    return { include: false, reason: "excluded-by-tag" };
+  }
+  if (sourceSelection.includeTags.length > 0 && !hasAnyTag(tags, sourceSelection.includeTags)) {
+    return { include: false, reason: "missing-required-tag" };
+  }
+  if (sourceSelection.requireLorebookFlag && !isLorebookEnabled(frontmatter)) {
+    return { include: false, reason: "missing-lorebook-flag" };
+  }
+  return { include: true, reason: "included" };
+}
+
 // src/file-processor.ts
+var SELECTIVE_LOGIC_MAP = {
+  "or": 0,
+  "and any": 0,
+  "and": 1,
+  "and all": 1,
+  "not any": 2,
+  "not all": 3
+};
+function parseSelectiveLogic(value, fallback) {
+  const numeric = asNumber(value);
+  if (numeric !== void 0) {
+    return Math.max(0, Math.min(3, Math.floor(numeric)));
+  }
+  const stringValue = asString(value);
+  if (stringValue) {
+    const normalized = stringValue.toLowerCase();
+    if (normalized in SELECTIVE_LOGIC_MAP) {
+      return SELECTIVE_LOGIC_MAP[normalized];
+    }
+  }
+  return fallback;
+}
+function parseTriggerMethod(frontmatter) {
+  const triggerMethod = asString(getFrontmatterValue(frontmatter, "triggerMethod"));
+  if (!triggerMethod) {
+    return null;
+  }
+  const normalized = triggerMethod.toLowerCase();
+  if (normalized === "constant" || normalized === "vectorized" || normalized === "selective") {
+    return normalized;
+  }
+  return null;
+}
 var FileProcessor = class {
-  constructor(app) {
+  constructor(app, settings) {
     this.linkTargetIndex = new LinkTargetIndex();
     this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;
-    this.rootFilePath = null;
     this.app = app;
+    this.settings = settings;
   }
   generateUid() {
     const uid = this.nextUid;
     this.nextUid += 1;
     return uid;
   }
-  isValidLoreBookEntry(content) {
-    const hasLoreFieldTag = /^# [A-Za-z0-9_\s]+:/m.test(content);
-    if (hasLoreFieldTag) {
-      return true;
-    }
-    if (/^# Root\s*$/m.test(content)) {
-      return true;
-    }
-    const frontmatter = /^---\s*\n([\s\S]*?)\n---/m.exec(content);
-    if (frontmatter && /(?:^|\n)\s*lorebook\s*:\s*true\s*(?:\n|$)/i.test(frontmatter[1])) {
-      return true;
-    }
-    return false;
+  getFrontmatter(file) {
+    var _a;
+    const cache = this.app.metadataCache.getFileCache(file);
+    return normalizeFrontmatter((_a = cache == null ? void 0 : cache.frontmatter) != null ? _a : {});
   }
-  parseDetailedMarkdown(content) {
-    const parsed = {};
-    const getTag = (tag) => {
-      const regex = new RegExp(`^# ${tag}: ?(.+)$`, "mi");
-      const match = content.match(regex);
-      return match ? match[1].trim() : "";
-    };
-    const contentTagMatch = /^# [Cc]ontent:(.*)$/m.exec(content);
-    if (contentTagMatch) {
-      const inlineContent = contentTagMatch[1].trim();
-      const contentStart = contentTagMatch.index + contentTagMatch[0].length;
-      const remaining = content.slice(contentStart);
-      const nextFieldMatch = /\r?\n# [A-Za-z0-9_\s]+:/.exec(remaining);
-      const contentBlock = nextFieldMatch ? remaining.slice(0, nextFieldMatch.index) : remaining;
-      parsed.content = `${inlineContent}
-${contentBlock}`.trim();
-    } else {
-      const hasTags = /^# [A-Za-z0-9_\s]+:/m.test(content);
-      if (hasTags) {
-        const nonTagLines = content.split("\n").filter((line) => !/^# [A-Za-z0-9_\s]+:/.test(line.trim())).join("\n");
-        parsed.content = nonTagLines.trim();
-      } else {
-        parsed.content = content.trim();
-      }
-    }
-    const arbitraryFieldPattern = /^# ([a-zA-Z0-9_\s]+): ?(.+?)$/gim;
-    let fieldMatch;
-    const arrayFields = ["key", "keysecondary", "keywords"];
-    const booleanFields = [
-      "constant",
-      "vectorized",
-      "selective",
-      "addmemo",
-      "useprobability",
-      "disable",
-      "excluderecursion",
-      "preventrecursion",
-      "delayuntilrecursion",
-      "groupoverride"
-    ];
-    const numericFields = [
-      "selectivelogic",
-      "order",
-      "position",
-      "probability",
-      "depth",
-      "groupweight",
-      "sticky",
-      "cooldown",
-      "delay",
-      "displayindex"
-    ];
-    while ((fieldMatch = arbitraryFieldPattern.exec(content)) !== null) {
-      const rawFieldName = fieldMatch[1].trim();
-      const fieldName = rawFieldName.toLowerCase().replace(/\s+/g, "");
-      let fieldValue = fieldMatch[2].trim();
-      if (fieldName === "content") {
-        continue;
-      }
-      if (arrayFields.includes(fieldName)) {
-        parsed[fieldName] = fieldValue.split(",").map((v) => v.trim()).filter((v) => v);
-        continue;
-      }
-      if (numericFields.includes(fieldName) || !isNaN(Number(fieldValue))) {
-        const numValue = Number(fieldValue);
-        parsed[fieldName] = !isNaN(numValue) ? numValue : fieldValue;
-      } else if (booleanFields.includes(fieldName) || /^(true|false)$/i.test(fieldValue)) {
-        parsed[fieldName] = /^true$/i.test(fieldValue);
-      } else {
-        parsed[fieldName] = fieldValue;
-      }
-    }
-    if (parsed.triggermethod) {
-      parsed.trigger_method = parsed.triggermethod;
-      delete parsed.triggermethod;
-    }
-    if (typeof parsed.selectivelogic === "string") {
-      const normalized = parsed.selectivelogic.trim().toLowerCase();
-      const selectiveLogicMap = {
-        "or": 0,
-        "and any": 0,
-        "and": 1,
-        "and all": 1,
-        "not any": 2,
-        "not all": 3
-      };
-      if (normalized in selectiveLogicMap) {
-        parsed.selectivelogic = selectiveLogicMap[normalized];
-      }
-    }
-    if (typeof parsed.selectivelogic === "number") {
-      parsed.selectivelogic = Math.max(0, Math.min(3, Math.floor(parsed.selectivelogic)));
-    }
-    if (parsed["trigger method"]) {
-      const triggerMethod = parsed["trigger method"].toLowerCase();
-      delete parsed["trigger method"];
-      parsed.trigger_method = triggerMethod;
-    }
-    if (parsed.vectorized === true) {
-      parsed.trigger_method = "vectorized";
-      parsed.constant = false;
-      parsed.selective = false;
-    } else if (parsed.constant === true) {
-      parsed.trigger_method = "constant";
-      parsed.vectorized = false;
-      parsed.selective = false;
-    } else if (parsed.selective === true) {
-      parsed.trigger_method = "selective";
-      parsed.vectorized = false;
-      parsed.constant = false;
-    } else if (parsed.trigger_method) {
-      parsed.constant = parsed.trigger_method === "constant";
-      parsed.vectorized = parsed.trigger_method === "vectorized";
-      parsed.selective = parsed.trigger_method === "selective";
-    } else {
-      parsed.trigger_method = null;
-    }
-    if (parsed.keywords && (!parsed.key || parsed.key.length === 0)) {
-      parsed.key = parsed.keywords;
-    }
-    if (parsed.title && (!parsed.comment || parsed.comment === "")) {
-      parsed.comment = parsed.title;
-    }
-    return parsed;
+  isSourceFile(file, frontmatter) {
+    const decision = shouldIncludeSourceFile(file.path, frontmatter, this.settings.sourceSelection);
+    return decision.include;
   }
   async parseMarkdownFile(file) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
     try {
-      const content = await this.app.vault.read(file);
-      if (!this.isValidLoreBookEntry(content)) {
+      const rawContent = await this.app.vault.read(file);
+      const frontmatter = this.getFrontmatter(file);
+      if (!this.isSourceFile(file, frontmatter)) {
         return null;
       }
-      const parsed = this.parseDetailedMarkdown(content);
       const uid = this.generateUid();
       const name = file.basename;
       const folder = file.parent ? file.parent.path : "";
-      const wikilinks = extractWikilinks(content);
-      const plugin = this.app.plugins.plugins["lorebook-converter"];
-      let defaultSettings = null;
-      if (plugin && plugin.settings) {
-        defaultSettings = plugin.settings.defaultEntry;
-      }
+      const wikilinks = extractWikilinks(rawContent);
+      const defaultSettings = this.settings.defaultEntry;
+      const noteBody = stripFrontmatter(rawContent).trim();
+      const summaryOverride = asString(getFrontmatterValue(frontmatter, "summary"));
+      const content = summaryOverride != null ? summaryOverride : noteBody;
+      const aliases = asStringArray(getFrontmatterValue(frontmatter, "aliases"));
+      const frontmatterKeywords = asStringArray(getFrontmatterValue(frontmatter, "key", "keywords"));
+      const key = uniqueStrings([
+        ...frontmatterKeywords,
+        ...aliases
+      ]);
+      const keysecondary = uniqueStrings(
+        asStringArray(getFrontmatterValue(frontmatter, "keySecondary"))
+      );
+      const comment = (_a = asString(getFrontmatterValue(frontmatter, "comment", "title"))) != null ? _a : name;
+      const triggerMethod = parseTriggerMethod(frontmatter);
+      const rootFlag = asBoolean(getFrontmatterValue(frontmatter, "lorebookRoot", "root"));
       const entry = {
         uid,
-        key: parsed.key || [name],
-        // Use parsed key if available, otherwise default to filename
-        keysecondary: parsed.keysecondary || [],
-        comment: parsed.comment || parsed.title || name,
-        // Use parsed comment/title or default to filename
-        content: parsed.content,
-        // Apply trigger method settings properly
-        constant: parsed.constant !== void 0 ? parsed.constant : parsed.trigger_method === "constant" ? true : defaultSettings ? defaultSettings.constant : false,
-        vectorized: parsed.vectorized !== void 0 ? parsed.vectorized : parsed.trigger_method === "vectorized" ? true : defaultSettings ? defaultSettings.vectorized : false,
-        selective: parsed.selective !== void 0 ? parsed.selective : parsed.trigger_method === "selective" ? true : defaultSettings ? defaultSettings.selective : true,
-        selectiveLogic: parsed.selectivelogic !== void 0 ? parsed.selectivelogic : defaultSettings ? defaultSettings.selectiveLogic : 0,
-        addMemo: parsed.addmemo !== void 0 ? parsed.addmemo : true,
-        order: parsed.order !== void 0 ? parsed.order : 0,
-        position: parsed.position !== void 0 ? parsed.position : 0,
-        disable: parsed.disable !== void 0 ? parsed.disable : false,
-        excludeRecursion: parsed.excluderecursion !== void 0 ? parsed.excluderecursion : false,
-        preventRecursion: parsed.preventrecursion !== void 0 ? parsed.preventrecursion : false,
-        delayUntilRecursion: parsed.delayuntilrecursion !== void 0 ? parsed.delayuntilrecursion : false,
-        probability: parsed.probability !== void 0 ? parsed.probability : defaultSettings ? defaultSettings.probability : 100,
-        useProbability: parsed.useprobability !== void 0 ? parsed.useprobability : true,
-        depth: parsed.depth !== void 0 ? parsed.depth : defaultSettings ? defaultSettings.depth : 4,
-        group: parsed.group !== void 0 ? parsed.group : folder,
-        groupOverride: parsed.groupoverride !== void 0 ? parsed.groupoverride : false,
-        groupWeight: parsed.groupweight !== void 0 ? parsed.groupweight : defaultSettings ? defaultSettings.groupWeight : 100,
-        scanDepth: parsed.scandepth !== void 0 ? parsed.scandepth : null,
-        caseSensitive: parsed.casesensitive !== void 0 ? parsed.casesensitive : null,
-        matchWholeWords: parsed.matchwholewords !== void 0 ? parsed.matchwholewords : null,
-        useGroupScoring: parsed.usegroupscoring !== void 0 ? parsed.usegroupscoring : null,
-        automationId: parsed.automationid !== void 0 ? parsed.automationid : "",
-        role: parsed.role !== void 0 ? parsed.role : null,
-        sticky: parsed.sticky !== void 0 ? parsed.sticky : 0,
-        cooldown: parsed.cooldown !== void 0 ? parsed.cooldown : 0,
-        delay: parsed.delay !== void 0 ? parsed.delay : 0,
-        displayIndex: parsed.displayindex !== void 0 ? parsed.displayindex : 0,
+        key: key.length > 0 ? key : [name],
+        keysecondary,
+        comment,
+        content,
+        constant: (_b = asBoolean(getFrontmatterValue(frontmatter, "constant"))) != null ? _b : triggerMethod === "constant" ? true : defaultSettings.constant,
+        vectorized: (_c = asBoolean(getFrontmatterValue(frontmatter, "vectorized"))) != null ? _c : triggerMethod === "vectorized" ? true : defaultSettings.vectorized,
+        selective: (_d = asBoolean(getFrontmatterValue(frontmatter, "selective"))) != null ? _d : triggerMethod === "selective" ? true : defaultSettings.selective,
+        selectiveLogic: parseSelectiveLogic(
+          getFrontmatterValue(frontmatter, "selectiveLogic"),
+          defaultSettings.selectiveLogic
+        ),
+        addMemo: (_e = asBoolean(getFrontmatterValue(frontmatter, "addMemo"))) != null ? _e : true,
+        order: (_f = asNumber(getFrontmatterValue(frontmatter, "order"))) != null ? _f : 0,
+        position: (_g = asNumber(getFrontmatterValue(frontmatter, "position"))) != null ? _g : 0,
+        disable: (_h = asBoolean(getFrontmatterValue(frontmatter, "disable"))) != null ? _h : false,
+        excludeRecursion: (_i = asBoolean(getFrontmatterValue(frontmatter, "excludeRecursion"))) != null ? _i : false,
+        preventRecursion: (_j = asBoolean(getFrontmatterValue(frontmatter, "preventRecursion"))) != null ? _j : false,
+        delayUntilRecursion: (_k = asBoolean(getFrontmatterValue(frontmatter, "delayUntilRecursion"))) != null ? _k : false,
+        probability: (_l = asNumber(getFrontmatterValue(frontmatter, "probability"))) != null ? _l : defaultSettings.probability,
+        useProbability: (_m = asBoolean(getFrontmatterValue(frontmatter, "useProbability"))) != null ? _m : true,
+        depth: (_n = asNumber(getFrontmatterValue(frontmatter, "depth"))) != null ? _n : defaultSettings.depth,
+        group: (_o = asString(getFrontmatterValue(frontmatter, "group"))) != null ? _o : folder,
+        groupOverride: (_p = asBoolean(getFrontmatterValue(frontmatter, "groupOverride"))) != null ? _p : false,
+        groupWeight: (_q = asNumber(getFrontmatterValue(frontmatter, "groupWeight"))) != null ? _q : defaultSettings.groupWeight,
+        scanDepth: null,
+        caseSensitive: null,
+        matchWholeWords: null,
+        useGroupScoring: null,
+        automationId: (_r = asString(getFrontmatterValue(frontmatter, "automationId"))) != null ? _r : "",
+        role: null,
+        sticky: (_s = asNumber(getFrontmatterValue(frontmatter, "sticky"))) != null ? _s : 0,
+        cooldown: (_t = asNumber(getFrontmatterValue(frontmatter, "cooldown"))) != null ? _t : 0,
+        delay: (_u = asNumber(getFrontmatterValue(frontmatter, "delay"))) != null ? _u : 0,
+        displayIndex: (_v = asNumber(getFrontmatterValue(frontmatter, "displayIndex"))) != null ? _v : 0,
         wikilinks
       };
+      if (entry.constant) {
+        entry.vectorized = false;
+        entry.selective = false;
+      } else if (entry.vectorized) {
+        entry.constant = false;
+        entry.selective = false;
+      } else if (entry.selective) {
+        entry.constant = false;
+        entry.vectorized = false;
+      } else {
+        entry.selective = true;
+      }
+      if (rootFlag === true && this.rootUid === null) {
+        this.rootUid = uid;
+      }
       return entry;
     } catch (e) {
       console.error(`Error processing ${file.path}:`, e);
       return null;
-    }
-  }
-  async findRootFile(progress) {
-    progress.setStatus("Searching for root file...");
-    const files = this.app.vault.getMarkdownFiles().sort((a, b) => a.path.localeCompare(b.path));
-    let rootFileFound = false;
-    for (const file of files) {
-      try {
-        const content = await this.app.vault.read(file);
-        if (/^# Root\s*$/m.test(content)) {
-          progress.setStatus(`Found root file with '# Root' marker: ${file.path}`);
-          const entry = await this.parseMarkdownFile(file);
-          if (entry) {
-            this.rootUid = entry.uid;
-            this.rootFilePath = file.path;
-            this.linkTargetIndex.registerFileMappings(file.path, file.basename, entry.uid);
-            this.entries[entry.uid] = entry;
-            rootFileFound = true;
-            break;
-          }
-        }
-      } catch (e) {
-        console.error(`Error checking file ${file.path} for Root marker:`, e);
-      }
-    }
-    if (!rootFileFound) {
-      const rootCandidates = ["Root.md", "root.md", "index.md", "World.md", "world.md"];
-      for (const rootFile of rootCandidates) {
-        const rootFileObj = this.app.vault.getAbstractFileByPath(rootFile);
-        if (rootFileObj instanceof import_obsidian3.TFile) {
-          progress.setStatus(`Found root file by name: ${rootFile}`);
-          try {
-            const entry = await this.parseMarkdownFile(rootFileObj);
-            if (entry) {
-              this.rootUid = entry.uid;
-              this.rootFilePath = rootFileObj.path;
-              this.linkTargetIndex.registerFileMappings(rootFileObj.path, rootFileObj.basename, entry.uid);
-              this.entries[entry.uid] = entry;
-              rootFileFound = true;
-            }
-          } catch (e) {
-            console.error(`Error processing root file ${rootFile}:`, e);
-          }
-          if (this.rootUid !== null) {
-            break;
-          }
-        }
-      }
-    }
-    if (this.rootUid !== null) {
-      console.log(`Using designated root (UID: ${this.rootUid})`);
-    } else {
-      console.log("No designated root file found, will determine root based on graph metrics");
     }
   }
   async processFiles(files, progress) {
@@ -3669,11 +3773,6 @@ ${contentBlock}`.trim();
     const total = sortedFiles.length;
     let processed = 0;
     for (const file of sortedFiles) {
-      if (this.rootFilePath !== null && file.path === this.rootFilePath) {
-        progress.update();
-        processed++;
-        continue;
-      }
       progress.setStatus(`Processing file ${processed + 1}/${total}: ${file.basename}`);
       const entry = await this.parseMarkdownFile(file);
       if (entry) {
@@ -3698,7 +3797,6 @@ ${contentBlock}`.trim();
     this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;
-    this.rootFilePath = null;
   }
 };
 
@@ -3739,13 +3837,40 @@ var GraphAnalyzer = class {
     }
     console.log(`Created graph with ${this.graph.order} nodes and ${this.graph.size} edges`);
   }
+  resolveRootUid() {
+    if (this.rootUid !== null && this.graph.hasNode(this.rootUid.toString())) {
+      return this.rootUid;
+    }
+    if (this.graph.order === 0) {
+      return null;
+    }
+    let bestNode = null;
+    let bestInDegree = -1;
+    let bestTotalDegree = -1;
+    this.graph.forEachNode((node) => {
+      const inDegree = this.graph.inDegree(node);
+      const totalDegree = this.graph.degree(node);
+      if (bestNode === null || inDegree > bestInDegree || inDegree === bestInDegree && totalDegree > bestTotalDegree || inDegree === bestInDegree && totalDegree === bestTotalDegree && parseInt(node) < parseInt(bestNode)) {
+        bestNode = node;
+        bestInDegree = inDegree;
+        bestTotalDegree = totalDegree;
+      }
+    });
+    return bestNode !== null ? parseInt(bestNode) : null;
+  }
   calculateEntryPriorities() {
     console.log("Calculating entry priorities with graphology");
     const hierarchyDepths = {};
     let maxHierarchyDepth = 0;
+    const effectiveRootUid = this.resolveRootUid();
     if (this.rootUid !== null) {
-      const queue = [[this.rootUid.toString(), 0]];
-      const visited = /* @__PURE__ */ new Set([this.rootUid.toString()]);
+      console.log(`Using explicit root UID ${this.rootUid}`);
+    } else if (effectiveRootUid !== null) {
+      console.log(`No explicit root set; using inferred root UID ${effectiveRootUid}`);
+    }
+    if (effectiveRootUid !== null) {
+      const queue = [[effectiveRootUid.toString(), 0]];
+      const visited = /* @__PURE__ */ new Set([effectiveRootUid.toString()]);
       while (queue.length > 0) {
         const [node, depth] = queue.shift();
         hierarchyDepths[parseInt(node)] = depth;
@@ -3919,8 +4044,8 @@ var LoreBookExporter = class {
 };
 
 // src/settings-tab.ts
-var import_obsidian4 = require("obsidian");
-var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTab {
+var import_obsidian3 = require("obsidian");
+var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -3930,31 +4055,53 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
     containerEl.empty();
     containerEl.addClass("lorebook-converter-settings");
     containerEl.createEl("h2", { text: "Lorebook Converter Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
       this.plugin.settings.outputPath = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
+    const parseCsv = (value) => value.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
+    containerEl.createEl("h3", { text: "Source Selection Rules" });
+    new import_obsidian3.Setting(containerEl).setName("Require lorebook frontmatter").setDesc("Only include notes where frontmatter enables lorebook usage").addToggle((toggle) => toggle.setValue(this.plugin.settings.sourceSelection.requireLorebookFlag).onChange(async (value) => {
+      this.plugin.settings.sourceSelection.requireLorebookFlag = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Include Folders").setDesc("Optional comma-separated folder prefixes to include (empty = all folders)").addText((text) => text.setPlaceholder("Worlds/Aurelia, Chronicles/Season1").setValue(this.plugin.settings.sourceSelection.includeFolders.join(", ")).onChange(async (value) => {
+      this.plugin.settings.sourceSelection.includeFolders = parseCsv(value);
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Exclude Folders").setDesc("Comma-separated folder prefixes to exclude").addText((text) => text.setPlaceholder(".obsidian, Templates").setValue(this.plugin.settings.sourceSelection.excludeFolders.join(", ")).onChange(async (value) => {
+      this.plugin.settings.sourceSelection.excludeFolders = parseCsv(value);
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Include Tags").setDesc("Optional comma-separated tags required for inclusion").addText((text) => text.setPlaceholder("lorebook, world:aurelia").setValue(this.plugin.settings.sourceSelection.includeTags.join(", ")).onChange(async (value) => {
+      this.plugin.settings.sourceSelection.includeTags = parseCsv(value);
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Exclude Tags").setDesc("Comma-separated tags to skip").addText((text) => text.setPlaceholder("draft, private").setValue(this.plugin.settings.sourceSelection.excludeTags.join(", ")).onChange(async (value) => {
+      this.plugin.settings.sourceSelection.excludeTags = parseCsv(value);
+      await this.plugin.saveData(this.plugin.settings);
+    }));
     containerEl.createEl("h3", { text: "Default LoreBook Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Order By Title").setDesc("Entries will be ordered by their titles instead of priority score").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.orderByTitle).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Order By Title").setDesc("Entries will be ordered by their titles instead of priority score").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.orderByTitle).onChange(async (value) => {
       this.plugin.settings.defaultLoreBook.orderByTitle = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian4.Setting(containerEl).setName("Use Droste Effect").setDesc("Allow lorebook entries to trigger other lorebook entries").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useDroste).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Use Droste Effect").setDesc("Allow lorebook entries to trigger other lorebook entries").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useDroste).onChange(async (value) => {
       this.plugin.settings.defaultLoreBook.useDroste = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian4.Setting(containerEl).setName("Use Recursion").setDesc("Allow entries to call themselves recursively").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useRecursion).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Use Recursion").setDesc("Allow entries to call themselves recursively").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useRecursion).onChange(async (value) => {
       this.plugin.settings.defaultLoreBook.useRecursion = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian4.Setting(containerEl).setName("Token Budget").setDesc("Maximum tokens to spend on the lorebook").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.tokenBudget.toString()).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Token Budget").setDesc("Maximum tokens to spend on the lorebook").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.tokenBudget.toString()).onChange(async (value) => {
       const numValue = parseInt(value);
       if (!isNaN(numValue) && numValue > 0) {
         this.plugin.settings.defaultLoreBook.tokenBudget = numValue;
         await this.plugin.saveData(this.plugin.settings);
       }
     }));
-    new import_obsidian4.Setting(containerEl).setName("Recursion Budget").setDesc("Maximum recursion depth for entries").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.recursionBudget.toString()).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Recursion Budget").setDesc("Maximum recursion depth for entries").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.recursionBudget.toString()).onChange(async (value) => {
       const numValue = parseInt(value);
       if (!isNaN(numValue) && numValue > 0) {
         this.plugin.settings.defaultLoreBook.recursionBudget = numValue;
@@ -3962,7 +4109,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
       }
     }));
     containerEl.createEl("h3", { text: "Default Entry Settings" });
-    const triggerSetting = new import_obsidian4.Setting(containerEl).setName("Default Trigger Method").setDesc("How entries are triggered by default");
+    const triggerSetting = new import_obsidian3.Setting(containerEl).setName("Default Trigger Method").setDesc("How entries are triggered by default");
     const triggerOptions = document.createDocumentFragment();
     const createRadio = (container, label, value, checked) => {
       const radioItem = container.createEl("div", { cls: "radio-item" });
@@ -4024,7 +4171,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
       }
     });
     triggerSetting.settingEl.appendChild(triggerOptions);
-    new import_obsidian4.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
+    new import_obsidian3.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
       "0": "AND ANY",
       "1": "AND ALL",
       "2": "NOT ANY",
@@ -4033,15 +4180,15 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
       this.plugin.settings.defaultEntry.selectiveLogic = parseInt(value);
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian4.Setting(containerEl).setName("Default Probability").setDesc("Chance of entry being included (0-100%)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.probability).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Default Probability").setDesc("Chance of entry being included (0-100%)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.probability).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.defaultEntry.probability = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian4.Setting(containerEl).setName("Default Depth").setDesc("Scanning depth for including entries (1-10)").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(this.plugin.settings.defaultEntry.depth).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Default Depth").setDesc("Scanning depth for including entries (1-10)").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(this.plugin.settings.defaultEntry.depth).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.defaultEntry.depth = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian4.Setting(containerEl).setName("Default Group Weight").setDesc("Weight of entries in their group (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.groupWeight).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Default Group Weight").setDesc("Weight of entries in their group (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.groupWeight).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.defaultEntry.groupWeight = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
@@ -4050,7 +4197,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
       text: "These weights determine how entries are ordered in the lorebook. Higher weights give more importance to that factor."
     });
     const createWeightSetting = (key, name, desc) => {
-      new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
+      new import_obsidian3.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
         const numValue = parseInt(value);
         if (!isNaN(numValue)) {
           this.plugin.settings.weights[key] = numValue;
@@ -4097,25 +4244,40 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
 };
 
 // src/main.ts
-var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
+var LoreBookConverterPlugin = class extends import_obsidian4.Plugin {
   mergeSettings(data) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
+    const normalizeStringList = (value) => {
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      return value.map((item) => typeof item === "string" ? item.trim() : "").filter((item) => item.length > 0);
+    };
     const merged = {
       ...DEFAULT_SETTINGS,
       ...data,
+      sourceSelection: {
+        ...DEFAULT_SETTINGS.sourceSelection,
+        ...(_a = data == null ? void 0 : data.sourceSelection) != null ? _a : {}
+      },
       weights: {
         ...DEFAULT_SETTINGS.weights,
-        ...(_a = data == null ? void 0 : data.weights) != null ? _a : {}
+        ...(_b = data == null ? void 0 : data.weights) != null ? _b : {}
       },
       defaultLoreBook: {
         ...DEFAULT_SETTINGS.defaultLoreBook,
-        ...(_b = data == null ? void 0 : data.defaultLoreBook) != null ? _b : {}
+        ...(_c = data == null ? void 0 : data.defaultLoreBook) != null ? _c : {}
       },
       defaultEntry: {
         ...DEFAULT_SETTINGS.defaultEntry,
-        ...(_c = data == null ? void 0 : data.defaultEntry) != null ? _c : {}
+        ...(_d = data == null ? void 0 : data.defaultEntry) != null ? _d : {}
       }
     };
+    merged.sourceSelection.requireLorebookFlag = Boolean(merged.sourceSelection.requireLorebookFlag);
+    merged.sourceSelection.includeFolders = normalizeStringList(merged.sourceSelection.includeFolders);
+    merged.sourceSelection.excludeFolders = normalizeStringList(merged.sourceSelection.excludeFolders);
+    merged.sourceSelection.includeTags = normalizeStringList(merged.sourceSelection.includeTags);
+    merged.sourceSelection.excludeTags = normalizeStringList(merged.sourceSelection.excludeTags);
     if (merged.defaultEntry.constant) {
       merged.defaultEntry.vectorized = false;
       merged.defaultEntry.selective = false;
@@ -4136,7 +4298,7 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
   }
   async onload() {
     this.settings = this.mergeSettings(await this.loadData());
-    (0, import_obsidian5.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    (0, import_obsidian4.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
     </svg>`);
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
@@ -4159,11 +4321,11 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
           const activeFile = this.app.workspace.getActiveFile();
           if (activeFile) {
             await this.app.vault.modify(activeFile, template);
-            new import_obsidian5.Notice(`Template applied to ${activeFile.name}`);
+            new import_obsidian4.Notice(`Template applied to ${activeFile.name}`);
           } else {
             const fileName = `Lorebook_Entry_${Date.now()}.md`;
             await this.app.vault.create(fileName, template);
-            new import_obsidian5.Notice(`Created new template: ${fileName}`);
+            new import_obsidian4.Notice(`Created new template: ${fileName}`);
           }
         } catch (error) {
           console.error("Template creation cancelled", error);
@@ -4177,14 +4339,13 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
   // This is the main conversion function
   async convertToLorebook() {
     try {
-      const fileProcessor = new FileProcessor(this.app);
+      const fileProcessor = new FileProcessor(this.app, this.settings);
       const files = this.app.vault.getMarkdownFiles();
       const progress = new ProgressBar(
         files.length + 2,
         // Files + graph building + exporting
         "Analyzing vault structure..."
       );
-      await fileProcessor.findRootFile(progress);
       await fileProcessor.processFiles(files, progress);
       progress.setStatus("Building relationship graph...");
       const graphAnalyzer = new GraphAnalyzer(
@@ -4205,7 +4366,7 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
       progress.success(`Conversion complete! Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
     } catch (error) {
       console.error("Conversion failed:", error);
-      new import_obsidian5.Notice(`Conversion failed: ${error.message}`);
+      new import_obsidian4.Notice(`Conversion failed: ${error.message}`);
     }
   }
 };

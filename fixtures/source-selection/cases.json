@@ -1,0 +1,82 @@
+{
+  "rules": {
+    "requireLorebookFlag": true,
+    "includeFolders": [
+      "Worlds"
+    ],
+    "excludeFolders": [
+      ".obsidian",
+      "Templates"
+    ],
+    "includeTags": [
+      "canon"
+    ],
+    "excludeTags": [
+      "draft"
+    ]
+  },
+  "cases": [
+    {
+      "name": "include when lorebook true and required tag present",
+      "path": "Worlds/Aurelia/City.md",
+      "frontmatter": {
+        "lorebook": true,
+        "tags": [
+          "canon",
+          "city"
+        ]
+      },
+      "expectedInclude": true,
+      "expectedReason": "included"
+    },
+    {
+      "name": "exclude when lorebook flag is missing",
+      "path": "Worlds/Aurelia/Character.md",
+      "frontmatter": {
+        "tags": [
+          "canon"
+        ]
+      },
+      "expectedInclude": false,
+      "expectedReason": "missing-lorebook-flag"
+    },
+    {
+      "name": "exclude when folder is blocked",
+      "path": "Templates/World Template.md",
+      "frontmatter": {
+        "lorebook": true,
+        "tags": [
+          "canon"
+        ]
+      },
+      "expectedInclude": false,
+      "expectedReason": "excluded-by-folder:Templates"
+    },
+    {
+      "name": "exclude when excluded tag is present",
+      "path": "Worlds/Aurelia/Draft.md",
+      "frontmatter": {
+        "lorebook": true,
+        "tags": [
+          "canon",
+          "draft"
+        ]
+      },
+      "expectedInclude": false,
+      "expectedReason": "excluded-by-tag"
+    },
+    {
+      "name": "exclude by explicit frontmatter",
+      "path": "Worlds/Aurelia/Secret.md",
+      "frontmatter": {
+        "lorebook": true,
+        "exclude": true,
+        "tags": [
+          "canon"
+        ]
+      },
+      "expectedInclude": false,
+      "expectedReason": "excluded-by-frontmatter"
+    }
+  ]
+}

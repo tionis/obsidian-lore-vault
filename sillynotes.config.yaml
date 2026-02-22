@@ -1,0 +1,65 @@
+version: 1
+
+frontmatter:
+  worldField: world
+  factionField: factions
+  profileField: lorebookProfiles
+
+targets:
+  - id: core
+    description: Core multiverse canon shared across all settings.
+    selector:
+      mode: any
+      includeTags:
+        - core
+        - multiverse
+      excludeTags:
+        - draft
+      includeFrontmatter:
+        type: concept
+    outputs:
+      lorebookJson:
+        enabled: true
+        outputPath: exports/lorebooks/core-multiverse.json
+      ragMarkdown:
+        enabled: true
+        outputPath: exports/databank/core-multiverse.md
+
+  - id: world:{world}
+    description: One focused lorebook per world.
+    expansion:
+      variable: world
+      valuesFromFrontmatterField: world
+    selector:
+      mode: all
+      includeFrontmatter:
+        world: "{world}"
+      excludeTags:
+        - draft
+    outputs:
+      lorebookJson:
+        enabled: true
+        outputPath: exports/lorebooks/world-{world}.json
+      ragMarkdown:
+        enabled: true
+        outputPath: exports/databank/world-{world}.md
+
+  - id: world:{world}:factions
+    description: Optional faction subpack for each world.
+    expansion:
+      variable: world
+      valuesFromFrontmatterField: world
+    selector:
+      mode: all
+      includeFrontmatter:
+        world: "{world}"
+        type: faction
+      excludeTags:
+        - draft
+    outputs:
+      lorebookJson:
+        enabled: true
+        outputPath: exports/lorebooks/world-{world}-factions.json
+      ragMarkdown:
+        enabled: true
+        outputPath: exports/databank/world-{world}-factions.md

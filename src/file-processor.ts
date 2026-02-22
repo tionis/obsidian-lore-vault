@@ -1,12 +1,11 @@
 import { App, TFile } from 'obsidian';
-import * as path from 'path';
 import { LoreBookEntry } from './models';
 import { ProgressBar } from './progress-bar';
+import { LinkTargetIndex, extractWikilinks } from './link-target-index';
 
 export class FileProcessor {
   private app: App;
-  private filenameToUid: {[key: string]: number} = {};
-  private ambiguousTargets: Set<string> = new Set();
+  private linkTargetIndex: LinkTargetIndex = new LinkTargetIndex();
   private entries: {[key: number]: LoreBookEntry} = {};
   private nextUid: number = 0;
   private rootUid: number | null = null;
@@ -20,76 +19,6 @@ export class FileProcessor {
     const uid = this.nextUid;
     this.nextUid += 1;
     return uid;
-  }
-
-  private normalizeLinkTarget(target: string): string {
-    // Obsidian-style link targets can include headings/block refs and optional .md suffixes.
-    return target
-      .trim()
-      .replace(/\\/g, '/')
-      .replace(/#.*$/, '')
-      .replace(/\.md$/i, '')
-      .trim();
-  }
-
-  private addTargetMapping(target: string, uid: number): void {
-    const normalized = this.normalizeLinkTarget(target);
-    if (!normalized) {
-      return;
-    }
-
-    if (this.ambiguousTargets.has(normalized)) {
-      return;
-    }
-
-    const existingUid = this.filenameToUid[normalized];
-    if (existingUid === undefined) {
-      this.filenameToUid[normalized] = uid;
-      return;
-    }
-
-    if (existingUid !== uid) {
-      delete this.filenameToUid[normalized];
-      this.ambiguousTargets.add(normalized);
-    }
-  }
-
-  private registerFileMappings(file: TFile, uid: number): void {
-    const normalizedPath = this.normalizeLinkTarget(file.path);
-    const normalizedBase = this.normalizeLinkTarget(file.basename);
-
-    this.addTargetMapping(normalizedPath, uid);
-    this.addTargetMapping(normalizedBase, uid);
-  }
-
-  extractWikilinks(content: string): string[] {
-    const pattern = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-    const links: string[] = [];
-    let match;
-    
-    while ((match = pattern.exec(content)) !== null) {
-      const rawLink = match[1].trim();
-      const link = this.normalizeLinkTarget(rawLink);
-      if (!link) {
-        continue;
-      }
-
-      links.push(link);
-      
-      // Also add the base name
-      const base = path.basename(link);
-      if (base !== link) {
-        links.push(base);
-      }
-      
-      // Add variants with spaces replaced
-      if (link.includes(' ')) {
-        links.push(link.replace(/ /g, '-'));
-        links.push(link.replace(/ /g, '_'));
-      }
-    }
-    
-    return [...new Set(links)]; // Remove duplicates
   }
 
   isValidLoreBookEntry(content: string): boolean {
@@ -286,7 +215,7 @@ export class FileProcessor {
       const uid = this.generateUid();
       const name = file.basename;
       const folder = file.parent ? file.parent.path : '';
-      const wikilinks = this.extractWikilinks(content);
+      const wikilinks = extractWikilinks(content);
       
       // Get plugin settings from app
       const plugin = (this.app as any).plugins.plugins['lorebook-converter'];
@@ -374,7 +303,7 @@ export class FileProcessor {
           if (entry) {
             this.rootUid = entry.uid;
             this.rootFilePath = file.path;
-            this.registerFileMappings(file, entry.uid);
+            this.linkTargetIndex.registerFileMappings(file.path, file.basename, entry.uid);
             this.entries[entry.uid] = entry;
             rootFileFound = true;
             break;
@@ -400,7 +329,7 @@ export class FileProcessor {
             if (entry) {
               this.rootUid = entry.uid;
               this.rootFilePath = rootFileObj.path;
-              this.registerFileMappings(rootFileObj, entry.uid);
+              this.linkTargetIndex.registerFileMappings(rootFileObj.path, rootFileObj.basename, entry.uid);
               this.entries[entry.uid] = entry;
               rootFileFound = true;
             }
@@ -440,7 +369,7 @@ export class FileProcessor {
       const entry = await this.parseMarkdownFile(file);
       
       if (entry) {
-        this.registerFileMappings(file, entry.uid);
+        this.linkTargetIndex.registerFileMappings(file.path, file.basename, entry.uid);
         this.entries[entry.uid] = entry;
       }
       
@@ -455,7 +384,7 @@ export class FileProcessor {
   }
   
   getFilenameToUid(): {[key: string]: number} {
-    return this.filenameToUid;
+    return this.linkTargetIndex.getMappings();
   }
   
   getEntries(): {[key: number]: LoreBookEntry} {
@@ -463,8 +392,7 @@ export class FileProcessor {
   }
   
   reset(): void {
-    this.filenameToUid = {};
-    this.ambiguousTargets = new Set();
+    this.linkTargetIndex.reset();
     this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;

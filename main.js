@@ -3333,11 +3333,74 @@ async function createTemplate(app, settings) {
 
 // src/file-processor.ts
 var import_obsidian3 = require("obsidian");
+
+// src/link-target-index.ts
 var path = __toESM(require("path"));
+function normalizeLinkTarget(target) {
+  return target.trim().replace(/\\/g, "/").replace(/#.*$/, "").replace(/\.md$/i, "").trim();
+}
+function extractWikilinks(content) {
+  const pattern = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+  const links = [];
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    const rawLink = match[1].trim();
+    const link = normalizeLinkTarget(rawLink);
+    if (!link) {
+      continue;
+    }
+    links.push(link);
+    const base = path.basename(link);
+    if (base !== link) {
+      links.push(base);
+    }
+    if (link.includes(" ")) {
+      links.push(link.replace(/ /g, "-"));
+      links.push(link.replace(/ /g, "_"));
+    }
+  }
+  return [...new Set(links)];
+}
+var LinkTargetIndex = class {
+  constructor() {
+    this.targetToUid = {};
+    this.ambiguousTargets = /* @__PURE__ */ new Set();
+  }
+  addTargetMapping(target, uid) {
+    const normalized = normalizeLinkTarget(target);
+    if (!normalized) {
+      return;
+    }
+    if (this.ambiguousTargets.has(normalized)) {
+      return;
+    }
+    const existingUid = this.targetToUid[normalized];
+    if (existingUid === void 0) {
+      this.targetToUid[normalized] = uid;
+      return;
+    }
+    if (existingUid !== uid) {
+      delete this.targetToUid[normalized];
+      this.ambiguousTargets.add(normalized);
+    }
+  }
+  registerFileMappings(filePath, basename2, uid) {
+    this.addTargetMapping(filePath, uid);
+    this.addTargetMapping(basename2, uid);
+  }
+  getMappings() {
+    return this.targetToUid;
+  }
+  reset() {
+    this.targetToUid = {};
+    this.ambiguousTargets = /* @__PURE__ */ new Set();
+  }
+};
+
+// src/file-processor.ts
 var FileProcessor = class {
   constructor(app) {
-    this.filenameToUid = {};
-    this.ambiguousTargets = /* @__PURE__ */ new Set();
+    this.linkTargetIndex = new LinkTargetIndex();
     this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;
@@ -3348,55 +3411,6 @@ var FileProcessor = class {
     const uid = this.nextUid;
     this.nextUid += 1;
     return uid;
-  }
-  normalizeLinkTarget(target) {
-    return target.trim().replace(/\\/g, "/").replace(/#.*$/, "").replace(/\.md$/i, "").trim();
-  }
-  addTargetMapping(target, uid) {
-    const normalized = this.normalizeLinkTarget(target);
-    if (!normalized) {
-      return;
-    }
-    if (this.ambiguousTargets.has(normalized)) {
-      return;
-    }
-    const existingUid = this.filenameToUid[normalized];
-    if (existingUid === void 0) {
-      this.filenameToUid[normalized] = uid;
-      return;
-    }
-    if (existingUid !== uid) {
-      delete this.filenameToUid[normalized];
-      this.ambiguousTargets.add(normalized);
-    }
-  }
-  registerFileMappings(file, uid) {
-    const normalizedPath = this.normalizeLinkTarget(file.path);
-    const normalizedBase = this.normalizeLinkTarget(file.basename);
-    this.addTargetMapping(normalizedPath, uid);
-    this.addTargetMapping(normalizedBase, uid);
-  }
-  extractWikilinks(content) {
-    const pattern = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-    const links = [];
-    let match;
-    while ((match = pattern.exec(content)) !== null) {
-      const rawLink = match[1].trim();
-      const link = this.normalizeLinkTarget(rawLink);
-      if (!link) {
-        continue;
-      }
-      links.push(link);
-      const base = path.basename(link);
-      if (base !== link) {
-        links.push(base);
-      }
-      if (link.includes(" ")) {
-        links.push(link.replace(/ /g, "-"));
-        links.push(link.replace(/ /g, "_"));
-      }
-    }
-    return [...new Set(links)];
   }
   isValidLoreBookEntry(content) {
     const hasLoreFieldTag = /^# [A-Za-z0-9_\s]+:/m.test(content);
@@ -3547,7 +3561,7 @@ ${contentBlock}`.trim();
       const uid = this.generateUid();
       const name = file.basename;
       const folder = file.parent ? file.parent.path : "";
-      const wikilinks = this.extractWikilinks(content);
+      const wikilinks = extractWikilinks(content);
       const plugin = this.app.plugins.plugins["lorebook-converter"];
       let defaultSettings = null;
       if (plugin && plugin.settings) {
@@ -3610,7 +3624,7 @@ ${contentBlock}`.trim();
           if (entry) {
             this.rootUid = entry.uid;
             this.rootFilePath = file.path;
-            this.registerFileMappings(file, entry.uid);
+            this.linkTargetIndex.registerFileMappings(file.path, file.basename, entry.uid);
             this.entries[entry.uid] = entry;
             rootFileFound = true;
             break;
@@ -3631,7 +3645,7 @@ ${contentBlock}`.trim();
             if (entry) {
               this.rootUid = entry.uid;
               this.rootFilePath = rootFileObj.path;
-              this.registerFileMappings(rootFileObj, entry.uid);
+              this.linkTargetIndex.registerFileMappings(rootFileObj.path, rootFileObj.basename, entry.uid);
               this.entries[entry.uid] = entry;
               rootFileFound = true;
             }
@@ -3663,7 +3677,7 @@ ${contentBlock}`.trim();
       progress.setStatus(`Processing file ${processed + 1}/${total}: ${file.basename}`);
       const entry = await this.parseMarkdownFile(file);
       if (entry) {
-        this.registerFileMappings(file, entry.uid);
+        this.linkTargetIndex.registerFileMappings(file.path, file.basename, entry.uid);
         this.entries[entry.uid] = entry;
       }
       progress.update();
@@ -3674,14 +3688,13 @@ ${contentBlock}`.trim();
     return this.rootUid;
   }
   getFilenameToUid() {
-    return this.filenameToUid;
+    return this.linkTargetIndex.getMappings();
   }
   getEntries() {
     return this.entries;
   }
   reset() {
-    this.filenameToUid = {};
-    this.ambiguousTargets = /* @__PURE__ */ new Set();
+    this.linkTargetIndex.reset();
     this.entries = {};
     this.nextUid = 0;
     this.rootUid = null;

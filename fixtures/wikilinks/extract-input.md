@@ -1,0 +1,5 @@
+[[Characters/Alice#Biography|bio]]
+[[Characters\Alice.md]]
+[[Places/New London]]
+[[Places/New London|metropolis]]
+[[World#^lore_anchor]]

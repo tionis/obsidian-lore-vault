@@ -6,6 +6,8 @@
     "scripts": {
         "dev": "node esbuild.config.mjs",
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+        "test:compile": "tsc -p tsconfig.tests.json",
+        "test": "npm run test:compile && node --test .test-dist/tests/*.test.js",
         "version": "node version-bump.mjs && git add manifest.json versions.json"
     },
     "keywords": [

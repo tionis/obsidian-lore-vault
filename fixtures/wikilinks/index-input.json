@@ -1,0 +1,19 @@
+{
+  "files": [
+    {
+      "path": "Characters/Alice.md",
+      "basename": "Alice",
+      "uid": 10
+    },
+    {
+      "path": "Factions/Alice.md",
+      "basename": "Alice",
+      "uid": 20
+    },
+    {
+      "path": "Places/New London.md",
+      "basename": "New London",
+      "uid": 30
+    }
+  ]
+}

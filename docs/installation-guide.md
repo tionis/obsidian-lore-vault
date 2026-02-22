@@ -75,6 +75,7 @@ If you prefer to build the plugin from source:
 1. **Configure plugin settings**
    - Go to Settings → Lorebook Converter
    - Set the output path for your Lorebook JSON file
+   - Configure Source Selection Rules (folder/tag filters and lorebook flag requirement)
    - Adjust priority weights if needed
 
 2. **Try creating a template**
@@ -93,9 +94,9 @@ If you prefer to build the plugin from source:
 - **Command palette commands don't appear**: Try restarting Obsidian
 - **Conversion fails**: Check the console (Ctrl+Shift+I) for error messages
 - **Plugin doesn't recognize files**:
-  - Ensure the file includes at least one `# Field: value` line, or
-  - add `# Root`, or
-  - set frontmatter `lorebook: true`
+  - Ensure frontmatter enables lorebook usage (`lorebook: true`) when `requireLorebookFlag` is enabled
+  - Verify folder/tag rules are not excluding your note
+  - Check for explicit exclusion flags (`exclude: true`, `lorebook: false`)
 
 ## Updates
 

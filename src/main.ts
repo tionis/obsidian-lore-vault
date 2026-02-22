@@ -10,9 +10,49 @@ import { LoreBookConverterSettingTab } from './settings-tab';
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
 
+  private mergeSettings(data: Partial<ConverterSettings> | null | undefined): ConverterSettings {
+    const merged: ConverterSettings = {
+      ...DEFAULT_SETTINGS,
+      ...data,
+      weights: {
+        ...DEFAULT_SETTINGS.weights,
+        ...(data?.weights ?? {})
+      },
+      defaultLoreBook: {
+        ...DEFAULT_SETTINGS.defaultLoreBook,
+        ...(data?.defaultLoreBook ?? {})
+      },
+      defaultEntry: {
+        ...DEFAULT_SETTINGS.defaultEntry,
+        ...(data?.defaultEntry ?? {})
+      }
+    };
+
+    // Keep settings valid even when older config files contain incomplete trigger config.
+    if (merged.defaultEntry.constant) {
+      merged.defaultEntry.vectorized = false;
+      merged.defaultEntry.selective = false;
+    } else if (merged.defaultEntry.vectorized) {
+      merged.defaultEntry.constant = false;
+      merged.defaultEntry.selective = false;
+    } else if (merged.defaultEntry.selective) {
+      merged.defaultEntry.constant = false;
+      merged.defaultEntry.vectorized = false;
+    } else {
+      merged.defaultEntry.selective = true;
+    }
+
+    merged.defaultEntry.selectiveLogic = Math.max(
+      0,
+      Math.min(3, Math.floor(merged.defaultEntry.selectiveLogic))
+    );
+
+    return merged;
+  }
+
   async onload() {
     // Load the settings
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = this.mergeSettings(await this.loadData());
 
     // Add custom icon
     addIcon('lorebook', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">

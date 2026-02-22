@@ -3831,27 +3831,36 @@ var LoreBookExporter = class {
     const entriesDict = {};
     for (const [uid, entry] of Object.entries(entries)) {
       const { wikilinks, ...entryWithoutWikilinks } = entry;
-      if (!entry.constant && !entry.vectorized && !entry.selective) {
-        entry.constant = settings.defaultEntry.constant;
-        entry.vectorized = settings.defaultEntry.vectorized;
-        entry.selective = settings.defaultEntry.selective;
+      const normalizedEntry = { ...entryWithoutWikilinks };
+      if (!normalizedEntry.constant && !normalizedEntry.vectorized && !normalizedEntry.selective) {
+        normalizedEntry.constant = settings.defaultEntry.constant;
+        normalizedEntry.vectorized = settings.defaultEntry.vectorized;
+        normalizedEntry.selective = settings.defaultEntry.selective;
       } else {
-        if (entry.constant) {
-          entry.vectorized = false;
-          entry.selective = false;
-        } else if (entry.vectorized) {
-          entry.constant = false;
-          entry.selective = false;
-        } else if (entry.selective) {
-          entry.constant = false;
-          entry.vectorized = false;
+        if (normalizedEntry.constant) {
+          normalizedEntry.vectorized = false;
+          normalizedEntry.selective = false;
+        } else if (normalizedEntry.vectorized) {
+          normalizedEntry.constant = false;
+          normalizedEntry.selective = false;
+        } else if (normalizedEntry.selective) {
+          normalizedEntry.constant = false;
+          normalizedEntry.vectorized = false;
         }
       }
-      if (entry.selectiveLogic === void 0) entry.selectiveLogic = settings.defaultEntry.selectiveLogic;
-      if (entry.probability === void 0) entry.probability = settings.defaultEntry.probability;
-      if (entry.depth === void 0) entry.depth = settings.defaultEntry.depth;
-      if (entry.groupWeight === void 0) entry.groupWeight = settings.defaultEntry.groupWeight;
-      entriesDict[uid] = entryWithoutWikilinks;
+      if (normalizedEntry.selectiveLogic === void 0) {
+        normalizedEntry.selectiveLogic = settings.defaultEntry.selectiveLogic;
+      }
+      if (normalizedEntry.probability === void 0) {
+        normalizedEntry.probability = settings.defaultEntry.probability;
+      }
+      if (normalizedEntry.depth === void 0) {
+        normalizedEntry.depth = settings.defaultEntry.depth;
+      }
+      if (normalizedEntry.groupWeight === void 0) {
+        normalizedEntry.groupWeight = settings.defaultEntry.groupWeight;
+      }
+      entriesDict[uid] = normalizedEntry;
     }
     const lorebook = {
       entries: entriesDict,

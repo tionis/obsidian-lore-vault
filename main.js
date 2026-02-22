@@ -3413,13 +3413,19 @@ var FileProcessor = class {
       const match = content.match(regex);
       return match ? match[1].trim() : "";
     };
-    const contentMatch = content.match(/^# [Cc]ontent:(?:[ \t]*\n)?([\s\S]+?)(?=^#|\s*$)/m);
-    if (contentMatch && contentMatch[1]) {
-      parsed.content = contentMatch[1].trim();
+    const contentTagMatch = /^# [Cc]ontent:(.*)$/m.exec(content);
+    if (contentTagMatch) {
+      const inlineContent = contentTagMatch[1].trim();
+      const contentStart = contentTagMatch.index + contentTagMatch[0].length;
+      const remaining = content.slice(contentStart);
+      const nextFieldMatch = /\r?\n# [A-Za-z0-9_\s]+:/.exec(remaining);
+      const contentBlock = nextFieldMatch ? remaining.slice(0, nextFieldMatch.index) : remaining;
+      parsed.content = `${inlineContent}
+${contentBlock}`.trim();
     } else {
-      const hasTags = /^# [A-Za-z0-9_]+:/m.test(content);
+      const hasTags = /^# [A-Za-z0-9_\s]+:/m.test(content);
       if (hasTags) {
-        const nonTagLines = content.split("\n").filter((line) => !line.trim().startsWith("# ")).join("\n");
+        const nonTagLines = content.split("\n").filter((line) => !/^# [A-Za-z0-9_\s]+:/.test(line.trim())).join("\n");
         parsed.content = nonTagLines.trim();
       } else {
         parsed.content = content.trim();

@@ -114,19 +114,27 @@ export class FileProcessor {
     };
     
     // Try to extract content section first (special case due to multiline nature)
-    const contentMatch = content.match(/^# [Cc]ontent:(?:[ \t]*\n)?([\s\S]+?)(?=^#|\s*$)/m);
+    const contentTagMatch = /^# [Cc]ontent:(.*)$/m.exec(content);
     
     // If content tag found, use that section. Otherwise use the entire file content
-    if (contentMatch && contentMatch[1]) {
-      parsed.content = contentMatch[1].trim();
+    if (contentTagMatch) {
+      const inlineContent = contentTagMatch[1].trim();
+      const contentStart = contentTagMatch.index + contentTagMatch[0].length;
+      const remaining = content.slice(contentStart);
+      const nextFieldMatch = /\r?\n# [A-Za-z0-9_\s]+:/.exec(remaining);
+      const contentBlock = nextFieldMatch
+        ? remaining.slice(0, nextFieldMatch.index)
+        : remaining;
+
+      parsed.content = `${inlineContent}\n${contentBlock}`.trim();
     } else {
       // Check if there are any # tags in the file
-      const hasTags = /^# [A-Za-z0-9_]+:/m.test(content);
+      const hasTags = /^# [A-Za-z0-9_\s]+:/m.test(content);
       
       if (hasTags) {
-        // Extract all lines that don't start with a # tag
+        // Extract all lines that don't start with a field tag line such as "# Field: value"
         const nonTagLines = content.split('\n')
-          .filter(line => !line.trim().startsWith('# '))
+          .filter(line => !/^# [A-Za-z0-9_\s]+:/.test(line.trim()))
           .join('\n');
         
         parsed.content = nonTagLines.trim();

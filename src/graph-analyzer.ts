@@ -58,16 +58,56 @@ export class GraphAnalyzer {
     console.log(`Created graph with ${this.graph.order} nodes and ${this.graph.size} edges`);
   }
 
+  private resolveRootUid(): number | null {
+    if (this.rootUid !== null && this.graph.hasNode(this.rootUid.toString())) {
+      return this.rootUid;
+    }
+
+    if (this.graph.order === 0) {
+      return null;
+    }
+
+    // Fallback root heuristic: most referenced and connected node.
+    let bestNode: string | null = null;
+    let bestInDegree = -1;
+    let bestTotalDegree = -1;
+
+    this.graph.forEachNode(node => {
+      const inDegree = this.graph.inDegree(node);
+      const totalDegree = this.graph.degree(node);
+
+      if (
+        bestNode === null ||
+        inDegree > bestInDegree ||
+        (inDegree === bestInDegree && totalDegree > bestTotalDegree) ||
+        (inDegree === bestInDegree && totalDegree === bestTotalDegree && parseInt(node) < parseInt(bestNode))
+      ) {
+        bestNode = node;
+        bestInDegree = inDegree;
+        bestTotalDegree = totalDegree;
+      }
+    });
+
+    return bestNode !== null ? parseInt(bestNode) : null;
+  }
+
   calculateEntryPriorities(): void {
     console.log("Calculating entry priorities with graphology");
     
     // Calculate BFS depths from root
     const hierarchyDepths: {[key: number]: number} = {};
     let maxHierarchyDepth = 0;
-    
+    const effectiveRootUid = this.resolveRootUid();
+
     if (this.rootUid !== null) {
-      const queue: [string, number][] = [[this.rootUid.toString(), 0]];
-      const visited = new Set<string>([this.rootUid.toString()]);
+      console.log(`Using explicit root UID ${this.rootUid}`);
+    } else if (effectiveRootUid !== null) {
+      console.log(`No explicit root set; using inferred root UID ${effectiveRootUid}`);
+    }
+    
+    if (effectiveRootUid !== null) {
+      const queue: [string, number][] = [[effectiveRootUid.toString(), 0]];
+      const visited = new Set<string>([effectiveRootUid.toString()]);
       
       while (queue.length > 0) {
         const [node, depth] = queue.shift()!;

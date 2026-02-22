@@ -27,6 +27,68 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.plugin.saveData(this.plugin.settings);
         }));
 
+    const parseCsv = (value: string): string[] => value
+      .split(',')
+      .map(item => item.trim())
+      .filter(item => item.length > 0);
+
+    // Source Selection section
+    containerEl.createEl('h3', { text: 'Source Selection Rules' });
+
+    new Setting(containerEl)
+      .setName('Require lorebook frontmatter')
+      .setDesc('Only include notes where frontmatter enables lorebook usage')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.sourceSelection.requireLorebookFlag)
+        .onChange(async (value) => {
+          this.plugin.settings.sourceSelection.requireLorebookFlag = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Include Folders')
+      .setDesc('Optional comma-separated folder prefixes to include (empty = all folders)')
+      .addText(text => text
+        .setPlaceholder('Worlds/Aurelia, Chronicles/Season1')
+        .setValue(this.plugin.settings.sourceSelection.includeFolders.join(', '))
+        .onChange(async (value) => {
+          this.plugin.settings.sourceSelection.includeFolders = parseCsv(value);
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Exclude Folders')
+      .setDesc('Comma-separated folder prefixes to exclude')
+      .addText(text => text
+        .setPlaceholder('.obsidian, Templates')
+        .setValue(this.plugin.settings.sourceSelection.excludeFolders.join(', '))
+        .onChange(async (value) => {
+          this.plugin.settings.sourceSelection.excludeFolders = parseCsv(value);
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Include Tags')
+      .setDesc('Optional comma-separated tags required for inclusion')
+      .addText(text => text
+        .setPlaceholder('lorebook, world:aurelia')
+        .setValue(this.plugin.settings.sourceSelection.includeTags.join(', '))
+        .onChange(async (value) => {
+          this.plugin.settings.sourceSelection.includeTags = parseCsv(value);
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Exclude Tags')
+      .setDesc('Comma-separated tags to skip')
+      .addText(text => text
+        .setPlaceholder('draft, private')
+        .setValue(this.plugin.settings.sourceSelection.excludeTags.join(', '))
+        .onChange(async (value) => {
+          this.plugin.settings.sourceSelection.excludeTags = parseCsv(value);
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
     // Default LoreBook Settings section
     containerEl.createEl('h3', { text: 'Default LoreBook Settings' });
     

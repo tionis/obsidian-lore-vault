@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, Plugin } from 'obsidian';
+import { App, Modal, Setting, Notice } from 'obsidian';
 import { ConverterSettings, DEFAULT_SETTINGS } from './models';
 
 export class TemplateModal extends Modal {
@@ -123,16 +123,32 @@ export class TemplateModal extends Modal {
   }
 
   generateTemplate() {
-    this.result = `# Title: ${this.title}
-# Keywords: ${this.keywords}
-# Overview: ${this.overview}
+    const keywords = this.keywords
+      .split(',')
+      .map(keyword => keyword.trim())
+      .filter(keyword => keyword.length > 0);
 
-# Trigger Method: ${this.triggerMethod}
-# Probability: ${this.probability}
-# Depth: ${this.depth}
-${this.triggerMethod === 'selective' ? `# Selective Logic: ${this.settings.defaultEntry.selectiveLogic}` : ''}
+    const keywordBlock = keywords.length > 0
+      ? keywords.map(keyword => `  - "${keyword.replace(/"/g, '\\"')}"`).join('\n')
+      : '  - ""';
 
-# Content:
+    const selectiveLogicLine = this.triggerMethod === 'selective'
+      ? `selectiveLogic: ${this.settings.defaultEntry.selectiveLogic}\n`
+      : '';
+
+    const summaryLine = this.overview.trim()
+      ? `summary: "${this.overview.trim().replace(/"/g, '\\"')}"\n`
+      : '';
+
+    this.result = `---
+lorebook: true
+title: "${this.title.replace(/"/g, '\\"')}"
+keywords:
+${keywordBlock}
+${summaryLine}trigger_method: ${this.triggerMethod}
+probability: ${this.probability}
+depth: ${this.depth}
+${selectiveLogicLine}---
 Enter your content here...
 
 ## Additional Notes

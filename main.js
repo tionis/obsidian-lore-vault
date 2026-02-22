@@ -4066,8 +4066,44 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
 
 // src/main.ts
 var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
+  mergeSettings(data) {
+    var _a, _b, _c;
+    const merged = {
+      ...DEFAULT_SETTINGS,
+      ...data,
+      weights: {
+        ...DEFAULT_SETTINGS.weights,
+        ...(_a = data == null ? void 0 : data.weights) != null ? _a : {}
+      },
+      defaultLoreBook: {
+        ...DEFAULT_SETTINGS.defaultLoreBook,
+        ...(_b = data == null ? void 0 : data.defaultLoreBook) != null ? _b : {}
+      },
+      defaultEntry: {
+        ...DEFAULT_SETTINGS.defaultEntry,
+        ...(_c = data == null ? void 0 : data.defaultEntry) != null ? _c : {}
+      }
+    };
+    if (merged.defaultEntry.constant) {
+      merged.defaultEntry.vectorized = false;
+      merged.defaultEntry.selective = false;
+    } else if (merged.defaultEntry.vectorized) {
+      merged.defaultEntry.constant = false;
+      merged.defaultEntry.selective = false;
+    } else if (merged.defaultEntry.selective) {
+      merged.defaultEntry.constant = false;
+      merged.defaultEntry.vectorized = false;
+    } else {
+      merged.defaultEntry.selective = true;
+    }
+    merged.defaultEntry.selectiveLogic = Math.max(
+      0,
+      Math.min(3, Math.floor(merged.defaultEntry.selectiveLogic))
+    );
+    return merged;
+  }
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = this.mergeSettings(await this.loadData());
     (0, import_obsidian5.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
     </svg>`);

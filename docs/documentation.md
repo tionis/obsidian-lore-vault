@@ -1,153 +1,206 @@
-# Lorebook Converter Plugin Documentation
+# Lorebook Converter Documentation
 
-## Table of Contents
-- [Introduction](#introduction)
-- [Installation](#installation)
-- [Setting Up Your Notes](#setting-up-your-notes)
-- [Converting to Lorebook](#converting-to-lorebook)
-- [Plugin Settings](#plugin-settings)
-- [How It Works](#how-it-works)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
+## Overview
 
-## Introduction
+Lorebook Converter exports Obsidian markdown notes into a SillyTavern lorebook JSON file.
 
-The Lorebook Converter Plugin converts your Obsidian notes into a Lorebook JSON format that can be used with AI text generators. It preserves the relationships between your notes and calculates appropriate priorities to ensure the most relevant information is made available to the AI.
+Primary goals:
 
-## Installation
+- stable/deterministic exports
+- practical link-driven prioritization
+- configurable defaults for lorebook and entry fields
 
-### Manual Installation
-1. Download the latest release from the GitHub repository
-2. Extract the zip file into your vault's `.obsidian/plugins` folder
-3. Enable the plugin in Obsidian's Community Plugins settings
+## Compatibility
 
-### From Community Plugins (Coming Soon)
-1. Open Obsidian Settings
-2. Navigate to Community Plugins
-3. Search for "Lorebook Converter"
-4. Click Install and then Enable
+- Obsidian plugin id: `lorebook-converter`
+- Minimum Obsidian version: `0.15.0`
+- Platform: desktop only (`isDesktopOnly: true`)
 
-## Setting Up Your Notes
+## Conversion Pipeline
 
-For a note to be recognized as a Lorebook entry, it must follow this specific format:
+When you run **Convert Vault to Lorebook**, the plugin does:
 
-```markdown
-# Title: Your Entry Title
-# Keywords: keyword1, keyword2, keyword3
-# Overview: Brief description of what this entry covers
+1. Collect all markdown files from the vault
+2. Find a root file (if available)
+3. Parse valid source notes into lorebook entries
+4. Build a directed graph from wikilinks
+5. Calculate `order` using graph and folder metrics
+6. Export JSON to the configured output path
 
-# Trigger Method: selective
-# Probability: 75
-# Depth: 4
+File processing order is deterministic (`path`-sorted).
 
-# Content:
-The main content of your entry goes here...
+## Source Note Selection
 
-## Additional Information
-- Add more details
-- Include relevant context
-- Link to related entries using [[Wiki Links]]
+A markdown file is treated as a source note only if at least one of these is true:
+
+1. It has a top-level field line in this form: `# Field: value`
+2. It contains a line exactly matching `# Root`
+3. Its YAML frontmatter contains `lorebook: true`
+
+Notes that do not match any of the above are skipped.
+
+## Root Selection
+
+Root file selection order:
+
+1. First markdown file (in sorted path order) containing `# Root`
+2. Fallback to a vault-root file named one of:
+   - `Root.md`
+   - `root.md`
+   - `index.md`
+   - `World.md`
+   - `world.md`
+
+If no root is found, hierarchy depth is effectively `0` for all nodes.
+
+## Field Parsing Rules
+
+## Field Syntax
+
+- Top-level fields use: `# Name: value`
+- Parsing is case-insensitive on field names
+- Spaces in field names are normalized out (`Trigger Method` -> `triggermethod`)
+
+## Content Extraction
+
+### If `# Content:` exists
+
+- Content starts at `# Content:`
+- Inline text on the same line is included
+- Content continues until the next top-level field line (`# Something: ...`)
+- Markdown headings like `## Heading` are preserved
+
+### If `# Content:` does not exist
+
+- If any top-level field lines exist, content is the note with those field lines removed
+- Otherwise, content is the entire note text
+
+## Type Coercion
+
+- Arrays: `key`, `keysecondary`, `keywords` are split on commas
+- Booleans: known boolean fields or literal `true`/`false`
+- Numbers: known numeric fields or numeric-looking values
+
+## Normalization / Compatibility
+
+- `keywords` is used as `key` if `key` is missing
+- `title` is used as `comment` if `comment` is missing
+- Trigger method is normalized so only one of:
+  - `constant`
+  - `vectorized`
+  - `selective`
+
+## Selective Logic
+
+Supported values:
+
+- `0` => AND ANY
+- `1` => AND ALL
+- `2` => NOT ANY
+- `3` => NOT ALL
+
+Legacy text values are normalized where possible (`OR`, `AND`, etc.).
+
+## Wikilink Parsing and Graph Mapping
+
+## Detected Link Forms
+
+- `[[Page]]`
+- `[[Page|Alias]]`
+- embeds like `![[Page]]` (the inner wikilink is parsed)
+
+## Target Normalization
+
+For graph linking, targets are normalized by:
+
+- converting `\` to `/`
+- stripping heading/block refs after `#`
+- stripping trailing `.md`
+- trimming whitespace
+
+Example:
+
+- `[[Characters\Alice.md#Bio]]` -> `Characters/Alice`
+
+## Mapping Strategy
+
+Each parsed note is indexed by:
+
+1. normalized full path
+2. normalized basename
+
+If multiple notes share the same basename, basename mapping is removed as ambiguous. Full-path mapping remains.
+
+## Ranking / Order Calculation
+
+`order` is calculated from a weighted sum of normalized metrics:
+
+- hierarchy depth (BFS from root)
+- in-degree
+- PageRank
+- betweenness centrality
+- out-degree
+- total degree
+- folder depth
+
+Formula behavior:
+
+- `score = Σ(weight_i * normalized_metric_i)`
+- `order = max(1, floor(score))`
+- ties are broken deterministically by ascending UID with small offsets
+
+No randomization is used in tie-breaking.
+
+## Export Behavior
+
+## Entry Defaults
+
+Before serialization, each entry is normalized:
+
+- exactly one trigger mode is active
+- missing `selectiveLogic`, `probability`, `depth`, `groupWeight` are filled from settings
+
+## Output Structure
+
+Exports:
+
+- `entries` dictionary keyed by UID string
+- `settings` object with lorebook defaults
+
+Internal `wikilinks` are excluded from the final JSON.
+
+## Output Path Handling
+
+- Relative path: written via Obsidian vault adapter (inside vault)
+- Absolute path: written via Node `fs` (desktop)
+
+## Settings UI Notes
+
+Configurable groups:
+
+- output path
+- default lorebook settings
+- default entry settings
+- graph metric weights
+
+Default trigger method is mutually exclusive and saved as one of constant/vectorized/selective.
+
+## Testing
+
+Run:
+
+```bash
+npm run build
+npm test
 ```
 
-### Creating Entry Templates
+Current fixture-backed regression coverage includes:
 
-1. Use the Command Palette (`Ctrl+P` or `Cmd+P`) to run "Create Lorebook Entry Template"
-2. Fill in the details in the popup form
-3. Click "Generate Template"
+- deterministic tie behavior in graph ordering
+- wikilink normalization and ambiguous basename handling
 
-This will either create a new file or replace the content of your active note with the template.
+## Known Limitations
 
-### Required Fields
-
-- **Title**: The name of your entry
-- **Keywords**: Comma-separated terms that will trigger this entry
-- **Content**: The main information to be included
-
-### Optional Fields
-
-- **Overview**: Brief description of the entry
-- **Trigger Method**: How the entry is triggered (options: selective, constant, vectorized)
-- **Probability**: Chance of the entry being included (0-100)
-- **Depth**: Scanning depth for this entry (1-10)
-
-## Converting to Lorebook
-
-There are two ways to convert your vault to a Lorebook:
-
-1. Click the book icon in the left sidebar ribbon
-2. Use the Command Palette to run "Convert Vault to Lorebook"
-
-The conversion process:
-1. Scans your vault for properly formatted notes
-2. Builds a relationship graph based on wiki links
-3. Calculates priorities using graph metrics
-4. Exports everything to a JSON file
-
-Progress is shown in a notification with a progress bar.
-
-## Plugin Settings
-
-Settings can be accessed from Obsidian's Settings panel under "Lorebook Converter".
-
-### Output Path
-Set where the Lorebook JSON file will be saved. By default, it's saved in your vault root with the name of your vault (e.g., `MyVault.json`).
-
-### Priority Weights
-Adjust how different factors affect entry priority in the Lorebook:
-
-- **Hierarchy**: Distance from root document
-- **In-Degree**: Number of incoming links to a document
-- **PageRank**: Overall importance in the network
-- **Betweenness**: Importance as a connector node
-- **File Depth**: Position in the folder hierarchy
-- **Out-Degree**: Number of outgoing links
-- **Total Degree**: Total number of links (in + out)
-
-Higher weights give that factor more influence on the final order.
-
-## How It Works
-
-### Root Document
-The plugin looks for a root document (Root.md, root.md, index.md, World.md, or world.md) as the starting point for hierarchy calculations. If none is found, it determines the root based on other graph metrics.
-
-### Graph Analysis
-The plugin builds a directed graph where:
-- Each node is a document
-- Each edge represents a wiki link from one document to another
-
-It then performs various graph analysis operations:
-1. **Hierarchy**: BFS traversal from the root
-2. **In-Degree**: Count of incoming links
-3. **PageRank**: Google's algorithm for page importance
-4. **Betweenness Centrality**: Frequency of appearing on shortest paths
-5. **File Structure**: Depth in folder hierarchy
-
-### Priority Calculation
-Entry priority is calculated as a weighted sum of normalized metrics. Lower order numbers (higher priority) appear earlier in the Lorebook.
-
-## Troubleshooting
-
-### Notes Not Converting
-- Check if your notes follow the required format with `# Title:`, `# Keywords:`, and `# Content:` sections
-- Ensure your markdown is properly formatted with no syntax errors
-
-### Missing Relationships
-- Make sure you're using wiki links `[[Like This]]` to connect notes
-- Check that linked notes also follow the Lorebook entry format
-
-### Export Errors
-- Check if the output path is valid and accessible
-- Ensure you have write permissions to the destination folder
-
-## Development
-
-This plugin is written in TypeScript and uses:
-- Obsidian API
-- Graphology for graph operations
-- The Electron framework (via Obsidian)
-
-To build from source:
-1. Clone the repository
-2. Run `npm install` to install dependencies
-3. Run `npm run dev` for development (watches for changes)
-4. Run `npm run build` for production build
+- Only top-level `# Field: value` syntax is parsed as structured metadata
+- Basename-only links are unresolved when basename collisions exist
+- Frontmatter parsing is currently only used for opt-in detection (`lorebook: true`)

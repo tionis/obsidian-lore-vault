@@ -5189,6 +5189,9 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
     this.addRibbonIcon("lorebook", "Build LoreVault Export", () => {
       this.convertToLorebook();
     });
+    this.addRibbonIcon("lorebook", "Open LoreVault Manager", () => {
+      new LorebooksManagerModal(this.app, this).open();
+    });
     this.addCommand({
       id: "convert-to-lorebook",
       name: "Build LoreVault Export",

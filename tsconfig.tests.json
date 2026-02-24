@@ -21,6 +21,9 @@
     "src/link-target-index.ts",
     "src/frontmatter-utils.ts",
     "src/lorebook-scoping.ts",
+    "src/retrieval-routing.ts",
+    "src/rag-exporter.ts",
+    "src/scope-output-paths.ts",
     "src/profile-schema.ts",
     "tests/**/*.ts"
   ]

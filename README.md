@@ -6,8 +6,15 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 
 - Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
 - Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
+- Dual exports per scope: `world_info` JSON and `rag` markdown
+- Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
-- Fixture-backed regression tests for graph ordering, wikilinks, and lorebook scoping
+- Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
+
+## Migration Notes
+
+- Plugin name is now **LoreVault**, but plugin id remains `lorebook-converter` for upgrade compatibility.
+- Existing installs should keep using `.obsidian/plugins/lorebook-converter/`.
 
 ## Source Selection (Hierarchical Tags)
 
@@ -29,6 +36,8 @@ Settings:
 - `includeUntagged`: include notes without lorebook tags
 
 Notes with frontmatter `exclude: true` are always skipped.
+
+If `activeScope` is empty, LoreVault discovers all scopes under the configured prefix and builds one export set per scope.
 
 ## Frontmatter Parsing Model
 
@@ -53,6 +62,26 @@ root: true
 
 Entry content defaults to the markdown body (frontmatter block removed).  
 If `summary` is present, it overrides entry content.
+
+## Retrieval Routing
+
+Default routing (`retrieval: auto`):
+
+- `keywords` or `key` present -> `world_info`
+- no `keywords`/`key` -> `rag`
+
+Per-note override:
+
+```yaml
+---
+retrieval: auto   # auto | world_info | rag | both | none
+---
+```
+
+Routing behavior:
+
+- `world_info` uses compact entry content (`summary` when present, else note body)
+- `rag` uses the full note body (frontmatter removed)
 
 ## Root Handling
 
@@ -85,6 +114,21 @@ Details:
 
 - `order = max(1, floor(weighted_score))`
 - ties are broken deterministically by ascending UID offsets
+
+## Output Files
+
+For each built scope, LoreVault writes:
+
+- `<base>.json` -> `world_info`
+- `<base>.rag.md` -> `rag`
+
+If multiple scopes are built and the output path does not contain `{scope}`, LoreVault appends a scope slug:
+
+- `vault-lorevault-universe.json`
+- `vault-lorevault-universe.rag.md`
+
+If output path contains `{scope}`, the token is replaced by the scope slug.  
+Export aborts if two scopes resolve to the same output path.
 
 ## Development
 

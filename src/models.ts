@@ -35,6 +35,14 @@ export interface LoreBookEntry {
   wikilinks?: string[];
 }
 
+export interface RagDocument {
+  uid: number;
+  title: string;
+  path: string;
+  content: string;
+  scope: string;
+}
+
 export interface LoreBookSettings {
   orderByTitle: boolean;
   useDroste: boolean;

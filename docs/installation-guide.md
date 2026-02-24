@@ -74,7 +74,8 @@ If you prefer to build the plugin from source:
 
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
-   - Set the output path for your lorebook JSON file
+   - Set the base output path for exports (`world_info` JSON + `rag` markdown)
+   - Optional: include `{scope}` in output path for per-scope templating
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Adjust priority weights if needed
 
@@ -85,6 +86,8 @@ If you prefer to build the plugin from source:
 
 3. **Build your vault export**
    - Ensure your notes use hierarchical lorebook tags like `#lorebook/universe/...`
+   - Notes with `keywords`/`key` are routed to `world_info`; notes without keywords are routed to `rag` by default
+   - Use frontmatter `retrieval: auto|world_info|rag|both|none` to override per note
    - Click the book icon in the sidebar or use the command palette to start conversion
    - Monitor the progress bar as your vault is converted
 

@@ -8,16 +8,17 @@ import {
 
 test('resolveScopeOutputPaths keeps deterministic extensions', () => {
   const resolved = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', false);
-  assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault.json');
-  assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault.rag.md');
-  assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
-});
-
-test('resolveScopeOutputPaths appends slug for multi-scope builds', () => {
-  const resolved = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', true);
   assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.json');
   assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.rag.md');
   assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
+});
+
+test('resolveScopeOutputPaths appends slug regardless of build mode', () => {
+  const singleScope = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', false);
+  const multiScope = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', true);
+  assert.equal(singleScope.worldInfoPath, multiScope.worldInfoPath);
+  assert.equal(singleScope.ragPath, multiScope.ragPath);
+  assert.equal(singleScope.sqlitePath, multiScope.sqlitePath);
 });
 
 test('resolveScopeOutputPaths supports {scope} token', () => {

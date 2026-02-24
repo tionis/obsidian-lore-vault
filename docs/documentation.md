@@ -162,7 +162,7 @@ Given configured downstream output subpath + SQLite output directory:
 - world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/lorevault.json`)
 - rag file: `<sqliteOutputDir>/<downstreamSubpath>.rag.md`
 
-When building multiple scopes:
+Downstream naming:
 
 - if downstream subpath contains `{scope}`: replace token with scope slug
 - otherwise append `-<scope-slug>` before extension

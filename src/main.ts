@@ -24,7 +24,20 @@ export default class LoreBookConverterPlugin extends Plugin {
   liveContextIndex: LiveContextIndex;
 
   private getBaseOutputPath(): string {
-    return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+    return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
+  }
+
+  private getSQLiteOutputRootPath(): string {
+    const configured = this.settings.sqlite.outputPath?.trim() || DEFAULT_SETTINGS.sqlite.outputPath;
+    const hasDbExtension = path.extname(configured).toLowerCase() === '.db';
+    let outputRoot = hasDbExtension ? path.dirname(configured) : configured;
+    outputRoot = outputRoot.trim() || '.';
+
+    if (outputRoot.includes('{scope}')) {
+      outputRoot = outputRoot.replace(/\{scope\}/g, 'root');
+    }
+
+    return outputRoot;
   }
 
   private mapEntriesByUid(entries: LoreBookEntry[]): {[key: number]: LoreBookEntry} {
@@ -116,6 +129,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.tagScoping.activeScope = normalizeScope(merged.tagScoping.activeScope);
     merged.tagScoping.membershipMode = merged.tagScoping.membershipMode === 'cascade' ? 'cascade' : 'exact';
     merged.tagScoping.includeUntagged = Boolean(merged.tagScoping.includeUntagged);
+    merged.outputPath = merged.outputPath.trim();
+    if (!merged.outputPath) {
+      merged.outputPath = DEFAULT_SETTINGS.outputPath;
+    }
 
     // Keep settings valid even when older config files contain incomplete trigger config.
     if (merged.defaultEntry.constant) {
@@ -375,7 +392,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   async openOutputFolder(): Promise<void> {
-    const outputPath = this.getBaseOutputPath();
+    const outputPath = this.getSQLiteOutputRootPath();
     const adapter = this.app.vault.adapter as any;
     const isAbsolute = path.isAbsolute(outputPath);
 

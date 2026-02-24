@@ -152,11 +152,11 @@ Fixture coverage includes:
 
 ## Output Naming Rules
 
-Given configured base output path + SQLite output directory:
+Given configured downstream output subpath + SQLite output directory:
 
-- SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebook/<scope-slug>.db`)
-- world info file: `<base>.json`
-- rag file: `<base>.rag.md`
+- SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebooks/<scope-slug>.db`)
+- world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/lorevault.json`)
+- rag file: `<sqliteOutputDir>/<downstreamSubpath>.rag.md`
 
 When building multiple scopes:
 
@@ -167,6 +167,7 @@ SQLite path behavior:
 
 - if SQLite output setting is a directory: write `<dir>/<scope-slug>.db`
 - if SQLite output setting is a `.db` file path: append `-<scope-slug>` unless `{scope}` is present
+- downstream exports are always written under the SQLite scope directory (for example `lorebooks/sillytavern/...`)
 
 Output build fails fast if path collisions are detected.
 

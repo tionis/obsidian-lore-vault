@@ -7,39 +7,41 @@ import {
 } from '../src/scope-output-paths';
 
 test('resolveScopeOutputPaths keeps deterministic extensions', () => {
-  const resolved = resolveScopeOutputPaths('exports/lorevault.json', 'universe/yggdrasil', false);
-  assert.equal(resolved.worldInfoPath, 'exports/lorevault.json');
-  assert.equal(resolved.ragPath, 'exports/lorevault.rag.md');
-  assert.equal(resolved.sqlitePath, 'lorebook/universe-yggdrasil.db');
+  const resolved = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', false);
+  assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault.json');
+  assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault.rag.md');
+  assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
 });
 
 test('resolveScopeOutputPaths appends slug for multi-scope builds', () => {
-  const resolved = resolveScopeOutputPaths('exports/lorevault.json', 'universe/yggdrasil', true);
-  assert.equal(resolved.worldInfoPath, 'exports/lorevault-universe-yggdrasil.json');
-  assert.equal(resolved.ragPath, 'exports/lorevault-universe-yggdrasil.rag.md');
-  assert.equal(resolved.sqlitePath, 'lorebook/universe-yggdrasil.db');
+  const resolved = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', true);
+  assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.json');
+  assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.rag.md');
+  assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
 });
 
 test('resolveScopeOutputPaths supports {scope} token', () => {
-  const resolved = resolveScopeOutputPaths('exports/{scope}/pack', 'Universe/Árc', false);
-  assert.equal(resolved.worldInfoPath, 'exports/universe-rc/pack.json');
-  assert.equal(resolved.ragPath, 'exports/universe-rc/pack.rag.md');
-  assert.equal(resolved.sqlitePath, 'lorebook/universe-rc.db');
+  const resolved = resolveScopeOutputPaths('{scope}/pack', 'Universe/Árc', false);
+  assert.equal(resolved.worldInfoPath, 'lorebooks/universe-rc/pack.json');
+  assert.equal(resolved.ragPath, 'lorebooks/universe-rc/pack.rag.md');
+  assert.equal(resolved.sqlitePath, 'lorebooks/universe-rc.db');
 });
 
 test('resolveScopeOutputPaths supports custom sqlite base path', () => {
   const resolved = resolveScopeOutputPaths(
-    'exports/{scope}/pack.json',
+    'sillytavern/pack.json',
     'universe/yggdrasil',
     true,
     'packs/{scope}/canon.db'
   );
+  assert.equal(resolved.worldInfoPath, 'packs/universe-yggdrasil/sillytavern/pack-universe-yggdrasil.json');
+  assert.equal(resolved.ragPath, 'packs/universe-yggdrasil/sillytavern/pack-universe-yggdrasil.rag.md');
   assert.equal(resolved.sqlitePath, 'packs/universe-yggdrasil/canon.db');
 });
 
 test('assertUniqueOutputPaths throws on collisions', () => {
-  const first = resolveScopeOutputPaths('exports/lorevault-{scope}', 'World A', false);
-  const second = resolveScopeOutputPaths('exports/lorevault-{scope}', 'world-a', false);
+  const first = resolveScopeOutputPaths('sillytavern/lorevault-{scope}', 'World A', false);
+  const second = resolveScopeOutputPaths('sillytavern/lorevault-{scope}', 'world-a', false);
 
   assert.throws(
     () => assertUniqueOutputPaths([
@@ -51,8 +53,8 @@ test('assertUniqueOutputPaths throws on collisions', () => {
 });
 
 test('assertUniqueOutputPaths can ignore sqlite collisions when disabled', () => {
-  const first = resolveScopeOutputPaths('exports/one.json', 'World A', false, 'pack.db');
-  const second = resolveScopeOutputPaths('exports/two.json', 'world-a', false, 'pack.db');
+  const first = resolveScopeOutputPaths('one.json', 'World A', false, 'pack.db');
+  const second = resolveScopeOutputPaths('two.json', 'world-a', false, 'pack.db');
 
   assert.doesNotThrow(() => assertUniqueOutputPaths([
     { scope: 'World A', paths: first },

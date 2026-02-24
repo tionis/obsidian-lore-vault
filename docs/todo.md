@@ -40,10 +40,10 @@ Reference design: `docs/planning.md`.
 
 ## Phase 5: Live/Near-Live Query Layer (Writing Assistant Foundation)
 
-- [ ] Add incremental index refresh on note changes.
-- [ ] Add query pipeline combining `world_info` triggers + `rag` retrieval.
-- [ ] Add token-budgeted context assembly.
-- [ ] Add first "Continue Story with Context" command.
+- [x] Add incremental index refresh on note changes.
+- [x] Add query pipeline combining `world_info` triggers + `rag` retrieval.
+- [x] Add token-budgeted context assembly.
+- [x] Add first "Continue Story with Context" command.
 
 ## Phase 6: Hardening and Quality
 

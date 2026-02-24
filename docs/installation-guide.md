@@ -42,7 +42,11 @@ This guide will help you install the LoreVault plugin for Obsidian.
 
 4. **Verify installation**
    - You should now see a book icon in the left sidebar ribbon
-   - The command palette (Ctrl+P or Cmd+P) should include "Build LoreVault Export" and "Create LoreVault Entry Template"
+   - The command palette (Ctrl+P or Cmd+P) should include:
+     - "Build LoreVault Export"
+     - "Open LoreVault Manager"
+     - "Continue Story with Context"
+     - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
 
@@ -90,6 +94,12 @@ If you prefer to build the plugin from source:
    - Use frontmatter `retrieval: auto|world_info|rag|both|none` to override per note
    - Click the book icon in the sidebar or use the command palette to start conversion
    - Monitor the progress bar as your vault is converted
+
+4. **Use writing-assistant context insertion**
+   - Open a story note in editor view
+   - Place cursor where you want to continue
+   - Run command "Continue Story with Context"
+   - LoreVault inserts a token-budgeted context block (`world_info` + `rag`) plus a continuation draft heading
 
 ## Troubleshooting
 

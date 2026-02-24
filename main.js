@@ -3081,7 +3081,7 @@ __export(main_exports, {
   default: () => LoreBookConverterPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/models.ts
 var DEFAULT_SETTINGS = {
@@ -4579,6 +4579,487 @@ var LorebooksManagerModal = class extends import_obsidian6.Modal {
   }
 };
 
+// src/live-context-index.ts
+var import_obsidian7 = require("obsidian");
+
+// src/context-query.ts
+function estimateTokens(text) {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+function normalizeText(value) {
+  return value.toLowerCase();
+}
+function tokenize(value) {
+  const normalized = normalizeText(value);
+  const matches = normalized.match(/[a-z0-9][a-z0-9_-]*/g);
+  if (!matches) {
+    return [];
+  }
+  return [...new Set(matches.filter((token) => token.length >= 2))];
+}
+function sortWorldInfoByScore(a, b) {
+  return b.score - a.score || b.entry.order - a.entry.order || a.entry.uid - b.entry.uid;
+}
+function sortRagByScore(a, b) {
+  return b.score - a.score || a.document.path.localeCompare(b.document.path) || a.document.title.localeCompare(b.document.title) || a.document.uid - b.document.uid;
+}
+function uniqueKeywords(entry) {
+  const seen = /* @__PURE__ */ new Set();
+  const values = [];
+  for (const keyword of [...entry.key, ...entry.keysecondary]) {
+    const normalized = keyword.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    values.push(normalized);
+  }
+  return values;
+}
+function scoreWorldInfoEntries(entries, queryText) {
+  const normalizedQuery = normalizeText(queryText);
+  const tokenSet = new Set(tokenize(queryText));
+  const scored = [];
+  for (const entry of entries) {
+    const keywords = uniqueKeywords(entry);
+    const matchedKeywords = keywords.filter((keyword) => {
+      if (keyword.includes(" ")) {
+        return normalizedQuery.includes(keyword);
+      }
+      return tokenSet.has(keyword);
+    });
+    const keywordScore = matchedKeywords.length * 100;
+    const constantBoost = entry.constant ? 30 : 0;
+    const orderScore = Math.max(0, entry.order) * 0.01;
+    const score = keywordScore + constantBoost + orderScore;
+    if (score <= 0) {
+      continue;
+    }
+    scored.push({
+      entry,
+      score,
+      matchedKeywords
+    });
+  }
+  return scored.sort(sortWorldInfoByScore);
+}
+function scoreRagDocuments(documents, queryText) {
+  const normalizedQuery = normalizeText(queryText);
+  const tokens = tokenize(queryText);
+  const tokenSet = new Set(tokens);
+  const scored = [];
+  for (const document2 of documents) {
+    const normalizedTitle = normalizeText(document2.title);
+    const normalizedPath = normalizeText(document2.path);
+    const normalizedContent = normalizeText(document2.content);
+    const matchedTerms = [];
+    let score = 0;
+    for (const token of tokenSet) {
+      if (normalizedTitle.includes(token)) {
+        score += 40;
+        matchedTerms.push(token);
+        continue;
+      }
+      if (normalizedPath.includes(token)) {
+        score += 20;
+        matchedTerms.push(token);
+        continue;
+      }
+      if (normalizedContent.includes(token)) {
+        score += 10;
+        matchedTerms.push(token);
+      }
+    }
+    if (normalizedContent.includes(normalizedQuery) && normalizedQuery.length >= 4) {
+      score += 25;
+    }
+    if (score <= 0) {
+      continue;
+    }
+    scored.push({
+      document: document2,
+      score,
+      matchedTerms: [...new Set(matchedTerms)].sort((a, b) => a.localeCompare(b))
+    });
+  }
+  return scored.sort(sortRagByScore);
+}
+function trimRagContent(content) {
+  const cleaned = content.trim();
+  if (cleaned.length <= 1200) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, 1200).trimEnd()}
+...`;
+}
+function renderWorldInfoSection(entry) {
+  const keywordSuffix = entry.matchedKeywords.length > 0 ? `Matched: ${entry.matchedKeywords.join(", ")}` : "Matched: (constant)";
+  return [
+    `### ${entry.entry.comment}`,
+    `Keys: ${entry.entry.key.join(", ")}`,
+    keywordSuffix,
+    "",
+    entry.entry.content.trim()
+  ].join("\n");
+}
+function renderRagSection(document2) {
+  const matched = document2.matchedTerms.length > 0 ? `Matched terms: ${document2.matchedTerms.join(", ")}` : "Matched terms: -";
+  return [
+    `### ${document2.document.title}`,
+    `Source: \`${document2.document.path}\``,
+    matched,
+    "",
+    trimRagContent(document2.document.content)
+  ].join("\n");
+}
+function assembleScopeContext(pack, options) {
+  var _a, _b, _c;
+  const tokenBudget = Math.max(128, Math.floor(options.tokenBudget));
+  const worldInfoRatio = (_a = options.worldInfoBudgetRatio) != null ? _a : 0.6;
+  const worldInfoBudget = Math.max(0, Math.floor(tokenBudget * worldInfoRatio));
+  const ragBudget = Math.max(0, tokenBudget - worldInfoBudget);
+  const maxWorldInfoEntries = (_b = options.maxWorldInfoEntries) != null ? _b : 8;
+  const maxRagDocuments = (_c = options.maxRagDocuments) != null ? _c : 6;
+  const worldInfoCandidates = scoreWorldInfoEntries(pack.worldInfoEntries, options.queryText);
+  const ragCandidates = scoreRagDocuments(pack.ragDocuments, options.queryText);
+  const selectedWorldInfo = [];
+  let usedWorldInfoTokens = 0;
+  for (const candidate of worldInfoCandidates) {
+    if (selectedWorldInfo.length >= maxWorldInfoEntries) {
+      break;
+    }
+    const section = renderWorldInfoSection(candidate);
+    const sectionTokens = estimateTokens(section);
+    if (usedWorldInfoTokens + sectionTokens > worldInfoBudget) {
+      continue;
+    }
+    selectedWorldInfo.push(candidate);
+    usedWorldInfoTokens += sectionTokens;
+  }
+  const selectedRag = [];
+  let usedRagTokens = 0;
+  for (const candidate of ragCandidates) {
+    if (selectedRag.length >= maxRagDocuments) {
+      break;
+    }
+    const section = renderRagSection(candidate);
+    const sectionTokens = estimateTokens(section);
+    if (usedRagTokens + sectionTokens > ragBudget) {
+      continue;
+    }
+    selectedRag.push(candidate);
+    usedRagTokens += sectionTokens;
+  }
+  const worldInfoSections = selectedWorldInfo.map(renderWorldInfoSection);
+  const ragSections = selectedRag.map(renderRagSection);
+  const scopeLabel = normalizeScope(pack.scope) || "(all)";
+  const markdown = [
+    `## LoreVault Context`,
+    `Scope: \`${scopeLabel}\``,
+    `Query: ${options.queryText.trim() || "(empty)"}`,
+    "",
+    "### world_info",
+    worldInfoSections.length > 0 ? worldInfoSections.join("\n\n---\n\n") : "_No matching world_info entries._",
+    "",
+    "### rag",
+    ragSections.length > 0 ? ragSections.join("\n\n---\n\n") : "_No matching rag documents._"
+  ].join("\n");
+  return {
+    scope: pack.scope,
+    queryText: options.queryText,
+    tokenBudget,
+    usedTokens: usedWorldInfoTokens + usedRagTokens,
+    worldInfo: selectedWorldInfo,
+    rag: selectedRag,
+    markdown
+  };
+}
+
+// src/live-context-index.ts
+function sortRagDocs(a, b) {
+  return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+}
+function createSilentProgress() {
+  return {
+    setStatus: () => {
+    },
+    update: () => {
+    },
+    success: () => {
+    },
+    error: () => {
+    },
+    close: () => {
+    }
+  };
+}
+function cloneSettings(settings) {
+  return {
+    ...settings,
+    tagScoping: { ...settings.tagScoping },
+    weights: { ...settings.weights },
+    defaultLoreBook: { ...settings.defaultLoreBook },
+    defaultEntry: { ...settings.defaultEntry }
+  };
+}
+var LiveContextIndex = class {
+  constructor(app, getSettings) {
+    this.scopes = /* @__PURE__ */ new Map();
+    this.fileScopesByPath = /* @__PURE__ */ new Map();
+    this.task = { changedPaths: /* @__PURE__ */ new Set() };
+    this.refreshTimer = null;
+    this.refreshInFlight = null;
+    this.version = 0;
+    this.app = app;
+    this.getSettings = getSettings;
+  }
+  async initialize() {
+    await this.rebuildAllScopes();
+  }
+  markFileChanged(fileOrPath) {
+    if (!fileOrPath) {
+      return;
+    }
+    const path6 = typeof fileOrPath === "string" ? fileOrPath : fileOrPath.path;
+    if (!path6.toLowerCase().endsWith(".md")) {
+      return;
+    }
+    this.task.changedPaths.add(path6);
+    this.scheduleRefresh();
+  }
+  markRenamed(file, oldPath) {
+    this.markFileChanged(file);
+    if (oldPath && oldPath.toLowerCase().endsWith(".md")) {
+      this.task.changedPaths.add(oldPath);
+    }
+    this.scheduleRefresh();
+  }
+  requestFullRefresh() {
+    this.task.changedPaths.clear();
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    void this.rebuildAllScopes();
+  }
+  scheduleRefresh() {
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+    }
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      void this.flushRefreshQueue();
+    }, 350);
+  }
+  async flushRefreshQueue() {
+    if (this.refreshInFlight) {
+      await this.refreshInFlight;
+      return;
+    }
+    this.refreshInFlight = this.refreshIncremental(this.task.changedPaths);
+    this.task.changedPaths = /* @__PURE__ */ new Set();
+    try {
+      await this.refreshInFlight;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+  discoverAllScopes(files, settings) {
+    var _a;
+    const scopes = /* @__PURE__ */ new Set();
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache) {
+        continue;
+      }
+      const tags = (_a = (0, import_obsidian7.getAllTags)(cache)) != null ? _a : [];
+      const extracted = extractLorebookScopesFromTags(tags, settings.tagScoping.tagPrefix);
+      for (const scope of extracted) {
+        if (scope) {
+          scopes.add(scope);
+        }
+      }
+    }
+    return [...scopes].sort((a, b) => a.localeCompare(b));
+  }
+  computeScopePlan(settings, files) {
+    const explicitScope = normalizeScope(settings.tagScoping.activeScope);
+    const discoveredScopes = this.discoverAllScopes(files, settings);
+    const buildAllScopes = explicitScope.length === 0 && discoveredScopes.length > 0;
+    if (explicitScope) {
+      return {
+        scopesToBuild: [explicitScope],
+        buildAllScopes
+      };
+    }
+    if (discoveredScopes.length > 0) {
+      return {
+        scopesToBuild: discoveredScopes,
+        buildAllScopes
+      };
+    }
+    return {
+      scopesToBuild: [""],
+      buildAllScopes
+    };
+  }
+  async buildScope(scope, buildAllScopes, files, settings) {
+    const scopedSettings = cloneSettings(settings);
+    scopedSettings.tagScoping.activeScope = scope;
+    if (buildAllScopes) {
+      scopedSettings.tagScoping.includeUntagged = false;
+    }
+    const fileProcessor = new FileProcessor(this.app, scopedSettings);
+    await fileProcessor.processFiles(files, createSilentProgress());
+    const graphAnalyzer = new GraphAnalyzer(
+      fileProcessor.getEntries(),
+      fileProcessor.getFilenameToUid(),
+      scopedSettings,
+      fileProcessor.getRootUid()
+    );
+    graphAnalyzer.buildGraph();
+    graphAnalyzer.calculateEntryPriorities();
+    const worldInfoEntries = Object.values(fileProcessor.getEntries()).sort((a, b) => {
+      return b.order - a.order || a.uid - b.uid;
+    });
+    const ragDocuments = [...fileProcessor.getRagDocuments()].sort(sortRagDocs);
+    return {
+      scope,
+      worldInfoEntries,
+      ragDocuments,
+      builtAt: Date.now()
+    };
+  }
+  updateFileScopeIndex(settings) {
+    const metadata = collectLorebookNoteMetadata(this.app, settings);
+    const nextMap = /* @__PURE__ */ new Map();
+    for (const item of metadata) {
+      const included = shouldIncludeInScope(
+        item.scopes,
+        settings.tagScoping.activeScope,
+        settings.tagScoping.membershipMode,
+        settings.tagScoping.includeUntagged
+      );
+      if (!included && settings.tagScoping.activeScope) {
+        continue;
+      }
+      nextMap.set(item.path, item.scopes);
+    }
+    this.fileScopesByPath = nextMap;
+  }
+  async rebuildAllScopes() {
+    const settings = this.getSettings();
+    const files = this.app.vault.getMarkdownFiles();
+    const { scopesToBuild, buildAllScopes } = this.computeScopePlan(settings, files);
+    const nextScopes = /* @__PURE__ */ new Map();
+    for (const scope of scopesToBuild) {
+      const pack = await this.buildScope(scope, buildAllScopes, files, settings);
+      nextScopes.set(scope, pack);
+    }
+    this.scopes = nextScopes;
+    this.updateFileScopeIndex(settings);
+    this.version += 1;
+  }
+  async refreshIncremental(changedPaths) {
+    var _a, _b;
+    if (this.scopes.size === 0) {
+      await this.rebuildAllScopes();
+      return;
+    }
+    const settings = this.getSettings();
+    const files = this.app.vault.getMarkdownFiles();
+    const { scopesToBuild, buildAllScopes } = this.computeScopePlan(settings, files);
+    const explicitScope = normalizeScope(settings.tagScoping.activeScope);
+    if (explicitScope) {
+      const pack = await this.buildScope(explicitScope, buildAllScopes, files, settings);
+      this.scopes.set(explicitScope, pack);
+      this.scopes.forEach((_pack, scope) => {
+        if (scope !== explicitScope) {
+          this.scopes.delete(scope);
+        }
+      });
+      this.updateFileScopeIndex(settings);
+      this.version += 1;
+      return;
+    }
+    if (changedPaths.size === 0) {
+      return;
+    }
+    const currentMetadata = collectLorebookNoteMetadata(this.app, settings);
+    const currentScopesByPath = /* @__PURE__ */ new Map();
+    for (const item of currentMetadata) {
+      currentScopesByPath.set(item.path, item.scopes);
+    }
+    const affectedScopes = /* @__PURE__ */ new Set();
+    for (const changedPath of changedPaths) {
+      const previousScopes = (_a = this.fileScopesByPath.get(changedPath)) != null ? _a : [];
+      const nextScopes = (_b = currentScopesByPath.get(changedPath)) != null ? _b : [];
+      for (const scope of [...previousScopes, ...nextScopes]) {
+        const normalized = normalizeScope(scope);
+        if (normalized) {
+          affectedScopes.add(normalized);
+        }
+      }
+    }
+    for (const scope of scopesToBuild) {
+      if (!this.scopes.has(scope)) {
+        affectedScopes.add(scope);
+      }
+    }
+    if (scopesToBuild.length === 1 && scopesToBuild[0] === "") {
+      affectedScopes.add("");
+    }
+    if (affectedScopes.size === 0) {
+      this.updateFileScopeIndex(settings);
+      return;
+    }
+    for (const scope of affectedScopes) {
+      if (!scopesToBuild.includes(scope)) {
+        continue;
+      }
+      const pack = await this.buildScope(scope, buildAllScopes, files, settings);
+      this.scopes.set(scope, pack);
+    }
+    for (const existingScope of [...this.scopes.keys()]) {
+      if (!scopesToBuild.includes(existingScope)) {
+        this.scopes.delete(existingScope);
+      }
+    }
+    this.updateFileScopeIndex(settings);
+    this.version += 1;
+  }
+  getScopes() {
+    return [...this.scopes.keys()].sort((a, b) => a.localeCompare(b));
+  }
+  getVersion() {
+    return this.version;
+  }
+  async query(options, scopeOverride) {
+    var _a;
+    await this.flushRefreshQueue();
+    if (this.scopes.size === 0) {
+      await this.rebuildAllScopes();
+    }
+    const requestedScope = normalizeScope(scopeOverride != null ? scopeOverride : this.getSettings().tagScoping.activeScope);
+    let resolvedScope = requestedScope;
+    if (!resolvedScope) {
+      resolvedScope = (_a = this.getScopes()[0]) != null ? _a : "";
+    }
+    if (!this.scopes.has(resolvedScope)) {
+      const files = this.app.vault.getMarkdownFiles();
+      const settings = this.getSettings();
+      const { buildAllScopes } = this.computeScopePlan(settings, files);
+      const pack2 = await this.buildScope(resolvedScope, buildAllScopes, files, settings);
+      this.scopes.set(resolvedScope, pack2);
+    }
+    const pack = this.scopes.get(resolvedScope);
+    if (!pack) {
+      throw new Error(`No context pack for scope "${resolvedScope || "(all)"}".`);
+    }
+    return assembleScopeContext(pack, options);
+  }
+};
+
 // src/scope-output-paths.ts
 var path4 = __toESM(require("path"));
 function slugifyScope(scope) {
@@ -4632,7 +5113,7 @@ function assertUniqueOutputPaths(assignments) {
 
 // src/main.ts
 var path5 = __toESM(require("path"));
-var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
+var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
   getBaseOutputPath() {
     return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
   }
@@ -4644,7 +5125,7 @@ var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
       if (!cache) {
         continue;
       }
-      const tags = (_a = (0, import_obsidian7.getAllTags)(cache)) != null ? _a : [];
+      const tags = (_a = (0, import_obsidian8.getAllTags)(cache)) != null ? _a : [];
       const fileScopes = extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
       for (const scope of fileScopes) {
         if (scope) {
@@ -4700,7 +5181,8 @@ var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
   }
   async onload() {
     this.settings = this.mergeSettings(await this.loadData());
-    (0, import_obsidian7.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
+    (0, import_obsidian8.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
     </svg>`);
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
@@ -4722,6 +5204,13 @@ var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
       }
     });
     this.addCommand({
+      id: "continue-story-with-context",
+      name: "Continue Story with Context",
+      callback: async () => {
+        await this.continueStoryWithContext();
+      }
+    });
+    this.addCommand({
       id: "create-lorebook-template",
       name: "Create LoreVault Entry Template",
       callback: async () => {
@@ -4730,20 +5219,106 @@ var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
           const activeFile = this.app.workspace.getActiveFile();
           if (activeFile) {
             await this.app.vault.modify(activeFile, template);
-            new import_obsidian7.Notice(`Template applied to ${activeFile.name}`);
+            new import_obsidian8.Notice(`Template applied to ${activeFile.name}`);
           } else {
             const fileName = `LoreVault_Entry_${Date.now()}.md`;
             await this.app.vault.create(fileName, template);
-            new import_obsidian7.Notice(`Created new template: ${fileName}`);
+            new import_obsidian8.Notice(`Created new template: ${fileName}`);
           }
         } catch (error) {
           console.error("Template creation cancelled", error);
         }
       }
     });
+    this.registerEvent(this.app.vault.on("create", (file) => {
+      this.liveContextIndex.markFileChanged(file);
+    }));
+    this.registerEvent(this.app.vault.on("modify", (file) => {
+      this.liveContextIndex.markFileChanged(file);
+    }));
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      this.liveContextIndex.markFileChanged(file);
+    }));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      this.liveContextIndex.markRenamed(file, oldPath);
+    }));
+    void this.liveContextIndex.initialize().catch((error) => {
+      console.error("Failed to initialize live context index:", error);
+    });
   }
   async saveData(settings) {
-    await super.saveData(settings);
+    var _a;
+    this.settings = this.mergeSettings(settings);
+    await super.saveData(this.settings);
+    (_a = this.liveContextIndex) == null ? void 0 : _a.requestFullRefresh();
+  }
+  resolveScopeFromActiveFile(activeFile) {
+    var _a;
+    if (!activeFile) {
+      return void 0;
+    }
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    if (!cache) {
+      return void 0;
+    }
+    const tags = (_a = (0, import_obsidian8.getAllTags)(cache)) != null ? _a : [];
+    const scopes = extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+    if (scopes.length === 0) {
+      return void 0;
+    }
+    return scopes[0];
+  }
+  extractQueryWindow(text) {
+    const normalized = text.trim();
+    if (!normalized) {
+      return "";
+    }
+    const maxChars = 5e3;
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return normalized.slice(normalized.length - maxChars);
+  }
+  async continueStoryWithContext() {
+    var _a, _b, _c;
+    const markdownView = this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+    if (!markdownView) {
+      new import_obsidian8.Notice("No active markdown editor found.");
+      return;
+    }
+    const editor = markdownView.editor;
+    const activeFile = (_a = markdownView.file) != null ? _a : this.app.workspace.getActiveFile();
+    const cursor = editor.getCursor();
+    const textBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
+    const queryText = this.extractQueryWindow(textBeforeCursor);
+    const fallbackQuery = (_b = activeFile == null ? void 0 : activeFile.basename) != null ? _b : "story continuation";
+    const scopedQuery = queryText || fallbackQuery;
+    const scope = (_c = this.resolveScopeFromActiveFile(activeFile)) != null ? _c : normalizeScope(this.settings.tagScoping.activeScope);
+    try {
+      const context = await this.liveContextIndex.query({
+        queryText: scopedQuery,
+        tokenBudget: this.settings.defaultLoreBook.tokenBudget
+      }, scope);
+      const insertBlock = [
+        "",
+        "",
+        "<!-- LoreVault Context Start -->",
+        context.markdown,
+        "<!-- LoreVault Context End -->",
+        "",
+        "### Continue Story Draft",
+        "[Write continuation here based on the context above.]",
+        ""
+      ].join("\n");
+      editor.replaceRange(insertBlock, cursor);
+      new import_obsidian8.Notice(
+        `Inserted context for scope ${context.scope || "(all)"} (${context.worldInfo.length} world_info, ${context.rag.length} rag).`
+      );
+    } catch (error) {
+      console.error("Continue Story with Context failed:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian8.Notice(`Continue Story with Context failed: ${message}`);
+    }
   }
   async openOutputFolder() {
     var _a, _b;
@@ -4768,7 +5343,7 @@ var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
     if (openResult) {
       throw new Error(openResult);
     }
-    new import_obsidian7.Notice(`Opened output folder: ${folderPath}`);
+    new import_obsidian8.Notice(`Opened output folder: ${folderPath}`);
   }
   // This is the main conversion function
   async convertToLorebook(scopeOverride) {
@@ -4826,10 +5401,11 @@ var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
           `Scope ${scope || "(all)"} complete: ${Object.keys(fileProcessor.getEntries()).length} world_info entries, ${fileProcessor.getRagDocuments().length} rag docs.`
         );
       }
-      new import_obsidian7.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+      new import_obsidian8.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+      this.liveContextIndex.requestFullRefresh();
     } catch (error) {
       console.error("Conversion failed:", error);
-      new import_obsidian7.Notice(`Conversion failed: ${error.message}`);
+      new import_obsidian8.Notice(`Conversion failed: ${error.message}`);
     }
   }
 };

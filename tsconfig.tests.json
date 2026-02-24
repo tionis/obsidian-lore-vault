@@ -20,6 +20,7 @@
     "src/graph-analyzer.ts",
     "src/link-target-index.ts",
     "src/frontmatter-utils.ts",
+    "src/context-query.ts",
     "src/lorebook-scoping.ts",
     "src/lorebooks-manager-data.ts",
     "src/retrieval-routing.ts",

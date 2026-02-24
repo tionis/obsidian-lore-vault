@@ -143,6 +143,20 @@ Manager features:
 - `Open Output Folder` action
 - debug drill-down table showing why each note is included/excluded and how it is routed
 
+## Writing Assistant Commands (MVP)
+
+Command: `Continue Story with Context`
+
+Behavior:
+
+- builds/refreshes an in-memory scope index
+- watches note create/modify/delete/rename events and performs near-live refresh
+- queries both retrieval layers from current editor context:
+  - `world_info` by keyword/trigger relevance
+  - `rag` by term-overlap relevance
+- applies token-budgeted context assembly
+- inserts a deterministic context block plus a continuation draft heading at cursor
+
 ## Development
 
 ```bash

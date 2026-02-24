@@ -113,6 +113,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.convertToLorebook();
     });
 
+    this.addRibbonIcon('lorebook', 'Open LoreVault Manager', () => {
+      new LorebooksManagerModal(this.app, this).open();
+    });
+
     // Add command
     this.addCommand({
       id: 'convert-to-lorebook',

@@ -55,7 +55,7 @@ function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): 
 export function resolveScopeOutputPaths(
   baseOutputPath: string,
   scope: string,
-  buildAllScopes: boolean,
+  _buildAllScopes: boolean,
   sqliteBaseOutputPath?: string
 ): ScopeOutputPaths {
   const scopeSlug = slugifyScope(scope);
@@ -70,7 +70,7 @@ export function resolveScopeOutputPaths(
   let stemWithScope = stem;
   if (stem.includes('{scope}')) {
     stemWithScope = stem.replace(/\{scope\}/g, scopeSlug);
-  } else if (buildAllScopes) {
+  } else {
     stemWithScope = `${stem}-${scopeSlug}`;
   }
 

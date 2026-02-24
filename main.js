@@ -3317,9 +3317,10 @@ Enter your content here...
 };
 async function createTemplate(app, settings) {
   return new Promise((resolve, reject) => {
+    var _a;
     let pluginSettings;
     if (!settings) {
-      const plugin = app.plugins.plugins["lorebook-converter"];
+      const plugin = (_a = app.plugins.plugins["lore-vault"]) != null ? _a : app.plugins.plugins["lorebook-converter"];
       if (plugin && plugin.settings) {
         pluginSettings = plugin.settings;
       } else {

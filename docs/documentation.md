@@ -11,7 +11,7 @@ Current runtime export targets per scope:
 
 ## Compatibility
 
-- Plugin id: `lorebook-converter` (kept for migration stability)
+- Plugin id: `lore-vault`
 - Plugin name: `LoreVault`
 - Minimum Obsidian version: `0.15.0`
 - Desktop only (`isDesktopOnly: true`)

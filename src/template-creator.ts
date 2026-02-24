@@ -171,7 +171,8 @@ export async function createTemplate(app: App, settings?: ConverterSettings): Pr
     
     if (!settings) {
       // Try to get the plugin instance
-      const plugin = (app as any).plugins.plugins['lorebook-converter'];
+      const plugin = (app as any).plugins.plugins['lore-vault']
+        ?? (app as any).plugins.plugins['lorebook-converter'];
       if (plugin && plugin.settings) {
         pluginSettings = plugin.settings;
       } else {

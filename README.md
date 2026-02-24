@@ -13,8 +13,9 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 
 ## Migration Notes
 
-- Plugin name is now **LoreVault**, but plugin id remains `lorebook-converter` for upgrade compatibility.
-- Existing installs should keep using `.obsidian/plugins/lorebook-converter/`.
+- Plugin id is now `lore-vault`.
+- Install/update path should be `.obsidian/plugins/lore-vault/`.
+- If you previously used `.obsidian/plugins/lorebook-converter/`, move the plugin files to the new folder.
 
 ## Source Selection (Hierarchical Tags)
 

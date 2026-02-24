@@ -191,20 +191,30 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
 
-    // Add custom icon
-    addIcon('lorebook', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
+    // Add custom ribbon icons with clearer intent.
+    addIcon('lorevault-build', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M16 20h44a8 8 0 0 1 8 8v56a8 8 0 0 0-8-8H16z"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M68 28h16"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M76 20v16"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M30 38h24M30 52h20M30 66h16"/>
+    </svg>`);
+    addIcon('lorevault-manager', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <rect x="12" y="16" width="76" height="68" rx="10" ry="10" fill="none" stroke="currentColor" stroke-width="8"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" d="M28 36h24M28 52h24M28 68h24"/>
+      <circle cx="68" cy="36" r="5" fill="currentColor"/>
+      <circle cx="76" cy="52" r="5" fill="currentColor"/>
+      <circle cx="64" cy="68" r="5" fill="currentColor"/>
     </svg>`);
 
     // Add settings tab
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
 
     // Add ribbon icon
-    this.addRibbonIcon('lorebook', 'Build Active Lorebook Scope', () => {
+    this.addRibbonIcon('lorevault-build', 'Build Active Lorebook Scope', () => {
       void this.buildActiveScopeExport();
     });
 
-    this.addRibbonIcon('lorebook', 'Open LoreVault Manager', () => {
+    this.addRibbonIcon('lorevault-manager', 'Open LoreVault Manager', () => {
       void this.openLorebooksManagerView();
     });
 

@@ -69,7 +69,9 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
     ragDocuments: [
       createRagDocument(10, 'Aurelia Chronicle', 'notes/aurelia.md', 'Aurelia appears in chapter one.'),
       createRagDocument(11, 'Tree Notes', 'notes/yggdrasil.md', 'Yggdrasil roots connect many realms.')
-    ]
+    ],
+    ragChunks: [],
+    ragChunkEmbeddings: []
   };
 
   const context = assembleScopeContext(pack, {
@@ -98,7 +100,9 @@ test('assembleScopeContext enforces token budget caps', () => {
     ragDocuments: [
       createRagDocument(10, 'Aurelia Chronicle', 'notes/aurelia.md', largeContent),
       createRagDocument(11, 'Aurelia Addendum', 'notes/aurelia-2.md', largeContent)
-    ]
+    ],
+    ragChunks: [],
+    ragChunkEmbeddings: []
   };
 
   const context = assembleScopeContext(pack, {

@@ -44,6 +44,27 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       groupWeight: 100,
       ...(overrides.defaultEntry ?? {})
     },
+    sqlite: {
+      enabled: true,
+      outputPath: '',
+      ...(overrides.sqlite ?? {})
+    },
+    embeddings: {
+      enabled: false,
+      provider: 'openrouter',
+      endpoint: 'https://openrouter.ai/api/v1',
+      apiKey: '',
+      model: 'qwen/qwen3-embedding-8b',
+      instruction: '',
+      batchSize: 16,
+      timeoutMs: 45000,
+      cacheDir: '.obsidian/plugins/lore-vault/cache/embeddings',
+      chunkingMode: 'auto',
+      minChunkChars: 300,
+      maxChunkChars: 1800,
+      overlapChars: 200,
+      ...(overrides.embeddings ?? {})
+    },
     ...overrides
   };
 }

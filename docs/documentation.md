@@ -6,6 +6,7 @@ LoreVault compiles Obsidian notes into deterministic context exports.
 
 Current runtime export targets per scope:
 
+- canonical LoreVault SQLite pack (`.db`)
 - SillyTavern-style `world_info` JSON
 - `rag` markdown pack
 
@@ -26,7 +27,8 @@ When you run **Build LoreVault Export**:
 4. Route notes into `world_info`, `rag`, or both
 5. Build wikilink graph for `world_info` entries
 6. Compute deterministic `order`
-7. Export scoped `world_info` JSON + scoped `rag` markdown
+7. Build canonical SQLite pack (`world_info`, `rag`, chunks, embeddings)
+8. Export scoped `world_info` JSON + scoped `rag` markdown
 
 ## Tag Scoping
 
@@ -146,11 +148,13 @@ Fixture coverage includes:
 - retrieval routing mode parsing and target resolution
 - output path resolution/collision checks
 - rag markdown export ordering
+- rag chunking determinism
 
 ## Output Naming Rules
 
 Given configured base output path:
 
+- SQLite pack file: `<base>.lorevault.db`
 - world info file: `<base>.json`
 - rag file: `<base>.rag.md`
 
@@ -160,6 +164,38 @@ When building multiple scopes:
 - otherwise append `-<scope-slug>` before extension
 
 Output build fails fast if path collisions are detected.
+
+## Embeddings and Semantic RAG
+
+Configurable embedding providers:
+
+- OpenRouter
+- Ollama
+- OpenAI-compatible endpoints
+
+Default model:
+
+- `qwen/qwen3-embedding-8b`
+
+Caching:
+
+- one-file-per-hash cache records
+- cache key includes:
+  - chunk text hash
+  - provider/model
+  - instruction
+  - chunking signature
+
+Chunking modes:
+
+- `auto` (heuristic)
+- `note`
+- `section`
+
+Live query combines:
+
+- lexical scoring
+- optional semantic boost from chunk embeddings
 
 ## LoreVault Manager UI
 

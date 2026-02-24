@@ -1,20 +1,22 @@
 import { App, MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags } from 'obsidian';
-import { ConverterSettings, DEFAULT_SETTINGS } from './models';
+import { ConverterSettings, DEFAULT_SETTINGS, LoreBookEntry } from './models';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
-import { FileProcessor } from './file-processor';
-import { GraphAnalyzer } from './graph-analyzer';
 import { LoreBookExporter } from './lorebook-exporter'; 
 import { LoreBookConverterSettingTab } from './settings-tab';
 import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
 import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
 import { LiveContextIndex } from './live-context-index';
+import { EmbeddingService } from './embedding-service';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
   resolveScopeOutputPaths
 } from './scope-output-paths';
+import { buildScopePack } from './scope-pack-builder';
+import { SqlitePackExporter } from './sqlite-pack-exporter';
+import { SqlitePackReader } from './sqlite-pack-reader';
 import * as path from 'path';
 
 export default class LoreBookConverterPlugin extends Plugin {
@@ -23,6 +25,14 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+  }
+
+  private mapEntriesByUid(entries: LoreBookEntry[]): {[key: number]: LoreBookEntry} {
+    const map: {[key: number]: LoreBookEntry} = {};
+    for (const entry of entries) {
+      map[entry.uid] = entry;
+    }
+    return map;
   }
 
   private refreshManagerViews(): void {
@@ -91,6 +101,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       defaultEntry: {
         ...DEFAULT_SETTINGS.defaultEntry,
         ...(data?.defaultEntry ?? {})
+      },
+      sqlite: {
+        ...DEFAULT_SETTINGS.sqlite,
+        ...(data?.sqlite ?? {})
+      },
+      embeddings: {
+        ...DEFAULT_SETTINGS.embeddings,
+        ...(data?.embeddings ?? {})
       }
     };
 
@@ -117,6 +135,32 @@ export default class LoreBookConverterPlugin extends Plugin {
       0,
       Math.min(3, Math.floor(merged.defaultEntry.selectiveLogic))
     );
+
+    merged.sqlite.enabled = Boolean(merged.sqlite.enabled);
+    merged.sqlite.outputPath = merged.sqlite.outputPath.trim();
+
+    merged.embeddings.enabled = Boolean(merged.embeddings.enabled);
+    merged.embeddings.provider = (
+      merged.embeddings.provider === 'ollama' ||
+      merged.embeddings.provider === 'openai_compatible'
+    ) ? merged.embeddings.provider : 'openrouter';
+    merged.embeddings.endpoint = merged.embeddings.endpoint.trim();
+    merged.embeddings.apiKey = merged.embeddings.apiKey.trim();
+    merged.embeddings.model = merged.embeddings.model.trim() || DEFAULT_SETTINGS.embeddings.model;
+    merged.embeddings.instruction = merged.embeddings.instruction.trim();
+    merged.embeddings.batchSize = Math.max(1, Math.floor(merged.embeddings.batchSize));
+    merged.embeddings.timeoutMs = Math.max(1000, Math.floor(merged.embeddings.timeoutMs));
+    merged.embeddings.cacheDir = merged.embeddings.cacheDir.trim() || DEFAULT_SETTINGS.embeddings.cacheDir;
+    merged.embeddings.chunkingMode = (
+      merged.embeddings.chunkingMode === 'note' ||
+      merged.embeddings.chunkingMode === 'section'
+    ) ? merged.embeddings.chunkingMode : 'auto';
+    merged.embeddings.minChunkChars = Math.max(100, Math.floor(merged.embeddings.minChunkChars));
+    merged.embeddings.maxChunkChars = Math.max(
+      merged.embeddings.minChunkChars,
+      Math.floor(merged.embeddings.maxChunkChars)
+    );
+    merged.embeddings.overlapChars = Math.max(0, Math.floor(merged.embeddings.overlapChars));
 
     return merged;
   }
@@ -351,57 +395,72 @@ export default class LoreBookConverterPlugin extends Plugin {
       const baseOutputPath = this.getBaseOutputPath();
       const worldInfoExporter = new LoreBookExporter(this.app);
       const ragExporter = new RagExporter(this.app);
+      const sqliteExporter = new SqlitePackExporter(this.app);
+      const sqliteReader = new SqlitePackReader(this.app);
+      const embeddingService = this.settings.embeddings.enabled
+        ? new EmbeddingService(this.app, this.settings.embeddings)
+        : null;
       const scopeAssignments: ScopeOutputAssignment[] = scopesToBuild.map(scope => ({
         scope,
-        paths: resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes)
+        paths: resolveScopeOutputPaths(
+          baseOutputPath,
+          scope,
+          buildAllScopes,
+          this.settings.sqlite.outputPath
+        )
       }));
 
-      assertUniqueOutputPaths(scopeAssignments);
+      assertUniqueOutputPaths(scopeAssignments, {
+        includeSqlite: this.settings.sqlite.enabled
+      });
 
       for (const assignment of scopeAssignments) {
         const { scope, paths } = assignment;
-        const scopedSettings = this.mergeSettings({
-          ...this.settings,
-          tagScoping: {
-            ...this.settings.tagScoping,
-            activeScope: scope,
-            // Avoid duplicating untagged notes in every scope during all-scope builds.
-            includeUntagged: buildAllScopes ? false : this.settings.tagScoping.includeUntagged
-          }
-        });
-
-        const fileProcessor = new FileProcessor(this.app, scopedSettings);
         const progress = new ProgressBar(
-          files.length + 3, // Files + graph build + world_info export + rag export
+          files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + rag
           `Building LoreVault scope: ${scope || '(all)'}`
         );
 
-        progress.setStatus(`Scope ${scope || '(all)'}: processing files...`);
-        await fileProcessor.processFiles(files, progress);
-
-        progress.setStatus(`Scope ${scope || '(all)'}: building relationship graph...`);
-        const graphAnalyzer = new GraphAnalyzer(
-          fileProcessor.getEntries(),
-          fileProcessor.getFilenameToUid(),
-          scopedSettings,
-          fileProcessor.getRootUid()
+        const scopePackResult = await buildScopePack(
+          this.app,
+          this.settings,
+          scope,
+          files,
+          buildAllScopes,
+          embeddingService,
+          progress
         );
-        graphAnalyzer.buildGraph();
-        progress.update();
 
-        progress.setStatus(`Scope ${scope || '(all)'}: calculating world_info priorities...`);
-        graphAnalyzer.calculateEntryPriorities();
+        const scopedSettings = scopePackResult.scopedSettings;
+        let worldInfoEntries = scopePackResult.pack.worldInfoEntries;
+        let ragDocuments = scopePackResult.pack.ragDocuments;
+
+        if (this.settings.sqlite.enabled) {
+          progress.setStatus(`Scope ${scope || '(all)'}: exporting canonical SQLite pack...`);
+          await sqliteExporter.exportScopePack(scopePackResult.pack, paths.sqlitePath);
+          progress.update();
+
+          progress.setStatus(`Scope ${scope || '(all)'}: reading exports from SQLite pack...`);
+          const readPack = await sqliteReader.readScopePack(paths.sqlitePath);
+          worldInfoEntries = readPack.worldInfoEntries;
+          ragDocuments = readPack.ragDocuments;
+          progress.update();
+        }
 
         progress.setStatus(`Scope ${scope || '(all)'}: exporting world_info JSON...`);
-        await worldInfoExporter.exportLoreBookJson(fileProcessor.getEntries(), paths.worldInfoPath, scopedSettings);
+        await worldInfoExporter.exportLoreBookJson(
+          this.mapEntriesByUid(worldInfoEntries),
+          paths.worldInfoPath,
+          scopedSettings
+        );
         progress.update();
 
         progress.setStatus(`Scope ${scope || '(all)'}: exporting RAG markdown...`);
-        await ragExporter.exportRagMarkdown(fileProcessor.getRagDocuments(), paths.ragPath, scope || '(all)');
+        await ragExporter.exportRagMarkdown(ragDocuments, paths.ragPath, scope || '(all)');
         progress.update();
 
         progress.success(
-          `Scope ${scope || '(all)'} complete: ${Object.keys(fileProcessor.getEntries()).length} world_info entries, ${fileProcessor.getRagDocuments().length} rag docs.`
+          `Scope ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} rag docs.`
         );
       }
 

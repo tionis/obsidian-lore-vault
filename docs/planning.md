@@ -68,10 +68,62 @@ Selection for lorebook scope should be tag-first, not folder-rule-first.
 
 For each resolved lorebook scope:
 
-- export `world_info` JSON
-- export `rag` markdown pack
+- export canonical LoreVault SQLite pack (`.db`)
+- derive downstream outputs from the SQLite pack:
+  - `world_info` JSON
+  - `rag` markdown pack
 
 Outputs remain deterministic and stable for Git diffs.
+
+## Canonical SQLite Pack
+
+Primary export format is a SQLite pack per scope containing:
+
+- scope metadata
+- `world_info` entries
+- `rag` documents
+- `rag` chunks
+- optional chunk embeddings
+
+Downstream targets should read from this pack format instead of re-parsing vault content.
+
+## Embedding-Based RAG
+
+RAG retrieval should support semantic ranking with embeddings, while keeping lexical fallback.
+
+Provider model:
+
+- backend adapters:
+  - OpenRouter
+  - Ollama
+  - OpenAI-compatible endpoints
+- default model: `qwen/qwen3-embedding-8b`
+
+Cache model:
+
+- one file per hash record for sync-friendly storage
+- cache key includes:
+  - chunk text hash
+  - provider + model
+  - instruction
+  - chunking signature
+
+Chunking:
+
+- `auto` heuristic (short note -> single chunk; longer -> heading-aware chunks)
+- override modes:
+  - `note`
+  - `section`
+
+## Future: World Info Auto-Summary
+
+Add automatic summary generation for `world_info` entries as a future phase.
+
+Constraints:
+
+- opt-in and review-first
+- deterministic output once accepted
+- preserve manual `summary` override precedence
 
 ## Obsidian UX Direction
 

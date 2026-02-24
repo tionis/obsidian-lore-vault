@@ -3116,6 +3116,25 @@ var DEFAULT_SETTINGS = {
     probability: 100,
     depth: 4,
     groupWeight: 100
+  },
+  sqlite: {
+    enabled: true,
+    outputPath: ""
+  },
+  embeddings: {
+    enabled: false,
+    provider: "openrouter",
+    endpoint: "https://openrouter.ai/api/v1",
+    apiKey: "",
+    model: "qwen/qwen3-embedding-8b",
+    instruction: "",
+    batchSize: 16,
+    timeoutMs: 45e3,
+    cacheDir: ".obsidian/plugins/lore-vault/cache/embeddings",
+    chunkingMode: "auto",
+    minChunkChars: 300,
+    maxChunkChars: 1800,
+    overlapChars: 200
   }
 };
 
@@ -3343,71 +3362,474 @@ async function createTemplate(app, settings) {
   });
 }
 
-// src/file-processor.ts
-var import_obsidian3 = require("obsidian");
-
-// src/link-target-index.ts
+// src/lorebook-exporter.ts
+var fs = __toESM(require("fs"));
 var path = __toESM(require("path"));
-function normalizeLinkTarget(target) {
-  return target.trim().replace(/\\/g, "/").replace(/#.*$/, "").replace(/\.md$/i, "").trim();
-}
-function extractWikilinks(content) {
-  const pattern = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-  const links = [];
-  let match;
-  while ((match = pattern.exec(content)) !== null) {
-    const rawLink = match[1].trim();
-    const link = normalizeLinkTarget(rawLink);
-    if (!link) {
-      continue;
-    }
-    links.push(link);
-    const base = path.basename(link);
-    if (base !== link) {
-      links.push(base);
-    }
-    if (link.includes(" ")) {
-      links.push(link.replace(/ /g, "-"));
-      links.push(link.replace(/ /g, "_"));
-    }
+var LoreBookExporter = class {
+  constructor(app) {
+    this.app = app;
   }
-  return [...new Set(links)];
-}
-var LinkTargetIndex = class {
-  constructor() {
-    this.targetToUid = {};
-    this.ambiguousTargets = /* @__PURE__ */ new Set();
-  }
-  addTargetMapping(target, uid) {
-    const normalized = normalizeLinkTarget(target);
-    if (!normalized) {
-      return;
+  async exportLoreBookJson(entries, outputPath, settings) {
+    const entriesDict = {};
+    for (const [uid, entry] of Object.entries(entries)) {
+      const { wikilinks, ...entryWithoutWikilinks } = entry;
+      const normalizedEntry = { ...entryWithoutWikilinks };
+      if (!normalizedEntry.constant && !normalizedEntry.vectorized && !normalizedEntry.selective) {
+        normalizedEntry.constant = settings.defaultEntry.constant;
+        normalizedEntry.vectorized = settings.defaultEntry.vectorized;
+        normalizedEntry.selective = settings.defaultEntry.selective;
+      } else {
+        if (normalizedEntry.constant) {
+          normalizedEntry.vectorized = false;
+          normalizedEntry.selective = false;
+        } else if (normalizedEntry.vectorized) {
+          normalizedEntry.constant = false;
+          normalizedEntry.selective = false;
+        } else if (normalizedEntry.selective) {
+          normalizedEntry.constant = false;
+          normalizedEntry.vectorized = false;
+        }
+      }
+      if (normalizedEntry.selectiveLogic === void 0) {
+        normalizedEntry.selectiveLogic = settings.defaultEntry.selectiveLogic;
+      }
+      if (normalizedEntry.probability === void 0) {
+        normalizedEntry.probability = settings.defaultEntry.probability;
+      }
+      if (normalizedEntry.depth === void 0) {
+        normalizedEntry.depth = settings.defaultEntry.depth;
+      }
+      if (normalizedEntry.groupWeight === void 0) {
+        normalizedEntry.groupWeight = settings.defaultEntry.groupWeight;
+      }
+      entriesDict[uid] = normalizedEntry;
     }
-    if (this.ambiguousTargets.has(normalized)) {
-      return;
+    const lorebook = {
+      entries: entriesDict,
+      // Type assertion to satisfy TypeScript
+      settings: {
+        orderByTitle: settings.defaultLoreBook.orderByTitle,
+        useDroste: settings.defaultLoreBook.useDroste,
+        useRecursion: settings.defaultLoreBook.useRecursion,
+        tokenBudget: settings.defaultLoreBook.tokenBudget,
+        recursionBudget: settings.defaultLoreBook.recursionBudget
+      }
+    };
+    try {
+      const isAbsolutePath = path.isAbsolute(outputPath);
+      if (!isAbsolutePath) {
+        await this.app.vault.adapter.write(
+          outputPath,
+          JSON.stringify(lorebook, null, 2)
+        );
+      } else {
+        const dirPath = path.dirname(outputPath);
+        if (!fs.existsSync(dirPath)) {
+          fs.mkdirSync(dirPath, { recursive: true });
+        }
+        fs.writeFileSync(outputPath, JSON.stringify(lorebook, null, 2), "utf8");
+      }
+      console.log(`Successfully exported ${Object.keys(entries).length} entries to ${outputPath}`);
+    } catch (e) {
+      console.error(`Error writing JSON to ${outputPath}:`, e);
+      throw e;
     }
-    const existingUid = this.targetToUid[normalized];
-    if (existingUid === void 0) {
-      this.targetToUid[normalized] = uid;
-      return;
-    }
-    if (existingUid !== uid) {
-      delete this.targetToUid[normalized];
-      this.ambiguousTargets.add(normalized);
-    }
-  }
-  registerFileMappings(filePath, basename2, uid) {
-    this.addTargetMapping(filePath, uid);
-    this.addTargetMapping(basename2, uid);
-  }
-  getMappings() {
-    return this.targetToUid;
-  }
-  reset() {
-    this.targetToUid = {};
-    this.ambiguousTargets = /* @__PURE__ */ new Set();
   }
 };
+
+// src/settings-tab.ts
+var import_obsidian3 = require("obsidian");
+var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.addClass("lorebook-converter-settings");
+    containerEl.createEl("h2", { text: "LoreVault Settings" });
+    new import_obsidian3.Setting(containerEl).setName("Output Path").setDesc("Base output path for downstream exports (.json world_info and .rag.md). SQLite canonical packs use dedicated SQLite Output Path.").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
+      this.plugin.settings.outputPath = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    containerEl.createEl("h3", { text: "Lorebook Scope" });
+    new import_obsidian3.Setting(containerEl).setName("Lorebook Tag Prefix").setDesc("Tag namespace used to detect lorebooks (without #), e.g. lorebook").addText((text) => text.setPlaceholder("lorebook").setValue(this.plugin.settings.tagScoping.tagPrefix).onChange(async (value) => {
+      this.plugin.settings.tagScoping.tagPrefix = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Active Scope").setDesc("Optional scope path under the tag prefix, e.g. universe/yggdrasil (empty = all lorebook tags)").addText((text) => text.setPlaceholder("universe/yggdrasil").setValue(this.plugin.settings.tagScoping.activeScope).onChange(async (value) => {
+      this.plugin.settings.tagScoping.activeScope = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Membership Mode").setDesc("Exact: include only exact scope tags. Cascade: include entries from child scopes too.").addDropdown((dropdown) => dropdown.addOptions({
+      "exact": "Exact",
+      "cascade": "Cascade"
+    }).setValue(this.plugin.settings.tagScoping.membershipMode).onChange(async (value) => {
+      this.plugin.settings.tagScoping.membershipMode = value === "cascade" ? "cascade" : "exact";
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Include Untagged Notes").setDesc("If enabled, notes without lorebook tags are included in the active build.").addToggle((toggle) => toggle.setValue(this.plugin.settings.tagScoping.includeUntagged).onChange(async (value) => {
+      this.plugin.settings.tagScoping.includeUntagged = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    containerEl.createEl("h3", { text: "Default LoreBook Settings" });
+    new import_obsidian3.Setting(containerEl).setName("Order By Title").setDesc("Entries will be ordered by their titles instead of priority score").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.orderByTitle).onChange(async (value) => {
+      this.plugin.settings.defaultLoreBook.orderByTitle = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Use Droste Effect").setDesc("Allow lorebook entries to trigger other lorebook entries").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useDroste).onChange(async (value) => {
+      this.plugin.settings.defaultLoreBook.useDroste = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Use Recursion").setDesc("Allow entries to call themselves recursively").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useRecursion).onChange(async (value) => {
+      this.plugin.settings.defaultLoreBook.useRecursion = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Token Budget").setDesc("Maximum tokens to spend on the lorebook").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.tokenBudget.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue > 0) {
+        this.plugin.settings.defaultLoreBook.tokenBudget = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Recursion Budget").setDesc("Maximum recursion depth for entries").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.recursionBudget.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue > 0) {
+        this.plugin.settings.defaultLoreBook.recursionBudget = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+    containerEl.createEl("h3", { text: "Default Entry Settings" });
+    const triggerSetting = new import_obsidian3.Setting(containerEl).setName("Default Trigger Method").setDesc("How entries are triggered by default");
+    const triggerOptions = document.createDocumentFragment();
+    const createRadio = (container, label, value, checked) => {
+      const radioItem = container.createEl("div", { cls: "radio-item" });
+      const radio = radioItem.createEl("input", {
+        type: "radio",
+        attr: {
+          id: `trigger-${value}`,
+          name: "trigger-method",
+          value
+        }
+      });
+      radio.checked = checked;
+      radioItem.createEl("label", {
+        text: label,
+        attr: { for: `trigger-${value}` }
+      });
+      return radio;
+    };
+    const constantRadio = createRadio(
+      triggerOptions,
+      "Constant (always included)",
+      "constant",
+      this.plugin.settings.defaultEntry.constant
+    );
+    const vectorizedRadio = createRadio(
+      triggerOptions,
+      "Vectorized (AI determines relevance)",
+      "vectorized",
+      this.plugin.settings.defaultEntry.vectorized
+    );
+    const selectiveRadio = createRadio(
+      triggerOptions,
+      "Selective (triggered by keywords)",
+      "selective",
+      this.plugin.settings.defaultEntry.selective
+    );
+    constantRadio.addEventListener("change", async () => {
+      if (constantRadio.checked) {
+        this.plugin.settings.defaultEntry.constant = true;
+        this.plugin.settings.defaultEntry.vectorized = false;
+        this.plugin.settings.defaultEntry.selective = false;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    });
+    vectorizedRadio.addEventListener("change", async () => {
+      if (vectorizedRadio.checked) {
+        this.plugin.settings.defaultEntry.constant = false;
+        this.plugin.settings.defaultEntry.vectorized = true;
+        this.plugin.settings.defaultEntry.selective = false;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    });
+    selectiveRadio.addEventListener("change", async () => {
+      if (selectiveRadio.checked) {
+        this.plugin.settings.defaultEntry.constant = false;
+        this.plugin.settings.defaultEntry.vectorized = false;
+        this.plugin.settings.defaultEntry.selective = true;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    });
+    triggerSetting.settingEl.appendChild(triggerOptions);
+    new import_obsidian3.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
+      "0": "AND ANY",
+      "1": "AND ALL",
+      "2": "NOT ANY",
+      "3": "NOT ALL"
+    }).setValue(this.plugin.settings.defaultEntry.selectiveLogic.toString()).onChange(async (value) => {
+      this.plugin.settings.defaultEntry.selectiveLogic = parseInt(value);
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Default Probability").setDesc("Chance of entry being included (0-100%)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.probability).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.defaultEntry.probability = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Default Depth").setDesc("Scanning depth for including entries (1-10)").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(this.plugin.settings.defaultEntry.depth).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.defaultEntry.depth = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Default Group Weight").setDesc("Weight of entries in their group (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.groupWeight).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.defaultEntry.groupWeight = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    containerEl.createEl("h3", { text: "Priority Weights" });
+    containerEl.createEl("p", {
+      text: "These weights determine how entries are ordered in the lorebook. Higher weights give more importance to that factor."
+    });
+    const createWeightSetting = (key, name, desc) => {
+      new import_obsidian3.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
+        const numValue = parseInt(value);
+        if (!isNaN(numValue)) {
+          this.plugin.settings.weights[key] = numValue;
+          await this.plugin.saveData(this.plugin.settings);
+        }
+      }));
+    };
+    createWeightSetting(
+      "hierarchy",
+      "Hierarchy",
+      "Distance from root document (lower depth = higher priority)"
+    );
+    createWeightSetting(
+      "in_degree",
+      "In-Degree",
+      "Number of links pointing to this document"
+    );
+    createWeightSetting(
+      "pagerank",
+      "PageRank",
+      "Overall importance based on network centrality"
+    );
+    createWeightSetting(
+      "betweenness",
+      "Betweenness",
+      "How important this node is as a connector"
+    );
+    createWeightSetting(
+      "out_degree",
+      "Out-Degree",
+      "Number of outgoing links"
+    );
+    createWeightSetting(
+      "total_degree",
+      "Total Degree",
+      "Total number of links, in + out"
+    );
+    createWeightSetting(
+      "file_depth",
+      "File Depth",
+      "Position in folder hierarchy"
+    );
+    containerEl.createEl("h3", { text: "SQLite Pack Export" });
+    containerEl.createEl("p", {
+      text: "LoreVault SQLite pack is the canonical export format. ST world_info and RAG outputs are derived from this pipeline."
+    });
+    new import_obsidian3.Setting(containerEl).setName("Enable SQLite Pack Export").setDesc("Write a SQLite pack per built scope.").addToggle((toggle) => toggle.setValue(this.plugin.settings.sqlite.enabled).onChange(async (value) => {
+      this.plugin.settings.sqlite.enabled = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("SQLite Output Path").setDesc("Base path for SQLite pack output (.db). Leave empty to derive from output path.").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}-lorevault.db`).setValue(this.plugin.settings.sqlite.outputPath).onChange(async (value) => {
+      this.plugin.settings.sqlite.outputPath = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    containerEl.createEl("h3", { text: "Embeddings & Semantic RAG" });
+    new import_obsidian3.Setting(containerEl).setName("Enable Embeddings").setDesc("Generate and cache embeddings for RAG chunks.").addToggle((toggle) => toggle.setValue(this.plugin.settings.embeddings.enabled).onChange(async (value) => {
+      this.plugin.settings.embeddings.enabled = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Provider").setDesc("Inference backend for embeddings.").addDropdown((dropdown) => dropdown.addOptions({
+      "openrouter": "OpenRouter",
+      "ollama": "Ollama",
+      "openai_compatible": "OpenAI-Compatible"
+    }).setValue(this.plugin.settings.embeddings.provider).onChange(async (value) => {
+      if (value === "ollama" || value === "openai_compatible") {
+        this.plugin.settings.embeddings.provider = value;
+      } else {
+        this.plugin.settings.embeddings.provider = "openrouter";
+      }
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Endpoint").setDesc("Base endpoint URL (for example https://openrouter.ai/api/v1 or http://localhost:11434).").addText((text) => text.setPlaceholder("https://openrouter.ai/api/v1").setValue(this.plugin.settings.embeddings.endpoint).onChange(async (value) => {
+      this.plugin.settings.embeddings.endpoint = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding API Key").setDesc("API key for provider auth (if required).").addText((text) => text.setPlaceholder("sk-...").setValue(this.plugin.settings.embeddings.apiKey).onChange(async (value) => {
+      this.plugin.settings.embeddings.apiKey = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Model").setDesc("Embedding model identifier.").addText((text) => text.setPlaceholder("qwen/qwen3-embedding-8b").setValue(this.plugin.settings.embeddings.model).onChange(async (value) => {
+      this.plugin.settings.embeddings.model = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Instruction").setDesc("Optional instruction/prefix included in cache key and provider request.").addTextArea((text) => text.setPlaceholder("Represent this chunk for retrieval...").setValue(this.plugin.settings.embeddings.instruction).onChange(async (value) => {
+      this.plugin.settings.embeddings.instruction = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Batch Size").setDesc("Number of chunks per embedding request.").addText((text) => text.setValue(this.plugin.settings.embeddings.batchSize.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue > 0) {
+        this.plugin.settings.embeddings.batchSize = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Timeout (ms)").setDesc("Request timeout for embedding API calls.").addText((text) => text.setValue(this.plugin.settings.embeddings.timeoutMs.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue >= 1e3) {
+        this.plugin.settings.embeddings.timeoutMs = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Embedding Cache Directory").setDesc("One-file-per-hash cache directory (relative to vault root or absolute path).").addText((text) => text.setPlaceholder(".obsidian/plugins/lore-vault/cache/embeddings").setValue(this.plugin.settings.embeddings.cacheDir).onChange(async (value) => {
+      this.plugin.settings.embeddings.cacheDir = value.trim();
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("RAG Chunking Mode").setDesc("Auto uses note-size heuristics. Note and section force deterministic strategies.").addDropdown((dropdown) => dropdown.addOptions({
+      "auto": "Auto",
+      "note": "Note",
+      "section": "Section"
+    }).setValue(this.plugin.settings.embeddings.chunkingMode).onChange(async (value) => {
+      if (value === "note" || value === "section") {
+        this.plugin.settings.embeddings.chunkingMode = value;
+      } else {
+        this.plugin.settings.embeddings.chunkingMode = "auto";
+      }
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Min Chunk Chars").setDesc("Minimum target chunk size in characters.").addText((text) => text.setValue(this.plugin.settings.embeddings.minChunkChars.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue >= 100) {
+        this.plugin.settings.embeddings.minChunkChars = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Max Chunk Chars").setDesc("Maximum chunk size before splitting.").addText((text) => text.setValue(this.plugin.settings.embeddings.maxChunkChars.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue >= this.plugin.settings.embeddings.minChunkChars) {
+        this.plugin.settings.embeddings.maxChunkChars = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+    new import_obsidian3.Setting(containerEl).setName("Chunk Overlap Chars").setDesc("Character overlap when splitting long chunks.").addText((text) => text.setValue(this.plugin.settings.embeddings.overlapChars.toString()).onChange(async (value) => {
+      const numValue = parseInt(value);
+      if (!isNaN(numValue) && numValue >= 0) {
+        this.plugin.settings.embeddings.overlapChars = numValue;
+        await this.plugin.saveData(this.plugin.settings);
+      }
+    }));
+  }
+};
+
+// src/lorebook-scoping.ts
+function normalizeTagPrefix(prefix) {
+  return prefix.trim().replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
+}
+function normalizeScope(scope) {
+  return scope.trim().replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
+}
+function normalizeTag(tag) {
+  return tag.trim().replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
+}
+function uniqueSorted(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+function extractLorebookScopesFromTags(tags, rawTagPrefix) {
+  const prefix = normalizeTagPrefix(rawTagPrefix);
+  if (!prefix) {
+    return [];
+  }
+  const scopes = [];
+  for (const rawTag of tags) {
+    const tag = normalizeTag(rawTag);
+    if (tag === prefix) {
+      scopes.push("");
+      continue;
+    }
+    if (tag.startsWith(`${prefix}/`)) {
+      scopes.push(normalizeScope(tag.slice(prefix.length + 1)));
+    }
+  }
+  return uniqueSorted(scopes);
+}
+function shouldIncludeInScope(noteScopes, rawActiveScope, membershipMode, includeUntagged) {
+  const activeScope = normalizeScope(rawActiveScope);
+  const scopes = uniqueSorted(noteScopes.map(normalizeScope));
+  if (scopes.length === 0) {
+    return includeUntagged;
+  }
+  if (!activeScope) {
+    return true;
+  }
+  if (membershipMode === "exact") {
+    return scopes.includes(activeScope);
+  }
+  return scopes.some((scope) => scope === activeScope || scope.startsWith(`${activeScope}/`));
+}
+
+// src/rag-exporter.ts
+var fs2 = __toESM(require("fs"));
+var path2 = __toESM(require("path"));
+function compareRagDocs(a, b) {
+  return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+}
+var RagExporter = class {
+  constructor(app) {
+    this.app = app;
+  }
+  async exportRagMarkdown(documents, outputPath, scopeLabel) {
+    const sortedDocuments = [...documents].sort(compareRagDocs);
+    const normalizedScopeLabel = scopeLabel || "(all)";
+    const sections = sortedDocuments.map((doc) => {
+      const body = doc.content.trim() || "_No content_";
+      return `## ${doc.title}
+
+Source: \`${doc.path}\`
+
+${body}
+`;
+    });
+    const markdown = [
+      "# LoreVault RAG Pack",
+      "",
+      `Scope: \`${normalizedScopeLabel}\``,
+      "",
+      sections.join("\n---\n\n")
+    ].join("\n");
+    try {
+      const isAbsolutePath = path2.isAbsolute(outputPath);
+      if (!isAbsolutePath) {
+        await this.app.vault.adapter.write(outputPath, markdown);
+      } else {
+        const dirPath = path2.dirname(outputPath);
+        if (!fs2.existsSync(dirPath)) {
+          fs2.mkdirSync(dirPath, { recursive: true });
+        }
+        fs2.writeFileSync(outputPath, markdown, "utf8");
+      }
+      console.log(`Successfully exported ${documents.length} RAG docs to ${outputPath}`);
+    } catch (e) {
+      console.error(`Error writing RAG markdown to ${outputPath}:`, e);
+      throw e;
+    }
+  }
+};
+
+// src/lorebooks-manager-view.ts
+var import_obsidian5 = require("obsidian");
+
+// src/lorebooks-manager-collector.ts
+var import_obsidian4 = require("obsidian");
 
 // src/frontmatter-utils.ts
 function stripFrontmatter(content) {
@@ -3504,50 +3926,24 @@ function uniqueStrings(values) {
   return result;
 }
 
-// src/lorebook-scoping.ts
-function normalizeTagPrefix(prefix) {
-  return prefix.trim().replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
-}
-function normalizeScope(scope) {
-  return scope.trim().replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
-}
-function normalizeTag(tag) {
-  return tag.trim().replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
-}
-function uniqueSorted(values) {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-}
-function extractLorebookScopesFromTags(tags, rawTagPrefix) {
-  const prefix = normalizeTagPrefix(rawTagPrefix);
-  if (!prefix) {
-    return [];
+// src/lorebooks-manager-collector.ts
+function collectLorebookNoteMetadata(app, settings) {
+  var _a, _b;
+  const files = [...app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
+  const notes = [];
+  for (const file of files) {
+    const cache = app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((_a = cache == null ? void 0 : cache.frontmatter) != null ? _a : {});
+    const tags = cache ? (_b = (0, import_obsidian4.getAllTags)(cache)) != null ? _b : [] : [];
+    const scopes = extractLorebookScopesFromTags(tags, settings.tagScoping.tagPrefix);
+    notes.push({
+      path: file.path,
+      basename: file.basename,
+      scopes,
+      frontmatter
+    });
   }
-  const scopes = [];
-  for (const rawTag of tags) {
-    const tag = normalizeTag(rawTag);
-    if (tag === prefix) {
-      scopes.push("");
-      continue;
-    }
-    if (tag.startsWith(`${prefix}/`)) {
-      scopes.push(normalizeScope(tag.slice(prefix.length + 1)));
-    }
-  }
-  return uniqueSorted(scopes);
-}
-function shouldIncludeInScope(noteScopes, rawActiveScope, membershipMode, includeUntagged) {
-  const activeScope = normalizeScope(rawActiveScope);
-  const scopes = uniqueSorted(noteScopes.map(normalizeScope));
-  if (scopes.length === 0) {
-    return includeUntagged;
-  }
-  if (!activeScope) {
-    return true;
-  }
-  if (membershipMode === "exact") {
-    return scopes.includes(activeScope);
-  }
-  return scopes.some((scope) => scope === activeScope || scope.startsWith(`${activeScope}/`));
+  return notes;
 }
 
 // src/retrieval-routing.ts
@@ -3595,6 +3991,545 @@ function resolveRetrievalTargets(mode, hasKeywords) {
     includeRag: !hasKeywords
   };
 }
+
+// src/lorebooks-manager-data.ts
+function uniqueSorted2(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+function discoverScopesFromMetadata(notes) {
+  const scopes = /* @__PURE__ */ new Set();
+  for (const note of notes) {
+    for (const scope of note.scopes) {
+      if (scope) {
+        scopes.add(scope);
+      }
+    }
+  }
+  return [...scopes].sort((a, b) => a.localeCompare(b));
+}
+function reasonForExclusion(scopes, includeUntagged) {
+  if (scopes.length === 0 && !includeUntagged) {
+    return "untagged_excluded";
+  }
+  return "scope_mismatch";
+}
+function buildScopeSummaries(notes, settings, scopeOverride) {
+  const sortedNotes = [...notes].sort((a, b) => a.path.localeCompare(b.path));
+  const configuredScope = normalizeScope(scopeOverride != null ? scopeOverride : settings.tagScoping.activeScope);
+  const discoveredScopes = discoverScopesFromMetadata(sortedNotes);
+  const buildAllScopes = configuredScope.length === 0 && discoveredScopes.length > 0;
+  const scopesToBuild = configuredScope ? [configuredScope] : discoveredScopes.length > 0 ? discoveredScopes : [""];
+  return scopesToBuild.map((scope) => {
+    var _a;
+    const includeUntagged = buildAllScopes ? false : settings.tagScoping.includeUntagged;
+    const debugNotes = [];
+    let includedNotes = 0;
+    let worldInfoEntries = 0;
+    let ragDocuments = 0;
+    for (const note of sortedNotes) {
+      const isExcluded = asBoolean(getFrontmatterValue(note.frontmatter, "exclude")) === true;
+      const rawKeywords = asStringArray(getFrontmatterValue(note.frontmatter, "key", "keywords"));
+      const hasKeywords = rawKeywords.length > 0;
+      const retrievalMode = (_a = parseRetrievalMode(getFrontmatterValue(note.frontmatter, "retrieval"))) != null ? _a : "auto";
+      if (isExcluded) {
+        debugNotes.push({
+          path: note.path,
+          basename: note.basename,
+          scopes: uniqueSorted2(note.scopes),
+          included: false,
+          reason: "excluded_by_frontmatter",
+          retrievalMode,
+          hasKeywords,
+          includeWorldInfo: false,
+          includeRag: false
+        });
+        continue;
+      }
+      const inScope = shouldIncludeInScope(
+        note.scopes,
+        scope,
+        settings.tagScoping.membershipMode,
+        includeUntagged
+      );
+      if (!inScope) {
+        debugNotes.push({
+          path: note.path,
+          basename: note.basename,
+          scopes: uniqueSorted2(note.scopes),
+          included: false,
+          reason: reasonForExclusion(note.scopes, includeUntagged),
+          retrievalMode,
+          hasKeywords,
+          includeWorldInfo: false,
+          includeRag: false
+        });
+        continue;
+      }
+      const routing = resolveRetrievalTargets(retrievalMode, hasKeywords);
+      const includeWorldInfo = routing.includeWorldInfo;
+      const includeRag = routing.includeRag;
+      const included = includeWorldInfo || includeRag;
+      if (included) {
+        includedNotes += 1;
+      }
+      if (includeWorldInfo) {
+        worldInfoEntries += 1;
+      }
+      if (includeRag) {
+        ragDocuments += 1;
+      }
+      debugNotes.push({
+        path: note.path,
+        basename: note.basename,
+        scopes: uniqueSorted2(note.scopes),
+        included,
+        reason: included ? "included" : "retrieval_disabled",
+        retrievalMode,
+        hasKeywords,
+        includeWorldInfo,
+        includeRag
+      });
+    }
+    const warnings = [];
+    if (includedNotes === 0) {
+      warnings.push("No notes are included in this scope.");
+    }
+    if (worldInfoEntries === 0) {
+      warnings.push("No world_info entries in this scope.");
+    }
+    if (ragDocuments === 0) {
+      warnings.push("No rag documents in this scope.");
+    }
+    return {
+      scope,
+      includedNotes,
+      worldInfoEntries,
+      ragDocuments,
+      warnings,
+      notes: debugNotes
+    };
+  });
+}
+
+// src/lorebooks-manager-view.ts
+var LOREVAULT_MANAGER_VIEW_TYPE = "lorevault-manager-view";
+function formatScopeLabel(scope) {
+  return scope || "(all)";
+}
+function formatRouteBadge(includeWorldInfo, includeRag) {
+  if (includeWorldInfo && includeRag) {
+    return "world_info + rag";
+  }
+  if (includeWorldInfo) {
+    return "world_info";
+  }
+  if (includeRag) {
+    return "rag";
+  }
+  return "-";
+}
+function formatReason(reason) {
+  switch (reason) {
+    case "included":
+      return "included";
+    case "excluded_by_frontmatter":
+      return "excluded: frontmatter exclude";
+    case "scope_mismatch":
+      return "excluded: scope mismatch";
+    case "untagged_excluded":
+      return "excluded: untagged note";
+    case "retrieval_disabled":
+      return "excluded: retrieval disabled";
+    default:
+      return reason;
+  }
+}
+var LorebooksManagerView = class extends import_obsidian5.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return LOREVAULT_MANAGER_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "LoreVault Manager";
+  }
+  getIcon() {
+    return "book-open-text";
+  }
+  async onOpen() {
+    this.render();
+  }
+  async onClose() {
+    this.contentEl.empty();
+  }
+  refresh() {
+    this.render();
+  }
+  renderToolbar(container) {
+    const toolbar = container.createDiv({ cls: "lorevault-manager-toolbar" });
+    const refreshButton = toolbar.createEl("button", { text: "Refresh" });
+    refreshButton.addEventListener("click", () => this.render());
+    const buildAllButton = toolbar.createEl("button", { text: "Build/Export All Scopes" });
+    buildAllButton.addEventListener("click", async () => {
+      try {
+        await this.plugin.convertToLorebook();
+        this.render();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian5.Notice(`Build failed: ${message}`);
+      }
+    });
+    const openFolderButton = toolbar.createEl("button", { text: "Open Output Folder" });
+    openFolderButton.addEventListener("click", async () => {
+      try {
+        await this.plugin.openOutputFolder();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian5.Notice(`Open folder failed: ${message}`);
+      }
+    });
+  }
+  renderScopeCard(container, summary) {
+    const card = container.createDiv({ cls: "lorevault-manager-card" });
+    const header = card.createDiv({ cls: "lorevault-manager-card-header" });
+    header.createEl("h3", { text: `Scope: ${formatScopeLabel(summary.scope)}` });
+    const buildButton = header.createEl("button", { text: "Build/Export Scope" });
+    buildButton.addEventListener("click", async () => {
+      try {
+        await this.plugin.convertToLorebook(summary.scope);
+        new import_obsidian5.Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
+        this.render();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian5.Notice(`Scope build failed: ${message}`);
+      }
+    });
+    const stats = card.createEl("p", {
+      text: `Included Notes: ${summary.includedNotes} | world_info: ${summary.worldInfoEntries} | rag: ${summary.ragDocuments}`
+    });
+    stats.addClass("lorevault-manager-stats");
+    if (summary.warnings.length > 0) {
+      const warningList = card.createEl("ul", { cls: "lorevault-manager-warnings" });
+      for (const warning of summary.warnings) {
+        const li = warningList.createEl("li", { text: warning });
+        li.addClass("lorevault-manager-warning-item");
+      }
+    }
+    const details = card.createEl("details", { cls: "lorevault-manager-debug" });
+    details.createEl("summary", { text: "Debug: Inclusion and Routing Decisions" });
+    const tableWrap = details.createDiv({ cls: "lorevault-manager-table-wrap" });
+    const table = tableWrap.createEl("table", { cls: "lorevault-manager-table" });
+    const headRow = table.createEl("thead").createEl("tr");
+    headRow.createEl("th", { text: "Note" });
+    headRow.createEl("th", { text: "Decision" });
+    headRow.createEl("th", { text: "Route" });
+    headRow.createEl("th", { text: "Retrieval" });
+    headRow.createEl("th", { text: "Keywords" });
+    headRow.createEl("th", { text: "Scopes" });
+    const tbody = table.createEl("tbody");
+    for (const note of summary.notes) {
+      const row = tbody.createEl("tr");
+      row.createEl("td", { text: note.path });
+      row.createEl("td", { text: formatReason(note.reason) });
+      row.createEl("td", { text: formatRouteBadge(note.includeWorldInfo, note.includeRag) });
+      row.createEl("td", { text: note.retrievalMode });
+      row.createEl("td", { text: note.hasKeywords ? "yes" : "no" });
+      row.createEl("td", { text: note.scopes.join(", ") || "-" });
+    }
+  }
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("lorevault-manager-view");
+    const titleRow = contentEl.createDiv({ cls: "lorevault-manager-title-row" });
+    const icon = titleRow.createSpan({ cls: "lorevault-manager-icon" });
+    (0, import_obsidian5.setIcon)(icon, "book-open-text");
+    titleRow.createEl("h2", { text: "LoreVault Manager" });
+    this.renderToolbar(contentEl);
+    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
+    const summaries = buildScopeSummaries(notes, this.plugin.settings);
+    if (summaries.length === 0) {
+      contentEl.createEl("p", {
+        text: "No lorebook scopes found. Add tags under your configured prefix (for example #lorebook/universe)."
+      });
+      return;
+    }
+    for (const summary of summaries) {
+      this.renderScopeCard(contentEl, summary);
+    }
+  }
+};
+
+// src/live-context-index.ts
+var import_obsidian7 = require("obsidian");
+
+// src/context-query.ts
+function estimateTokens(text) {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+function normalizeText(value) {
+  return value.toLowerCase();
+}
+function tokenize(value) {
+  const normalized = normalizeText(value);
+  const matches = normalized.match(/[a-z0-9][a-z0-9_-]*/g);
+  if (!matches) {
+    return [];
+  }
+  return [...new Set(matches.filter((token) => token.length >= 2))];
+}
+function sortWorldInfoByScore(a, b) {
+  return b.score - a.score || b.entry.order - a.entry.order || a.entry.uid - b.entry.uid;
+}
+function sortRagByScore(a, b) {
+  return b.score - a.score || a.document.path.localeCompare(b.document.path) || a.document.title.localeCompare(b.document.title) || a.document.uid - b.document.uid;
+}
+function uniqueKeywords(entry) {
+  const seen = /* @__PURE__ */ new Set();
+  const values = [];
+  for (const keyword of [...entry.key, ...entry.keysecondary]) {
+    const normalized = keyword.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    values.push(normalized);
+  }
+  return values;
+}
+function scoreWorldInfoEntries(entries, queryText) {
+  const normalizedQuery = normalizeText(queryText);
+  const tokenSet = new Set(tokenize(queryText));
+  const scored = [];
+  for (const entry of entries) {
+    const keywords = uniqueKeywords(entry);
+    const matchedKeywords = keywords.filter((keyword) => {
+      if (keyword.includes(" ")) {
+        return normalizedQuery.includes(keyword);
+      }
+      return tokenSet.has(keyword);
+    });
+    const keywordScore = matchedKeywords.length * 100;
+    const constantBoost = entry.constant ? 30 : 0;
+    const orderScore = Math.max(0, entry.order) * 0.01;
+    const score = keywordScore + constantBoost + orderScore;
+    if (score <= 0) {
+      continue;
+    }
+    scored.push({
+      entry,
+      score,
+      matchedKeywords
+    });
+  }
+  return scored.sort(sortWorldInfoByScore);
+}
+function scoreRagDocuments(documents, queryText, ragSemanticBoostByDocUid) {
+  var _a;
+  const normalizedQuery = normalizeText(queryText);
+  const tokens = tokenize(queryText);
+  const tokenSet = new Set(tokens);
+  const scored = [];
+  for (const document2 of documents) {
+    const normalizedTitle = normalizeText(document2.title);
+    const normalizedPath = normalizeText(document2.path);
+    const normalizedContent = normalizeText(document2.content);
+    const matchedTerms = [];
+    let score = 0;
+    for (const token of tokenSet) {
+      if (normalizedTitle.includes(token)) {
+        score += 40;
+        matchedTerms.push(token);
+        continue;
+      }
+      if (normalizedPath.includes(token)) {
+        score += 20;
+        matchedTerms.push(token);
+        continue;
+      }
+      if (normalizedContent.includes(token)) {
+        score += 10;
+        matchedTerms.push(token);
+      }
+    }
+    if (normalizedContent.includes(normalizedQuery) && normalizedQuery.length >= 4) {
+      score += 25;
+    }
+    const semanticBoost = (_a = ragSemanticBoostByDocUid == null ? void 0 : ragSemanticBoostByDocUid[document2.uid]) != null ? _a : 0;
+    score += semanticBoost;
+    if (score <= 0) {
+      continue;
+    }
+    scored.push({
+      document: document2,
+      score,
+      matchedTerms: [...new Set(matchedTerms)].sort((a, b) => a.localeCompare(b))
+    });
+  }
+  return scored.sort(sortRagByScore);
+}
+function trimRagContent(content) {
+  const cleaned = content.trim();
+  if (cleaned.length <= 1200) {
+    return cleaned;
+  }
+  return `${cleaned.slice(0, 1200).trimEnd()}
+...`;
+}
+function renderWorldInfoSection(entry) {
+  const keywordSuffix = entry.matchedKeywords.length > 0 ? `Matched: ${entry.matchedKeywords.join(", ")}` : "Matched: (constant)";
+  return [
+    `### ${entry.entry.comment}`,
+    `Keys: ${entry.entry.key.join(", ")}`,
+    keywordSuffix,
+    "",
+    entry.entry.content.trim()
+  ].join("\n");
+}
+function renderRagSection(document2) {
+  const matched = document2.matchedTerms.length > 0 ? `Matched terms: ${document2.matchedTerms.join(", ")}` : "Matched terms: -";
+  return [
+    `### ${document2.document.title}`,
+    `Source: \`${document2.document.path}\``,
+    matched,
+    "",
+    trimRagContent(document2.document.content)
+  ].join("\n");
+}
+function assembleScopeContext(pack, options) {
+  var _a, _b, _c;
+  const tokenBudget = Math.max(128, Math.floor(options.tokenBudget));
+  const worldInfoRatio = (_a = options.worldInfoBudgetRatio) != null ? _a : 0.6;
+  const worldInfoBudget = Math.max(0, Math.floor(tokenBudget * worldInfoRatio));
+  const ragBudget = Math.max(0, tokenBudget - worldInfoBudget);
+  const maxWorldInfoEntries = (_b = options.maxWorldInfoEntries) != null ? _b : 8;
+  const maxRagDocuments = (_c = options.maxRagDocuments) != null ? _c : 6;
+  const worldInfoCandidates = scoreWorldInfoEntries(pack.worldInfoEntries, options.queryText);
+  const ragCandidates = scoreRagDocuments(
+    pack.ragDocuments,
+    options.queryText,
+    options.ragSemanticBoostByDocUid
+  );
+  const selectedWorldInfo = [];
+  let usedWorldInfoTokens = 0;
+  for (const candidate of worldInfoCandidates) {
+    if (selectedWorldInfo.length >= maxWorldInfoEntries) {
+      break;
+    }
+    const section = renderWorldInfoSection(candidate);
+    const sectionTokens = estimateTokens(section);
+    if (usedWorldInfoTokens + sectionTokens > worldInfoBudget) {
+      continue;
+    }
+    selectedWorldInfo.push(candidate);
+    usedWorldInfoTokens += sectionTokens;
+  }
+  const selectedRag = [];
+  let usedRagTokens = 0;
+  for (const candidate of ragCandidates) {
+    if (selectedRag.length >= maxRagDocuments) {
+      break;
+    }
+    const section = renderRagSection(candidate);
+    const sectionTokens = estimateTokens(section);
+    if (usedRagTokens + sectionTokens > ragBudget) {
+      continue;
+    }
+    selectedRag.push(candidate);
+    usedRagTokens += sectionTokens;
+  }
+  const worldInfoSections = selectedWorldInfo.map(renderWorldInfoSection);
+  const ragSections = selectedRag.map(renderRagSection);
+  const scopeLabel = normalizeScope(pack.scope) || "(all)";
+  const markdown = [
+    `## LoreVault Context`,
+    `Scope: \`${scopeLabel}\``,
+    `Query: ${options.queryText.trim() || "(empty)"}`,
+    "",
+    "### world_info",
+    worldInfoSections.length > 0 ? worldInfoSections.join("\n\n---\n\n") : "_No matching world_info entries._",
+    "",
+    "### rag",
+    ragSections.length > 0 ? ragSections.join("\n\n---\n\n") : "_No matching rag documents._"
+  ].join("\n");
+  return {
+    scope: pack.scope,
+    queryText: options.queryText,
+    tokenBudget,
+    usedTokens: usedWorldInfoTokens + usedRagTokens,
+    worldInfo: selectedWorldInfo,
+    rag: selectedRag,
+    markdown
+  };
+}
+
+// src/file-processor.ts
+var import_obsidian6 = require("obsidian");
+
+// src/link-target-index.ts
+var path3 = __toESM(require("path"));
+function normalizeLinkTarget(target) {
+  return target.trim().replace(/\\/g, "/").replace(/#.*$/, "").replace(/\.md$/i, "").trim();
+}
+function extractWikilinks(content) {
+  const pattern = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+  const links = [];
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    const rawLink = match[1].trim();
+    const link = normalizeLinkTarget(rawLink);
+    if (!link) {
+      continue;
+    }
+    links.push(link);
+    const base = path3.basename(link);
+    if (base !== link) {
+      links.push(base);
+    }
+    if (link.includes(" ")) {
+      links.push(link.replace(/ /g, "-"));
+      links.push(link.replace(/ /g, "_"));
+    }
+  }
+  return [...new Set(links)];
+}
+var LinkTargetIndex = class {
+  constructor() {
+    this.targetToUid = {};
+    this.ambiguousTargets = /* @__PURE__ */ new Set();
+  }
+  addTargetMapping(target, uid) {
+    const normalized = normalizeLinkTarget(target);
+    if (!normalized) {
+      return;
+    }
+    if (this.ambiguousTargets.has(normalized)) {
+      return;
+    }
+    const existingUid = this.targetToUid[normalized];
+    if (existingUid === void 0) {
+      this.targetToUid[normalized] = uid;
+      return;
+    }
+    if (existingUid !== uid) {
+      delete this.targetToUid[normalized];
+      this.ambiguousTargets.add(normalized);
+    }
+  }
+  registerFileMappings(filePath, basename2, uid) {
+    this.addTargetMapping(filePath, uid);
+    this.addTargetMapping(basename2, uid);
+  }
+  getMappings() {
+    return this.targetToUid;
+  }
+  reset() {
+    this.targetToUid = {};
+    this.ambiguousTargets = /* @__PURE__ */ new Set();
+  }
+};
 
 // src/file-processor.ts
 var SELECTIVE_LOGIC_MAP = {
@@ -3656,7 +4591,7 @@ var FileProcessor = class {
     if (!cache) {
       return [];
     }
-    const tags = (_a = (0, import_obsidian3.getAllTags)(cache)) != null ? _a : [];
+    const tags = (_a = (0, import_obsidian6.getAllTags)(cache)) != null ? _a : [];
     return extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
   }
   isSourceFile(file, frontmatter) {
@@ -3980,820 +4915,268 @@ var GraphAnalyzer = class {
   }
 };
 
-// src/lorebook-exporter.ts
-var fs = __toESM(require("fs"));
-var path2 = __toESM(require("path"));
-var LoreBookExporter = class {
-  constructor(app) {
-    this.app = app;
-  }
-  async exportLoreBookJson(entries, outputPath, settings) {
-    const entriesDict = {};
-    for (const [uid, entry] of Object.entries(entries)) {
-      const { wikilinks, ...entryWithoutWikilinks } = entry;
-      const normalizedEntry = { ...entryWithoutWikilinks };
-      if (!normalizedEntry.constant && !normalizedEntry.vectorized && !normalizedEntry.selective) {
-        normalizedEntry.constant = settings.defaultEntry.constant;
-        normalizedEntry.vectorized = settings.defaultEntry.vectorized;
-        normalizedEntry.selective = settings.defaultEntry.selective;
-      } else {
-        if (normalizedEntry.constant) {
-          normalizedEntry.vectorized = false;
-          normalizedEntry.selective = false;
-        } else if (normalizedEntry.vectorized) {
-          normalizedEntry.constant = false;
-          normalizedEntry.selective = false;
-        } else if (normalizedEntry.selective) {
-          normalizedEntry.constant = false;
-          normalizedEntry.vectorized = false;
-        }
-      }
-      if (normalizedEntry.selectiveLogic === void 0) {
-        normalizedEntry.selectiveLogic = settings.defaultEntry.selectiveLogic;
-      }
-      if (normalizedEntry.probability === void 0) {
-        normalizedEntry.probability = settings.defaultEntry.probability;
-      }
-      if (normalizedEntry.depth === void 0) {
-        normalizedEntry.depth = settings.defaultEntry.depth;
-      }
-      if (normalizedEntry.groupWeight === void 0) {
-        normalizedEntry.groupWeight = settings.defaultEntry.groupWeight;
-      }
-      entriesDict[uid] = normalizedEntry;
-    }
-    const lorebook = {
-      entries: entriesDict,
-      // Type assertion to satisfy TypeScript
-      settings: {
-        orderByTitle: settings.defaultLoreBook.orderByTitle,
-        useDroste: settings.defaultLoreBook.useDroste,
-        useRecursion: settings.defaultLoreBook.useRecursion,
-        tokenBudget: settings.defaultLoreBook.tokenBudget,
-        recursionBudget: settings.defaultLoreBook.recursionBudget
-      }
-    };
-    try {
-      const isAbsolutePath = path2.isAbsolute(outputPath);
-      if (!isAbsolutePath) {
-        await this.app.vault.adapter.write(
-          outputPath,
-          JSON.stringify(lorebook, null, 2)
-        );
-      } else {
-        const dirPath = path2.dirname(outputPath);
-        if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath, { recursive: true });
-        }
-        fs.writeFileSync(outputPath, JSON.stringify(lorebook, null, 2), "utf8");
-      }
-      console.log(`Successfully exported ${Object.keys(entries).length} entries to ${outputPath}`);
-    } catch (e) {
-      console.error(`Error writing JSON to ${outputPath}:`, e);
-      throw e;
-    }
-  }
-};
-
-// src/settings-tab.ts
-var import_obsidian4 = require("obsidian");
-var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTab {
-  constructor(app, plugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
-  display() {
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.addClass("lorebook-converter-settings");
-    containerEl.createEl("h2", { text: "LoreVault Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Output Path").setDesc("Base output path for exports (.json world_info and .rag.md). Use {scope} for per-scope naming.").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
-      this.plugin.settings.outputPath = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    containerEl.createEl("h3", { text: "Lorebook Scope" });
-    new import_obsidian4.Setting(containerEl).setName("Lorebook Tag Prefix").setDesc("Tag namespace used to detect lorebooks (without #), e.g. lorebook").addText((text) => text.setPlaceholder("lorebook").setValue(this.plugin.settings.tagScoping.tagPrefix).onChange(async (value) => {
-      this.plugin.settings.tagScoping.tagPrefix = value.trim();
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Active Scope").setDesc("Optional scope path under the tag prefix, e.g. universe/yggdrasil (empty = all lorebook tags)").addText((text) => text.setPlaceholder("universe/yggdrasil").setValue(this.plugin.settings.tagScoping.activeScope).onChange(async (value) => {
-      this.plugin.settings.tagScoping.activeScope = value.trim();
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Membership Mode").setDesc("Exact: include only exact scope tags. Cascade: include entries from child scopes too.").addDropdown((dropdown) => dropdown.addOptions({
-      "exact": "Exact",
-      "cascade": "Cascade"
-    }).setValue(this.plugin.settings.tagScoping.membershipMode).onChange(async (value) => {
-      this.plugin.settings.tagScoping.membershipMode = value === "cascade" ? "cascade" : "exact";
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Include Untagged Notes").setDesc("If enabled, notes without lorebook tags are included in the active build.").addToggle((toggle) => toggle.setValue(this.plugin.settings.tagScoping.includeUntagged).onChange(async (value) => {
-      this.plugin.settings.tagScoping.includeUntagged = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    containerEl.createEl("h3", { text: "Default LoreBook Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Order By Title").setDesc("Entries will be ordered by their titles instead of priority score").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.orderByTitle).onChange(async (value) => {
-      this.plugin.settings.defaultLoreBook.orderByTitle = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Use Droste Effect").setDesc("Allow lorebook entries to trigger other lorebook entries").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useDroste).onChange(async (value) => {
-      this.plugin.settings.defaultLoreBook.useDroste = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Use Recursion").setDesc("Allow entries to call themselves recursively").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useRecursion).onChange(async (value) => {
-      this.plugin.settings.defaultLoreBook.useRecursion = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Token Budget").setDesc("Maximum tokens to spend on the lorebook").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.tokenBudget.toString()).onChange(async (value) => {
-      const numValue = parseInt(value);
-      if (!isNaN(numValue) && numValue > 0) {
-        this.plugin.settings.defaultLoreBook.tokenBudget = numValue;
-        await this.plugin.saveData(this.plugin.settings);
-      }
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Recursion Budget").setDesc("Maximum recursion depth for entries").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.recursionBudget.toString()).onChange(async (value) => {
-      const numValue = parseInt(value);
-      if (!isNaN(numValue) && numValue > 0) {
-        this.plugin.settings.defaultLoreBook.recursionBudget = numValue;
-        await this.plugin.saveData(this.plugin.settings);
-      }
-    }));
-    containerEl.createEl("h3", { text: "Default Entry Settings" });
-    const triggerSetting = new import_obsidian4.Setting(containerEl).setName("Default Trigger Method").setDesc("How entries are triggered by default");
-    const triggerOptions = document.createDocumentFragment();
-    const createRadio = (container, label, value, checked) => {
-      const radioItem = container.createEl("div", { cls: "radio-item" });
-      const radio = radioItem.createEl("input", {
-        type: "radio",
-        attr: {
-          id: `trigger-${value}`,
-          name: "trigger-method",
-          value
-        }
-      });
-      radio.checked = checked;
-      radioItem.createEl("label", {
-        text: label,
-        attr: { for: `trigger-${value}` }
-      });
-      return radio;
-    };
-    const constantRadio = createRadio(
-      triggerOptions,
-      "Constant (always included)",
-      "constant",
-      this.plugin.settings.defaultEntry.constant
-    );
-    const vectorizedRadio = createRadio(
-      triggerOptions,
-      "Vectorized (AI determines relevance)",
-      "vectorized",
-      this.plugin.settings.defaultEntry.vectorized
-    );
-    const selectiveRadio = createRadio(
-      triggerOptions,
-      "Selective (triggered by keywords)",
-      "selective",
-      this.plugin.settings.defaultEntry.selective
-    );
-    constantRadio.addEventListener("change", async () => {
-      if (constantRadio.checked) {
-        this.plugin.settings.defaultEntry.constant = true;
-        this.plugin.settings.defaultEntry.vectorized = false;
-        this.plugin.settings.defaultEntry.selective = false;
-        await this.plugin.saveData(this.plugin.settings);
-      }
-    });
-    vectorizedRadio.addEventListener("change", async () => {
-      if (vectorizedRadio.checked) {
-        this.plugin.settings.defaultEntry.constant = false;
-        this.plugin.settings.defaultEntry.vectorized = true;
-        this.plugin.settings.defaultEntry.selective = false;
-        await this.plugin.saveData(this.plugin.settings);
-      }
-    });
-    selectiveRadio.addEventListener("change", async () => {
-      if (selectiveRadio.checked) {
-        this.plugin.settings.defaultEntry.constant = false;
-        this.plugin.settings.defaultEntry.vectorized = false;
-        this.plugin.settings.defaultEntry.selective = true;
-        await this.plugin.saveData(this.plugin.settings);
-      }
-    });
-    triggerSetting.settingEl.appendChild(triggerOptions);
-    new import_obsidian4.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
-      "0": "AND ANY",
-      "1": "AND ALL",
-      "2": "NOT ANY",
-      "3": "NOT ALL"
-    }).setValue(this.plugin.settings.defaultEntry.selectiveLogic.toString()).onChange(async (value) => {
-      this.plugin.settings.defaultEntry.selectiveLogic = parseInt(value);
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Default Probability").setDesc("Chance of entry being included (0-100%)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.probability).setDynamicTooltip().onChange(async (value) => {
-      this.plugin.settings.defaultEntry.probability = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Default Depth").setDesc("Scanning depth for including entries (1-10)").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(this.plugin.settings.defaultEntry.depth).setDynamicTooltip().onChange(async (value) => {
-      this.plugin.settings.defaultEntry.depth = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian4.Setting(containerEl).setName("Default Group Weight").setDesc("Weight of entries in their group (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.groupWeight).setDynamicTooltip().onChange(async (value) => {
-      this.plugin.settings.defaultEntry.groupWeight = value;
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    containerEl.createEl("h3", { text: "Priority Weights" });
-    containerEl.createEl("p", {
-      text: "These weights determine how entries are ordered in the lorebook. Higher weights give more importance to that factor."
-    });
-    const createWeightSetting = (key, name, desc) => {
-      new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
-        const numValue = parseInt(value);
-        if (!isNaN(numValue)) {
-          this.plugin.settings.weights[key] = numValue;
-          await this.plugin.saveData(this.plugin.settings);
-        }
-      }));
-    };
-    createWeightSetting(
-      "hierarchy",
-      "Hierarchy",
-      "Distance from root document (lower depth = higher priority)"
-    );
-    createWeightSetting(
-      "in_degree",
-      "In-Degree",
-      "Number of links pointing to this document"
-    );
-    createWeightSetting(
-      "pagerank",
-      "PageRank",
-      "Overall importance based on network centrality"
-    );
-    createWeightSetting(
-      "betweenness",
-      "Betweenness",
-      "How important this node is as a connector"
-    );
-    createWeightSetting(
-      "out_degree",
-      "Out-Degree",
-      "Number of outgoing links"
-    );
-    createWeightSetting(
-      "total_degree",
-      "Total Degree",
-      "Total number of links, in + out"
-    );
-    createWeightSetting(
-      "file_depth",
-      "File Depth",
-      "Position in folder hierarchy"
-    );
-  }
-};
-
-// src/rag-exporter.ts
-var fs2 = __toESM(require("fs"));
-var path3 = __toESM(require("path"));
-function compareRagDocs(a, b) {
-  return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+// src/hash-utils.ts
+var import_crypto = require("crypto");
+function sha256Hex(value) {
+  return (0, import_crypto.createHash)("sha256").update(value, "utf8").digest("hex");
 }
-var RagExporter = class {
-  constructor(app) {
-    this.app = app;
-  }
-  async exportRagMarkdown(documents, outputPath, scopeLabel) {
-    const sortedDocuments = [...documents].sort(compareRagDocs);
-    const normalizedScopeLabel = scopeLabel || "(all)";
-    const sections = sortedDocuments.map((doc) => {
-      const body = doc.content.trim() || "_No content_";
-      return `## ${doc.title}
-
-Source: \`${doc.path}\`
-
-${body}
-`;
-    });
-    const markdown = [
-      "# LoreVault RAG Pack",
-      "",
-      `Scope: \`${normalizedScopeLabel}\``,
-      "",
-      sections.join("\n---\n\n")
-    ].join("\n");
-    try {
-      const isAbsolutePath = path3.isAbsolute(outputPath);
-      if (!isAbsolutePath) {
-        await this.app.vault.adapter.write(outputPath, markdown);
-      } else {
-        const dirPath = path3.dirname(outputPath);
-        if (!fs2.existsSync(dirPath)) {
-          fs2.mkdirSync(dirPath, { recursive: true });
-        }
-        fs2.writeFileSync(outputPath, markdown, "utf8");
-      }
-      console.log(`Successfully exported ${documents.length} RAG docs to ${outputPath}`);
-    } catch (e) {
-      console.error(`Error writing RAG markdown to ${outputPath}:`, e);
-      throw e;
-    }
-  }
-};
-
-// src/lorebooks-manager-view.ts
-var import_obsidian6 = require("obsidian");
-
-// src/lorebooks-manager-collector.ts
-var import_obsidian5 = require("obsidian");
-function collectLorebookNoteMetadata(app, settings) {
-  var _a, _b;
-  const files = [...app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
-  const notes = [];
-  for (const file of files) {
-    const cache = app.metadataCache.getFileCache(file);
-    const frontmatter = normalizeFrontmatter((_a = cache == null ? void 0 : cache.frontmatter) != null ? _a : {});
-    const tags = cache ? (_b = (0, import_obsidian5.getAllTags)(cache)) != null ? _b : [] : [];
-    const scopes = extractLorebookScopesFromTags(tags, settings.tagScoping.tagPrefix);
-    notes.push({
-      path: file.path,
-      basename: file.basename,
-      scopes,
-      frontmatter
-    });
-  }
-  return notes;
+function stableJsonHash(value) {
+  return sha256Hex(JSON.stringify(value));
+}
+function slugifyIdentifier(value) {
+  const normalized = value.trim().toLowerCase().replace(/[\/\\]+/g, "-").replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "default";
 }
 
-// src/lorebooks-manager-data.ts
-function uniqueSorted2(values) {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-}
-function discoverScopesFromMetadata(notes) {
-  const scopes = /* @__PURE__ */ new Set();
-  for (const note of notes) {
-    for (const scope of note.scopes) {
-      if (scope) {
-        scopes.add(scope);
-      }
-    }
-  }
-  return [...scopes].sort((a, b) => a.localeCompare(b));
-}
-function reasonForExclusion(scopes, includeUntagged) {
-  if (scopes.length === 0 && !includeUntagged) {
-    return "untagged_excluded";
-  }
-  return "scope_mismatch";
-}
-function buildScopeSummaries(notes, settings, scopeOverride) {
-  const sortedNotes = [...notes].sort((a, b) => a.path.localeCompare(b.path));
-  const configuredScope = normalizeScope(scopeOverride != null ? scopeOverride : settings.tagScoping.activeScope);
-  const discoveredScopes = discoverScopesFromMetadata(sortedNotes);
-  const buildAllScopes = configuredScope.length === 0 && discoveredScopes.length > 0;
-  const scopesToBuild = configuredScope ? [configuredScope] : discoveredScopes.length > 0 ? discoveredScopes : [""];
-  return scopesToBuild.map((scope) => {
-    var _a;
-    const includeUntagged = buildAllScopes ? false : settings.tagScoping.includeUntagged;
-    const debugNotes = [];
-    let includedNotes = 0;
-    let worldInfoEntries = 0;
-    let ragDocuments = 0;
-    for (const note of sortedNotes) {
-      const isExcluded = asBoolean(getFrontmatterValue(note.frontmatter, "exclude")) === true;
-      const rawKeywords = asStringArray(getFrontmatterValue(note.frontmatter, "key", "keywords"));
-      const hasKeywords = rawKeywords.length > 0;
-      const retrievalMode = (_a = parseRetrievalMode(getFrontmatterValue(note.frontmatter, "retrieval"))) != null ? _a : "auto";
-      if (isExcluded) {
-        debugNotes.push({
-          path: note.path,
-          basename: note.basename,
-          scopes: uniqueSorted2(note.scopes),
-          included: false,
-          reason: "excluded_by_frontmatter",
-          retrievalMode,
-          hasKeywords,
-          includeWorldInfo: false,
-          includeRag: false
-        });
-        continue;
-      }
-      const inScope = shouldIncludeInScope(
-        note.scopes,
-        scope,
-        settings.tagScoping.membershipMode,
-        includeUntagged
-      );
-      if (!inScope) {
-        debugNotes.push({
-          path: note.path,
-          basename: note.basename,
-          scopes: uniqueSorted2(note.scopes),
-          included: false,
-          reason: reasonForExclusion(note.scopes, includeUntagged),
-          retrievalMode,
-          hasKeywords,
-          includeWorldInfo: false,
-          includeRag: false
-        });
-        continue;
-      }
-      const routing = resolveRetrievalTargets(retrievalMode, hasKeywords);
-      const includeWorldInfo = routing.includeWorldInfo;
-      const includeRag = routing.includeRag;
-      const included = includeWorldInfo || includeRag;
-      if (included) {
-        includedNotes += 1;
-      }
-      if (includeWorldInfo) {
-        worldInfoEntries += 1;
-      }
-      if (includeRag) {
-        ragDocuments += 1;
-      }
-      debugNotes.push({
-        path: note.path,
-        basename: note.basename,
-        scopes: uniqueSorted2(note.scopes),
-        included,
-        reason: included ? "included" : "retrieval_disabled",
-        retrievalMode,
-        hasKeywords,
-        includeWorldInfo,
-        includeRag
-      });
-    }
-    const warnings = [];
-    if (includedNotes === 0) {
-      warnings.push("No notes are included in this scope.");
-    }
-    if (worldInfoEntries === 0) {
-      warnings.push("No world_info entries in this scope.");
-    }
-    if (ragDocuments === 0) {
-      warnings.push("No rag documents in this scope.");
-    }
-    return {
-      scope,
-      includedNotes,
-      worldInfoEntries,
-      ragDocuments,
-      warnings,
-      notes: debugNotes
-    };
-  });
-}
-
-// src/lorebooks-manager-view.ts
-var LOREVAULT_MANAGER_VIEW_TYPE = "lorevault-manager-view";
-function formatScopeLabel(scope) {
-  return scope || "(all)";
-}
-function formatRouteBadge(includeWorldInfo, includeRag) {
-  if (includeWorldInfo && includeRag) {
-    return "world_info + rag";
-  }
-  if (includeWorldInfo) {
-    return "world_info";
-  }
-  if (includeRag) {
-    return "rag";
-  }
-  return "-";
-}
-function formatReason(reason) {
-  switch (reason) {
-    case "included":
-      return "included";
-    case "excluded_by_frontmatter":
-      return "excluded: frontmatter exclude";
-    case "scope_mismatch":
-      return "excluded: scope mismatch";
-    case "untagged_excluded":
-      return "excluded: untagged note";
-    case "retrieval_disabled":
-      return "excluded: retrieval disabled";
-    default:
-      return reason;
-  }
-}
-var LorebooksManagerView = class extends import_obsidian6.ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    this.plugin = plugin;
-  }
-  getViewType() {
-    return LOREVAULT_MANAGER_VIEW_TYPE;
-  }
-  getDisplayText() {
-    return "LoreVault Manager";
-  }
-  getIcon() {
-    return "book-open-text";
-  }
-  async onOpen() {
-    this.render();
-  }
-  async onClose() {
-    this.contentEl.empty();
-  }
-  refresh() {
-    this.render();
-  }
-  renderToolbar(container) {
-    const toolbar = container.createDiv({ cls: "lorevault-manager-toolbar" });
-    const refreshButton = toolbar.createEl("button", { text: "Refresh" });
-    refreshButton.addEventListener("click", () => this.render());
-    const buildAllButton = toolbar.createEl("button", { text: "Build/Export All Scopes" });
-    buildAllButton.addEventListener("click", async () => {
-      try {
-        await this.plugin.convertToLorebook();
-        this.render();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        new import_obsidian6.Notice(`Build failed: ${message}`);
-      }
-    });
-    const openFolderButton = toolbar.createEl("button", { text: "Open Output Folder" });
-    openFolderButton.addEventListener("click", async () => {
-      try {
-        await this.plugin.openOutputFolder();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        new import_obsidian6.Notice(`Open folder failed: ${message}`);
-      }
-    });
-  }
-  renderScopeCard(container, summary) {
-    const card = container.createDiv({ cls: "lorevault-manager-card" });
-    const header = card.createDiv({ cls: "lorevault-manager-card-header" });
-    header.createEl("h3", { text: `Scope: ${formatScopeLabel(summary.scope)}` });
-    const buildButton = header.createEl("button", { text: "Build/Export Scope" });
-    buildButton.addEventListener("click", async () => {
-      try {
-        await this.plugin.convertToLorebook(summary.scope);
-        new import_obsidian6.Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
-        this.render();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        new import_obsidian6.Notice(`Scope build failed: ${message}`);
-      }
-    });
-    const stats = card.createEl("p", {
-      text: `Included Notes: ${summary.includedNotes} | world_info: ${summary.worldInfoEntries} | rag: ${summary.ragDocuments}`
-    });
-    stats.addClass("lorevault-manager-stats");
-    if (summary.warnings.length > 0) {
-      const warningList = card.createEl("ul", { cls: "lorevault-manager-warnings" });
-      for (const warning of summary.warnings) {
-        const li = warningList.createEl("li", { text: warning });
-        li.addClass("lorevault-manager-warning-item");
-      }
-    }
-    const details = card.createEl("details", { cls: "lorevault-manager-debug" });
-    details.createEl("summary", { text: "Debug: Inclusion and Routing Decisions" });
-    const tableWrap = details.createDiv({ cls: "lorevault-manager-table-wrap" });
-    const table = tableWrap.createEl("table", { cls: "lorevault-manager-table" });
-    const headRow = table.createEl("thead").createEl("tr");
-    headRow.createEl("th", { text: "Note" });
-    headRow.createEl("th", { text: "Decision" });
-    headRow.createEl("th", { text: "Route" });
-    headRow.createEl("th", { text: "Retrieval" });
-    headRow.createEl("th", { text: "Keywords" });
-    headRow.createEl("th", { text: "Scopes" });
-    const tbody = table.createEl("tbody");
-    for (const note of summary.notes) {
-      const row = tbody.createEl("tr");
-      row.createEl("td", { text: note.path });
-      row.createEl("td", { text: formatReason(note.reason) });
-      row.createEl("td", { text: formatRouteBadge(note.includeWorldInfo, note.includeRag) });
-      row.createEl("td", { text: note.retrievalMode });
-      row.createEl("td", { text: note.hasKeywords ? "yes" : "no" });
-      row.createEl("td", { text: note.scopes.join(", ") || "-" });
-    }
-  }
-  render() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.addClass("lorevault-manager-view");
-    const titleRow = contentEl.createDiv({ cls: "lorevault-manager-title-row" });
-    const icon = titleRow.createSpan({ cls: "lorevault-manager-icon" });
-    (0, import_obsidian6.setIcon)(icon, "book-open-text");
-    titleRow.createEl("h2", { text: "LoreVault Manager" });
-    this.renderToolbar(contentEl);
-    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
-    const summaries = buildScopeSummaries(notes, this.plugin.settings);
-    if (summaries.length === 0) {
-      contentEl.createEl("p", {
-        text: "No lorebook scopes found. Add tags under your configured prefix (for example #lorebook/universe)."
-      });
-      return;
-    }
-    for (const summary of summaries) {
-      this.renderScopeCard(contentEl, summary);
-    }
-  }
-};
-
-// src/live-context-index.ts
-var import_obsidian7 = require("obsidian");
-
-// src/context-query.ts
-function estimateTokens(text) {
+// src/rag-chunker.ts
+function estimateTokens2(text) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
-function normalizeText(value) {
-  return value.toLowerCase();
+function normalizeBody(content) {
+  return content.replace(/\r\n/g, "\n").trim();
 }
-function tokenize(value) {
-  const normalized = normalizeText(value);
-  const matches = normalized.match(/[a-z0-9][a-z0-9_-]*/g);
-  if (!matches) {
-    return [];
-  }
-  return [...new Set(matches.filter((token) => token.length >= 2))];
-}
-function sortWorldInfoByScore(a, b) {
-  return b.score - a.score || b.entry.order - a.entry.order || a.entry.uid - b.entry.uid;
-}
-function sortRagByScore(a, b) {
-  return b.score - a.score || a.document.path.localeCompare(b.document.path) || a.document.title.localeCompare(b.document.title) || a.document.uid - b.document.uid;
-}
-function uniqueKeywords(entry) {
-  const seen = /* @__PURE__ */ new Set();
-  const values = [];
-  for (const keyword of [...entry.key, ...entry.keysecondary]) {
-    const normalized = keyword.trim().toLowerCase();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    values.push(normalized);
-  }
-  return values;
-}
-function scoreWorldInfoEntries(entries, queryText) {
-  const normalizedQuery = normalizeText(queryText);
-  const tokenSet = new Set(tokenize(queryText));
-  const scored = [];
-  for (const entry of entries) {
-    const keywords = uniqueKeywords(entry);
-    const matchedKeywords = keywords.filter((keyword) => {
-      if (keyword.includes(" ")) {
-        return normalizedQuery.includes(keyword);
-      }
-      return tokenSet.has(keyword);
-    });
-    const keywordScore = matchedKeywords.length * 100;
-    const constantBoost = entry.constant ? 30 : 0;
-    const orderScore = Math.max(0, entry.order) * 0.01;
-    const score = keywordScore + constantBoost + orderScore;
-    if (score <= 0) {
-      continue;
-    }
-    scored.push({
-      entry,
-      score,
-      matchedKeywords
-    });
-  }
-  return scored.sort(sortWorldInfoByScore);
-}
-function scoreRagDocuments(documents, queryText) {
-  const normalizedQuery = normalizeText(queryText);
-  const tokens = tokenize(queryText);
-  const tokenSet = new Set(tokens);
-  const scored = [];
-  for (const document2 of documents) {
-    const normalizedTitle = normalizeText(document2.title);
-    const normalizedPath = normalizeText(document2.path);
-    const normalizedContent = normalizeText(document2.content);
-    const matchedTerms = [];
-    let score = 0;
-    for (const token of tokenSet) {
-      if (normalizedTitle.includes(token)) {
-        score += 40;
-        matchedTerms.push(token);
-        continue;
-      }
-      if (normalizedPath.includes(token)) {
-        score += 20;
-        matchedTerms.push(token);
-        continue;
-      }
-      if (normalizedContent.includes(token)) {
-        score += 10;
-        matchedTerms.push(token);
-      }
-    }
-    if (normalizedContent.includes(normalizedQuery) && normalizedQuery.length >= 4) {
-      score += 25;
-    }
-    if (score <= 0) {
-      continue;
-    }
-    scored.push({
-      document: document2,
-      score,
-      matchedTerms: [...new Set(matchedTerms)].sort((a, b) => a.localeCompare(b))
-    });
-  }
-  return scored.sort(sortRagByScore);
-}
-function trimRagContent(content) {
-  const cleaned = content.trim();
-  if (cleaned.length <= 1200) {
-    return cleaned;
-  }
-  return `${cleaned.slice(0, 1200).trimEnd()}
-...`;
-}
-function renderWorldInfoSection(entry) {
-  const keywordSuffix = entry.matchedKeywords.length > 0 ? `Matched: ${entry.matchedKeywords.join(", ")}` : "Matched: (constant)";
-  return [
-    `### ${entry.entry.comment}`,
-    `Keys: ${entry.entry.key.join(", ")}`,
-    keywordSuffix,
-    "",
-    entry.entry.content.trim()
-  ].join("\n");
-}
-function renderRagSection(document2) {
-  const matched = document2.matchedTerms.length > 0 ? `Matched terms: ${document2.matchedTerms.join(", ")}` : "Matched terms: -";
-  return [
-    `### ${document2.document.title}`,
-    `Source: \`${document2.document.path}\``,
-    matched,
-    "",
-    trimRagContent(document2.document.content)
-  ].join("\n");
-}
-function assembleScopeContext(pack, options) {
-  var _a, _b, _c;
-  const tokenBudget = Math.max(128, Math.floor(options.tokenBudget));
-  const worldInfoRatio = (_a = options.worldInfoBudgetRatio) != null ? _a : 0.6;
-  const worldInfoBudget = Math.max(0, Math.floor(tokenBudget * worldInfoRatio));
-  const ragBudget = Math.max(0, tokenBudget - worldInfoBudget);
-  const maxWorldInfoEntries = (_b = options.maxWorldInfoEntries) != null ? _b : 8;
-  const maxRagDocuments = (_c = options.maxRagDocuments) != null ? _c : 6;
-  const worldInfoCandidates = scoreWorldInfoEntries(pack.worldInfoEntries, options.queryText);
-  const ragCandidates = scoreRagDocuments(pack.ragDocuments, options.queryText);
-  const selectedWorldInfo = [];
-  let usedWorldInfoTokens = 0;
-  for (const candidate of worldInfoCandidates) {
-    if (selectedWorldInfo.length >= maxWorldInfoEntries) {
-      break;
-    }
-    const section = renderWorldInfoSection(candidate);
-    const sectionTokens = estimateTokens(section);
-    if (usedWorldInfoTokens + sectionTokens > worldInfoBudget) {
-      continue;
-    }
-    selectedWorldInfo.push(candidate);
-    usedWorldInfoTokens += sectionTokens;
-  }
-  const selectedRag = [];
-  let usedRagTokens = 0;
-  for (const candidate of ragCandidates) {
-    if (selectedRag.length >= maxRagDocuments) {
-      break;
-    }
-    const section = renderRagSection(candidate);
-    const sectionTokens = estimateTokens(section);
-    if (usedRagTokens + sectionTokens > ragBudget) {
-      continue;
-    }
-    selectedRag.push(candidate);
-    usedRagTokens += sectionTokens;
-  }
-  const worldInfoSections = selectedWorldInfo.map(renderWorldInfoSection);
-  const ragSections = selectedRag.map(renderRagSection);
-  const scopeLabel = normalizeScope(pack.scope) || "(all)";
-  const markdown = [
-    `## LoreVault Context`,
-    `Scope: \`${scopeLabel}\``,
-    `Query: ${options.queryText.trim() || "(empty)"}`,
-    "",
-    "### world_info",
-    worldInfoSections.length > 0 ? worldInfoSections.join("\n\n---\n\n") : "_No matching world_info entries._",
-    "",
-    "### rag",
-    ragSections.length > 0 ? ragSections.join("\n\n---\n\n") : "_No matching rag documents._"
-  ].join("\n");
+function createChunk(doc, chunkIndex, heading, text, startOffset, endOffset) {
+  const normalizedText = text.trim();
+  const textHash = sha256Hex(normalizedText);
+  const chunkId = sha256Hex(`${doc.path}|${doc.uid}|${chunkIndex}|${textHash}`);
   return {
-    scope: pack.scope,
-    queryText: options.queryText,
-    tokenBudget,
-    usedTokens: usedWorldInfoTokens + usedRagTokens,
-    worldInfo: selectedWorldInfo,
-    rag: selectedRag,
-    markdown
+    chunkId,
+    docUid: doc.uid,
+    scope: doc.scope,
+    path: doc.path,
+    title: doc.title,
+    chunkIndex,
+    heading,
+    text: normalizedText,
+    textHash,
+    tokenEstimate: estimateTokens2(normalizedText),
+    startOffset,
+    endOffset
   };
 }
+function splitLongText(doc, heading, text, startOffset, maxChunkChars, overlapChars, nextChunkIndex) {
+  const chunks = [];
+  const source = text.trim();
+  if (!source) {
+    return chunks;
+  }
+  let cursor = 0;
+  while (cursor < source.length) {
+    let end = Math.min(source.length, cursor + maxChunkChars);
+    if (end < source.length) {
+      const newline = source.lastIndexOf("\n", end);
+      if (newline > cursor + Math.floor(maxChunkChars * 0.4)) {
+        end = newline;
+      }
+    }
+    const slice = source.slice(cursor, end).trim();
+    if (slice.length > 0) {
+      const chunk = createChunk(
+        doc,
+        nextChunkIndex(),
+        heading,
+        slice,
+        startOffset + cursor,
+        startOffset + end
+      );
+      chunks.push(chunk);
+    }
+    if (end >= source.length) {
+      break;
+    }
+    const nextCursor = Math.max(cursor + 1, end - overlapChars);
+    cursor = nextCursor;
+  }
+  return chunks;
+}
+function sectionSlicesFromContent(content) {
+  const normalized = content.replace(/\r\n/g, "\n");
+  const headingRegex = /^#{1,6}\s+(.*)$/gm;
+  const matches = [];
+  let match;
+  while ((match = headingRegex.exec(normalized)) !== null) {
+    matches.push({
+      heading: match[1].trim(),
+      index: match.index
+    });
+  }
+  if (matches.length === 0) {
+    return [{
+      heading: "",
+      text: normalized,
+      startOffset: 0,
+      endOffset: normalized.length
+    }];
+  }
+  const slices = [];
+  const firstHeadingOffset = matches[0].index;
+  if (firstHeadingOffset > 0) {
+    slices.push({
+      heading: "",
+      text: normalized.slice(0, firstHeadingOffset),
+      startOffset: 0,
+      endOffset: firstHeadingOffset
+    });
+  }
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i];
+    const next = matches[i + 1];
+    const start = current.index;
+    const end = next ? next.index : normalized.length;
+    slices.push({
+      heading: current.heading,
+      text: normalized.slice(start, end),
+      startOffset: start,
+      endOffset: end
+    });
+  }
+  return slices.filter((slice) => slice.text.trim().length > 0);
+}
+function mergeTinySections(sections, minChunkChars) {
+  if (sections.length <= 1) {
+    return sections;
+  }
+  const merged = [];
+  let pending = null;
+  for (const section of sections) {
+    if (!pending) {
+      pending = section;
+      continue;
+    }
+    if (pending.text.trim().length < minChunkChars) {
+      pending = {
+        heading: pending.heading || section.heading,
+        text: `${pending.text.trimEnd()}
 
-// src/live-context-index.ts
-function sortRagDocs(a, b) {
-  return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+${section.text.trimStart()}`,
+        startOffset: pending.startOffset,
+        endOffset: section.endOffset
+      };
+      continue;
+    }
+    merged.push(pending);
+    pending = section;
+  }
+  if (pending) {
+    merged.push(pending);
+  }
+  return merged;
+}
+function chunkDocumentBySections(doc, minChunkChars, maxChunkChars, overlapChars) {
+  const normalized = normalizeBody(doc.content);
+  if (!normalized) {
+    return [];
+  }
+  const sections = mergeTinySections(sectionSlicesFromContent(normalized), minChunkChars);
+  const chunks = [];
+  let chunkIndex = 0;
+  const nextChunkIndex = () => {
+    const value = chunkIndex;
+    chunkIndex += 1;
+    return value;
+  };
+  for (const section of sections) {
+    const sectionText = section.text.trim();
+    if (!sectionText) {
+      continue;
+    }
+    if (sectionText.length <= maxChunkChars) {
+      chunks.push(
+        createChunk(
+          doc,
+          nextChunkIndex(),
+          section.heading,
+          sectionText,
+          section.startOffset,
+          section.endOffset
+        )
+      );
+      continue;
+    }
+    chunks.push(...splitLongText(
+      doc,
+      section.heading,
+      sectionText,
+      section.startOffset,
+      maxChunkChars,
+      overlapChars,
+      nextChunkIndex
+    ));
+  }
+  return chunks;
+}
+function chunkDocumentByNote(doc, maxChunkChars, overlapChars) {
+  const normalized = normalizeBody(doc.content);
+  if (!normalized) {
+    return [];
+  }
+  let chunkIndex = 0;
+  const nextChunkIndex = () => {
+    const value = chunkIndex;
+    chunkIndex += 1;
+    return value;
+  };
+  if (normalized.length <= maxChunkChars) {
+    return [createChunk(doc, 0, "", normalized, 0, normalized.length)];
+  }
+  return splitLongText(
+    doc,
+    "",
+    normalized,
+    0,
+    maxChunkChars,
+    overlapChars,
+    nextChunkIndex
+  );
+}
+function chunkRagDocuments(documents, settings) {
+  const sortedDocs = [...documents].sort((a, b) => {
+    return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+  });
+  const chunks = [];
+  for (const doc of sortedDocs) {
+    const body = normalizeBody(doc.content);
+    if (!body) {
+      continue;
+    }
+    let docChunks;
+    if (settings.chunkingMode === "note") {
+      docChunks = chunkDocumentByNote(doc, settings.maxChunkChars, settings.overlapChars);
+    } else if (settings.chunkingMode === "section") {
+      docChunks = chunkDocumentBySections(
+        doc,
+        settings.minChunkChars,
+        settings.maxChunkChars,
+        settings.overlapChars
+      );
+    } else {
+      if (body.length <= Math.max(settings.maxChunkChars, settings.minChunkChars * 2)) {
+        docChunks = chunkDocumentByNote(doc, settings.maxChunkChars, settings.overlapChars);
+      } else {
+        docChunks = chunkDocumentBySections(
+          doc,
+          settings.minChunkChars,
+          settings.maxChunkChars,
+          settings.overlapChars
+        );
+      }
+    }
+    chunks.push(...docChunks);
+  }
+  return chunks;
+}
+
+// src/scope-pack-builder.ts
+function cloneSettings(settings) {
+  return {
+    ...settings,
+    tagScoping: { ...settings.tagScoping },
+    weights: { ...settings.weights },
+    defaultLoreBook: { ...settings.defaultLoreBook },
+    defaultEntry: { ...settings.defaultEntry },
+    sqlite: { ...settings.sqlite },
+    embeddings: { ...settings.embeddings }
+  };
 }
 function createSilentProgress() {
   return {
@@ -4809,15 +5192,354 @@ function createSilentProgress() {
     }
   };
 }
-function cloneSettings(settings) {
+async function buildScopePack(app, settings, scope, files, buildAllScopes, embeddingService, progress) {
+  const scopedSettings = cloneSettings(settings);
+  scopedSettings.tagScoping.activeScope = scope;
+  if (buildAllScopes) {
+    scopedSettings.tagScoping.includeUntagged = false;
+  }
+  const stepper = progress != null ? progress : createSilentProgress();
+  stepper.setStatus(`Scope ${scope || "(all)"}: processing files...`);
+  const fileProcessor = new FileProcessor(app, scopedSettings);
+  await fileProcessor.processFiles(files, stepper);
+  stepper.setStatus(`Scope ${scope || "(all)"}: building relationship graph...`);
+  const graphAnalyzer = new GraphAnalyzer(
+    fileProcessor.getEntries(),
+    fileProcessor.getFilenameToUid(),
+    scopedSettings,
+    fileProcessor.getRootUid()
+  );
+  graphAnalyzer.buildGraph();
+  stepper.update();
+  stepper.setStatus(`Scope ${scope || "(all)"}: calculating world_info priorities...`);
+  graphAnalyzer.calculateEntryPriorities();
+  const worldInfoEntries = Object.values(fileProcessor.getEntries()).sort((a, b) => {
+    return b.order - a.order || a.uid - b.uid;
+  });
+  const ragDocuments = [...fileProcessor.getRagDocuments()].sort((a, b) => {
+    return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+  });
+  stepper.setStatus(`Scope ${scope || "(all)"}: chunking RAG documents...`);
+  const ragChunks = chunkRagDocuments(ragDocuments, scopedSettings.embeddings);
+  stepper.update();
+  let ragChunkEmbeddings = [];
+  if (embeddingService && scopedSettings.embeddings.enabled && ragChunks.length > 0) {
+    stepper.setStatus(`Scope ${scope || "(all)"}: generating embeddings...`);
+    ragChunkEmbeddings = await embeddingService.embedChunks(ragChunks);
+    stepper.update();
+  }
   return {
-    ...settings,
-    tagScoping: { ...settings.tagScoping },
-    weights: { ...settings.weights },
-    defaultLoreBook: { ...settings.defaultLoreBook },
-    defaultEntry: { ...settings.defaultEntry }
+    scopedSettings,
+    pack: {
+      schemaVersion: 1,
+      scope,
+      generatedAt: Date.now(),
+      worldInfoEntries,
+      ragDocuments,
+      ragChunks,
+      ragChunkEmbeddings
+    }
   };
 }
+
+// src/embedding-provider.ts
+function trimTrailingSlash(value) {
+  return value.replace(/\/+$/, "");
+}
+function withInstruction(text, instruction) {
+  if (!instruction) {
+    return text;
+  }
+  return `${instruction}
+
+${text}`;
+}
+function parseOpenAiStyleEmbeddings(payload) {
+  if (Array.isArray(payload == null ? void 0 : payload.data)) {
+    const rows = payload.data.map((item) => item == null ? void 0 : item.embedding).filter((vector) => Array.isArray(vector));
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+  if (Array.isArray(payload == null ? void 0 : payload.embeddings)) {
+    return payload.embeddings;
+  }
+  throw new Error("Embedding response did not contain data[].embedding or embeddings[].");
+}
+function parseOllamaEmbeddings(payload) {
+  if (Array.isArray(payload == null ? void 0 : payload.embeddings)) {
+    return payload.embeddings;
+  }
+  if (Array.isArray(payload == null ? void 0 : payload.embedding)) {
+    return [payload.embedding];
+  }
+  return parseOpenAiStyleEmbeddings(payload);
+}
+function ensureVectorCount(vectors, expected) {
+  if (vectors.length !== expected) {
+    throw new Error(`Embedding vector count mismatch: expected ${expected}, got ${vectors.length}.`);
+  }
+  return vectors;
+}
+async function fetchJson(url, body, headers, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Embedding request failed (${response.status}): ${text}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function resolveOpenAiEmbeddingsUrl(endpoint) {
+  const trimmed = trimTrailingSlash(endpoint);
+  if (trimmed.endsWith("/embeddings")) {
+    return trimmed;
+  }
+  return `${trimmed}/embeddings`;
+}
+function resolveOllamaEmbedUrl(endpoint) {
+  const trimmed = trimTrailingSlash(endpoint);
+  if (trimmed.endsWith("/api/embed")) {
+    return trimmed;
+  }
+  if (trimmed.endsWith("/api")) {
+    return `${trimmed}/embed`;
+  }
+  return `${trimmed}/api/embed`;
+}
+async function requestEmbeddings(config, request) {
+  const texts = request.texts.map((text) => withInstruction(text, request.instruction));
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  if (config.apiKey) {
+    headers.Authorization = `Bearer ${config.apiKey}`;
+  }
+  if (config.provider === "ollama") {
+    const url2 = resolveOllamaEmbedUrl(config.endpoint);
+    const payload2 = await fetchJson(url2, {
+      model: config.model,
+      input: texts
+    }, headers, config.timeoutMs);
+    return ensureVectorCount(parseOllamaEmbeddings(payload2), texts.length);
+  }
+  const url = resolveOpenAiEmbeddingsUrl(config.endpoint);
+  const payload = await fetchJson(url, {
+    model: config.model,
+    input: texts
+  }, headers, config.timeoutMs);
+  return ensureVectorCount(parseOpenAiStyleEmbeddings(payload), texts.length);
+}
+
+// src/embedding-cache.ts
+var fs3 = __toESM(require("fs"));
+var path4 = __toESM(require("path"));
+function ensureDir(dirPath) {
+  if (!fs3.existsSync(dirPath)) {
+    fs3.mkdirSync(dirPath, { recursive: true });
+  }
+}
+function resolveBaseDir(app, cacheDir) {
+  if (path4.isAbsolute(cacheDir)) {
+    return cacheDir;
+  }
+  const adapter = app.vault.adapter;
+  if (typeof adapter.getBasePath !== "function") {
+    throw new Error("Unable to resolve vault base path for embedding cache.");
+  }
+  return path4.join(adapter.getBasePath(), cacheDir);
+}
+var EmbeddingCache = class {
+  constructor(app, settings) {
+    this.app = app;
+    this.settings = settings;
+  }
+  recordPath(cacheKey) {
+    const root = resolveBaseDir(this.app, this.settings.cacheDir);
+    const providerDir = slugifyIdentifier(this.settings.provider);
+    const modelDir = slugifyIdentifier(this.settings.model);
+    const chunkDir = slugifyIdentifier(
+      `${this.settings.chunkingMode}-${this.settings.minChunkChars}-${this.settings.maxChunkChars}-${this.settings.overlapChars}`
+    );
+    const prefix = cacheKey.slice(0, 2);
+    const dirPath = path4.join(root, providerDir, modelDir, chunkDir, prefix);
+    return path4.join(dirPath, `${cacheKey}.json`);
+  }
+  get(cacheKey) {
+    const filePath = this.recordPath(cacheKey);
+    if (!fs3.existsSync(filePath)) {
+      return null;
+    }
+    try {
+      const raw = fs3.readFileSync(filePath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed.vector)) {
+        return null;
+      }
+      return parsed;
+    } catch (_error) {
+      return null;
+    }
+  }
+  set(record) {
+    const filePath = this.recordPath(record.cacheKey);
+    ensureDir(path4.dirname(filePath));
+    fs3.writeFileSync(filePath, JSON.stringify(record), "utf8");
+  }
+};
+
+// src/embedding-service.ts
+function cosineSimilarity(a, b) {
+  if (a.length !== b.length || a.length === 0) {
+    return 0;
+  }
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+var EmbeddingService = class {
+  constructor(app, config) {
+    this.app = app;
+    this.config = config;
+    this.cache = new EmbeddingCache(app, config);
+    this.chunkingSignature = stableJsonHash({
+      mode: config.chunkingMode,
+      minChunkChars: config.minChunkChars,
+      maxChunkChars: config.maxChunkChars,
+      overlapChars: config.overlapChars
+    });
+  }
+  createCacheKey(textHash) {
+    return sha256Hex(stableJsonHash({
+      provider: this.config.provider,
+      model: this.config.model,
+      instruction: this.config.instruction,
+      chunkingSignature: this.chunkingSignature,
+      textHash
+    }));
+  }
+  toEmbeddingRecord(chunk, cacheKey, vector) {
+    return {
+      chunkId: chunk.chunkId,
+      provider: this.config.provider,
+      model: this.config.model,
+      dimensions: vector.length,
+      vector,
+      cacheKey,
+      createdAt: Date.now()
+    };
+  }
+  toCachedRecord(embedding) {
+    return {
+      cacheKey: embedding.cacheKey,
+      provider: embedding.provider,
+      model: embedding.model,
+      chunkingSignature: this.chunkingSignature,
+      dimensions: embedding.dimensions,
+      vector: embedding.vector,
+      createdAt: embedding.createdAt
+    };
+  }
+  async embedChunks(chunks) {
+    if (!this.config.enabled) {
+      return [];
+    }
+    const sortedChunks = [...chunks].sort((a, b) => a.chunkId.localeCompare(b.chunkId));
+    const results = [];
+    const pending = [];
+    for (const chunk of sortedChunks) {
+      const cacheKey = this.createCacheKey(chunk.textHash);
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        results.push({
+          chunkId: chunk.chunkId,
+          provider: cached.provider,
+          model: cached.model,
+          dimensions: cached.dimensions,
+          vector: cached.vector,
+          cacheKey: cached.cacheKey,
+          createdAt: cached.createdAt
+        });
+      } else {
+        pending.push({ chunk, cacheKey });
+      }
+    }
+    const batchSize = Math.max(1, Math.floor(this.config.batchSize));
+    for (let i = 0; i < pending.length; i += batchSize) {
+      const batch = pending.slice(i, i + batchSize);
+      const vectors = await requestEmbeddings(this.config, {
+        texts: batch.map((item) => item.chunk.text),
+        instruction: this.config.instruction
+      });
+      for (let j = 0; j < batch.length; j++) {
+        const item = batch[j];
+        const vector = vectors[j];
+        const embedding = this.toEmbeddingRecord(item.chunk, item.cacheKey, vector);
+        this.cache.set(this.toCachedRecord(embedding));
+        results.push(embedding);
+      }
+    }
+    return results.sort((a, b) => a.chunkId.localeCompare(b.chunkId));
+  }
+  async embedQuery(text) {
+    var _a;
+    if (!this.config.enabled || !text.trim()) {
+      return null;
+    }
+    const vectors = await requestEmbeddings(this.config, {
+      texts: [text],
+      instruction: this.config.instruction
+    });
+    return (_a = vectors[0]) != null ? _a : null;
+  }
+  scoreChunks(queryEmbedding, chunks, embeddings) {
+    if (!queryEmbedding) {
+      return [];
+    }
+    const vectorByChunkId = /* @__PURE__ */ new Map();
+    for (const embedding of embeddings) {
+      vectorByChunkId.set(embedding.chunkId, embedding.vector);
+    }
+    const scores = [];
+    for (const chunk of chunks) {
+      const vector = vectorByChunkId.get(chunk.chunkId);
+      if (!vector) {
+        continue;
+      }
+      const similarity = cosineSimilarity(queryEmbedding, vector);
+      if (similarity <= 0) {
+        continue;
+      }
+      scores.push({
+        chunkId: chunk.chunkId,
+        docUid: chunk.docUid,
+        score: similarity
+      });
+    }
+    return scores.sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId));
+  }
+};
+
+// src/live-context-index.ts
 var LiveContextIndex = class {
   constructor(app, getSettings) {
     this.scopes = /* @__PURE__ */ new Map();
@@ -4826,6 +5548,8 @@ var LiveContextIndex = class {
     this.refreshTimer = null;
     this.refreshInFlight = null;
     this.version = 0;
+    this.embeddingService = null;
+    this.embeddingSignature = "";
     this.app = app;
     this.getSettings = getSettings;
   }
@@ -4836,11 +5560,11 @@ var LiveContextIndex = class {
     if (!fileOrPath) {
       return;
     }
-    const path6 = typeof fileOrPath === "string" ? fileOrPath : fileOrPath.path;
-    if (!path6.toLowerCase().endsWith(".md")) {
+    const path8 = typeof fileOrPath === "string" ? fileOrPath : fileOrPath.path;
+    if (!path8.toLowerCase().endsWith(".md")) {
       return;
     }
-    this.task.changedPaths.add(path6);
+    this.task.changedPaths.add(path8);
     this.scheduleRefresh();
   }
   markRenamed(file, oldPath) {
@@ -4919,31 +5643,53 @@ var LiveContextIndex = class {
       buildAllScopes
     };
   }
-  async buildScope(scope, buildAllScopes, files, settings) {
-    const scopedSettings = cloneSettings(settings);
-    scopedSettings.tagScoping.activeScope = scope;
-    if (buildAllScopes) {
-      scopedSettings.tagScoping.includeUntagged = false;
-    }
-    const fileProcessor = new FileProcessor(this.app, scopedSettings);
-    await fileProcessor.processFiles(files, createSilentProgress());
-    const graphAnalyzer = new GraphAnalyzer(
-      fileProcessor.getEntries(),
-      fileProcessor.getFilenameToUid(),
-      scopedSettings,
-      fileProcessor.getRootUid()
-    );
-    graphAnalyzer.buildGraph();
-    graphAnalyzer.calculateEntryPriorities();
-    const worldInfoEntries = Object.values(fileProcessor.getEntries()).sort((a, b) => {
-      return b.order - a.order || a.uid - b.uid;
+  getEmbeddingSignature(settings) {
+    const emb = settings.embeddings;
+    return JSON.stringify({
+      enabled: emb.enabled,
+      provider: emb.provider,
+      endpoint: emb.endpoint,
+      model: emb.model,
+      instruction: emb.instruction,
+      batchSize: emb.batchSize,
+      timeoutMs: emb.timeoutMs,
+      cacheDir: emb.cacheDir,
+      chunkingMode: emb.chunkingMode,
+      minChunkChars: emb.minChunkChars,
+      maxChunkChars: emb.maxChunkChars,
+      overlapChars: emb.overlapChars
     });
-    const ragDocuments = [...fileProcessor.getRagDocuments()].sort(sortRagDocs);
-    return {
+  }
+  getEmbeddingService(settings) {
+    if (!settings.embeddings.enabled) {
+      this.embeddingService = null;
+      this.embeddingSignature = "";
+      return null;
+    }
+    const signature = this.getEmbeddingSignature(settings);
+    if (!this.embeddingService || this.embeddingSignature !== signature) {
+      this.embeddingService = new EmbeddingService(this.app, settings.embeddings);
+      this.embeddingSignature = signature;
+    }
+    return this.embeddingService;
+  }
+  async buildScope(scope, buildAllScopes, files, settings) {
+    const embeddingService = this.getEmbeddingService(settings);
+    const result = await buildScopePack(
+      this.app,
+      settings,
       scope,
-      worldInfoEntries,
-      ragDocuments,
-      builtAt: Date.now()
+      files,
+      buildAllScopes,
+      embeddingService
+    );
+    return {
+      scope: result.pack.scope,
+      worldInfoEntries: result.pack.worldInfoEntries,
+      ragDocuments: result.pack.ragDocuments,
+      ragChunks: result.pack.ragChunks,
+      ragChunkEmbeddings: result.pack.ragChunkEmbeddings,
+      builtAt: result.pack.generatedAt
     };
   }
   updateFileScopeIndex(settings) {
@@ -5051,7 +5797,7 @@ var LiveContextIndex = class {
     return this.version;
   }
   async query(options, scopeOverride) {
-    var _a;
+    var _a, _b;
     await this.flushRefreshQueue();
     if (this.scopes.size === 0) {
       await this.rebuildAllScopes();
@@ -5063,28 +5809,45 @@ var LiveContextIndex = class {
     }
     if (!this.scopes.has(resolvedScope)) {
       const files = this.app.vault.getMarkdownFiles();
-      const settings = this.getSettings();
-      const { buildAllScopes } = this.computeScopePlan(settings, files);
-      const pack2 = await this.buildScope(resolvedScope, buildAllScopes, files, settings);
+      const settings2 = this.getSettings();
+      const { buildAllScopes } = this.computeScopePlan(settings2, files);
+      const pack2 = await this.buildScope(resolvedScope, buildAllScopes, files, settings2);
       this.scopes.set(resolvedScope, pack2);
     }
     const pack = this.scopes.get(resolvedScope);
     if (!pack) {
       throw new Error(`No context pack for scope "${resolvedScope || "(all)"}".`);
     }
-    return assembleScopeContext(pack, options);
+    const semanticBoostByDocUid = {};
+    const settings = this.getSettings();
+    const embeddingService = this.getEmbeddingService(settings);
+    if (embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
+      const queryEmbedding = await embeddingService.embedQuery(options.queryText);
+      const chunkScores = embeddingService.scoreChunks(queryEmbedding, pack.ragChunks, pack.ragChunkEmbeddings);
+      for (const chunkScore of chunkScores) {
+        const boost = chunkScore.score * 150;
+        const current = (_b = semanticBoostByDocUid[chunkScore.docUid]) != null ? _b : 0;
+        if (boost > current) {
+          semanticBoostByDocUid[chunkScore.docUid] = boost;
+        }
+      }
+    }
+    return assembleScopeContext(pack, {
+      ...options,
+      ragSemanticBoostByDocUid: semanticBoostByDocUid
+    });
   }
 };
 
 // src/scope-output-paths.ts
-var path4 = __toESM(require("path"));
+var path5 = __toESM(require("path"));
 function slugifyScope(scope) {
   const normalized = normalizeScope(scope);
   const slug = normalized.replace(/[\/\\]+/g, "-").replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
   return slug || "root";
 }
-function resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes) {
-  const ext = path4.extname(baseOutputPath);
+function resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes, sqliteBaseOutputPath) {
+  const ext = path5.extname(baseOutputPath);
   const hasJsonExt = ext.toLowerCase() === ".json";
   const stem = hasJsonExt ? baseOutputPath.slice(0, -ext.length) : baseOutputPath;
   const scopeSlug = slugifyScope(scope);
@@ -5094,15 +5857,31 @@ function resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes) {
   } else if (buildAllScopes) {
     stemWithScope = `${stem}-${scopeSlug}`;
   }
+  let sqliteStem = `${stemWithScope}.lorevault`;
+  if (sqliteBaseOutputPath && sqliteBaseOutputPath.trim().length > 0) {
+    const sqliteExt = path5.extname(sqliteBaseOutputPath);
+    const sqliteHasDbExt = sqliteExt.toLowerCase() === ".db";
+    const rawSqliteStem = sqliteHasDbExt ? sqliteBaseOutputPath.slice(0, -sqliteExt.length) : sqliteBaseOutputPath;
+    if (rawSqliteStem.includes("{scope}")) {
+      sqliteStem = rawSqliteStem.replace(/\{scope\}/g, scopeSlug);
+    } else if (buildAllScopes) {
+      sqliteStem = `${rawSqliteStem}-${scopeSlug}`;
+    } else {
+      sqliteStem = rawSqliteStem;
+    }
+  }
   return {
     worldInfoPath: `${stemWithScope}.json`,
-    ragPath: `${stemWithScope}.rag.md`
+    ragPath: `${stemWithScope}.rag.md`,
+    sqlitePath: `${sqliteStem}.db`
   };
 }
 function toCollisionKey(outputPath) {
-  return path4.normalize(outputPath).toLowerCase();
+  return path5.normalize(outputPath).toLowerCase();
 }
-function assertUniqueOutputPaths(assignments) {
+function assertUniqueOutputPaths(assignments, options) {
+  var _a;
+  const includeSqlite = (_a = options == null ? void 0 : options.includeSqlite) != null ? _a : true;
   const seenByPath = /* @__PURE__ */ new Map();
   const collisions = /* @__PURE__ */ new Set();
   for (const assignment of assignments) {
@@ -5110,6 +5889,9 @@ function assertUniqueOutputPaths(assignments) {
       ["world_info", assignment.paths.worldInfoPath],
       ["rag", assignment.paths.ragPath]
     ];
+    if (includeSqlite) {
+      targets.push(["sqlite", assignment.paths.sqlitePath]);
+    }
     for (const [kind, outputPath] of targets) {
       const key = `${kind}:${toCollisionKey(outputPath)}`;
       const existingScope = seenByPath.get(key);
@@ -5127,11 +5909,342 @@ function assertUniqueOutputPaths(assignments) {
   }
 }
 
+// src/sqlite-pack-exporter.ts
+var fs5 = __toESM(require("fs"));
+
+// src/sqlite-cli.ts
+var fs4 = __toESM(require("fs"));
+var path6 = __toESM(require("path"));
+var import_child_process = require("child_process");
+function execFileAsync(cmd, args, input) {
+  return new Promise((resolve, reject) => {
+    const child = (0, import_child_process.execFile)(cmd, args, { maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const message = stderr || error.message;
+        reject(new Error(message));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+    if (input !== void 0 && child.stdin) {
+      child.stdin.write(input);
+      child.stdin.end();
+    }
+  });
+}
+function resolveAbsoluteOutputPath(app, outputPath) {
+  if (path6.isAbsolute(outputPath)) {
+    return outputPath;
+  }
+  const adapter = app.vault.adapter;
+  if (typeof adapter.getBasePath !== "function") {
+    throw new Error("Unable to resolve vault base path for SQLite output.");
+  }
+  const basePath = adapter.getBasePath();
+  return path6.join(basePath, outputPath);
+}
+function ensureParentDirectory(filePath) {
+  const dirPath = path6.dirname(filePath);
+  if (!fs4.existsSync(dirPath)) {
+    fs4.mkdirSync(dirPath, { recursive: true });
+  }
+}
+async function runSqliteScript(databasePath, script) {
+  await execFileAsync("sqlite3", [databasePath], script);
+}
+async function runSqliteJsonQuery(databasePath, sql) {
+  const { stdout } = await execFileAsync("sqlite3", ["-json", databasePath, sql]);
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return [];
+  }
+  return JSON.parse(trimmed);
+}
+
+// src/sqlite-pack-exporter.ts
+function sqlString(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+function sqlNullableString(value) {
+  if (value === null || value === void 0) {
+    return "NULL";
+  }
+  return sqlString(value);
+}
+function sqlNumber(value) {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+  return `${value}`;
+}
+function sqlJson(value) {
+  return sqlString(JSON.stringify(value));
+}
+function createSchemaSql() {
+  return [
+    "PRAGMA journal_mode=WAL;",
+    "PRAGMA synchronous=NORMAL;",
+    "BEGIN IMMEDIATE;",
+    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    "CREATE TABLE world_info_entries (",
+    "  uid INTEGER PRIMARY KEY,",
+    "  scope TEXT NOT NULL,",
+    "  order_value INTEGER NOT NULL,",
+    "  comment TEXT NOT NULL,",
+    "  content TEXT NOT NULL,",
+    "  key_json TEXT NOT NULL,",
+    "  keysecondary_json TEXT NOT NULL,",
+    "  entry_json TEXT NOT NULL",
+    ");",
+    "CREATE TABLE rag_documents (",
+    "  uid INTEGER PRIMARY KEY,",
+    "  scope TEXT NOT NULL,",
+    "  path TEXT NOT NULL,",
+    "  title TEXT NOT NULL,",
+    "  content TEXT NOT NULL",
+    ");",
+    "CREATE TABLE rag_chunks (",
+    "  chunk_id TEXT PRIMARY KEY,",
+    "  doc_uid INTEGER NOT NULL,",
+    "  scope TEXT NOT NULL,",
+    "  path TEXT NOT NULL,",
+    "  title TEXT NOT NULL,",
+    "  chunk_index INTEGER NOT NULL,",
+    "  heading TEXT NOT NULL,",
+    "  text TEXT NOT NULL,",
+    "  text_hash TEXT NOT NULL,",
+    "  token_estimate INTEGER NOT NULL,",
+    "  start_offset INTEGER NOT NULL,",
+    "  end_offset INTEGER NOT NULL",
+    ");",
+    "CREATE TABLE rag_chunk_embeddings (",
+    "  chunk_id TEXT NOT NULL,",
+    "  provider TEXT NOT NULL,",
+    "  model TEXT NOT NULL,",
+    "  dimensions INTEGER NOT NULL,",
+    "  cache_key TEXT NOT NULL,",
+    "  created_at INTEGER NOT NULL,",
+    "  vector_json TEXT NOT NULL,",
+    "  PRIMARY KEY (chunk_id, provider, model)",
+    ");",
+    "CREATE INDEX idx_world_info_scope_order ON world_info_entries(scope, order_value DESC, uid ASC);",
+    "CREATE INDEX idx_rag_documents_scope_path ON rag_documents(scope, path, uid);",
+    "CREATE INDEX idx_rag_chunks_doc_uid ON rag_chunks(doc_uid, chunk_index);",
+    "CREATE INDEX idx_rag_chunk_embeddings_chunk_id ON rag_chunk_embeddings(chunk_id);"
+  ];
+}
+function createInsertSql(pack) {
+  const statements = [];
+  statements.push(
+    `INSERT INTO meta (key, value) VALUES (${sqlString("schema_version")}, ${sqlString(String(pack.schemaVersion))});`,
+    `INSERT INTO meta (key, value) VALUES (${sqlString("scope")}, ${sqlString(pack.scope)});`,
+    `INSERT INTO meta (key, value) VALUES (${sqlString("generated_at")}, ${sqlString(String(pack.generatedAt))});`
+  );
+  for (const entry of pack.worldInfoEntries) {
+    statements.push(
+      [
+        "INSERT INTO world_info_entries (uid, scope, order_value, comment, content, key_json, keysecondary_json, entry_json)",
+        "VALUES (",
+        `${sqlNumber(entry.uid)},`,
+        `${sqlString(pack.scope)},`,
+        `${sqlNumber(entry.order)},`,
+        `${sqlString(entry.comment)},`,
+        `${sqlString(entry.content)},`,
+        `${sqlJson(entry.key)},`,
+        `${sqlJson(entry.keysecondary)},`,
+        `${sqlJson(entry)}`,
+        ");"
+      ].join(" ")
+    );
+  }
+  for (const doc of pack.ragDocuments) {
+    statements.push(
+      [
+        "INSERT INTO rag_documents (uid, scope, path, title, content)",
+        "VALUES (",
+        `${sqlNumber(doc.uid)},`,
+        `${sqlString(doc.scope)},`,
+        `${sqlString(doc.path)},`,
+        `${sqlString(doc.title)},`,
+        `${sqlString(doc.content)}`,
+        ");"
+      ].join(" ")
+    );
+  }
+  for (const chunk of pack.ragChunks) {
+    statements.push(
+      [
+        "INSERT INTO rag_chunks (chunk_id, doc_uid, scope, path, title, chunk_index, heading, text, text_hash, token_estimate, start_offset, end_offset)",
+        "VALUES (",
+        `${sqlString(chunk.chunkId)},`,
+        `${sqlNumber(chunk.docUid)},`,
+        `${sqlString(chunk.scope)},`,
+        `${sqlString(chunk.path)},`,
+        `${sqlString(chunk.title)},`,
+        `${sqlNumber(chunk.chunkIndex)},`,
+        `${sqlNullableString(chunk.heading)},`,
+        `${sqlString(chunk.text)},`,
+        `${sqlString(chunk.textHash)},`,
+        `${sqlNumber(chunk.tokenEstimate)},`,
+        `${sqlNumber(chunk.startOffset)},`,
+        `${sqlNumber(chunk.endOffset)}`,
+        ");"
+      ].join(" ")
+    );
+  }
+  for (const embedding of pack.ragChunkEmbeddings) {
+    statements.push(
+      [
+        "INSERT INTO rag_chunk_embeddings (chunk_id, provider, model, dimensions, cache_key, created_at, vector_json)",
+        "VALUES (",
+        `${sqlString(embedding.chunkId)},`,
+        `${sqlString(embedding.provider)},`,
+        `${sqlString(embedding.model)},`,
+        `${sqlNumber(embedding.dimensions)},`,
+        `${sqlString(embedding.cacheKey)},`,
+        `${sqlNumber(embedding.createdAt)},`,
+        `${sqlJson(embedding.vector)}`,
+        ");"
+      ].join(" ")
+    );
+  }
+  statements.push("COMMIT;");
+  return statements;
+}
+function createScript(pack) {
+  return [...createSchemaSql(), ...createInsertSql(pack)].join("\n");
+}
+var SqlitePackExporter = class {
+  constructor(app) {
+    this.app = app;
+  }
+  async exportScopePack(pack, outputPath) {
+    const absolutePath = resolveAbsoluteOutputPath(this.app, outputPath);
+    ensureParentDirectory(absolutePath);
+    if (fs5.existsSync(absolutePath)) {
+      fs5.unlinkSync(absolutePath);
+    }
+    const script = createScript(pack);
+    await runSqliteScript(absolutePath, script);
+    return absolutePath;
+  }
+};
+
+// src/sqlite-pack-reader.ts
+function parseJsonColumn(value) {
+  return JSON.parse(value);
+}
+var SqlitePackReader = class {
+  constructor(app) {
+    this.app = app;
+  }
+  resolvePath(outputPath) {
+    return resolveAbsoluteOutputPath(this.app, outputPath);
+  }
+  async readWorldInfoEntries(outputPath) {
+    const dbPath = this.resolvePath(outputPath);
+    const rows = await runSqliteJsonQuery(
+      dbPath,
+      "SELECT entry_json FROM world_info_entries ORDER BY order_value DESC, uid ASC;"
+    );
+    const entries = {};
+    for (const row of rows) {
+      if (!row.entry_json) {
+        continue;
+      }
+      const entry = parseJsonColumn(row.entry_json);
+      entries[entry.uid] = entry;
+    }
+    return entries;
+  }
+  async readRagDocuments(outputPath) {
+    const dbPath = this.resolvePath(outputPath);
+    const rows = await runSqliteJsonQuery(
+      dbPath,
+      "SELECT uid, scope, path, title, content FROM rag_documents ORDER BY path ASC, title ASC, uid ASC;"
+    );
+    return rows.filter((row) => typeof row.uid === "number").map((row) => {
+      var _a, _b, _c, _d;
+      return {
+        uid: row.uid,
+        scope: (_a = row.scope) != null ? _a : "",
+        path: (_b = row.path) != null ? _b : "",
+        title: (_c = row.title) != null ? _c : "",
+        content: (_d = row.content) != null ? _d : ""
+      };
+    });
+  }
+  async readScopePack(outputPath) {
+    var _a, _b, _c;
+    const dbPath = this.resolvePath(outputPath);
+    const metaRows = await runSqliteJsonQuery(
+      dbPath,
+      "SELECT key, value FROM meta ORDER BY key ASC;"
+    );
+    const meta = new Map(metaRows.map((row) => [row.key, row.value]));
+    const worldInfoEntries = Object.values(await this.readWorldInfoEntries(outputPath));
+    const ragDocuments = await this.readRagDocuments(outputPath);
+    const chunkRows = await runSqliteJsonQuery(
+      dbPath,
+      "SELECT chunk_id, doc_uid, scope, path, title, chunk_index, heading, text, text_hash, token_estimate, start_offset, end_offset FROM rag_chunks ORDER BY path ASC, chunk_index ASC;"
+    );
+    const ragChunks = chunkRows.map((row) => {
+      var _a2, _b2, _c2, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+      return {
+        chunkId: (_a2 = row.chunk_id) != null ? _a2 : "",
+        docUid: (_b2 = row.doc_uid) != null ? _b2 : 0,
+        scope: (_c2 = row.scope) != null ? _c2 : "",
+        path: (_d = row.path) != null ? _d : "",
+        title: (_e = row.title) != null ? _e : "",
+        chunkIndex: (_f = row.chunk_index) != null ? _f : 0,
+        heading: (_g = row.heading) != null ? _g : "",
+        text: (_h = row.text) != null ? _h : "",
+        textHash: (_i = row.text_hash) != null ? _i : "",
+        tokenEstimate: (_j = row.token_estimate) != null ? _j : 0,
+        startOffset: (_k = row.start_offset) != null ? _k : 0,
+        endOffset: (_l = row.end_offset) != null ? _l : 0
+      };
+    });
+    const embeddingRows = await runSqliteJsonQuery(
+      dbPath,
+      "SELECT chunk_id, provider, model, dimensions, cache_key, created_at, vector_json FROM rag_chunk_embeddings ORDER BY chunk_id ASC, provider ASC, model ASC;"
+    );
+    const ragChunkEmbeddings = embeddingRows.map((row) => {
+      var _a2, _b2, _c2, _d, _e, _f;
+      return {
+        chunkId: (_a2 = row.chunk_id) != null ? _a2 : "",
+        provider: (_b2 = row.provider) != null ? _b2 : "",
+        model: (_c2 = row.model) != null ? _c2 : "",
+        dimensions: (_d = row.dimensions) != null ? _d : 0,
+        cacheKey: (_e = row.cache_key) != null ? _e : "",
+        createdAt: (_f = row.created_at) != null ? _f : 0,
+        vector: row.vector_json ? parseJsonColumn(row.vector_json) : []
+      };
+    });
+    return {
+      schemaVersion: Number((_a = meta.get("schema_version")) != null ? _a : 1),
+      scope: (_b = meta.get("scope")) != null ? _b : "",
+      generatedAt: Number((_c = meta.get("generated_at")) != null ? _c : Date.now()),
+      worldInfoEntries,
+      ragDocuments,
+      ragChunks,
+      ragChunkEmbeddings
+    };
+  }
+};
+
 // src/main.ts
-var path5 = __toESM(require("path"));
+var path7 = __toESM(require("path"));
 var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
   getBaseOutputPath() {
     return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+  }
+  mapEntriesByUid(entries) {
+    const map = {};
+    for (const entry of entries) {
+      map[entry.uid] = entry;
+    }
+    return map;
   }
   refreshManagerViews() {
     const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
@@ -5175,7 +6288,7 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
     return [...scopes].sort((a, b) => a.localeCompare(b));
   }
   mergeSettings(data) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     const merged = {
       ...DEFAULT_SETTINGS,
       ...data,
@@ -5194,6 +6307,14 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
       defaultEntry: {
         ...DEFAULT_SETTINGS.defaultEntry,
         ...(_d = data == null ? void 0 : data.defaultEntry) != null ? _d : {}
+      },
+      sqlite: {
+        ...DEFAULT_SETTINGS.sqlite,
+        ...(_e = data == null ? void 0 : data.sqlite) != null ? _e : {}
+      },
+      embeddings: {
+        ...DEFAULT_SETTINGS.embeddings,
+        ...(_f = data == null ? void 0 : data.embeddings) != null ? _f : {}
       }
     };
     merged.tagScoping.tagPrefix = normalizeTagPrefix(merged.tagScoping.tagPrefix) || DEFAULT_SETTINGS.tagScoping.tagPrefix;
@@ -5216,6 +6337,24 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
       0,
       Math.min(3, Math.floor(merged.defaultEntry.selectiveLogic))
     );
+    merged.sqlite.enabled = Boolean(merged.sqlite.enabled);
+    merged.sqlite.outputPath = merged.sqlite.outputPath.trim();
+    merged.embeddings.enabled = Boolean(merged.embeddings.enabled);
+    merged.embeddings.provider = merged.embeddings.provider === "ollama" || merged.embeddings.provider === "openai_compatible" ? merged.embeddings.provider : "openrouter";
+    merged.embeddings.endpoint = merged.embeddings.endpoint.trim();
+    merged.embeddings.apiKey = merged.embeddings.apiKey.trim();
+    merged.embeddings.model = merged.embeddings.model.trim() || DEFAULT_SETTINGS.embeddings.model;
+    merged.embeddings.instruction = merged.embeddings.instruction.trim();
+    merged.embeddings.batchSize = Math.max(1, Math.floor(merged.embeddings.batchSize));
+    merged.embeddings.timeoutMs = Math.max(1e3, Math.floor(merged.embeddings.timeoutMs));
+    merged.embeddings.cacheDir = merged.embeddings.cacheDir.trim() || DEFAULT_SETTINGS.embeddings.cacheDir;
+    merged.embeddings.chunkingMode = merged.embeddings.chunkingMode === "note" || merged.embeddings.chunkingMode === "section" ? merged.embeddings.chunkingMode : "auto";
+    merged.embeddings.minChunkChars = Math.max(100, Math.floor(merged.embeddings.minChunkChars));
+    merged.embeddings.maxChunkChars = Math.max(
+      merged.embeddings.minChunkChars,
+      Math.floor(merged.embeddings.maxChunkChars)
+    );
+    merged.embeddings.overlapChars = Math.max(0, Math.floor(merged.embeddings.overlapChars));
     return merged;
   }
   async onload() {
@@ -5375,13 +6514,13 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
     var _a, _b;
     const outputPath = this.getBaseOutputPath();
     const adapter = this.app.vault.adapter;
-    const isAbsolute4 = path5.isAbsolute(outputPath);
-    let folderPath = isAbsolute4 ? path5.dirname(outputPath) : ".";
-    if (!isAbsolute4) {
+    const isAbsolute6 = path7.isAbsolute(outputPath);
+    let folderPath = isAbsolute6 ? path7.dirname(outputPath) : ".";
+    if (!isAbsolute6) {
       if (typeof adapter.getBasePath === "function") {
         const vaultRoot = adapter.getBasePath();
-        const relativeDir = path5.dirname(outputPath);
-        folderPath = relativeDir === "." ? vaultRoot : path5.join(vaultRoot, relativeDir);
+        const relativeDir = path7.dirname(outputPath);
+        folderPath = relativeDir === "." ? vaultRoot : path7.join(vaultRoot, relativeDir);
       } else {
         throw new Error("Unable to resolve vault base path for relative output folders.");
       }
@@ -5407,49 +6546,62 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
       const baseOutputPath = this.getBaseOutputPath();
       const worldInfoExporter = new LoreBookExporter(this.app);
       const ragExporter = new RagExporter(this.app);
+      const sqliteExporter = new SqlitePackExporter(this.app);
+      const sqliteReader = new SqlitePackReader(this.app);
+      const embeddingService = this.settings.embeddings.enabled ? new EmbeddingService(this.app, this.settings.embeddings) : null;
       const scopeAssignments = scopesToBuild.map((scope) => ({
         scope,
-        paths: resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes)
+        paths: resolveScopeOutputPaths(
+          baseOutputPath,
+          scope,
+          buildAllScopes,
+          this.settings.sqlite.outputPath
+        )
       }));
-      assertUniqueOutputPaths(scopeAssignments);
+      assertUniqueOutputPaths(scopeAssignments, {
+        includeSqlite: this.settings.sqlite.enabled
+      });
       for (const assignment of scopeAssignments) {
         const { scope, paths } = assignment;
-        const scopedSettings = this.mergeSettings({
-          ...this.settings,
-          tagScoping: {
-            ...this.settings.tagScoping,
-            activeScope: scope,
-            // Avoid duplicating untagged notes in every scope during all-scope builds.
-            includeUntagged: buildAllScopes ? false : this.settings.tagScoping.includeUntagged
-          }
-        });
-        const fileProcessor = new FileProcessor(this.app, scopedSettings);
         const progress = new ProgressBar(
-          files.length + 3,
-          // Files + graph build + world_info export + rag export
+          files.length + 7,
+          // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + rag
           `Building LoreVault scope: ${scope || "(all)"}`
         );
-        progress.setStatus(`Scope ${scope || "(all)"}: processing files...`);
-        await fileProcessor.processFiles(files, progress);
-        progress.setStatus(`Scope ${scope || "(all)"}: building relationship graph...`);
-        const graphAnalyzer = new GraphAnalyzer(
-          fileProcessor.getEntries(),
-          fileProcessor.getFilenameToUid(),
-          scopedSettings,
-          fileProcessor.getRootUid()
+        const scopePackResult = await buildScopePack(
+          this.app,
+          this.settings,
+          scope,
+          files,
+          buildAllScopes,
+          embeddingService,
+          progress
         );
-        graphAnalyzer.buildGraph();
-        progress.update();
-        progress.setStatus(`Scope ${scope || "(all)"}: calculating world_info priorities...`);
-        graphAnalyzer.calculateEntryPriorities();
+        const scopedSettings = scopePackResult.scopedSettings;
+        let worldInfoEntries = scopePackResult.pack.worldInfoEntries;
+        let ragDocuments = scopePackResult.pack.ragDocuments;
+        if (this.settings.sqlite.enabled) {
+          progress.setStatus(`Scope ${scope || "(all)"}: exporting canonical SQLite pack...`);
+          await sqliteExporter.exportScopePack(scopePackResult.pack, paths.sqlitePath);
+          progress.update();
+          progress.setStatus(`Scope ${scope || "(all)"}: reading exports from SQLite pack...`);
+          const readPack = await sqliteReader.readScopePack(paths.sqlitePath);
+          worldInfoEntries = readPack.worldInfoEntries;
+          ragDocuments = readPack.ragDocuments;
+          progress.update();
+        }
         progress.setStatus(`Scope ${scope || "(all)"}: exporting world_info JSON...`);
-        await worldInfoExporter.exportLoreBookJson(fileProcessor.getEntries(), paths.worldInfoPath, scopedSettings);
+        await worldInfoExporter.exportLoreBookJson(
+          this.mapEntriesByUid(worldInfoEntries),
+          paths.worldInfoPath,
+          scopedSettings
+        );
         progress.update();
         progress.setStatus(`Scope ${scope || "(all)"}: exporting RAG markdown...`);
-        await ragExporter.exportRagMarkdown(fileProcessor.getRagDocuments(), paths.ragPath, scope || "(all)");
+        await ragExporter.exportRagMarkdown(ragDocuments, paths.ragPath, scope || "(all)");
         progress.update();
         progress.success(
-          `Scope ${scope || "(all)"} complete: ${Object.keys(fileProcessor.getEntries()).length} world_info entries, ${fileProcessor.getRagDocuments().length} rag docs.`
+          `Scope ${scope || "(all)"} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} rag docs.`
         );
       }
       new import_obsidian8.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);

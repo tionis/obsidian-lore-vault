@@ -1,42 +1,13 @@
 import { App, TAbstractFile, TFile, getAllTags } from 'obsidian';
 import { ConverterSettings } from './models';
 import { extractLorebookScopesFromTags, normalizeScope, shouldIncludeInScope } from './lorebook-scoping';
-import { FileProcessor } from './file-processor';
-import { GraphAnalyzer } from './graph-analyzer';
-import { ProgressBar } from './progress-bar';
 import { ScopeContextPack, AssembledContext, ContextQueryOptions, assembleScopeContext } from './context-query';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
+import { buildScopePack } from './scope-pack-builder';
+import { EmbeddingService } from './embedding-service';
 
 interface RefreshTask {
   changedPaths: Set<string>;
-}
-
-function sortRagDocs<T extends { path: string; title: string; uid: number }>(a: T, b: T): number {
-  return (
-    a.path.localeCompare(b.path) ||
-    a.title.localeCompare(b.title) ||
-    a.uid - b.uid
-  );
-}
-
-function createSilentProgress(): ProgressBar {
-  return {
-    setStatus: () => {},
-    update: () => {},
-    success: () => {},
-    error: () => {},
-    close: () => {}
-  } as unknown as ProgressBar;
-}
-
-function cloneSettings(settings: ConverterSettings): ConverterSettings {
-  return {
-    ...settings,
-    tagScoping: { ...settings.tagScoping },
-    weights: { ...settings.weights },
-    defaultLoreBook: { ...settings.defaultLoreBook },
-    defaultEntry: { ...settings.defaultEntry }
-  };
 }
 
 export class LiveContextIndex {
@@ -48,6 +19,8 @@ export class LiveContextIndex {
   private refreshTimer: number | null = null;
   private refreshInFlight: Promise<void> | null = null;
   private version = 0;
+  private embeddingService: EmbeddingService | null = null;
+  private embeddingSignature = '';
 
   constructor(app: App, getSettings: () => ConverterSettings) {
     this.app = app;
@@ -158,44 +131,63 @@ export class LiveContextIndex {
     };
   }
 
+  private getEmbeddingSignature(settings: ConverterSettings): string {
+    const emb = settings.embeddings;
+    return JSON.stringify({
+      enabled: emb.enabled,
+      provider: emb.provider,
+      endpoint: emb.endpoint,
+      model: emb.model,
+      instruction: emb.instruction,
+      batchSize: emb.batchSize,
+      timeoutMs: emb.timeoutMs,
+      cacheDir: emb.cacheDir,
+      chunkingMode: emb.chunkingMode,
+      minChunkChars: emb.minChunkChars,
+      maxChunkChars: emb.maxChunkChars,
+      overlapChars: emb.overlapChars
+    });
+  }
+
+  private getEmbeddingService(settings: ConverterSettings): EmbeddingService | null {
+    if (!settings.embeddings.enabled) {
+      this.embeddingService = null;
+      this.embeddingSignature = '';
+      return null;
+    }
+
+    const signature = this.getEmbeddingSignature(settings);
+    if (!this.embeddingService || this.embeddingSignature !== signature) {
+      this.embeddingService = new EmbeddingService(this.app, settings.embeddings);
+      this.embeddingSignature = signature;
+    }
+
+    return this.embeddingService;
+  }
+
   private async buildScope(
     scope: string,
     buildAllScopes: boolean,
     files: TFile[],
     settings: ConverterSettings
   ): Promise<ScopeContextPack> {
-    const scopedSettings = cloneSettings(settings);
-    scopedSettings.tagScoping.activeScope = scope;
-    if (buildAllScopes) {
-      scopedSettings.tagScoping.includeUntagged = false;
-    }
-
-    const fileProcessor = new FileProcessor(this.app, scopedSettings);
-    await fileProcessor.processFiles(files, createSilentProgress());
-
-    const graphAnalyzer = new GraphAnalyzer(
-      fileProcessor.getEntries(),
-      fileProcessor.getFilenameToUid(),
-      scopedSettings,
-      fileProcessor.getRootUid()
+    const embeddingService = this.getEmbeddingService(settings);
+    const result = await buildScopePack(
+      this.app,
+      settings,
+      scope,
+      files,
+      buildAllScopes,
+      embeddingService
     );
-    graphAnalyzer.buildGraph();
-    graphAnalyzer.calculateEntryPriorities();
-
-    const worldInfoEntries = Object.values(fileProcessor.getEntries()).sort((a, b) => {
-      return (
-        b.order - a.order ||
-        a.uid - b.uid
-      );
-    });
-
-    const ragDocuments = [...fileProcessor.getRagDocuments()].sort(sortRagDocs);
 
     return {
-      scope,
-      worldInfoEntries,
-      ragDocuments,
-      builtAt: Date.now()
+      scope: result.pack.scope,
+      worldInfoEntries: result.pack.worldInfoEntries,
+      ragDocuments: result.pack.ragDocuments,
+      ragChunks: result.pack.ragChunks,
+      ragChunkEmbeddings: result.pack.ragChunkEmbeddings,
+      builtAt: result.pack.generatedAt
     };
   }
 
@@ -351,6 +343,27 @@ export class LiveContextIndex {
       throw new Error(`No context pack for scope "${resolvedScope || '(all)'}".`);
     }
 
-    return assembleScopeContext(pack, options);
+    const semanticBoostByDocUid: {[key: number]: number} = {};
+    const settings = this.getSettings();
+    const embeddingService = this.getEmbeddingService(settings);
+
+    if (embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
+      const queryEmbedding = await embeddingService.embedQuery(options.queryText);
+      const chunkScores = embeddingService.scoreChunks(queryEmbedding, pack.ragChunks, pack.ragChunkEmbeddings);
+
+      for (const chunkScore of chunkScores) {
+        // Boost lexical scores using best semantic chunk per document.
+        const boost = chunkScore.score * 150;
+        const current = semanticBoostByDocUid[chunkScore.docUid] ?? 0;
+        if (boost > current) {
+          semanticBoostByDocUid[chunkScore.docUid] = boost;
+        }
+      }
+    }
+
+    return assembleScopeContext(pack, {
+      ...options,
+      ragSemanticBoostByDocUid: semanticBoostByDocUid
+    });
   }
 }

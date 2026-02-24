@@ -84,6 +84,25 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       probability: 100,
       depth: 4,
       groupWeight: 100
+    },
+    sqlite: {
+      enabled: true,
+      outputPath: ''
+    },
+    embeddings: {
+      enabled: false,
+      provider: 'openrouter',
+      endpoint: 'https://openrouter.ai/api/v1',
+      apiKey: '',
+      model: 'qwen/qwen3-embedding-8b',
+      instruction: '',
+      batchSize: 16,
+      timeoutMs: 45000,
+      cacheDir: '.obsidian/plugins/lore-vault/cache/embeddings',
+      chunkingMode: 'auto',
+      minChunkChars: 300,
+      maxChunkChars: 1800,
+      overlapChars: 200
     }
   };
 }

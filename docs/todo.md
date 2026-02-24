@@ -45,13 +45,34 @@ Reference design: `docs/planning.md`.
 - [x] Add token-budgeted context assembly.
 - [x] Add first "Continue Story with Context" command.
 
-## Phase 6: Hardening and Quality
+## Phase 6: Canonical SQLite Pack Pipeline
+
+- [x] Add per-scope SQLite pack export as canonical format.
+- [x] Add scope output path resolution for SQLite packs.
+- [x] Keep downstream exports (`world_info`, `rag`) generated from canonical scope pack pipeline.
+
+## Phase 7: Embedding-Based RAG Foundation
+
+- [x] Add provider adapters (OpenRouter, Ollama, OpenAI-compatible).
+- [x] Add one-file-per-hash embedding cache keyed by model/instruction/chunking signature.
+- [x] Add deterministic chunking (`auto|note|section`) for RAG documents.
+- [x] Add optional semantic boosting in live query pipeline with lexical fallback.
+- [x] Add embedding/chunking settings in plugin settings UI.
+
+## Phase 8: Hardening and Quality
 
 - [ ] Add fixtures for hierarchical tags and cascaded scope behavior.
 - [ ] Add fixtures for mixed `world_info`/`rag` routing.
 - [ ] Add performance profiling for large vaults.
 - [ ] Add compatibility tests for non-English and edge-case metadata.
 - [ ] Tune default ranking weights using representative fixtures.
+
+## Phase 9: World Info Auto-Summary (Future)
+
+- [ ] Add optional automatic summary generation for `world_info` entries.
+- [ ] Add review/approval workflow before summary replacement.
+- [ ] Preserve deterministic export after summary acceptance.
+- [ ] Add tests for manual `summary` precedence over generated summaries.
 
 ## Open Questions
 

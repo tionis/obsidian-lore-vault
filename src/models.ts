@@ -43,6 +43,41 @@ export interface RagDocument {
   scope: string;
 }
 
+export interface RagChunk {
+  chunkId: string;
+  docUid: number;
+  scope: string;
+  path: string;
+  title: string;
+  chunkIndex: number;
+  heading: string;
+  text: string;
+  textHash: string;
+  tokenEstimate: number;
+  startOffset: number;
+  endOffset: number;
+}
+
+export interface RagChunkEmbedding {
+  chunkId: string;
+  provider: string;
+  model: string;
+  dimensions: number;
+  vector: number[];
+  cacheKey: string;
+  createdAt: number;
+}
+
+export interface ScopePack {
+  schemaVersion: number;
+  scope: string;
+  generatedAt: number;
+  worldInfoEntries: LoreBookEntry[];
+  ragDocuments: RagDocument[];
+  ragChunks: RagChunk[];
+  ragChunkEmbeddings: RagChunkEmbedding[];
+}
+
 export interface LoreBookSettings {
   orderByTitle: boolean;
   useDroste: boolean;
@@ -89,6 +124,25 @@ export interface ConverterSettings {
     depth: number;
     groupWeight: number;
   };
+  sqlite: {
+    enabled: boolean;
+    outputPath: string;
+  };
+  embeddings: {
+    enabled: boolean;
+    provider: 'openrouter' | 'ollama' | 'openai_compatible';
+    endpoint: string;
+    apiKey: string;
+    model: string;
+    instruction: string;
+    batchSize: number;
+    timeoutMs: number;
+    cacheDir: string;
+    chunkingMode: 'auto' | 'note' | 'section';
+    minChunkChars: number;
+    maxChunkChars: number;
+    overlapChars: number;
+  };
 }
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
@@ -123,5 +177,24 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     probability: 100,
     depth: 4,
     groupWeight: 100
+  },
+  sqlite: {
+    enabled: true,
+    outputPath: ''
+  },
+  embeddings: {
+    enabled: false,
+    provider: 'openrouter',
+    endpoint: 'https://openrouter.ai/api/v1',
+    apiKey: '',
+    model: 'qwen/qwen3-embedding-8b',
+    instruction: '',
+    batchSize: 16,
+    timeoutMs: 45000,
+    cacheDir: '.obsidian/plugins/lore-vault/cache/embeddings',
+    chunkingMode: 'auto',
+    minChunkChars: 300,
+    maxChunkChars: 1800,
+    overlapChars: 200
   }
 };

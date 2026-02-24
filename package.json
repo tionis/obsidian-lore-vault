@@ -29,6 +29,7 @@
     },
     "dependencies": {
         "graphology": "^0.25.1",
-        "graphology-metrics": "^2.1.0"
+        "graphology-metrics": "^2.1.0",
+        "sql.js": "^1.10.3"
     }
 }

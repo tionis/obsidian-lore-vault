@@ -183,3 +183,35 @@ Capabilities:
   - retrieval mode and keyword presence
   - resolved route (`world_info`, `rag`, both, or none)
   - detected lorebook scopes
+
+## Live Query Layer (MVP)
+
+Command: `Continue Story with Context`
+
+Runtime behavior:
+
+- initializes an in-memory context index at plugin load
+- subscribes to vault changes (`create`, `modify`, `delete`, `rename`)
+- applies debounced near-live refresh for affected scopes
+- supports full rebuild when settings change or export completes
+
+Query behavior:
+
+- query text source: active editor content up to cursor (last window)
+- scope resolution:
+  - first lorebook scope tag on active file, if present
+  - otherwise configured `activeScope`
+  - otherwise first discovered scope
+- scoring:
+  - `world_info`: keyword matches + constant/priority boosts
+  - `rag`: term overlap in title/path/content
+- deterministic tie-breakers:
+  - `world_info`: score desc, order desc, uid asc
+  - `rag`: score desc, path asc, title asc, uid asc
+
+Token budgeting:
+
+- uses lorebook token budget (`defaultLoreBook.tokenBudget`)
+- splits budget between sections (`world_info` 60%, `rag` 40%)
+- skips entries/documents that would exceed section budget
+- emits deterministic markdown context block

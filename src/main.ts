@@ -1,4 +1,4 @@
-import { App, Plugin, Notice, TFile, addIcon, getAllTags } from 'obsidian';
+import { App, MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags } from 'obsidian';
 import { ConverterSettings, DEFAULT_SETTINGS } from './models';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
@@ -9,6 +9,7 @@ import { LoreBookConverterSettingTab } from './settings-tab';
 import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
 import { LorebooksManagerModal } from './lorebooks-manager-modal';
+import { LiveContextIndex } from './live-context-index';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
@@ -18,6 +19,7 @@ import * as path from 'path';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
+  liveContextIndex: LiveContextIndex;
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
@@ -96,6 +98,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   async onload() {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
+    this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
 
     // Add custom icon
     addIcon('lorebook', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -126,6 +129,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         new LorebooksManagerModal(this.app, this).open();
       }
     });
+
+    this.addCommand({
+      id: 'continue-story-with-context',
+      name: 'Continue Story with Context',
+      callback: async () => {
+        await this.continueStoryWithContext();
+      }
+    });
     
     // Add template creation command
     this.addCommand({
@@ -153,10 +164,108 @@ export default class LoreBookConverterPlugin extends Plugin {
         }
       }
     });
+
+    this.registerEvent(this.app.vault.on('create', file => {
+      this.liveContextIndex.markFileChanged(file);
+    }));
+
+    this.registerEvent(this.app.vault.on('modify', file => {
+      this.liveContextIndex.markFileChanged(file);
+    }));
+
+    this.registerEvent(this.app.vault.on('delete', file => {
+      this.liveContextIndex.markFileChanged(file);
+    }));
+
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      this.liveContextIndex.markRenamed(file, oldPath);
+    }));
+
+    void this.liveContextIndex.initialize().catch(error => {
+      console.error('Failed to initialize live context index:', error);
+    });
   }
 
   async saveData(settings: any) {
-    await super.saveData(settings);
+    this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
+    await super.saveData(this.settings);
+    this.liveContextIndex?.requestFullRefresh();
+  }
+
+  private resolveScopeFromActiveFile(activeFile: TFile | null): string | undefined {
+    if (!activeFile) {
+      return undefined;
+    }
+
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    if (!cache) {
+      return undefined;
+    }
+
+    const tags = getAllTags(cache) ?? [];
+    const scopes = extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+    if (scopes.length === 0) {
+      return undefined;
+    }
+    return scopes[0];
+  }
+
+  private extractQueryWindow(text: string): string {
+    const normalized = text.trim();
+    if (!normalized) {
+      return '';
+    }
+
+    const maxChars = 5000;
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return normalized.slice(normalized.length - maxChars);
+  }
+
+  async continueStoryWithContext(): Promise<void> {
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!markdownView) {
+      new Notice('No active markdown editor found.');
+      return;
+    }
+
+    const editor = markdownView.editor;
+    const activeFile = markdownView.file ?? this.app.workspace.getActiveFile();
+    const cursor = editor.getCursor();
+    const textBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
+    const queryText = this.extractQueryWindow(textBeforeCursor);
+    const fallbackQuery = activeFile?.basename ?? 'story continuation';
+    const scopedQuery = queryText || fallbackQuery;
+    const scope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
+
+    try {
+      const context = await this.liveContextIndex.query({
+        queryText: scopedQuery,
+        tokenBudget: this.settings.defaultLoreBook.tokenBudget
+      }, scope);
+
+      const insertBlock = [
+        '',
+        '',
+        '<!-- LoreVault Context Start -->',
+        context.markdown,
+        '<!-- LoreVault Context End -->',
+        '',
+        '### Continue Story Draft',
+        '[Write continuation here based on the context above.]',
+        ''
+      ].join('\n');
+
+      editor.replaceRange(insertBlock, cursor);
+      new Notice(
+        `Inserted context for scope ${context.scope || '(all)'} (${context.worldInfo.length} world_info, ${context.rag.length} rag).`
+      );
+    } catch (error) {
+      console.error('Continue Story with Context failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Continue Story with Context failed: ${message}`);
+    }
   }
 
   async openOutputFolder(): Promise<void> {
@@ -257,6 +366,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+      this.liveContextIndex.requestFullRefresh();
     } catch (error) {
       console.error('Conversion failed:', error);
       new Notice(`Conversion failed: ${error.message}`);

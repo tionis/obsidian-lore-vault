@@ -14,8 +14,8 @@ This guide will help you install the LoreVault plugin for Obsidian.
 ### Method 1: Manual Installation
 
 1. **Download the plugin files**
-   - Create a new folder named `lorebook-converter` in your Obsidian vault's plugins directory:
-     - Path: `.obsidian/plugins/lorebook-converter/`
+   - Create a new folder named `lore-vault` in your Obsidian vault's plugins directory:
+     - Path: `.obsidian/plugins/lore-vault/`
    - Place the following files in this folder:
      - `main.js` (compiled JavaScript file)
      - `manifest.json` (plugin metadata)
@@ -26,7 +26,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
    YourVault/
    ├── .obsidian/
    │   ├── plugins/
-   │   │   ├── lorebook-converter/
+   │   │   ├── lore-vault/
    │   │   │   ├── main.js
    │   │   │   ├── manifest.json
    │   │   │   └── styles.css
@@ -50,12 +50,12 @@ If you prefer to build the plugin from source:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/obsidian-lorebook-converter.git
+   git clone https://github.com/yourusername/lore-vault.git
    ```
 
 2. **Install dependencies**
    ```bash
-   cd obsidian-lorebook-converter
+   cd lore-vault
    npm install
    ```
 
@@ -66,7 +66,7 @@ If you prefer to build the plugin from source:
    ```
 
 4. **Copy the built files to your Obsidian vault**
-   - Copy the `main.js`, `manifest.json`, and `styles.css` files from the build directory to `.obsidian/plugins/lorebook-converter/` in your vault
+   - Copy the `main.js`, `manifest.json`, and `styles.css` files from the build directory to `.obsidian/plugins/lore-vault/` in your vault
 
 5. **Enable the plugin in Obsidian** (same as in Method 1, Step 3)
 
@@ -106,7 +106,7 @@ If you prefer to build the plugin from source:
 Since this is a manual installation, you'll need to manually update the plugin when new versions are released:
 
 1. Download the latest version
-2. Replace the files in your `.obsidian/plugins/lorebook-converter/` directory
+2. Replace the files in your `.obsidian/plugins/lore-vault/` directory
 3. Restart Obsidian
 
 ## Need Help?

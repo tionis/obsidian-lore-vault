@@ -1,10 +1,12 @@
-import { LoreBookEntry, RagDocument } from './models';
+import { LoreBookEntry, RagChunk, RagChunkEmbedding, RagDocument } from './models';
 import { normalizeScope } from './lorebook-scoping';
 
 export interface ScopeContextPack {
   scope: string;
   worldInfoEntries: LoreBookEntry[];
   ragDocuments: RagDocument[];
+  ragChunks: RagChunk[];
+  ragChunkEmbeddings: RagChunkEmbedding[];
   builtAt: number;
 }
 
@@ -14,6 +16,7 @@ export interface ContextQueryOptions {
   maxWorldInfoEntries?: number;
   maxRagDocuments?: number;
   worldInfoBudgetRatio?: number;
+  ragSemanticBoostByDocUid?: {[key: number]: number};
 }
 
 export interface SelectedWorldInfoEntry {
@@ -119,7 +122,11 @@ function scoreWorldInfoEntries(entries: LoreBookEntry[], queryText: string): Sel
   return scored.sort(sortWorldInfoByScore);
 }
 
-function scoreRagDocuments(documents: RagDocument[], queryText: string): SelectedRagDocument[] {
+function scoreRagDocuments(
+  documents: RagDocument[],
+  queryText: string,
+  ragSemanticBoostByDocUid?: {[key: number]: number}
+): SelectedRagDocument[] {
   const normalizedQuery = normalizeText(queryText);
   const tokens = tokenize(queryText);
   const tokenSet = new Set(tokens);
@@ -152,6 +159,9 @@ function scoreRagDocuments(documents: RagDocument[], queryText: string): Selecte
     if (normalizedContent.includes(normalizedQuery) && normalizedQuery.length >= 4) {
       score += 25;
     }
+
+    const semanticBoost = ragSemanticBoostByDocUid?.[document.uid] ?? 0;
+    score += semanticBoost;
 
     if (score <= 0) {
       continue;
@@ -213,7 +223,11 @@ export function assembleScopeContext(
   const maxRagDocuments = options.maxRagDocuments ?? 6;
 
   const worldInfoCandidates = scoreWorldInfoEntries(pack.worldInfoEntries, options.queryText);
-  const ragCandidates = scoreRagDocuments(pack.ragDocuments, options.queryText);
+  const ragCandidates = scoreRagDocuments(
+    pack.ragDocuments,
+    options.queryText,
+    options.ragSemanticBoostByDocUid
+  );
 
   const selectedWorldInfo: SelectedWorldInfoEntry[] = [];
   let usedWorldInfoTokens = 0;

@@ -4,6 +4,7 @@ import { normalizeScope } from './lorebook-scoping';
 export interface ScopeOutputPaths {
   worldInfoPath: string;
   ragPath: string;
+  sqlitePath: string;
 }
 
 export interface ScopeOutputAssignment {
@@ -24,7 +25,8 @@ export function slugifyScope(scope: string): string {
 export function resolveScopeOutputPaths(
   baseOutputPath: string,
   scope: string,
-  buildAllScopes: boolean
+  buildAllScopes: boolean,
+  sqliteBaseOutputPath?: string
 ): ScopeOutputPaths {
   const ext = path.extname(baseOutputPath);
   const hasJsonExt = ext.toLowerCase() === '.json';
@@ -40,9 +42,27 @@ export function resolveScopeOutputPaths(
     stemWithScope = `${stem}-${scopeSlug}`;
   }
 
+  let sqliteStem = `${stemWithScope}.lorevault`;
+  if (sqliteBaseOutputPath && sqliteBaseOutputPath.trim().length > 0) {
+    const sqliteExt = path.extname(sqliteBaseOutputPath);
+    const sqliteHasDbExt = sqliteExt.toLowerCase() === '.db';
+    const rawSqliteStem = sqliteHasDbExt
+      ? sqliteBaseOutputPath.slice(0, -sqliteExt.length)
+      : sqliteBaseOutputPath;
+
+    if (rawSqliteStem.includes('{scope}')) {
+      sqliteStem = rawSqliteStem.replace(/\{scope\}/g, scopeSlug);
+    } else if (buildAllScopes) {
+      sqliteStem = `${rawSqliteStem}-${scopeSlug}`;
+    } else {
+      sqliteStem = rawSqliteStem;
+    }
+  }
+
   return {
     worldInfoPath: `${stemWithScope}.json`,
-    ragPath: `${stemWithScope}.rag.md`
+    ragPath: `${stemWithScope}.rag.md`,
+    sqlitePath: `${sqliteStem}.db`
   };
 }
 
@@ -51,7 +71,11 @@ function toCollisionKey(outputPath: string): string {
   return path.normalize(outputPath).toLowerCase();
 }
 
-export function assertUniqueOutputPaths(assignments: ScopeOutputAssignment[]): void {
+export function assertUniqueOutputPaths(
+  assignments: ScopeOutputAssignment[],
+  options?: { includeSqlite?: boolean }
+): void {
+  const includeSqlite = options?.includeSqlite ?? true;
   const seenByPath = new Map<string, string>();
   const collisions = new Set<string>();
 
@@ -60,6 +84,9 @@ export function assertUniqueOutputPaths(assignments: ScopeOutputAssignment[]): v
       ['world_info', assignment.paths.worldInfoPath],
       ['rag', assignment.paths.ragPath]
     ];
+    if (includeSqlite) {
+      targets.push(['sqlite', assignment.paths.sqlitePath]);
+    }
 
     for (const [kind, outputPath] of targets) {
       const key = `${kind}:${toCollisionKey(outputPath)}`;

@@ -6,7 +6,9 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 
 - Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
 - Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
+- Canonical SQLite pack export per scope (`.db`)
 - Dual exports per scope: `world_info` JSON and `rag` markdown
+- Optional embedding-based semantic RAG with hash-cache
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
@@ -120,6 +122,7 @@ Details:
 
 For each built scope, LoreVault writes:
 
+- `<base>.lorevault.db` -> canonical SQLite pack
 - `<base>.json` -> `world_info`
 - `<base>.rag.md` -> `rag`
 
@@ -130,6 +133,25 @@ If multiple scopes are built and the output path does not contain `{scope}`, Lor
 
 If output path contains `{scope}`, the token is replaced by the scope slug.  
 Export aborts if two scopes resolve to the same output path.
+
+## Canonical Pack and Embeddings
+
+SQLite pack includes:
+
+- `world_info` entries
+- `rag` documents
+- chunked `rag` text segments
+- optional chunk embeddings
+
+Embedding backends:
+
+- OpenRouter
+- Ollama
+- OpenAI-compatible endpoints
+
+Default embedding model: `qwen/qwen3-embedding-8b`.
+
+Embedding cache is one-file-per-hash so it syncs better across devices and avoids frequent recomputation.
 
 ## LoreVault Manager
 

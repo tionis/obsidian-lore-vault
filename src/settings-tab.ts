@@ -18,7 +18,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Output Path')
-      .setDesc('Base output path for exports (.json world_info and .rag.md). Use {scope} for per-scope naming.')
+      .setDesc('Base output path for downstream exports (.json world_info and .rag.md). SQLite canonical packs use dedicated SQLite Output Path.')
       .addText(text => text
         .setPlaceholder(`${this.app.vault.getName()}.json`)
         .setValue(this.plugin.settings.outputPath)
@@ -317,5 +317,201 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       'Total number of links, in + out');
     createWeightSetting('file_depth', 'File Depth', 
       'Position in folder hierarchy');
+
+    containerEl.createEl('h3', { text: 'SQLite Pack Export' });
+    containerEl.createEl('p', {
+      text: 'LoreVault SQLite pack is the canonical export format. ST world_info and RAG outputs are derived from this pipeline.'
+    });
+
+    new Setting(containerEl)
+      .setName('Enable SQLite Pack Export')
+      .setDesc('Write a SQLite pack per built scope.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.sqlite.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.sqlite.enabled = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('SQLite Output Path')
+      .setDesc('Base path for SQLite pack output (.db). Leave empty to derive from output path.')
+      .addText(text => text
+        .setPlaceholder(`${this.app.vault.getName()}-lorevault.db`)
+        .setValue(this.plugin.settings.sqlite.outputPath)
+        .onChange(async (value) => {
+          this.plugin.settings.sqlite.outputPath = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
+
+    new Setting(containerEl)
+      .setName('Enable Embeddings')
+      .setDesc('Generate and cache embeddings for RAG chunks.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.embeddings.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.embeddings.enabled = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Provider')
+      .setDesc('Inference backend for embeddings.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          'openrouter': 'OpenRouter',
+          'ollama': 'Ollama',
+          'openai_compatible': 'OpenAI-Compatible'
+        })
+        .setValue(this.plugin.settings.embeddings.provider)
+        .onChange(async (value) => {
+          if (value === 'ollama' || value === 'openai_compatible') {
+            this.plugin.settings.embeddings.provider = value;
+          } else {
+            this.plugin.settings.embeddings.provider = 'openrouter';
+          }
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Endpoint')
+      .setDesc('Base endpoint URL (for example https://openrouter.ai/api/v1 or http://localhost:11434).')
+      .addText(text => text
+        .setPlaceholder('https://openrouter.ai/api/v1')
+        .setValue(this.plugin.settings.embeddings.endpoint)
+        .onChange(async (value) => {
+          this.plugin.settings.embeddings.endpoint = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding API Key')
+      .setDesc('API key for provider auth (if required).')
+      .addText(text => text
+        .setPlaceholder('sk-...')
+        .setValue(this.plugin.settings.embeddings.apiKey)
+        .onChange(async (value) => {
+          this.plugin.settings.embeddings.apiKey = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Model')
+      .setDesc('Embedding model identifier.')
+      .addText(text => text
+        .setPlaceholder('qwen/qwen3-embedding-8b')
+        .setValue(this.plugin.settings.embeddings.model)
+        .onChange(async (value) => {
+          this.plugin.settings.embeddings.model = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Instruction')
+      .setDesc('Optional instruction/prefix included in cache key and provider request.')
+      .addTextArea(text => text
+        .setPlaceholder('Represent this chunk for retrieval...')
+        .setValue(this.plugin.settings.embeddings.instruction)
+        .onChange(async (value) => {
+          this.plugin.settings.embeddings.instruction = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Batch Size')
+      .setDesc('Number of chunks per embedding request.')
+      .addText(text => text
+        .setValue(this.plugin.settings.embeddings.batchSize.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue > 0) {
+            this.plugin.settings.embeddings.batchSize = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Timeout (ms)')
+      .setDesc('Request timeout for embedding API calls.')
+      .addText(text => text
+        .setValue(this.plugin.settings.embeddings.timeoutMs.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 1000) {
+            this.plugin.settings.embeddings.timeoutMs = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Embedding Cache Directory')
+      .setDesc('One-file-per-hash cache directory (relative to vault root or absolute path).')
+      .addText(text => text
+        .setPlaceholder('.obsidian/plugins/lore-vault/cache/embeddings')
+        .setValue(this.plugin.settings.embeddings.cacheDir)
+        .onChange(async (value) => {
+          this.plugin.settings.embeddings.cacheDir = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('RAG Chunking Mode')
+      .setDesc('Auto uses note-size heuristics. Note and section force deterministic strategies.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          'auto': 'Auto',
+          'note': 'Note',
+          'section': 'Section'
+        })
+        .setValue(this.plugin.settings.embeddings.chunkingMode)
+        .onChange(async (value) => {
+          if (value === 'note' || value === 'section') {
+            this.plugin.settings.embeddings.chunkingMode = value;
+          } else {
+            this.plugin.settings.embeddings.chunkingMode = 'auto';
+          }
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Min Chunk Chars')
+      .setDesc('Minimum target chunk size in characters.')
+      .addText(text => text
+        .setValue(this.plugin.settings.embeddings.minChunkChars.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 100) {
+            this.plugin.settings.embeddings.minChunkChars = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Max Chunk Chars')
+      .setDesc('Maximum chunk size before splitting.')
+      .addText(text => text
+        .setValue(this.plugin.settings.embeddings.maxChunkChars.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= this.plugin.settings.embeddings.minChunkChars) {
+            this.plugin.settings.embeddings.maxChunkChars = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Chunk Overlap Chars')
+      .setDesc('Character overlap when splitting long chunks.')
+      .addText(text => text
+        .setValue(this.plugin.settings.embeddings.overlapChars.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 0) {
+            this.plugin.settings.embeddings.overlapChars = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
   }
 }

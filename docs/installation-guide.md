@@ -79,8 +79,10 @@ If you prefer to build the plugin from source:
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
    - Set the base output path for exports (`world_info` JSON + `rag` markdown)
+   - Optional: configure canonical SQLite output path (`.db`)
    - Optional: include `{scope}` in output path for per-scope templating
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
+   - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
 
 2. **Try creating a template**

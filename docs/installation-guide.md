@@ -43,7 +43,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
 4. **Verify installation**
    - You should now see a book icon in the left sidebar ribbon
    - The command palette (Ctrl+P or Cmd+P) should include:
-     - "Build LoreVault Export"
+     - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
      - "Continue Story with Context"
      - "Create LoreVault Entry Template"
@@ -79,7 +79,7 @@ If you prefer to build the plugin from source:
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
    - Set the base output path for exports (`world_info` JSON + `rag` markdown)
-   - Optional: configure canonical SQLite output path (`.db`)
+   - Optional: configure canonical SQLite output directory (default `lorebook/`, one `<scope>.db` per lorebook)
    - Optional: include `{scope}` in output path for per-scope templating
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure embeddings backend/cache/chunking for semantic RAG

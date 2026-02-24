@@ -19,7 +19,7 @@ Current runtime export targets per scope:
 
 ## Conversion Pipeline
 
-When you run **Build LoreVault Export**:
+When you run **Build Active Lorebook Scope** or **Build/Export Scope**:
 
 1. Collect all markdown files
 2. Resolve lorebook scopes from hierarchical tags
@@ -152,9 +152,9 @@ Fixture coverage includes:
 
 ## Output Naming Rules
 
-Given configured base output path:
+Given configured base output path + SQLite output directory:
 
-- SQLite pack file: `<base>.lorevault.db`
+- SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebook/<scope-slug>.db`)
 - world info file: `<base>.json`
 - rag file: `<base>.rag.md`
 
@@ -162,6 +162,11 @@ When building multiple scopes:
 
 - if path contains `{scope}`: replace token with scope slug
 - otherwise append `-<scope-slug>` before extension
+
+SQLite path behavior:
+
+- if SQLite output setting is a directory: write `<dir>/<scope-slug>.db`
+- if SQLite output setting is a `.db` file path: append `-<scope-slug>` unless `{scope}` is present
 
 Output build fails fast if path collisions are detected.
 
@@ -211,7 +216,6 @@ Capabilities:
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export Scope`
-  - `Build/Export All Scopes`
   - `Open Output Folder`
 - debug drill-down per scope:
   - note path

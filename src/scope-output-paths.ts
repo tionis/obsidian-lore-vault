@@ -12,6 +12,8 @@ export interface ScopeOutputAssignment {
   paths: ScopeOutputPaths;
 }
 
+const DEFAULT_SQLITE_OUTPUT_DIR = 'lorebook';
+
 export function slugifyScope(scope: string): string {
   const normalized = normalizeScope(scope);
   const slug = normalized
@@ -20,6 +22,25 @@ export function slugifyScope(scope: string): string {
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'root';
+}
+
+function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): string {
+  const configured = sqliteBaseOutputPath?.trim() || DEFAULT_SQLITE_OUTPUT_DIR;
+  const sqliteExt = path.extname(configured);
+  const hasDbExt = sqliteExt.toLowerCase() === '.db';
+
+  if (hasDbExt) {
+    const rawStem = configured.slice(0, -sqliteExt.length);
+    const stemWithScope = rawStem.includes('{scope}')
+      ? rawStem.replace(/\{scope\}/g, scopeSlug)
+      : `${rawStem}-${scopeSlug}`;
+    return `${stemWithScope}.db`;
+  }
+
+  const outputDir = configured.includes('{scope}')
+    ? configured.replace(/\{scope\}/g, scopeSlug)
+    : configured;
+  return path.join(outputDir, `${scopeSlug}.db`);
 }
 
 export function resolveScopeOutputPaths(
@@ -42,27 +63,10 @@ export function resolveScopeOutputPaths(
     stemWithScope = `${stem}-${scopeSlug}`;
   }
 
-  let sqliteStem = `${stemWithScope}.lorevault`;
-  if (sqliteBaseOutputPath && sqliteBaseOutputPath.trim().length > 0) {
-    const sqliteExt = path.extname(sqliteBaseOutputPath);
-    const sqliteHasDbExt = sqliteExt.toLowerCase() === '.db';
-    const rawSqliteStem = sqliteHasDbExt
-      ? sqliteBaseOutputPath.slice(0, -sqliteExt.length)
-      : sqliteBaseOutputPath;
-
-    if (rawSqliteStem.includes('{scope}')) {
-      sqliteStem = rawSqliteStem.replace(/\{scope\}/g, scopeSlug);
-    } else if (buildAllScopes) {
-      sqliteStem = `${rawSqliteStem}-${scopeSlug}`;
-    } else {
-      sqliteStem = rawSqliteStem;
-    }
-  }
-
   return {
     worldInfoPath: `${stemWithScope}.json`,
     ragPath: `${stemWithScope}.rag.md`,
-    sqlitePath: `${sqliteStem}.db`
+    sqlitePath: resolveSqlitePath(scopeSlug, sqliteBaseOutputPath)
   };
 }
 

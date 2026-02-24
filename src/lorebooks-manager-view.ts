@@ -77,17 +77,6 @@ export class LorebooksManagerView extends ItemView {
     const refreshButton = toolbar.createEl('button', { text: 'Refresh' });
     refreshButton.addEventListener('click', () => this.render());
 
-    const buildAllButton = toolbar.createEl('button', { text: 'Build/Export All Scopes' });
-    buildAllButton.addEventListener('click', async () => {
-      try {
-        await this.plugin.convertToLorebook();
-        this.render();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        new Notice(`Build failed: ${message}`);
-      }
-    });
-
     const openFolderButton = toolbar.createEl('button', { text: 'Open Output Folder' });
     openFolderButton.addEventListener('click', async () => {
       try {

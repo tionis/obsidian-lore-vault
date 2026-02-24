@@ -138,6 +138,9 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     merged.sqlite.enabled = Boolean(merged.sqlite.enabled);
     merged.sqlite.outputPath = merged.sqlite.outputPath.trim();
+    if (!merged.sqlite.outputPath) {
+      merged.sqlite.outputPath = DEFAULT_SETTINGS.sqlite.outputPath;
+    }
 
     merged.embeddings.enabled = Boolean(merged.embeddings.enabled);
     merged.embeddings.provider = (
@@ -180,8 +183,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
 
     // Add ribbon icon
-    this.addRibbonIcon('lorebook', 'Build LoreVault Export', () => {
-      this.convertToLorebook();
+    this.addRibbonIcon('lorebook', 'Build Active Lorebook Scope', () => {
+      void this.buildActiveScopeExport();
     });
 
     this.addRibbonIcon('lorebook', 'Open LoreVault Manager', () => {
@@ -191,9 +194,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Add command
     this.addCommand({
       id: 'convert-to-lorebook',
-      name: 'Build LoreVault Export',
+      name: 'Build Active Lorebook Scope',
       callback: () => {
-        this.convertToLorebook();
+        void this.buildActiveScopeExport();
       }
     });
 
@@ -292,6 +295,25 @@ export default class LoreBookConverterPlugin extends Plugin {
       return undefined;
     }
     return scopes[0];
+  }
+
+  private resolveBuildScopeFromContext(): string | null {
+    const fromActiveFile = this.resolveScopeFromActiveFile(this.app.workspace.getActiveFile());
+    if (fromActiveFile) {
+      return fromActiveFile;
+    }
+
+    const configuredScope = normalizeScope(this.settings.tagScoping.activeScope);
+    return configuredScope || null;
+  }
+
+  private async buildActiveScopeExport(): Promise<void> {
+    const scope = this.resolveBuildScopeFromContext();
+    if (!scope) {
+      new Notice('No lorebook scope found for active file. Tag the note or set Active Scope.');
+      return;
+    }
+    await this.convertToLorebook(scope);
   }
 
   private extractQueryWindow(text: string): string {

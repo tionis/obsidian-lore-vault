@@ -2,7 +2,7 @@
 
 ## Rename Direction
 
-Working name: **LoreVault** (renaming from Lorebook Converter).
+Current name: **LoreVault** (renamed from Lorebook Converter).
 
 Rationale:
 

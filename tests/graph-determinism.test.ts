@@ -61,12 +61,11 @@ function createEntry(uid: number, group: string, wikilinks: string[]): LoreBookE
 
 function createSettings(weights: ConverterSettings['weights']): ConverterSettings {
   return {
-    sourceSelection: {
-      requireLorebookFlag: true,
-      includeFolders: [],
-      excludeFolders: ['.obsidian'],
-      includeTags: [],
-      excludeTags: []
+    tagScoping: {
+      tagPrefix: 'lorebook',
+      activeScope: '',
+      membershipMode: 'exact',
+      includeUntagged: false
     },
     weights,
     outputPath: '',

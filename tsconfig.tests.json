@@ -20,8 +20,8 @@
     "src/graph-analyzer.ts",
     "src/link-target-index.ts",
     "src/frontmatter-utils.ts",
+    "src/lorebook-scoping.ts",
     "src/profile-schema.ts",
-    "src/source-selection.ts",
     "tests/**/*.ts"
   ]
 }

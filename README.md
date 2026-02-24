@@ -1,29 +1,34 @@
-# Lorebook Converter
+# LoreVault
 
-Obsidian plugin that exports vault notes into SillyTavern-compatible lorebook JSON.
+Obsidian plugin that compiles Obsidian notes into scoped context exports for SillyTavern and RAG workflows.
 
 ## Current Status
 
 - Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
-- Frontmatter-driven source selection and field parsing
+- Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
 - Deterministic processing, ordering, and tie-breaking
-- Fixture-backed regression tests for graph ordering, wikilinks, and source selection
+- Fixture-backed regression tests for graph ordering, wikilinks, and lorebook scoping
 
-## Source Selection (Frontmatter + Rules)
+## Source Selection (Hierarchical Tags)
 
-The converter scans all markdown files, then applies selection rules:
+The converter scans all markdown files and maps notes to lorebook scopes by tag namespace.
 
-1. Explicit frontmatter exclusion always skips a note:
-   - `exclude: true`
-   - `lorebook: false`
-   - `lorebook: { enabled: false }`
-2. Folder/tag include and exclude rules from plugin settings are applied
-3. If `requireLorebookFlag` is enabled (default), note frontmatter must enable lorebook usage:
-   - `lorebook: true`
-   - `lorebook: [ ... ]` (non-empty)
-   - `lorebook: { ... }` unless explicitly disabled
+Example tags:
 
-Rules are path/tag based and deterministic.
+- `#lorebook/universe`
+- `#lorebook/universe/yggdrasil`
+- `#lorebook/universe/yggdrasil/factions`
+
+Settings:
+
+- `tagPrefix`: lorebook namespace prefix (default `lorebook`)
+- `activeScope`: optional target scope (`universe/yggdrasil`)
+- `membershipMode`:
+  - `exact`: only exact scope membership
+  - `cascade`: include descendant scopes in parent scope exports
+- `includeUntagged`: include notes without lorebook tags
+
+Notes with frontmatter `exclude: true` are always skipped.
 
 ## Frontmatter Parsing Model
 
@@ -33,7 +38,7 @@ Supported examples:
 
 ```yaml
 ---
-lorebook: true
+tags: [lorebook/universe/yggdrasil]
 title: "Aurelia"
 aliases: ["The Radiant Sphere"]
 keywords: ["Aurelia", "Radiant Sphere"]

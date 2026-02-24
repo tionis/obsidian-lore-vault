@@ -49,12 +49,11 @@ export interface LoreBook {
 }
 
 export interface ConverterSettings {
-  sourceSelection: {
-    requireLorebookFlag: boolean;
-    includeFolders: string[];
-    excludeFolders: string[];
-    includeTags: string[];
-    excludeTags: string[];
+  tagScoping: {
+    tagPrefix: string;
+    activeScope: string;
+    membershipMode: 'exact' | 'cascade';
+    includeUntagged: boolean;
   };
   weights: {
     hierarchy: number;
@@ -85,12 +84,11 @@ export interface ConverterSettings {
 }
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
-  sourceSelection: {
-    requireLorebookFlag: true,
-    includeFolders: [],
-    excludeFolders: ['.obsidian'],
-    includeTags: [],
-    excludeTags: []
+  tagScoping: {
+    tagPrefix: 'lorebook',
+    activeScope: '',
+    membershipMode: 'exact',
+    includeUntagged: false
   },
   weights: {
     hierarchy: 8000,

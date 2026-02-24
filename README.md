@@ -133,7 +133,7 @@ Export aborts if two scopes resolve to the same output path.
 
 ## LoreVault Manager
 
-Use command `Open LoreVault Manager` to inspect and operate scope builds.
+Use command `Open LoreVault Manager` to open the persistent right-sidebar panel for scope inspection and operations.
 
 Manager features:
 

@@ -8,14 +8,20 @@ import { LoreBookExporter } from './lorebook-exporter';
 import { LoreBookConverterSettingTab } from './settings-tab';
 import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
+import { LorebooksManagerModal } from './lorebooks-manager-modal';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
   resolveScopeOutputPaths
 } from './scope-output-paths';
+import * as path from 'path';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
+
+  private getBaseOutputPath(): string {
+    return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+  }
 
   private discoverAllScopes(files: TFile[]): string[] {
     const scopes = new Set<string>();
@@ -112,6 +118,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         this.convertToLorebook();
       }
     });
+
+    this.addCommand({
+      id: 'open-lorebooks-manager',
+      name: 'Open LoreVault Manager',
+      callback: () => {
+        new LorebooksManagerModal(this.app, this).open();
+      }
+    });
     
     // Add template creation command
     this.addCommand({
@@ -144,19 +158,48 @@ export default class LoreBookConverterPlugin extends Plugin {
   async saveData(settings: any) {
     await super.saveData(settings);
   }
+
+  async openOutputFolder(): Promise<void> {
+    const outputPath = this.getBaseOutputPath();
+    const adapter = this.app.vault.adapter as any;
+    const isAbsolute = path.isAbsolute(outputPath);
+
+    let folderPath = isAbsolute ? path.dirname(outputPath) : '.';
+    if (!isAbsolute) {
+      if (typeof adapter.getBasePath === 'function') {
+        const vaultRoot = adapter.getBasePath() as string;
+        const relativeDir = path.dirname(outputPath);
+        folderPath = relativeDir === '.' ? vaultRoot : path.join(vaultRoot, relativeDir);
+      } else {
+        throw new Error('Unable to resolve vault base path for relative output folders.');
+      }
+    }
+
+    const electron = (window as any).require?.('electron');
+    if (!electron?.shell?.openPath) {
+      throw new Error('Electron shell API unavailable.');
+    }
+
+    const openResult = await electron.shell.openPath(folderPath);
+    if (openResult) {
+      throw new Error(openResult);
+    }
+
+    new Notice(`Opened output folder: ${folderPath}`);
+  }
   
   // This is the main conversion function
-  async convertToLorebook() {
+  async convertToLorebook(scopeOverride?: string) {
     try {
       const files = this.app.vault.getMarkdownFiles();
-      const explicitScope = normalizeScope(this.settings.tagScoping.activeScope);
+      const explicitScope = normalizeScope(scopeOverride ?? this.settings.tagScoping.activeScope);
       const discoveredScopes = this.discoverAllScopes(files);
       const buildAllScopes = explicitScope.length === 0 && discoveredScopes.length > 0;
       const scopesToBuild = explicitScope
         ? [explicitScope]
         : (discoveredScopes.length > 0 ? discoveredScopes : ['']);
 
-      const baseOutputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+      const baseOutputPath = this.getBaseOutputPath();
       const worldInfoExporter = new LoreBookExporter(this.app);
       const ragExporter = new RagExporter(this.app);
       const scopeAssignments: ScopeOutputAssignment[] = scopesToBuild.map(scope => ({

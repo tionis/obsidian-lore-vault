@@ -131,6 +131,18 @@ If multiple scopes are built and the output path does not contain `{scope}`, Lor
 If output path contains `{scope}`, the token is replaced by the scope slug.  
 Export aborts if two scopes resolve to the same output path.
 
+## LoreVault Manager
+
+Use command `Open LoreVault Manager` to inspect and operate scope builds.
+
+Manager features:
+
+- per-scope counts (included notes, `world_info`, `rag`)
+- scope warnings when sections are empty
+- `Build/Export Scope` and `Build/Export All Scopes` actions
+- `Open Output Folder` action
+- debug drill-down table showing why each note is included/excluded and how it is routed
+
 ## Development
 
 ```bash

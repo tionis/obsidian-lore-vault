@@ -120,3 +120,78 @@
 .lorebook-template-button-cancel:hover {
   background-color: var(--background-modifier-border-hover);
 }
+
+/* Lorebooks Manager Modal */
+.lorevault-manager-modal {
+  width: min(1200px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.lorevault-manager-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lorevault-manager-icon {
+  display: inline-flex;
+}
+
+.lorevault-manager-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.lorevault-manager-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.lorevault-manager-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lorevault-manager-card-header h3 {
+  margin: 0;
+}
+
+.lorevault-manager-stats {
+  margin: 10px 0;
+}
+
+.lorevault-manager-warnings {
+  margin: 8px 0 10px;
+  padding-left: 20px;
+}
+
+.lorevault-manager-warning-item {
+  color: var(--text-warning);
+}
+
+.lorevault-manager-debug {
+  margin-top: 8px;
+}
+
+.lorevault-manager-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.lorevault-manager-table th,
+.lorevault-manager-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 12px;
+}

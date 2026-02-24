@@ -3081,7 +3081,7 @@ __export(main_exports, {
   default: () => LoreBookConverterPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 
 // src/models.ts
 var DEFAULT_SETTINGS = {
@@ -4301,6 +4301,284 @@ ${body}
   }
 };
 
+// src/lorebooks-manager-modal.ts
+var import_obsidian6 = require("obsidian");
+
+// src/lorebooks-manager-collector.ts
+var import_obsidian5 = require("obsidian");
+function collectLorebookNoteMetadata(app, settings) {
+  var _a, _b;
+  const files = [...app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
+  const notes = [];
+  for (const file of files) {
+    const cache = app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((_a = cache == null ? void 0 : cache.frontmatter) != null ? _a : {});
+    const tags = cache ? (_b = (0, import_obsidian5.getAllTags)(cache)) != null ? _b : [] : [];
+    const scopes = extractLorebookScopesFromTags(tags, settings.tagScoping.tagPrefix);
+    notes.push({
+      path: file.path,
+      basename: file.basename,
+      scopes,
+      frontmatter
+    });
+  }
+  return notes;
+}
+
+// src/lorebooks-manager-data.ts
+function uniqueSorted2(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+function discoverScopesFromMetadata(notes) {
+  const scopes = /* @__PURE__ */ new Set();
+  for (const note of notes) {
+    for (const scope of note.scopes) {
+      if (scope) {
+        scopes.add(scope);
+      }
+    }
+  }
+  return [...scopes].sort((a, b) => a.localeCompare(b));
+}
+function reasonForExclusion(scopes, includeUntagged) {
+  if (scopes.length === 0 && !includeUntagged) {
+    return "untagged_excluded";
+  }
+  return "scope_mismatch";
+}
+function buildScopeSummaries(notes, settings, scopeOverride) {
+  const sortedNotes = [...notes].sort((a, b) => a.path.localeCompare(b.path));
+  const configuredScope = normalizeScope(scopeOverride != null ? scopeOverride : settings.tagScoping.activeScope);
+  const discoveredScopes = discoverScopesFromMetadata(sortedNotes);
+  const buildAllScopes = configuredScope.length === 0 && discoveredScopes.length > 0;
+  const scopesToBuild = configuredScope ? [configuredScope] : discoveredScopes.length > 0 ? discoveredScopes : [""];
+  return scopesToBuild.map((scope) => {
+    var _a;
+    const includeUntagged = buildAllScopes ? false : settings.tagScoping.includeUntagged;
+    const debugNotes = [];
+    let includedNotes = 0;
+    let worldInfoEntries = 0;
+    let ragDocuments = 0;
+    for (const note of sortedNotes) {
+      const isExcluded = asBoolean(getFrontmatterValue(note.frontmatter, "exclude")) === true;
+      const rawKeywords = asStringArray(getFrontmatterValue(note.frontmatter, "key", "keywords"));
+      const hasKeywords = rawKeywords.length > 0;
+      const retrievalMode = (_a = parseRetrievalMode(getFrontmatterValue(note.frontmatter, "retrieval"))) != null ? _a : "auto";
+      if (isExcluded) {
+        debugNotes.push({
+          path: note.path,
+          basename: note.basename,
+          scopes: uniqueSorted2(note.scopes),
+          included: false,
+          reason: "excluded_by_frontmatter",
+          retrievalMode,
+          hasKeywords,
+          includeWorldInfo: false,
+          includeRag: false
+        });
+        continue;
+      }
+      const inScope = shouldIncludeInScope(
+        note.scopes,
+        scope,
+        settings.tagScoping.membershipMode,
+        includeUntagged
+      );
+      if (!inScope) {
+        debugNotes.push({
+          path: note.path,
+          basename: note.basename,
+          scopes: uniqueSorted2(note.scopes),
+          included: false,
+          reason: reasonForExclusion(note.scopes, includeUntagged),
+          retrievalMode,
+          hasKeywords,
+          includeWorldInfo: false,
+          includeRag: false
+        });
+        continue;
+      }
+      const routing = resolveRetrievalTargets(retrievalMode, hasKeywords);
+      const includeWorldInfo = routing.includeWorldInfo;
+      const includeRag = routing.includeRag;
+      const included = includeWorldInfo || includeRag;
+      if (included) {
+        includedNotes += 1;
+      }
+      if (includeWorldInfo) {
+        worldInfoEntries += 1;
+      }
+      if (includeRag) {
+        ragDocuments += 1;
+      }
+      debugNotes.push({
+        path: note.path,
+        basename: note.basename,
+        scopes: uniqueSorted2(note.scopes),
+        included,
+        reason: included ? "included" : "retrieval_disabled",
+        retrievalMode,
+        hasKeywords,
+        includeWorldInfo,
+        includeRag
+      });
+    }
+    const warnings = [];
+    if (includedNotes === 0) {
+      warnings.push("No notes are included in this scope.");
+    }
+    if (worldInfoEntries === 0) {
+      warnings.push("No world_info entries in this scope.");
+    }
+    if (ragDocuments === 0) {
+      warnings.push("No rag documents in this scope.");
+    }
+    return {
+      scope,
+      includedNotes,
+      worldInfoEntries,
+      ragDocuments,
+      warnings,
+      notes: debugNotes
+    };
+  });
+}
+
+// src/lorebooks-manager-modal.ts
+function formatScopeLabel(scope) {
+  return scope || "(all)";
+}
+function formatRouteBadge(includeWorldInfo, includeRag) {
+  if (includeWorldInfo && includeRag) {
+    return "world_info + rag";
+  }
+  if (includeWorldInfo) {
+    return "world_info";
+  }
+  if (includeRag) {
+    return "rag";
+  }
+  return "-";
+}
+function formatReason(reason) {
+  switch (reason) {
+    case "included":
+      return "included";
+    case "excluded_by_frontmatter":
+      return "excluded: frontmatter exclude";
+    case "scope_mismatch":
+      return "excluded: scope mismatch";
+    case "untagged_excluded":
+      return "excluded: untagged note";
+    case "retrieval_disabled":
+      return "excluded: retrieval disabled";
+    default:
+      return reason;
+  }
+}
+var LorebooksManagerModal = class extends import_obsidian6.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+  onOpen() {
+    this.render();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  renderToolbar(container) {
+    const toolbar = container.createDiv({ cls: "lorevault-manager-toolbar" });
+    const refreshButton = toolbar.createEl("button", { text: "Refresh" });
+    refreshButton.addEventListener("click", () => this.render());
+    const buildAllButton = toolbar.createEl("button", { text: "Build/Export All Scopes" });
+    buildAllButton.addEventListener("click", async () => {
+      try {
+        await this.plugin.convertToLorebook();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian6.Notice(`Build failed: ${message}`);
+      }
+    });
+    const openFolderButton = toolbar.createEl("button", { text: "Open Output Folder" });
+    openFolderButton.addEventListener("click", async () => {
+      try {
+        await this.plugin.openOutputFolder();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian6.Notice(`Open folder failed: ${message}`);
+      }
+    });
+  }
+  renderScopeCard(container, summary) {
+    const card = container.createDiv({ cls: "lorevault-manager-card" });
+    const header = card.createDiv({ cls: "lorevault-manager-card-header" });
+    header.createEl("h3", { text: `Scope: ${formatScopeLabel(summary.scope)}` });
+    const buildButton = header.createEl("button", { text: "Build/Export Scope" });
+    buildButton.addEventListener("click", async () => {
+      try {
+        await this.plugin.convertToLorebook(summary.scope);
+        new import_obsidian6.Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian6.Notice(`Scope build failed: ${message}`);
+      }
+    });
+    const stats = card.createEl("p", {
+      text: `Included Notes: ${summary.includedNotes} | world_info: ${summary.worldInfoEntries} | rag: ${summary.ragDocuments}`
+    });
+    stats.addClass("lorevault-manager-stats");
+    if (summary.warnings.length > 0) {
+      const warningList = card.createEl("ul", { cls: "lorevault-manager-warnings" });
+      for (const warning of summary.warnings) {
+        const li = warningList.createEl("li", { text: warning });
+        li.addClass("lorevault-manager-warning-item");
+      }
+    }
+    const details = card.createEl("details", { cls: "lorevault-manager-debug" });
+    details.createEl("summary", { text: "Debug: Inclusion and Routing Decisions" });
+    const table = details.createEl("table", { cls: "lorevault-manager-table" });
+    const headRow = table.createEl("thead").createEl("tr");
+    headRow.createEl("th", { text: "Note" });
+    headRow.createEl("th", { text: "Decision" });
+    headRow.createEl("th", { text: "Route" });
+    headRow.createEl("th", { text: "Retrieval" });
+    headRow.createEl("th", { text: "Keywords" });
+    headRow.createEl("th", { text: "Scopes" });
+    const tbody = table.createEl("tbody");
+    for (const note of summary.notes) {
+      const row = tbody.createEl("tr");
+      row.createEl("td", { text: note.path });
+      row.createEl("td", { text: formatReason(note.reason) });
+      row.createEl("td", { text: formatRouteBadge(note.includeWorldInfo, note.includeRag) });
+      row.createEl("td", { text: note.retrievalMode });
+      row.createEl("td", { text: note.hasKeywords ? "yes" : "no" });
+      row.createEl("td", { text: note.scopes.join(", ") || "-" });
+    }
+  }
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("lorevault-manager-modal");
+    const titleRow = contentEl.createDiv({ cls: "lorevault-manager-title-row" });
+    const icon = titleRow.createSpan({ cls: "lorevault-manager-icon" });
+    (0, import_obsidian6.setIcon)(icon, "book-open-text");
+    titleRow.createEl("h2", { text: "LoreVault Manager" });
+    this.renderToolbar(contentEl);
+    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
+    const summaries = buildScopeSummaries(notes, this.plugin.settings);
+    if (summaries.length === 0) {
+      contentEl.createEl("p", {
+        text: "No lorebook scopes found. Add tags under your configured prefix (for example #lorebook/universe)."
+      });
+      return;
+    }
+    for (const summary of summaries) {
+      this.renderScopeCard(contentEl, summary);
+    }
+  }
+};
+
 // src/scope-output-paths.ts
 var path4 = __toESM(require("path"));
 function slugifyScope(scope) {
@@ -4353,7 +4631,11 @@ function assertUniqueOutputPaths(assignments) {
 }
 
 // src/main.ts
-var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
+var path5 = __toESM(require("path"));
+var LoreBookConverterPlugin = class extends import_obsidian7.Plugin {
+  getBaseOutputPath() {
+    return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+  }
   discoverAllScopes(files) {
     var _a;
     const scopes = /* @__PURE__ */ new Set();
@@ -4362,7 +4644,7 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
       if (!cache) {
         continue;
       }
-      const tags = (_a = (0, import_obsidian5.getAllTags)(cache)) != null ? _a : [];
+      const tags = (_a = (0, import_obsidian7.getAllTags)(cache)) != null ? _a : [];
       const fileScopes = extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
       for (const scope of fileScopes) {
         if (scope) {
@@ -4418,7 +4700,7 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
   }
   async onload() {
     this.settings = this.mergeSettings(await this.loadData());
-    (0, import_obsidian5.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    (0, import_obsidian7.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
     </svg>`);
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
@@ -4433,6 +4715,13 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
       }
     });
     this.addCommand({
+      id: "open-lorebooks-manager",
+      name: "Open LoreVault Manager",
+      callback: () => {
+        new LorebooksManagerModal(this.app, this).open();
+      }
+    });
+    this.addCommand({
       id: "create-lorebook-template",
       name: "Create LoreVault Entry Template",
       callback: async () => {
@@ -4441,11 +4730,11 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
           const activeFile = this.app.workspace.getActiveFile();
           if (activeFile) {
             await this.app.vault.modify(activeFile, template);
-            new import_obsidian5.Notice(`Template applied to ${activeFile.name}`);
+            new import_obsidian7.Notice(`Template applied to ${activeFile.name}`);
           } else {
             const fileName = `LoreVault_Entry_${Date.now()}.md`;
             await this.app.vault.create(fileName, template);
-            new import_obsidian5.Notice(`Created new template: ${fileName}`);
+            new import_obsidian7.Notice(`Created new template: ${fileName}`);
           }
         } catch (error) {
           console.error("Template creation cancelled", error);
@@ -4456,15 +4745,40 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
   async saveData(settings) {
     await super.saveData(settings);
   }
+  async openOutputFolder() {
+    var _a, _b;
+    const outputPath = this.getBaseOutputPath();
+    const adapter = this.app.vault.adapter;
+    const isAbsolute4 = path5.isAbsolute(outputPath);
+    let folderPath = isAbsolute4 ? path5.dirname(outputPath) : ".";
+    if (!isAbsolute4) {
+      if (typeof adapter.getBasePath === "function") {
+        const vaultRoot = adapter.getBasePath();
+        const relativeDir = path5.dirname(outputPath);
+        folderPath = relativeDir === "." ? vaultRoot : path5.join(vaultRoot, relativeDir);
+      } else {
+        throw new Error("Unable to resolve vault base path for relative output folders.");
+      }
+    }
+    const electron = (_a = window.require) == null ? void 0 : _a.call(window, "electron");
+    if (!((_b = electron == null ? void 0 : electron.shell) == null ? void 0 : _b.openPath)) {
+      throw new Error("Electron shell API unavailable.");
+    }
+    const openResult = await electron.shell.openPath(folderPath);
+    if (openResult) {
+      throw new Error(openResult);
+    }
+    new import_obsidian7.Notice(`Opened output folder: ${folderPath}`);
+  }
   // This is the main conversion function
-  async convertToLorebook() {
+  async convertToLorebook(scopeOverride) {
     try {
       const files = this.app.vault.getMarkdownFiles();
-      const explicitScope = normalizeScope(this.settings.tagScoping.activeScope);
+      const explicitScope = normalizeScope(scopeOverride != null ? scopeOverride : this.settings.tagScoping.activeScope);
       const discoveredScopes = this.discoverAllScopes(files);
       const buildAllScopes = explicitScope.length === 0 && discoveredScopes.length > 0;
       const scopesToBuild = explicitScope ? [explicitScope] : discoveredScopes.length > 0 ? discoveredScopes : [""];
-      const baseOutputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+      const baseOutputPath = this.getBaseOutputPath();
       const worldInfoExporter = new LoreBookExporter(this.app);
       const ragExporter = new RagExporter(this.app);
       const scopeAssignments = scopesToBuild.map((scope) => ({
@@ -4512,10 +4826,10 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
           `Scope ${scope || "(all)"} complete: ${Object.keys(fileProcessor.getEntries()).length} world_info entries, ${fileProcessor.getRagDocuments().length} rag docs.`
         );
       }
-      new import_obsidian5.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+      new import_obsidian7.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
     } catch (error) {
       console.error("Conversion failed:", error);
-      new import_obsidian5.Notice(`Conversion failed: ${error.message}`);
+      new import_obsidian7.Notice(`Conversion failed: ${error.message}`);
     }
   }
 };

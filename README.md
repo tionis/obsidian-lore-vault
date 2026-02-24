@@ -122,16 +122,16 @@ Details:
 
 For each built scope, LoreVault writes:
 
-- `<sqliteOutputDir>/<scope-slug>.db` -> canonical SQLite pack (default dir: `lorebook/`)
-- `<base>.json` -> `world_info`
-- `<base>.rag.md` -> `rag`
+- `<sqliteOutputDir>/<scope-slug>.db` -> canonical SQLite pack (default dir: `lorebooks/`)
+- `<sqliteOutputDir>/<downstreamSubpath>.json` -> `world_info` (default subpath: `sillytavern/lorevault.json`)
+- `<sqliteOutputDir>/<downstreamSubpath>.rag.md` -> `rag`
 
-If multiple scopes are built and the output path does not contain `{scope}`, LoreVault appends a scope slug:
+If multiple scopes are built and the downstream subpath does not contain `{scope}`, LoreVault appends a scope slug:
 
 - `vault-lorevault-universe.json`
 - `vault-lorevault-universe.rag.md`
 
-If output path contains `{scope}`, the token is replaced by the scope slug.  
+If downstream subpath contains `{scope}`, the token is replaced by the scope slug.  
 Export aborts if two scopes resolve to the same output path.
 
 ## Canonical Pack and Embeddings

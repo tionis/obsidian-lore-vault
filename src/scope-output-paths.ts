@@ -12,7 +12,8 @@ export interface ScopeOutputAssignment {
   paths: ScopeOutputPaths;
 }
 
-const DEFAULT_SQLITE_OUTPUT_DIR = 'lorebook';
+const DEFAULT_SQLITE_OUTPUT_DIR = 'lorebooks';
+const DEFAULT_DOWNSTREAM_SUBPATH = 'sillytavern/lorevault.json';
 
 export function slugifyScope(scope: string): string {
   const normalized = normalizeScope(scope);
@@ -43,18 +44,28 @@ function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): st
   return path.join(outputDir, `${scopeSlug}.db`);
 }
 
+function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): string {
+  const configured = (baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH;
+  const relativeSubpath = path.isAbsolute(configured)
+    ? (path.basename(configured) || path.basename(DEFAULT_DOWNSTREAM_SUBPATH))
+    : configured.replace(/^[\/\\]+/, '');
+  return path.join(path.dirname(sqlitePath), relativeSubpath);
+}
+
 export function resolveScopeOutputPaths(
   baseOutputPath: string,
   scope: string,
   buildAllScopes: boolean,
   sqliteBaseOutputPath?: string
 ): ScopeOutputPaths {
-  const ext = path.extname(baseOutputPath);
+  const scopeSlug = slugifyScope(scope);
+  const sqlitePath = resolveSqlitePath(scopeSlug, sqliteBaseOutputPath);
+  const downstreamBasePath = resolveDownstreamBasePath(baseOutputPath, sqlitePath);
+  const ext = path.extname(downstreamBasePath);
   const hasJsonExt = ext.toLowerCase() === '.json';
   const stem = hasJsonExt
-    ? baseOutputPath.slice(0, -ext.length)
-    : baseOutputPath;
-  const scopeSlug = slugifyScope(scope);
+    ? downstreamBasePath.slice(0, -ext.length)
+    : downstreamBasePath;
 
   let stemWithScope = stem;
   if (stem.includes('{scope}')) {
@@ -66,7 +77,7 @@ export function resolveScopeOutputPaths(
   return {
     worldInfoPath: `${stemWithScope}.json`,
     ragPath: `${stemWithScope}.rag.md`,
-    sqlitePath: resolveSqlitePath(scopeSlug, sqliteBaseOutputPath)
+    sqlitePath
   };
 }
 

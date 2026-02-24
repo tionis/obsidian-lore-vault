@@ -161,7 +161,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     total_degree: 100,
     file_depth: 2000
   },
-  outputPath: '',
+  outputPath: 'sillytavern/lorevault.json',
   defaultLoreBook: {
     orderByTitle: false,
     useDroste: true,
@@ -180,7 +180,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   },
   sqlite: {
     enabled: true,
-    outputPath: 'lorebook/'
+    outputPath: 'lorebooks/'
   },
   embeddings: {
     enabled: false,

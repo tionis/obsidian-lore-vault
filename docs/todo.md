@@ -35,7 +35,7 @@ Reference design: `docs/planning.md`.
 
 - [x] Add Lorebooks management view/panel.
 - [x] Show discovered scopes, counts, and validation warnings.
-- [x] Add actions: Build, Export, Open Output Folder.
+- [x] Add actions: per-scope Build/Export, Open Output Folder.
 - [x] Add drill-down debug info: why note is in/out of each scope.
 
 ## Phase 5: Live/Near-Live Query Layer (Writing Assistant Foundation)

@@ -160,3 +160,26 @@ When building multiple scopes:
 - otherwise append `-<scope-slug>` before extension
 
 Output build fails fast if path collisions are detected.
+
+## LoreVault Manager UI
+
+Command: `Open LoreVault Manager`
+
+Capabilities:
+
+- lists discovered scopes with deterministic ordering
+- shows counts:
+  - included notes
+  - `world_info` entries
+  - `rag` documents
+- warns when scopes have no included notes or no entries in one section
+- actions:
+  - `Build/Export Scope`
+  - `Build/Export All Scopes`
+  - `Open Output Folder`
+- debug drill-down per scope:
+  - note path
+  - inclusion/exclusion reason
+  - retrieval mode and keyword presence
+  - resolved route (`world_info`, `rag`, both, or none)
+  - detected lorebook scopes

@@ -41,7 +41,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - Toggle the switch to enable it
 
 4. **Verify installation**
-   - You should now see a book icon in the left sidebar ribbon
+   - You should now see LoreVault ribbon icons in the left sidebar (build scope + manager)
    - The command palette (Ctrl+P or Cmd+P) should include:
      - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
@@ -94,7 +94,8 @@ If you prefer to build the plugin from source:
    - Ensure your notes use hierarchical lorebook tags like `#lorebook/universe/...`
    - Notes with `keywords`/`key` are routed to `world_info`; notes without keywords are routed to `rag` by default
    - Use frontmatter `retrieval: auto|world_info|rag|both|none` to override per note
-   - Click the book icon in the sidebar or use the command palette to start conversion
+   - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
+   - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
    - Monitor the progress bar as your vault is converted
 
 4. **Use writing-assistant context insertion**

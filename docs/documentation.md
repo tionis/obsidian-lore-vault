@@ -52,7 +52,11 @@ Behavior:
 - `exact`: only notes with matching scope tag are included
 - `cascade`: notes in child scopes are also included in ancestor scope exports
 - notes with frontmatter `exclude: true` are always skipped
-- empty `activeScope`: discover all scopes and build each scope in deterministic order
+- empty `activeScope`: no configured fallback scope
+- export command builds one scope at a time:
+  - active file lorebook scope first
+  - otherwise configured `activeScope`
+- manager view discovers all scopes and provides per-scope build actions
 
 ## Frontmatter Parsing
 
@@ -160,7 +164,7 @@ Given configured downstream output subpath + SQLite output directory:
 
 When building multiple scopes:
 
-- if path contains `{scope}`: replace token with scope slug
+- if downstream subpath contains `{scope}`: replace token with scope slug
 - otherwise append `-<scope-slug>` before extension
 
 SQLite path behavior:
@@ -168,6 +172,7 @@ SQLite path behavior:
 - if SQLite output setting is a directory: write `<dir>/<scope-slug>.db`
 - if SQLite output setting is a `.db` file path: append `-<scope-slug>` unless `{scope}` is present
 - downstream exports are always written under the SQLite scope directory (for example `lorebooks/sillytavern/...`)
+- absolute downstream subpaths are normalized to file basename under SQLite root
 
 Output build fails fast if path collisions are detected.
 
@@ -217,7 +222,7 @@ Capabilities:
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export Scope`
-  - `Open Output Folder`
+  - `Open Output Folder` (opens SQLite output root)
 - debug drill-down per scope:
   - note path
   - inclusion/exclusion reason

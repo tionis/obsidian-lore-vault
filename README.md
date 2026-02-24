@@ -40,7 +40,12 @@ Settings:
 
 Notes with frontmatter `exclude: true` are always skipped.
 
-If `activeScope` is empty, LoreVault discovers all scopes under the configured prefix and builds one export set per scope.
+Build behavior:
+
+- `Build Active Lorebook Scope` resolves one scope at a time:
+  - first lorebook scope on the active file
+  - otherwise configured `activeScope`
+- `Open LoreVault Manager` lists all discovered scopes and provides per-scope `Build/Export Scope`.
 
 ## Frontmatter Parsing Model
 
@@ -128,8 +133,8 @@ For each built scope, LoreVault writes:
 
 If multiple scopes are built and the downstream subpath does not contain `{scope}`, LoreVault appends a scope slug:
 
-- `vault-lorevault-universe.json`
-- `vault-lorevault-universe.rag.md`
+- `lorebooks/sillytavern/lorevault-universe.json`
+- `lorebooks/sillytavern/lorevault-universe.rag.md`
 
 If downstream subpath contains `{scope}`, the token is replaced by the scope slug.  
 Export aborts if two scopes resolve to the same output path.
@@ -162,7 +167,7 @@ Manager features:
 - per-scope counts (included notes, `world_info`, `rag`)
 - scope warnings when sections are empty
 - `Build/Export Scope` action
-- `Open Output Folder` action
+- `Open Output Folder` action (opens SQLite output root)
 - debug drill-down table showing why each note is included/excluded and how it is routed
 
 ## Writing Assistant Commands (MVP)

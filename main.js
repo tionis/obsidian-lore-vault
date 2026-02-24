@@ -3549,6 +3549,52 @@ function shouldIncludeInScope(noteScopes, rawActiveScope, membershipMode, includ
   return scopes.some((scope) => scope === activeScope || scope.startsWith(`${activeScope}/`));
 }
 
+// src/retrieval-routing.ts
+function normalizeRetrievalValue(value) {
+  return value.trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
+}
+function parseRetrievalMode(value) {
+  const raw = asString(value);
+  if (!raw) {
+    return void 0;
+  }
+  const normalized = normalizeRetrievalValue(raw);
+  if (normalized === "auto") {
+    return "auto";
+  }
+  if (normalized === "world_info" || normalized === "worldinfo" || normalized === "lorebook") {
+    return "world_info";
+  }
+  if (normalized === "rag") {
+    return "rag";
+  }
+  if (normalized === "both") {
+    return "both";
+  }
+  if (normalized === "none" || normalized === "off" || normalized === "disabled") {
+    return "none";
+  }
+  return void 0;
+}
+function resolveRetrievalTargets(mode, hasKeywords) {
+  if (mode === "none") {
+    return { includeWorldInfo: false, includeRag: false };
+  }
+  if (mode === "world_info") {
+    return { includeWorldInfo: true, includeRag: false };
+  }
+  if (mode === "rag") {
+    return { includeWorldInfo: false, includeRag: true };
+  }
+  if (mode === "both") {
+    return { includeWorldInfo: true, includeRag: true };
+  }
+  return {
+    includeWorldInfo: hasKeywords,
+    includeRag: !hasKeywords
+  };
+}
+
 // src/file-processor.ts
 var SELECTIVE_LOGIC_MAP = {
   "or": 0,
@@ -3587,6 +3633,7 @@ var FileProcessor = class {
   constructor(app, settings) {
     this.linkTargetIndex = new LinkTargetIndex();
     this.entries = {};
+    this.ragDocuments = [];
     this.nextUid = 0;
     this.rootUid = null;
     this.app = app;
@@ -3624,7 +3671,7 @@ var FileProcessor = class {
     );
   }
   async parseMarkdownFile(file) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     try {
       const rawContent = await this.app.vault.read(file);
       const frontmatter = this.getFrontmatter(file);
@@ -3651,42 +3698,60 @@ var FileProcessor = class {
       const comment = (_a = asString(getFrontmatterValue(frontmatter, "comment", "title"))) != null ? _a : name;
       const triggerMethod = parseTriggerMethod(frontmatter);
       const rootFlag = asBoolean(getFrontmatterValue(frontmatter, "lorebookRoot", "root"));
+      const retrievalMode = (_b = parseRetrievalMode(getFrontmatterValue(frontmatter, "retrieval"))) != null ? _b : "auto";
+      const routing = resolveRetrievalTargets(retrievalMode, frontmatterKeywords.length > 0);
+      const scope = this.settings.tagScoping.activeScope;
+      if (!routing.includeWorldInfo && !routing.includeRag) {
+        return null;
+      }
+      if (routing.includeRag) {
+        this.ragDocuments.push({
+          uid,
+          title: comment,
+          path: file.path,
+          content: noteBody,
+          scope
+        });
+      }
+      if (!routing.includeWorldInfo) {
+        return null;
+      }
       const entry = {
         uid,
         key: key.length > 0 ? key : [name],
         keysecondary,
         comment,
         content,
-        constant: (_b = asBoolean(getFrontmatterValue(frontmatter, "constant"))) != null ? _b : triggerMethod === "constant" ? true : defaultSettings.constant,
-        vectorized: (_c = asBoolean(getFrontmatterValue(frontmatter, "vectorized"))) != null ? _c : triggerMethod === "vectorized" ? true : defaultSettings.vectorized,
-        selective: (_d = asBoolean(getFrontmatterValue(frontmatter, "selective"))) != null ? _d : triggerMethod === "selective" ? true : defaultSettings.selective,
+        constant: (_c = asBoolean(getFrontmatterValue(frontmatter, "constant"))) != null ? _c : triggerMethod === "constant" ? true : defaultSettings.constant,
+        vectorized: (_d = asBoolean(getFrontmatterValue(frontmatter, "vectorized"))) != null ? _d : triggerMethod === "vectorized" ? true : defaultSettings.vectorized,
+        selective: (_e = asBoolean(getFrontmatterValue(frontmatter, "selective"))) != null ? _e : triggerMethod === "selective" ? true : defaultSettings.selective,
         selectiveLogic: parseSelectiveLogic(
           getFrontmatterValue(frontmatter, "selectiveLogic"),
           defaultSettings.selectiveLogic
         ),
-        addMemo: (_e = asBoolean(getFrontmatterValue(frontmatter, "addMemo"))) != null ? _e : true,
-        order: (_f = asNumber(getFrontmatterValue(frontmatter, "order"))) != null ? _f : 0,
-        position: (_g = asNumber(getFrontmatterValue(frontmatter, "position"))) != null ? _g : 0,
-        disable: (_h = asBoolean(getFrontmatterValue(frontmatter, "disable"))) != null ? _h : false,
-        excludeRecursion: (_i = asBoolean(getFrontmatterValue(frontmatter, "excludeRecursion"))) != null ? _i : false,
-        preventRecursion: (_j = asBoolean(getFrontmatterValue(frontmatter, "preventRecursion"))) != null ? _j : false,
-        delayUntilRecursion: (_k = asBoolean(getFrontmatterValue(frontmatter, "delayUntilRecursion"))) != null ? _k : false,
-        probability: (_l = asNumber(getFrontmatterValue(frontmatter, "probability"))) != null ? _l : defaultSettings.probability,
-        useProbability: (_m = asBoolean(getFrontmatterValue(frontmatter, "useProbability"))) != null ? _m : true,
-        depth: (_n = asNumber(getFrontmatterValue(frontmatter, "depth"))) != null ? _n : defaultSettings.depth,
-        group: (_o = asString(getFrontmatterValue(frontmatter, "group"))) != null ? _o : folder,
-        groupOverride: (_p = asBoolean(getFrontmatterValue(frontmatter, "groupOverride"))) != null ? _p : false,
-        groupWeight: (_q = asNumber(getFrontmatterValue(frontmatter, "groupWeight"))) != null ? _q : defaultSettings.groupWeight,
+        addMemo: (_f = asBoolean(getFrontmatterValue(frontmatter, "addMemo"))) != null ? _f : true,
+        order: (_g = asNumber(getFrontmatterValue(frontmatter, "order"))) != null ? _g : 0,
+        position: (_h = asNumber(getFrontmatterValue(frontmatter, "position"))) != null ? _h : 0,
+        disable: (_i = asBoolean(getFrontmatterValue(frontmatter, "disable"))) != null ? _i : false,
+        excludeRecursion: (_j = asBoolean(getFrontmatterValue(frontmatter, "excludeRecursion"))) != null ? _j : false,
+        preventRecursion: (_k = asBoolean(getFrontmatterValue(frontmatter, "preventRecursion"))) != null ? _k : false,
+        delayUntilRecursion: (_l = asBoolean(getFrontmatterValue(frontmatter, "delayUntilRecursion"))) != null ? _l : false,
+        probability: (_m = asNumber(getFrontmatterValue(frontmatter, "probability"))) != null ? _m : defaultSettings.probability,
+        useProbability: (_n = asBoolean(getFrontmatterValue(frontmatter, "useProbability"))) != null ? _n : true,
+        depth: (_o = asNumber(getFrontmatterValue(frontmatter, "depth"))) != null ? _o : defaultSettings.depth,
+        group: (_p = asString(getFrontmatterValue(frontmatter, "group"))) != null ? _p : folder,
+        groupOverride: (_q = asBoolean(getFrontmatterValue(frontmatter, "groupOverride"))) != null ? _q : false,
+        groupWeight: (_r = asNumber(getFrontmatterValue(frontmatter, "groupWeight"))) != null ? _r : defaultSettings.groupWeight,
         scanDepth: null,
         caseSensitive: null,
         matchWholeWords: null,
         useGroupScoring: null,
-        automationId: (_r = asString(getFrontmatterValue(frontmatter, "automationId"))) != null ? _r : "",
+        automationId: (_s = asString(getFrontmatterValue(frontmatter, "automationId"))) != null ? _s : "",
         role: null,
-        sticky: (_s = asNumber(getFrontmatterValue(frontmatter, "sticky"))) != null ? _s : 0,
-        cooldown: (_t = asNumber(getFrontmatterValue(frontmatter, "cooldown"))) != null ? _t : 0,
-        delay: (_u = asNumber(getFrontmatterValue(frontmatter, "delay"))) != null ? _u : 0,
-        displayIndex: (_v = asNumber(getFrontmatterValue(frontmatter, "displayIndex"))) != null ? _v : 0,
+        sticky: (_t = asNumber(getFrontmatterValue(frontmatter, "sticky"))) != null ? _t : 0,
+        cooldown: (_u = asNumber(getFrontmatterValue(frontmatter, "cooldown"))) != null ? _u : 0,
+        delay: (_v = asNumber(getFrontmatterValue(frontmatter, "delay"))) != null ? _v : 0,
+        displayIndex: (_w = asNumber(getFrontmatterValue(frontmatter, "displayIndex"))) != null ? _w : 0,
         wikilinks
       };
       if (entry.constant) {
@@ -3734,9 +3799,13 @@ var FileProcessor = class {
   getEntries() {
     return this.entries;
   }
+  getRagDocuments() {
+    return this.ragDocuments;
+  }
   reset() {
     this.linkTargetIndex.reset();
     this.entries = {};
+    this.ragDocuments = [];
     this.nextUid = 0;
     this.rootUid = null;
   }
@@ -3997,7 +4066,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
     containerEl.empty();
     containerEl.addClass("lorebook-converter-settings");
     containerEl.createEl("h2", { text: "LoreVault Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Output Path").setDesc("Base output path for exports (.json world_info and .rag.md). Use {scope} for per-scope naming.").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
       this.plugin.settings.outputPath = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
@@ -4183,8 +4252,125 @@ var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTa
   }
 };
 
+// src/rag-exporter.ts
+var fs2 = __toESM(require("fs"));
+var path3 = __toESM(require("path"));
+function compareRagDocs(a, b) {
+  return a.path.localeCompare(b.path) || a.title.localeCompare(b.title) || a.uid - b.uid;
+}
+var RagExporter = class {
+  constructor(app) {
+    this.app = app;
+  }
+  async exportRagMarkdown(documents, outputPath, scopeLabel) {
+    const sortedDocuments = [...documents].sort(compareRagDocs);
+    const normalizedScopeLabel = scopeLabel || "(all)";
+    const sections = sortedDocuments.map((doc) => {
+      const body = doc.content.trim() || "_No content_";
+      return `## ${doc.title}
+
+Source: \`${doc.path}\`
+
+${body}
+`;
+    });
+    const markdown = [
+      "# LoreVault RAG Pack",
+      "",
+      `Scope: \`${normalizedScopeLabel}\``,
+      "",
+      sections.join("\n---\n\n")
+    ].join("\n");
+    try {
+      const isAbsolutePath = path3.isAbsolute(outputPath);
+      if (!isAbsolutePath) {
+        await this.app.vault.adapter.write(outputPath, markdown);
+      } else {
+        const dirPath = path3.dirname(outputPath);
+        if (!fs2.existsSync(dirPath)) {
+          fs2.mkdirSync(dirPath, { recursive: true });
+        }
+        fs2.writeFileSync(outputPath, markdown, "utf8");
+      }
+      console.log(`Successfully exported ${documents.length} RAG docs to ${outputPath}`);
+    } catch (e) {
+      console.error(`Error writing RAG markdown to ${outputPath}:`, e);
+      throw e;
+    }
+  }
+};
+
+// src/scope-output-paths.ts
+var path4 = __toESM(require("path"));
+function slugifyScope(scope) {
+  const normalized = normalizeScope(scope);
+  const slug = normalized.replace(/[\/\\]+/g, "-").replace(/[^a-z0-9._-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || "root";
+}
+function resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes) {
+  const ext = path4.extname(baseOutputPath);
+  const hasJsonExt = ext.toLowerCase() === ".json";
+  const stem = hasJsonExt ? baseOutputPath.slice(0, -ext.length) : baseOutputPath;
+  const scopeSlug = slugifyScope(scope);
+  let stemWithScope = stem;
+  if (stem.includes("{scope}")) {
+    stemWithScope = stem.replace(/\{scope\}/g, scopeSlug);
+  } else if (buildAllScopes) {
+    stemWithScope = `${stem}-${scopeSlug}`;
+  }
+  return {
+    worldInfoPath: `${stemWithScope}.json`,
+    ragPath: `${stemWithScope}.rag.md`
+  };
+}
+function toCollisionKey(outputPath) {
+  return path4.normalize(outputPath).toLowerCase();
+}
+function assertUniqueOutputPaths(assignments) {
+  const seenByPath = /* @__PURE__ */ new Map();
+  const collisions = /* @__PURE__ */ new Set();
+  for (const assignment of assignments) {
+    const targets = [
+      ["world_info", assignment.paths.worldInfoPath],
+      ["rag", assignment.paths.ragPath]
+    ];
+    for (const [kind, outputPath] of targets) {
+      const key = `${kind}:${toCollisionKey(outputPath)}`;
+      const existingScope = seenByPath.get(key);
+      if (existingScope && existingScope !== assignment.scope) {
+        collisions.add(`${kind} path "${outputPath}" from scopes "${existingScope}" and "${assignment.scope}"`);
+      } else if (!existingScope) {
+        seenByPath.set(key, assignment.scope);
+      }
+    }
+  }
+  if (collisions.size > 0) {
+    const sorted = [...collisions].sort((a, b) => a.localeCompare(b));
+    throw new Error(`Output path collision detected:
+- ${sorted.join("\n- ")}`);
+  }
+}
+
 // src/main.ts
 var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
+  discoverAllScopes(files) {
+    var _a;
+    const scopes = /* @__PURE__ */ new Set();
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache) {
+        continue;
+      }
+      const tags = (_a = (0, import_obsidian5.getAllTags)(cache)) != null ? _a : [];
+      const fileScopes = extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+      for (const scope of fileScopes) {
+        if (scope) {
+          scopes.add(scope);
+        }
+      }
+    }
+    return [...scopes].sort((a, b) => a.localeCompare(b));
+  }
   mergeSettings(data) {
     var _a, _b, _c, _d;
     const merged = {
@@ -4272,31 +4458,60 @@ var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
   // This is the main conversion function
   async convertToLorebook() {
     try {
-      const fileProcessor = new FileProcessor(this.app, this.settings);
       const files = this.app.vault.getMarkdownFiles();
-      const progress = new ProgressBar(
-        files.length + 2,
-        // Files + graph building + exporting
-        "Building LoreVault context..."
-      );
-      await fileProcessor.processFiles(files, progress);
-      progress.setStatus("Building relationship graph...");
-      const graphAnalyzer = new GraphAnalyzer(
-        fileProcessor.getEntries(),
-        fileProcessor.getFilenameToUid(),
-        this.settings,
-        fileProcessor.getRootUid()
-      );
-      graphAnalyzer.buildGraph();
-      progress.update();
-      progress.setStatus("Calculating entry priorities...");
-      graphAnalyzer.calculateEntryPriorities();
-      progress.setStatus("Exporting to JSON...");
-      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
-      const exporter = new LoreBookExporter(this.app);
-      await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath, this.settings);
-      progress.update();
-      progress.success(`LoreVault build complete. Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
+      const explicitScope = normalizeScope(this.settings.tagScoping.activeScope);
+      const discoveredScopes = this.discoverAllScopes(files);
+      const buildAllScopes = explicitScope.length === 0 && discoveredScopes.length > 0;
+      const scopesToBuild = explicitScope ? [explicitScope] : discoveredScopes.length > 0 ? discoveredScopes : [""];
+      const baseOutputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+      const worldInfoExporter = new LoreBookExporter(this.app);
+      const ragExporter = new RagExporter(this.app);
+      const scopeAssignments = scopesToBuild.map((scope) => ({
+        scope,
+        paths: resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes)
+      }));
+      assertUniqueOutputPaths(scopeAssignments);
+      for (const assignment of scopeAssignments) {
+        const { scope, paths } = assignment;
+        const scopedSettings = this.mergeSettings({
+          ...this.settings,
+          tagScoping: {
+            ...this.settings.tagScoping,
+            activeScope: scope,
+            // Avoid duplicating untagged notes in every scope during all-scope builds.
+            includeUntagged: buildAllScopes ? false : this.settings.tagScoping.includeUntagged
+          }
+        });
+        const fileProcessor = new FileProcessor(this.app, scopedSettings);
+        const progress = new ProgressBar(
+          files.length + 3,
+          // Files + graph build + world_info export + rag export
+          `Building LoreVault scope: ${scope || "(all)"}`
+        );
+        progress.setStatus(`Scope ${scope || "(all)"}: processing files...`);
+        await fileProcessor.processFiles(files, progress);
+        progress.setStatus(`Scope ${scope || "(all)"}: building relationship graph...`);
+        const graphAnalyzer = new GraphAnalyzer(
+          fileProcessor.getEntries(),
+          fileProcessor.getFilenameToUid(),
+          scopedSettings,
+          fileProcessor.getRootUid()
+        );
+        graphAnalyzer.buildGraph();
+        progress.update();
+        progress.setStatus(`Scope ${scope || "(all)"}: calculating world_info priorities...`);
+        graphAnalyzer.calculateEntryPriorities();
+        progress.setStatus(`Scope ${scope || "(all)"}: exporting world_info JSON...`);
+        await worldInfoExporter.exportLoreBookJson(fileProcessor.getEntries(), paths.worldInfoPath, scopedSettings);
+        progress.update();
+        progress.setStatus(`Scope ${scope || "(all)"}: exporting RAG markdown...`);
+        await ragExporter.exportRagMarkdown(fileProcessor.getRagDocuments(), paths.ragPath, scope || "(all)");
+        progress.update();
+        progress.success(
+          `Scope ${scope || "(all)"} complete: ${Object.keys(fileProcessor.getEntries()).length} world_info entries, ${fileProcessor.getRagDocuments().length} rag docs.`
+        );
+      }
+      new import_obsidian5.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
     } catch (error) {
       console.error("Conversion failed:", error);
       new import_obsidian5.Notice(`Conversion failed: ${error.message}`);

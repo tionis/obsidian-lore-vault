@@ -1,5 +1,5 @@
 import { App, TFile, getAllTags } from 'obsidian';
-import { ConverterSettings, LoreBookEntry } from './models';
+import { ConverterSettings, LoreBookEntry, RagDocument } from './models';
 import { ProgressBar } from './progress-bar';
 import { LinkTargetIndex, extractWikilinks } from './link-target-index';
 import {
@@ -14,6 +14,7 @@ import {
   uniqueStrings
 } from './frontmatter-utils';
 import { extractLorebookScopesFromTags, shouldIncludeInScope } from './lorebook-scoping';
+import { parseRetrievalMode, resolveRetrievalTargets } from './retrieval-routing';
 
 const SELECTIVE_LOGIC_MAP: {[key: string]: number} = {
   'or': 0,
@@ -59,6 +60,7 @@ export class FileProcessor {
   private settings: ConverterSettings;
   private linkTargetIndex: LinkTargetIndex = new LinkTargetIndex();
   private entries: {[key: number]: LoreBookEntry} = {};
+  private ragDocuments: RagDocument[] = [];
   private nextUid: number = 0;
   private rootUid: number | null = null;
 
@@ -135,6 +137,27 @@ export class FileProcessor {
       const comment = asString(getFrontmatterValue(frontmatter, 'comment', 'title')) ?? name;
       const triggerMethod = parseTriggerMethod(frontmatter);
       const rootFlag = asBoolean(getFrontmatterValue(frontmatter, 'lorebookRoot', 'root'));
+      const retrievalMode = parseRetrievalMode(getFrontmatterValue(frontmatter, 'retrieval')) ?? 'auto';
+      const routing = resolveRetrievalTargets(retrievalMode, frontmatterKeywords.length > 0);
+      const scope = this.settings.tagScoping.activeScope;
+
+      if (!routing.includeWorldInfo && !routing.includeRag) {
+        return null;
+      }
+
+      if (routing.includeRag) {
+        this.ragDocuments.push({
+          uid,
+          title: comment,
+          path: file.path,
+          content: noteBody,
+          scope
+        });
+      }
+
+      if (!routing.includeWorldInfo) {
+        return null;
+      }
 
       const entry: LoreBookEntry = {
         uid,
@@ -235,9 +258,14 @@ export class FileProcessor {
     return this.entries;
   }
 
+  getRagDocuments(): RagDocument[] {
+    return this.ragDocuments;
+  }
+
   reset(): void {
     this.linkTargetIndex.reset();
     this.entries = {};
+    this.ragDocuments = [];
     this.nextUid = 0;
     this.rootUid = null;
   }

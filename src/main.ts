@@ -1,4 +1,4 @@
-import { App, Plugin, Notice, addIcon } from 'obsidian';
+import { App, Plugin, Notice, TFile, addIcon, getAllTags } from 'obsidian';
 import { ConverterSettings, DEFAULT_SETTINGS } from './models';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
@@ -6,10 +6,37 @@ import { FileProcessor } from './file-processor';
 import { GraphAnalyzer } from './graph-analyzer';
 import { LoreBookExporter } from './lorebook-exporter'; 
 import { LoreBookConverterSettingTab } from './settings-tab';
-import { normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
+import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
+import { RagExporter } from './rag-exporter';
+import {
+  assertUniqueOutputPaths,
+  ScopeOutputAssignment,
+  resolveScopeOutputPaths
+} from './scope-output-paths';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
+
+  private discoverAllScopes(files: TFile[]): string[] {
+    const scopes = new Set<string>();
+
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache) {
+        continue;
+      }
+      const tags = getAllTags(cache) ?? [];
+      const fileScopes = extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+
+      for (const scope of fileScopes) {
+        if (scope) {
+          scopes.add(scope);
+        }
+      }
+    }
+
+    return [...scopes].sort((a, b) => a.localeCompare(b));
+  }
 
   private mergeSettings(data: Partial<ConverterSettings> | null | undefined): ConverterSettings {
     const merged: ConverterSettings = {
@@ -121,44 +148,72 @@ export default class LoreBookConverterPlugin extends Plugin {
   // This is the main conversion function
   async convertToLorebook() {
     try {
-      // Initialize processors
-      const fileProcessor = new FileProcessor(this.app, this.settings);
-      
-      // Stage 1: Count files and initialize progress
       const files = this.app.vault.getMarkdownFiles();
-      const progress = new ProgressBar(
-        files.length + 2, // Files + graph building + exporting
-        'Building LoreVault context...'
-      );
-      
-      // Stage 2: Process files based on lorebook tag scoping rules
-      await fileProcessor.processFiles(files, progress);
-      
-      // Stage 3: Build graph
-      progress.setStatus('Building relationship graph...');
-      const graphAnalyzer = new GraphAnalyzer(
-        fileProcessor.getEntries(),
-        fileProcessor.getFilenameToUid(),
-        this.settings,
-        fileProcessor.getRootUid()
-      );
-      graphAnalyzer.buildGraph();
-      progress.update();
-      
-      // Stage 4: Calculate priorities
-      progress.setStatus('Calculating entry priorities...');
-      graphAnalyzer.calculateEntryPriorities();
-      
-      // Stage 5: Export JSON
-      progress.setStatus('Exporting to JSON...');
-      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
-      
-      const exporter = new LoreBookExporter(this.app);
-      await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath, this.settings);
-      progress.update();
-      
-      // Complete
-      progress.success(`LoreVault build complete. Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
+      const explicitScope = normalizeScope(this.settings.tagScoping.activeScope);
+      const discoveredScopes = this.discoverAllScopes(files);
+      const buildAllScopes = explicitScope.length === 0 && discoveredScopes.length > 0;
+      const scopesToBuild = explicitScope
+        ? [explicitScope]
+        : (discoveredScopes.length > 0 ? discoveredScopes : ['']);
+
+      const baseOutputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+      const worldInfoExporter = new LoreBookExporter(this.app);
+      const ragExporter = new RagExporter(this.app);
+      const scopeAssignments: ScopeOutputAssignment[] = scopesToBuild.map(scope => ({
+        scope,
+        paths: resolveScopeOutputPaths(baseOutputPath, scope, buildAllScopes)
+      }));
+
+      assertUniqueOutputPaths(scopeAssignments);
+
+      for (const assignment of scopeAssignments) {
+        const { scope, paths } = assignment;
+        const scopedSettings = this.mergeSettings({
+          ...this.settings,
+          tagScoping: {
+            ...this.settings.tagScoping,
+            activeScope: scope,
+            // Avoid duplicating untagged notes in every scope during all-scope builds.
+            includeUntagged: buildAllScopes ? false : this.settings.tagScoping.includeUntagged
+          }
+        });
+
+        const fileProcessor = new FileProcessor(this.app, scopedSettings);
+        const progress = new ProgressBar(
+          files.length + 3, // Files + graph build + world_info export + rag export
+          `Building LoreVault scope: ${scope || '(all)'}`
+        );
+
+        progress.setStatus(`Scope ${scope || '(all)'}: processing files...`);
+        await fileProcessor.processFiles(files, progress);
+
+        progress.setStatus(`Scope ${scope || '(all)'}: building relationship graph...`);
+        const graphAnalyzer = new GraphAnalyzer(
+          fileProcessor.getEntries(),
+          fileProcessor.getFilenameToUid(),
+          scopedSettings,
+          fileProcessor.getRootUid()
+        );
+        graphAnalyzer.buildGraph();
+        progress.update();
+
+        progress.setStatus(`Scope ${scope || '(all)'}: calculating world_info priorities...`);
+        graphAnalyzer.calculateEntryPriorities();
+
+        progress.setStatus(`Scope ${scope || '(all)'}: exporting world_info JSON...`);
+        await worldInfoExporter.exportLoreBookJson(fileProcessor.getEntries(), paths.worldInfoPath, scopedSettings);
+        progress.update();
+
+        progress.setStatus(`Scope ${scope || '(all)'}: exporting RAG markdown...`);
+        await ragExporter.exportRagMarkdown(fileProcessor.getRagDocuments(), paths.ragPath, scope || '(all)');
+        progress.update();
+
+        progress.success(
+          `Scope ${scope || '(all)'} complete: ${Object.keys(fileProcessor.getEntries()).length} world_info entries, ${fileProcessor.getRagDocuments().length} rag docs.`
+        );
+      }
+
+      new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
     } catch (error) {
       console.error('Conversion failed:', error);
       new Notice(`Conversion failed: ${error.message}`);

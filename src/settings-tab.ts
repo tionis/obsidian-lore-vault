@@ -18,7 +18,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Output Path')
-      .setDesc('Path where the Lorebook JSON file will be saved')
+      .setDesc('Base output path for exports (.json world_info and .rag.md). Use {scope} for per-scope naming.')
       .addText(text => text
         .setPlaceholder(`${this.app.vault.getName()}.json`)
         .setValue(this.plugin.settings.outputPath)

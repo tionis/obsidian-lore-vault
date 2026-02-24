@@ -6,30 +6,30 @@ Reference design: `docs/planning.md`.
 
 - [x] Rename plugin-facing labels from "Lorebook Converter" to "LoreVault".
 - [x] Update `manifest.json` name/description and docs naming.
-- [ ] Add migration note for users upgrading from old naming.
+- [x] Add migration note for users upgrading from old naming.
 
 ## Phase 1: Tag-Driven Lorebook Discovery
 
 - [x] Implement discovery of lorebook scopes from `#lorebook/...` tags.
-- [ ] Add deterministic scope ordering.
+- [x] Add deterministic scope ordering.
 - [x] Implement membership mode setting: `exact` vs `cascade`.
 - [x] Add tests for scope expansion and membership.
 
 ## Phase 2: Dual Section Build (`world_info` + `rag`)
 
-- [ ] Add routing logic:
+- [x] Add routing logic:
   - `keywords` present -> `world_info`
   - no `keywords` -> `rag`
-- [ ] Add `retrieval` override (`auto|world_info|rag|both|none`).
-- [ ] Build per-lorebook outputs for both sections.
-- [ ] Add tests for routing and output determinism.
+- [x] Add `retrieval` override (`auto|world_info|rag|both|none`).
+- [x] Build per-lorebook outputs for both sections.
+- [x] Add tests for routing and output determinism.
 
 ## Phase 3: Export Outputs
 
-- [ ] Export `world_info` JSON per lorebook scope.
-- [ ] Export `rag` markdown packs per lorebook scope.
-- [ ] Add output path templates and collision checks.
-- [ ] Add deterministic file naming and stable serialization rules.
+- [x] Export `world_info` JSON per lorebook scope.
+- [x] Export `rag` markdown packs per lorebook scope.
+- [x] Add output path templates and collision checks.
+- [x] Add deterministic file naming and stable serialization rules.
 
 ## Phase 4: Lorebooks UI in Obsidian
 

@@ -18,7 +18,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Output Path')
-      .setDesc('Base output path for downstream exports (.json world_info and .rag.md). SQLite canonical packs use dedicated SQLite Output Path.')
+      .setDesc('Base output path for downstream exports (.json world_info and .rag.md). SQLite canonical packs use dedicated SQLite Output Directory.')
       .addText(text => text
         .setPlaceholder(`${this.app.vault.getName()}.json`)
         .setValue(this.plugin.settings.outputPath)
@@ -334,10 +334,10 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('SQLite Output Path')
-      .setDesc('Base path for SQLite pack output (.db). Leave empty to derive from output path.')
+      .setName('SQLite Output Directory')
+      .setDesc('Directory for canonical SQLite packs. LoreVault writes one <scope>.db file per lorebook.')
       .addText(text => text
-        .setPlaceholder(`${this.app.vault.getName()}-lorevault.db`)
+        .setPlaceholder('lorebook/')
         .setValue(this.plugin.settings.sqlite.outputPath)
         .onChange(async (value) => {
           this.plugin.settings.sqlite.outputPath = value.trim();

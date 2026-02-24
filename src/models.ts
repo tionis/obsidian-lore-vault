@@ -180,7 +180,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   },
   sqlite: {
     enabled: true,
-    outputPath: ''
+    outputPath: 'lorebook/'
   },
   embeddings: {
     enabled: false,

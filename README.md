@@ -122,7 +122,7 @@ Details:
 
 For each built scope, LoreVault writes:
 
-- `<base>.lorevault.db` -> canonical SQLite pack
+- `<sqliteOutputDir>/<scope-slug>.db` -> canonical SQLite pack (default dir: `lorebook/`)
 - `<base>.json` -> `world_info`
 - `<base>.rag.md` -> `rag`
 
@@ -161,7 +161,7 @@ Manager features:
 
 - per-scope counts (included notes, `world_info`, `rag`)
 - scope warnings when sections are empty
-- `Build/Export Scope` and `Build/Export All Scopes` actions
+- `Build/Export Scope` action
 - `Open Output Folder` action
 - debug drill-down table showing why each note is included/excluded and how it is routed
 

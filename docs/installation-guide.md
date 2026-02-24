@@ -1,6 +1,6 @@
-# Lorebook Converter Plugin Installation Guide
+# LoreVault Plugin Installation Guide
 
-This guide will help you install the Lorebook Converter plugin for Obsidian.
+This guide will help you install the LoreVault plugin for Obsidian.
 
 ## Prerequisites
 
@@ -37,12 +37,12 @@ This guide will help you install the Lorebook Converter plugin for Obsidian.
    - Go to Settings (gear icon in the lower left)
    - Navigate to "Community plugins"
    - Disable "Safe mode" if it's enabled
-   - Find "Lorebook Converter" in your list of installed plugins
+   - Find "LoreVault" in your list of installed plugins
    - Toggle the switch to enable it
 
 4. **Verify installation**
    - You should now see a book icon in the left sidebar ribbon
-   - The command palette (Ctrl+P or Cmd+P) should include "Convert Vault to Lorebook" and "Create Lorebook Entry Template"
+   - The command palette (Ctrl+P or Cmd+P) should include "Build LoreVault Export" and "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
 
@@ -73,18 +73,18 @@ If you prefer to build the plugin from source:
 ## Post-Installation Configuration
 
 1. **Configure plugin settings**
-   - Go to Settings → Lorebook Converter
-   - Set the output path for your Lorebook JSON file
-   - Configure Source Selection Rules (folder/tag filters and lorebook flag requirement)
+   - Go to Settings → LoreVault
+   - Set the output path for your lorebook JSON file
+   - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Adjust priority weights if needed
 
 2. **Try creating a template**
    - Press Ctrl+P (or Cmd+P on Mac) to open the command palette
-   - Type "Create Lorebook Entry Template" and select it
+   - Type "Create LoreVault Entry Template" and select it
    - Fill in the form and create your first template
 
-3. **Convert your vault**
-   - Ensure your markdown files match one of the source-selection rules (see `docs/documentation.md`)
+3. **Build your vault export**
+   - Ensure your notes use hierarchical lorebook tags like `#lorebook/universe/...`
    - Click the book icon in the sidebar or use the command palette to start conversion
    - Monitor the progress bar as your vault is converted
 
@@ -94,9 +94,9 @@ If you prefer to build the plugin from source:
 - **Command palette commands don't appear**: Try restarting Obsidian
 - **Conversion fails**: Check the console (Ctrl+Shift+I) for error messages
 - **Plugin doesn't recognize files**:
-  - Ensure frontmatter enables lorebook usage (`lorebook: true`) when `requireLorebookFlag` is enabled
-  - Verify folder/tag rules are not excluding your note
-  - Check for explicit exclusion flags (`exclude: true`, `lorebook: false`)
+  - Ensure notes are tagged under your configured lorebook tag prefix (default `#lorebook/...`)
+  - Check active scope and membership mode settings
+  - Check explicit exclusion flag (`exclude: true`) in frontmatter
 
 ## Updates
 
@@ -116,4 +116,4 @@ If you encounter any issues with installation or usage, please:
 
 ---
 
-Once installed, you're ready to start converting your Obsidian notes into Lorebook format!
+Once installed, you're ready to start building scoped LoreVault exports from your Obsidian notes.

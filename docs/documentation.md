@@ -1,78 +1,61 @@
-# Lorebook Converter Documentation
+# LoreVault Documentation
 
 ## Overview
 
-Lorebook Converter compiles Obsidian markdown notes into SillyTavern lorebook JSON.
+LoreVault compiles Obsidian notes into deterministic context exports.
 
-Current architecture is:
-
-- frontmatter-driven metadata and inclusion
-- deterministic graph + ranking pipeline
-- configurable folder/tag source-selection rules
+Current runtime export target is SillyTavern-style `world_info` JSON, with tag-scoped selection.
 
 ## Compatibility
 
-- Plugin id: `lorebook-converter`
+- Plugin id: `lorebook-converter` (kept for migration stability)
+- Plugin name: `LoreVault`
 - Minimum Obsidian version: `0.15.0`
 - Desktop only (`isDesktopOnly: true`)
 
 ## Conversion Pipeline
 
-When you run **Convert Vault to Lorebook**:
+When you run **Build LoreVault Export**:
 
 1. Collect all markdown files
-2. Filter files using frontmatter + selection rules
-3. Parse selected files into lorebook entries
-4. Build a directed graph from wikilinks
-5. Compute entry `order`
+2. Select files based on hierarchical lorebook tags
+3. Parse frontmatter + markdown body into entries
+4. Build wikilink graph
+5. Compute deterministic `order`
 6. Export lorebook JSON
 
-All file traversal is deterministic (`path` sorted).
+## Tag Scoping
 
-## Source Selection Rules
+Selection is driven by hierarchical tags under a configurable prefix:
 
-Rules are configured in Settings under **Source Selection Rules**.
+- default prefix: `lorebook`
+- examples:
+  - `#lorebook/universe`
+  - `#lorebook/universe/yggdrasil`
+  - `#lorebook/universe/yggdrasil/factions`
 
-### Rule Inputs
+Settings:
 
-- `requireLorebookFlag` (boolean)
-- `includeFolders` (list of folder prefixes)
-- `excludeFolders` (list of folder prefixes)
-- `includeTags` (list of tags)
-- `excludeTags` (list of tags)
+- `tagPrefix`
+- `activeScope`
+- `membershipMode` (`exact` | `cascade`)
+- `includeUntagged`
 
-### Inclusion Logic
+Behavior:
 
-A note is excluded immediately if frontmatter says:
-
-- `exclude: true`
-- `lorebook: false`
-- `lorebook: { enabled: false }`
-- `lorebook: { exclude: true }`
-
-Then folder and tag rules are applied:
-
-- excluded folders/tags remove the note
-- include folders/tags must match when configured
-
-If `requireLorebookFlag` is true (default), note frontmatter must enable lorebook:
-
-- `lorebook: true`
-- `lorebook: [ ... ]` (non-empty)
-- `lorebook: { ... }` (unless explicitly disabled)
+- `exact`: only notes with matching scope tag are included
+- `cascade`: notes in child scopes are also included in ancestor scope exports
+- notes with frontmatter `exclude: true` are always skipped
 
 ## Frontmatter Parsing
 
-Structured metadata is frontmatter-only.
+Structured metadata is frontmatter-first.
 
-Legacy `# Field: value` parsing is removed.
-
-### Key Fields
+Key fields:
 
 - `title` / `comment`
 - `aliases`
 - `keywords` / `key`
-- `keysecondary`
 - `summary`
 - `trigger_method`
 - `selectiveLogic`
@@ -80,66 +63,40 @@ Legacy `# Field: value` parsing is removed.
 - `depth`
 - `group`
 - `exclude`
-- `root` or `lorebookRoot`
+- `root` / `lorebookRoot`
 
-### Content Rules
+Content:
 
-- Markdown body is used as entry content (frontmatter stripped)
-- `summary` overrides body content when present
-
-### Type Handling
-
-- booleans: standard true/false style values
-- numbers: numeric parsing for numeric fields
-- arrays: comma-separated strings or YAML lists
-
-## Trigger Mode and Selective Logic
-
-Trigger mode is normalized to exactly one:
-
-- `constant`
-- `vectorized`
-- `selective`
-
-`selectiveLogic` supports `0..3`:
-
-- `0` AND ANY
-- `1` AND ALL
-- `2` NOT ANY
-- `3` NOT ALL
-
-Legacy text forms like `OR` and `AND` are normalized.
+- markdown body (frontmatter stripped)
+- overridden by `summary` when present
 
 ## Root Behavior
 
-Root used for hierarchy metric is chosen as:
+Hierarchy root is:
 
-1. Explicit frontmatter root (`root: true` or `lorebookRoot: true`), first in deterministic file order
-2. If none exists, inferred deterministically from graph connectivity (highest in-degree, then total degree, then lowest UID)
+1. explicit frontmatter root (`root: true` / `lorebookRoot: true`) in deterministic file order
+2. otherwise inferred deterministically from graph connectivity
 
 ## Wikilink Normalization
 
-Detected forms:
+Supported link forms:
 
 - `[[Page]]`
 - `[[Page|Alias]]`
-- embedded wikilinks (e.g. `![[Page]]`)
+- embedded wikilinks
 
 Normalization:
 
-- convert `\` to `/`
-- strip refs after `#`
-- strip trailing `.md`
+- `\` -> `/`
+- strip `#...` refs
+- strip `.md`
 - trim whitespace
 
-Indexing:
-
-- each entry maps by normalized full path + basename
-- ambiguous basenames are removed from basename lookup
+Ambiguous basename mappings are removed to avoid incorrect edge links.
 
 ## Ranking / Order
 
-`order` is based on weighted normalized metrics:
+Order uses weighted normalized metrics:
 
 - hierarchy depth
 - in-degree
@@ -152,25 +109,7 @@ Indexing:
 Computation:
 
 - `order = max(1, floor(score))`
-- equal orders are resolved deterministically by ascending UID offsets
-
-## Export
-
-Output includes:
-
-- `entries` dictionary keyed by UID string
-- lorebook `settings`
-
-Before serialization:
-
-- `wikilinks` are removed
-- default entry values are filled where needed
-- trigger mode is normalized
-
-Path behavior:
-
-- relative output path -> vault adapter write
-- absolute output path -> Node `fs` write
+- ties resolved deterministically by ascending UID offsets
 
 ## Testing
 
@@ -179,13 +118,8 @@ npm run build
 npm test
 ```
 
-Current fixture-backed coverage includes:
+Fixture coverage includes:
 
 - graph-order determinism
 - wikilink normalization and ambiguity handling
-- source-selection rule behavior
-
-## Known Limitations
-
-- Basename-only links can be unresolved when names collide (full-path links recommended)
-- Frontmatter parsing relies on Obsidian cache interpretation for runtime metadata
+- lorebook scope selection (`exact` + `cascade`)

@@ -14,7 +14,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass('lorebook-converter-settings');
 
-    containerEl.createEl('h2', { text: 'Lorebook Converter Settings' });
+    containerEl.createEl('h2', { text: 'LoreVault Settings' });
 
     new Setting(containerEl)
       .setName('Output Path')
@@ -27,65 +27,52 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.plugin.saveData(this.plugin.settings);
         }));
 
-    const parseCsv = (value: string): string[] => value
-      .split(',')
-      .map(item => item.trim())
-      .filter(item => item.length > 0);
-
-    // Source Selection section
-    containerEl.createEl('h3', { text: 'Source Selection Rules' });
+    // Lorebook Scope section
+    containerEl.createEl('h3', { text: 'Lorebook Scope' });
 
     new Setting(containerEl)
-      .setName('Require lorebook frontmatter')
-      .setDesc('Only include notes where frontmatter enables lorebook usage')
+      .setName('Lorebook Tag Prefix')
+      .setDesc('Tag namespace used to detect lorebooks (without #), e.g. lorebook')
+      .addText(text => text
+        .setPlaceholder('lorebook')
+        .setValue(this.plugin.settings.tagScoping.tagPrefix)
+        .onChange(async (value) => {
+          this.plugin.settings.tagScoping.tagPrefix = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Active Scope')
+      .setDesc('Optional scope path under the tag prefix, e.g. universe/yggdrasil (empty = all lorebook tags)')
+      .addText(text => text
+        .setPlaceholder('universe/yggdrasil')
+        .setValue(this.plugin.settings.tagScoping.activeScope)
+        .onChange(async (value) => {
+          this.plugin.settings.tagScoping.activeScope = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Membership Mode')
+      .setDesc('Exact: include only exact scope tags. Cascade: include entries from child scopes too.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          'exact': 'Exact',
+          'cascade': 'Cascade'
+        })
+        .setValue(this.plugin.settings.tagScoping.membershipMode)
+        .onChange(async (value) => {
+          this.plugin.settings.tagScoping.membershipMode = value === 'cascade' ? 'cascade' : 'exact';
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Include Untagged Notes')
+      .setDesc('If enabled, notes without lorebook tags are included in the active build.')
       .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.sourceSelection.requireLorebookFlag)
+        .setValue(this.plugin.settings.tagScoping.includeUntagged)
         .onChange(async (value) => {
-          this.plugin.settings.sourceSelection.requireLorebookFlag = value;
-          await this.plugin.saveData(this.plugin.settings);
-        }));
-
-    new Setting(containerEl)
-      .setName('Include Folders')
-      .setDesc('Optional comma-separated folder prefixes to include (empty = all folders)')
-      .addText(text => text
-        .setPlaceholder('Worlds/Aurelia, Chronicles/Season1')
-        .setValue(this.plugin.settings.sourceSelection.includeFolders.join(', '))
-        .onChange(async (value) => {
-          this.plugin.settings.sourceSelection.includeFolders = parseCsv(value);
-          await this.plugin.saveData(this.plugin.settings);
-        }));
-
-    new Setting(containerEl)
-      .setName('Exclude Folders')
-      .setDesc('Comma-separated folder prefixes to exclude')
-      .addText(text => text
-        .setPlaceholder('.obsidian, Templates')
-        .setValue(this.plugin.settings.sourceSelection.excludeFolders.join(', '))
-        .onChange(async (value) => {
-          this.plugin.settings.sourceSelection.excludeFolders = parseCsv(value);
-          await this.plugin.saveData(this.plugin.settings);
-        }));
-
-    new Setting(containerEl)
-      .setName('Include Tags')
-      .setDesc('Optional comma-separated tags required for inclusion')
-      .addText(text => text
-        .setPlaceholder('lorebook, world:aurelia')
-        .setValue(this.plugin.settings.sourceSelection.includeTags.join(', '))
-        .onChange(async (value) => {
-          this.plugin.settings.sourceSelection.includeTags = parseCsv(value);
-          await this.plugin.saveData(this.plugin.settings);
-        }));
-
-    new Setting(containerEl)
-      .setName('Exclude Tags')
-      .setDesc('Comma-separated tags to skip')
-      .addText(text => text
-        .setPlaceholder('draft, private')
-        .setValue(this.plugin.settings.sourceSelection.excludeTags.join(', '))
-        .onChange(async (value) => {
-          this.plugin.settings.sourceSelection.excludeTags = parseCsv(value);
+          this.plugin.settings.tagScoping.includeUntagged = value;
           await this.plugin.saveData(this.plugin.settings);
         }));
 

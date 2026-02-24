@@ -1,0 +1,66 @@
+{
+  "tagPrefix": "lorebook",
+  "cases": [
+    {
+      "name": "exact mode includes only matching scope",
+      "tags": [
+        "#lorebook/universe/yggdrasil"
+      ],
+      "activeScope": "universe/yggdrasil",
+      "membershipMode": "exact",
+      "includeUntagged": false,
+      "expectedInclude": true
+    },
+    {
+      "name": "exact mode excludes child scope",
+      "tags": [
+        "#lorebook/universe/yggdrasil/regions"
+      ],
+      "activeScope": "universe/yggdrasil",
+      "membershipMode": "exact",
+      "includeUntagged": false,
+      "expectedInclude": false
+    },
+    {
+      "name": "cascade mode includes child scope",
+      "tags": [
+        "#lorebook/universe/yggdrasil/regions"
+      ],
+      "activeScope": "universe/yggdrasil",
+      "membershipMode": "cascade",
+      "includeUntagged": false,
+      "expectedInclude": true
+    },
+    {
+      "name": "empty active scope includes any lorebook-tagged note",
+      "tags": [
+        "#lorebook/universe"
+      ],
+      "activeScope": "",
+      "membershipMode": "exact",
+      "includeUntagged": false,
+      "expectedInclude": true
+    },
+    {
+      "name": "untagged note excluded by default",
+      "tags": [],
+      "activeScope": "",
+      "membershipMode": "exact",
+      "includeUntagged": false,
+      "expectedInclude": false
+    },
+    {
+      "name": "untagged note included when setting enabled",
+      "tags": [],
+      "activeScope": "universe/yggdrasil",
+      "membershipMode": "exact",
+      "includeUntagged": true,
+      "expectedInclude": true
+    }
+  ],
+  "expectedScopes": [
+    "universe",
+    "universe/yggdrasil",
+    "universe/yggdrasil/regions"
+  ]
+}

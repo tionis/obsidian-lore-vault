@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, getAllTags } from 'obsidian';
 import { ConverterSettings, LoreBookEntry } from './models';
 import { ProgressBar } from './progress-bar';
 import { LinkTargetIndex, extractWikilinks } from './link-target-index';
@@ -13,7 +13,7 @@ import {
   stripFrontmatter,
   uniqueStrings
 } from './frontmatter-utils';
-import { shouldIncludeSourceFile } from './source-selection';
+import { extractLorebookScopesFromTags, shouldIncludeInScope } from './lorebook-scoping';
 
 const SELECTIVE_LOGIC_MAP: {[key: string]: number} = {
   'or': 0,
@@ -78,9 +78,28 @@ export class FileProcessor {
     return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
   }
 
+  private getLorebookScopes(file: TFile): string[] {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache) {
+      return [];
+    }
+
+    const tags = getAllTags(cache) ?? [];
+    return extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+  }
+
   private isSourceFile(file: TFile, frontmatter: FrontmatterData): boolean {
-    const decision = shouldIncludeSourceFile(file.path, frontmatter, this.settings.sourceSelection);
-    return decision.include;
+    if (asBoolean(getFrontmatterValue(frontmatter, 'exclude')) === true) {
+      return false;
+    }
+
+    const scopes = this.getLorebookScopes(file);
+    return shouldIncludeInScope(
+      scopes,
+      this.settings.tagScoping.activeScope,
+      this.settings.tagScoping.membershipMode,
+      this.settings.tagScoping.includeUntagged
+    );
   }
 
   async parseMarkdownFile(file: TFile): Promise<LoreBookEntry | null> {

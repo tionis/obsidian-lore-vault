@@ -33,12 +33,12 @@ export class TemplateModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('lorebook-template-modal');
     
-    contentEl.createEl('h2', { text: 'Create Lorebook Entry Template' });
+    contentEl.createEl('h2', { text: 'Create LoreVault Entry Template' });
     
     // Title field
     new Setting(contentEl)
       .setName('Title')
-      .setDesc('The title of your lorebook entry')
+      .setDesc('The title of your LoreVault entry')
       .addText(text => text
         .setPlaceholder('Entry Title')
         .setValue(this.title)
@@ -47,7 +47,7 @@ export class TemplateModal extends Modal {
     // Keywords field
     new Setting(contentEl)
       .setName('Keywords')
-      .setDesc('Comma-separated keywords that trigger this entry')
+      .setDesc('Comma-separated keywords used for world_info routing and triggering')
       .addText(text => text
         .setPlaceholder('keyword1, keyword2, keyword3')
         .setValue(this.keywords)

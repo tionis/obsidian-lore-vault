@@ -6,26 +6,18 @@ import { FileProcessor } from './file-processor';
 import { GraphAnalyzer } from './graph-analyzer';
 import { LoreBookExporter } from './lorebook-exporter'; 
 import { LoreBookConverterSettingTab } from './settings-tab';
+import { normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
 
   private mergeSettings(data: Partial<ConverterSettings> | null | undefined): ConverterSettings {
-    const normalizeStringList = (value: unknown): string[] => {
-      if (!Array.isArray(value)) {
-        return [];
-      }
-      return value
-        .map(item => (typeof item === 'string' ? item.trim() : ''))
-        .filter(item => item.length > 0);
-    };
-
     const merged: ConverterSettings = {
       ...DEFAULT_SETTINGS,
       ...data,
-      sourceSelection: {
-        ...DEFAULT_SETTINGS.sourceSelection,
-        ...(data?.sourceSelection ?? {})
+      tagScoping: {
+        ...DEFAULT_SETTINGS.tagScoping,
+        ...(data?.tagScoping ?? {})
       },
       weights: {
         ...DEFAULT_SETTINGS.weights,
@@ -41,11 +33,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     };
 
-    merged.sourceSelection.requireLorebookFlag = Boolean(merged.sourceSelection.requireLorebookFlag);
-    merged.sourceSelection.includeFolders = normalizeStringList(merged.sourceSelection.includeFolders);
-    merged.sourceSelection.excludeFolders = normalizeStringList(merged.sourceSelection.excludeFolders);
-    merged.sourceSelection.includeTags = normalizeStringList(merged.sourceSelection.includeTags);
-    merged.sourceSelection.excludeTags = normalizeStringList(merged.sourceSelection.excludeTags);
+    merged.tagScoping.tagPrefix = normalizeTagPrefix(merged.tagScoping.tagPrefix) || DEFAULT_SETTINGS.tagScoping.tagPrefix;
+    merged.tagScoping.activeScope = normalizeScope(merged.tagScoping.activeScope);
+    merged.tagScoping.membershipMode = merged.tagScoping.membershipMode === 'cascade' ? 'cascade' : 'exact';
+    merged.tagScoping.includeUntagged = Boolean(merged.tagScoping.includeUntagged);
 
     // Keep settings valid even when older config files contain incomplete trigger config.
     if (merged.defaultEntry.constant) {
@@ -82,14 +73,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
 
     // Add ribbon icon
-    this.addRibbonIcon('lorebook', 'Convert to Lorebook', () => {
+    this.addRibbonIcon('lorebook', 'Build LoreVault Export', () => {
       this.convertToLorebook();
     });
 
     // Add command
     this.addCommand({
       id: 'convert-to-lorebook',
-      name: 'Convert Vault to Lorebook',
+      name: 'Build LoreVault Export',
       callback: () => {
         this.convertToLorebook();
       }
@@ -98,7 +89,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Add template creation command
     this.addCommand({
       id: 'create-lorebook-template',
-      name: 'Create Lorebook Entry Template',
+      name: 'Create LoreVault Entry Template',
       callback: async () => {
         try {
           const template = await createTemplate(this.app, this.settings);
@@ -112,7 +103,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             new Notice(`Template applied to ${activeFile.name}`);
           } else {
             // Otherwise create a new file
-            const fileName = `Lorebook_Entry_${Date.now()}.md`;
+            const fileName = `LoreVault_Entry_${Date.now()}.md`;
             await this.app.vault.create(fileName, template);
             new Notice(`Created new template: ${fileName}`);
           }
@@ -137,10 +128,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       const files = this.app.vault.getMarkdownFiles();
       const progress = new ProgressBar(
         files.length + 2, // Files + graph building + exporting
-        'Analyzing vault structure...'
+        'Building LoreVault context...'
       );
       
-      // Stage 2: Process files based on frontmatter rules
+      // Stage 2: Process files based on lorebook tag scoping rules
       await fileProcessor.processFiles(files, progress);
       
       // Stage 3: Build graph
@@ -160,15 +151,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       
       // Stage 5: Export JSON
       progress.setStatus('Exporting to JSON...');
-      const outputPath = this.settings.outputPath || 
-                        `${this.app.vault.getName()}.json`;
+      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
       
       const exporter = new LoreBookExporter(this.app);
       await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath, this.settings);
       progress.update();
       
       // Complete
-      progress.success(`Conversion complete! Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
+      progress.success(`LoreVault build complete. Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
     } catch (error) {
       console.error('Conversion failed:', error);
       new Notice(`Conversion failed: ${error.message}`);

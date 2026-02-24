@@ -1,9 +1,9 @@
 {
   "id": "lorebook-converter",
-  "name": "Lorebook Converter",
+  "name": "LoreVault",
   "version": "1.0.0",
   "minAppVersion": "0.15.0",
-  "description": "Converts Obsidian vault notes into Lorebook JSON format",
+  "description": "Build scoped world info and RAG context packs from Obsidian notes",
   "author": "Your Name",
   "authorUrl": "https://yourwebsite.com",
   "isDesktopOnly": true

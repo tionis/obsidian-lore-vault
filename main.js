@@ -3081,16 +3081,15 @@ __export(main_exports, {
   default: () => LoreBookConverterPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/models.ts
 var DEFAULT_SETTINGS = {
-  sourceSelection: {
-    requireLorebookFlag: true,
-    includeFolders: [],
-    excludeFolders: [".obsidian"],
-    includeTags: [],
-    excludeTags: []
+  tagScoping: {
+    tagPrefix: "lorebook",
+    activeScope: "",
+    membershipMode: "exact",
+    includeUntagged: false
   },
   weights: {
     hierarchy: 8e3,
@@ -3256,9 +3255,9 @@ var TemplateModal = class extends import_obsidian2.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("lorebook-template-modal");
-    contentEl.createEl("h2", { text: "Create Lorebook Entry Template" });
-    new import_obsidian2.Setting(contentEl).setName("Title").setDesc("The title of your lorebook entry").addText((text) => text.setPlaceholder("Entry Title").setValue(this.title).onChange((value) => this.title = value));
-    new import_obsidian2.Setting(contentEl).setName("Keywords").setDesc("Comma-separated keywords that trigger this entry").addText((text) => text.setPlaceholder("keyword1, keyword2, keyword3").setValue(this.keywords).onChange((value) => this.keywords = value));
+    contentEl.createEl("h2", { text: "Create LoreVault Entry Template" });
+    new import_obsidian2.Setting(contentEl).setName("Title").setDesc("The title of your LoreVault entry").addText((text) => text.setPlaceholder("Entry Title").setValue(this.title).onChange((value) => this.title = value));
+    new import_obsidian2.Setting(contentEl).setName("Keywords").setDesc("Comma-separated keywords used for world_info routing and triggering").addText((text) => text.setPlaceholder("keyword1, keyword2, keyword3").setValue(this.keywords).onChange((value) => this.keywords = value));
     new import_obsidian2.Setting(contentEl).setName("Overview").setDesc("A brief description of this entry (optional)").addTextArea((text) => text.setPlaceholder("Brief description of this entry...").setValue(this.overview).onChange((value) => this.overview = value));
     new import_obsidian2.Setting(contentEl).setName("Trigger Method").setDesc("How this entry is triggered in the AI").addDropdown((dropdown) => dropdown.addOptions({
       "selective": "Selective",
@@ -3342,6 +3341,9 @@ async function createTemplate(app, settings) {
     modal.open();
   });
 }
+
+// src/file-processor.ts
+var import_obsidian3 = require("obsidian");
 
 // src/link-target-index.ts
 var path = __toESM(require("path"));
@@ -3501,127 +3503,50 @@ function uniqueStrings(values) {
   return result;
 }
 
-// src/source-selection.ts
-function normalizePath(filePath) {
-  return filePath.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+// src/lorebook-scoping.ts
+function normalizeTagPrefix(prefix) {
+  return prefix.trim().replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
 }
-function normalizeFolder(folder) {
-  return normalizePath(folder).replace(/\/+$/, "");
-}
-function isPathInFolder(filePath, folder) {
-  const normalizedPath = normalizePath(filePath);
-  const normalizedFolder = normalizeFolder(folder);
-  if (!normalizedFolder) {
-    return false;
-  }
-  return normalizedPath === normalizedFolder || normalizedPath.startsWith(`${normalizedFolder}/`);
+function normalizeScope(scope) {
+  return scope.trim().replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
 }
 function normalizeTag(tag) {
-  return tag.trim().replace(/^#/, "").toLowerCase();
+  return tag.trim().replace(/^#+/, "").replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
 }
-function getTags(frontmatter) {
-  const tagsValue = getFrontmatterValue(frontmatter, "tags");
-  const rawTags = asStringArray(tagsValue);
-  const tags = /* @__PURE__ */ new Set();
-  for (const rawTag of rawTags) {
-    for (const part of rawTag.split(/\s+/)) {
-      const normalized = normalizeTag(part);
-      if (normalized) {
-        tags.add(normalized);
-      }
+function uniqueSorted(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+function extractLorebookScopesFromTags(tags, rawTagPrefix) {
+  const prefix = normalizeTagPrefix(rawTagPrefix);
+  if (!prefix) {
+    return [];
+  }
+  const scopes = [];
+  for (const rawTag of tags) {
+    const tag = normalizeTag(rawTag);
+    if (tag === prefix) {
+      scopes.push("");
+      continue;
+    }
+    if (tag.startsWith(`${prefix}/`)) {
+      scopes.push(normalizeScope(tag.slice(prefix.length + 1)));
     }
   }
-  return tags;
+  return uniqueSorted(scopes);
 }
-function hasAnyTag(tags, requiredTags) {
-  for (const requiredTag of requiredTags) {
-    if (tags.has(normalizeTag(requiredTag))) {
-      return true;
-    }
+function shouldIncludeInScope(noteScopes, rawActiveScope, membershipMode, includeUntagged) {
+  const activeScope = normalizeScope(rawActiveScope);
+  const scopes = uniqueSorted(noteScopes.map(normalizeScope));
+  if (scopes.length === 0) {
+    return includeUntagged;
   }
-  return false;
-}
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function isLorebookEnabled(frontmatter) {
-  const lorebookValue = getFrontmatterValue(frontmatter, "lorebook");
-  if (lorebookValue === void 0) {
-    return false;
-  }
-  const lorebookBoolean = asBoolean(lorebookValue);
-  if (lorebookBoolean !== void 0) {
-    return lorebookBoolean;
-  }
-  if (Array.isArray(lorebookValue)) {
-    return lorebookValue.length > 0;
-  }
-  if (isRecord(lorebookValue)) {
-    const enabled = asBoolean(lorebookValue.enabled);
-    if (enabled !== void 0) {
-      return enabled;
-    }
-    const exclude = asBoolean(lorebookValue.exclude);
-    if (exclude === true) {
-      return false;
-    }
+  if (!activeScope) {
     return true;
   }
-  return true;
-}
-function isExplicitlyExcluded(frontmatter) {
-  const exclude = asBoolean(getFrontmatterValue(frontmatter, "exclude"));
-  if (exclude === true) {
-    return true;
+  if (membershipMode === "exact") {
+    return scopes.includes(activeScope);
   }
-  const lorebookValue = getFrontmatterValue(frontmatter, "lorebook");
-  if (lorebookValue === void 0) {
-    return false;
-  }
-  const lorebookBoolean = asBoolean(lorebookValue);
-  if (lorebookBoolean === false) {
-    return true;
-  }
-  if (isRecord(lorebookValue)) {
-    const nestedExclude = asBoolean(lorebookValue.exclude);
-    if (nestedExclude === true) {
-      return true;
-    }
-    const nestedEnabled = asBoolean(lorebookValue.enabled);
-    if (nestedEnabled === false) {
-      return true;
-    }
-  }
-  return false;
-}
-function shouldIncludeSourceFile(filePath, frontmatter, sourceSelection) {
-  if (isExplicitlyExcluded(frontmatter)) {
-    return { include: false, reason: "excluded-by-frontmatter" };
-  }
-  for (const folder of sourceSelection.excludeFolders) {
-    if (isPathInFolder(filePath, folder)) {
-      return { include: false, reason: `excluded-by-folder:${folder}` };
-    }
-  }
-  if (sourceSelection.includeFolders.length > 0) {
-    const matchesIncludedFolder = sourceSelection.includeFolders.some(
-      (folder) => isPathInFolder(filePath, folder)
-    );
-    if (!matchesIncludedFolder) {
-      return { include: false, reason: "not-in-included-folders" };
-    }
-  }
-  const tags = getTags(frontmatter);
-  if (sourceSelection.excludeTags.length > 0 && hasAnyTag(tags, sourceSelection.excludeTags)) {
-    return { include: false, reason: "excluded-by-tag" };
-  }
-  if (sourceSelection.includeTags.length > 0 && !hasAnyTag(tags, sourceSelection.includeTags)) {
-    return { include: false, reason: "missing-required-tag" };
-  }
-  if (sourceSelection.requireLorebookFlag && !isLorebookEnabled(frontmatter)) {
-    return { include: false, reason: "missing-lorebook-flag" };
-  }
-  return { include: true, reason: "included" };
+  return scopes.some((scope) => scope === activeScope || scope.startsWith(`${activeScope}/`));
 }
 
 // src/file-processor.ts
@@ -3677,9 +3602,26 @@ var FileProcessor = class {
     const cache = this.app.metadataCache.getFileCache(file);
     return normalizeFrontmatter((_a = cache == null ? void 0 : cache.frontmatter) != null ? _a : {});
   }
+  getLorebookScopes(file) {
+    var _a;
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache) {
+      return [];
+    }
+    const tags = (_a = (0, import_obsidian3.getAllTags)(cache)) != null ? _a : [];
+    return extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+  }
   isSourceFile(file, frontmatter) {
-    const decision = shouldIncludeSourceFile(file.path, frontmatter, this.settings.sourceSelection);
-    return decision.include;
+    if (asBoolean(getFrontmatterValue(frontmatter, "exclude")) === true) {
+      return false;
+    }
+    const scopes = this.getLorebookScopes(file);
+    return shouldIncludeInScope(
+      scopes,
+      this.settings.tagScoping.activeScope,
+      this.settings.tagScoping.membershipMode,
+      this.settings.tagScoping.includeUntagged
+    );
   }
   async parseMarkdownFile(file) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
@@ -4044,8 +3986,8 @@ var LoreBookExporter = class {
 };
 
 // src/settings-tab.ts
-var import_obsidian3 = require("obsidian");
-var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTab {
+var import_obsidian4 = require("obsidian");
+var LoreBookConverterSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -4054,54 +3996,52 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("lorebook-converter-settings");
-    containerEl.createEl("h2", { text: "Lorebook Converter Settings" });
-    new import_obsidian3.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
+    containerEl.createEl("h2", { text: "LoreVault Settings" });
+    new import_obsidian4.Setting(containerEl).setName("Output Path").setDesc("Path where the Lorebook JSON file will be saved").addText((text) => text.setPlaceholder(`${this.app.vault.getName()}.json`).setValue(this.plugin.settings.outputPath).onChange(async (value) => {
       this.plugin.settings.outputPath = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    const parseCsv = (value) => value.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
-    containerEl.createEl("h3", { text: "Source Selection Rules" });
-    new import_obsidian3.Setting(containerEl).setName("Require lorebook frontmatter").setDesc("Only include notes where frontmatter enables lorebook usage").addToggle((toggle) => toggle.setValue(this.plugin.settings.sourceSelection.requireLorebookFlag).onChange(async (value) => {
-      this.plugin.settings.sourceSelection.requireLorebookFlag = value;
+    containerEl.createEl("h3", { text: "Lorebook Scope" });
+    new import_obsidian4.Setting(containerEl).setName("Lorebook Tag Prefix").setDesc("Tag namespace used to detect lorebooks (without #), e.g. lorebook").addText((text) => text.setPlaceholder("lorebook").setValue(this.plugin.settings.tagScoping.tagPrefix).onChange(async (value) => {
+      this.plugin.settings.tagScoping.tagPrefix = value.trim();
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Include Folders").setDesc("Optional comma-separated folder prefixes to include (empty = all folders)").addText((text) => text.setPlaceholder("Worlds/Aurelia, Chronicles/Season1").setValue(this.plugin.settings.sourceSelection.includeFolders.join(", ")).onChange(async (value) => {
-      this.plugin.settings.sourceSelection.includeFolders = parseCsv(value);
+    new import_obsidian4.Setting(containerEl).setName("Active Scope").setDesc("Optional scope path under the tag prefix, e.g. universe/yggdrasil (empty = all lorebook tags)").addText((text) => text.setPlaceholder("universe/yggdrasil").setValue(this.plugin.settings.tagScoping.activeScope).onChange(async (value) => {
+      this.plugin.settings.tagScoping.activeScope = value.trim();
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Exclude Folders").setDesc("Comma-separated folder prefixes to exclude").addText((text) => text.setPlaceholder(".obsidian, Templates").setValue(this.plugin.settings.sourceSelection.excludeFolders.join(", ")).onChange(async (value) => {
-      this.plugin.settings.sourceSelection.excludeFolders = parseCsv(value);
+    new import_obsidian4.Setting(containerEl).setName("Membership Mode").setDesc("Exact: include only exact scope tags. Cascade: include entries from child scopes too.").addDropdown((dropdown) => dropdown.addOptions({
+      "exact": "Exact",
+      "cascade": "Cascade"
+    }).setValue(this.plugin.settings.tagScoping.membershipMode).onChange(async (value) => {
+      this.plugin.settings.tagScoping.membershipMode = value === "cascade" ? "cascade" : "exact";
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Include Tags").setDesc("Optional comma-separated tags required for inclusion").addText((text) => text.setPlaceholder("lorebook, world:aurelia").setValue(this.plugin.settings.sourceSelection.includeTags.join(", ")).onChange(async (value) => {
-      this.plugin.settings.sourceSelection.includeTags = parseCsv(value);
-      await this.plugin.saveData(this.plugin.settings);
-    }));
-    new import_obsidian3.Setting(containerEl).setName("Exclude Tags").setDesc("Comma-separated tags to skip").addText((text) => text.setPlaceholder("draft, private").setValue(this.plugin.settings.sourceSelection.excludeTags.join(", ")).onChange(async (value) => {
-      this.plugin.settings.sourceSelection.excludeTags = parseCsv(value);
+    new import_obsidian4.Setting(containerEl).setName("Include Untagged Notes").setDesc("If enabled, notes without lorebook tags are included in the active build.").addToggle((toggle) => toggle.setValue(this.plugin.settings.tagScoping.includeUntagged).onChange(async (value) => {
+      this.plugin.settings.tagScoping.includeUntagged = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
     containerEl.createEl("h3", { text: "Default LoreBook Settings" });
-    new import_obsidian3.Setting(containerEl).setName("Order By Title").setDesc("Entries will be ordered by their titles instead of priority score").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.orderByTitle).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Order By Title").setDesc("Entries will be ordered by their titles instead of priority score").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.orderByTitle).onChange(async (value) => {
       this.plugin.settings.defaultLoreBook.orderByTitle = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Use Droste Effect").setDesc("Allow lorebook entries to trigger other lorebook entries").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useDroste).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Use Droste Effect").setDesc("Allow lorebook entries to trigger other lorebook entries").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useDroste).onChange(async (value) => {
       this.plugin.settings.defaultLoreBook.useDroste = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Use Recursion").setDesc("Allow entries to call themselves recursively").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useRecursion).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Use Recursion").setDesc("Allow entries to call themselves recursively").addToggle((toggle) => toggle.setValue(this.plugin.settings.defaultLoreBook.useRecursion).onChange(async (value) => {
       this.plugin.settings.defaultLoreBook.useRecursion = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Token Budget").setDesc("Maximum tokens to spend on the lorebook").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.tokenBudget.toString()).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Token Budget").setDesc("Maximum tokens to spend on the lorebook").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.tokenBudget.toString()).onChange(async (value) => {
       const numValue = parseInt(value);
       if (!isNaN(numValue) && numValue > 0) {
         this.plugin.settings.defaultLoreBook.tokenBudget = numValue;
         await this.plugin.saveData(this.plugin.settings);
       }
     }));
-    new import_obsidian3.Setting(containerEl).setName("Recursion Budget").setDesc("Maximum recursion depth for entries").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.recursionBudget.toString()).onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Recursion Budget").setDesc("Maximum recursion depth for entries").addText((text) => text.setValue(this.plugin.settings.defaultLoreBook.recursionBudget.toString()).onChange(async (value) => {
       const numValue = parseInt(value);
       if (!isNaN(numValue) && numValue > 0) {
         this.plugin.settings.defaultLoreBook.recursionBudget = numValue;
@@ -4109,7 +4049,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
       }
     }));
     containerEl.createEl("h3", { text: "Default Entry Settings" });
-    const triggerSetting = new import_obsidian3.Setting(containerEl).setName("Default Trigger Method").setDesc("How entries are triggered by default");
+    const triggerSetting = new import_obsidian4.Setting(containerEl).setName("Default Trigger Method").setDesc("How entries are triggered by default");
     const triggerOptions = document.createDocumentFragment();
     const createRadio = (container, label, value, checked) => {
       const radioItem = container.createEl("div", { cls: "radio-item" });
@@ -4171,7 +4111,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
       }
     });
     triggerSetting.settingEl.appendChild(triggerOptions);
-    new import_obsidian3.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
+    new import_obsidian4.Setting(containerEl).setName("Selective Logic").setDesc("How optional filter keys interact with primary keys (AND ANY, AND ALL, NOT ANY, NOT ALL)").addDropdown((dropdown) => dropdown.addOptions({
       "0": "AND ANY",
       "1": "AND ALL",
       "2": "NOT ANY",
@@ -4180,15 +4120,15 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
       this.plugin.settings.defaultEntry.selectiveLogic = parseInt(value);
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Default Probability").setDesc("Chance of entry being included (0-100%)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.probability).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Default Probability").setDesc("Chance of entry being included (0-100%)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.probability).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.defaultEntry.probability = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Default Depth").setDesc("Scanning depth for including entries (1-10)").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(this.plugin.settings.defaultEntry.depth).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Default Depth").setDesc("Scanning depth for including entries (1-10)").addSlider((slider) => slider.setLimits(1, 10, 1).setValue(this.plugin.settings.defaultEntry.depth).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.defaultEntry.depth = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian3.Setting(containerEl).setName("Default Group Weight").setDesc("Weight of entries in their group (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.groupWeight).setDynamicTooltip().onChange(async (value) => {
+    new import_obsidian4.Setting(containerEl).setName("Default Group Weight").setDesc("Weight of entries in their group (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(this.plugin.settings.defaultEntry.groupWeight).setDynamicTooltip().onChange(async (value) => {
       this.plugin.settings.defaultEntry.groupWeight = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
@@ -4197,7 +4137,7 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
       text: "These weights determine how entries are ordered in the lorebook. Higher weights give more importance to that factor."
     });
     const createWeightSetting = (key, name, desc) => {
-      new import_obsidian3.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
+      new import_obsidian4.Setting(containerEl).setName(name).setDesc(desc).addText((text) => text.setValue(this.plugin.settings.weights[key].toString()).onChange(async (value) => {
         const numValue = parseInt(value);
         if (!isNaN(numValue)) {
           this.plugin.settings.weights[key] = numValue;
@@ -4244,21 +4184,15 @@ var LoreBookConverterSettingTab = class extends import_obsidian3.PluginSettingTa
 };
 
 // src/main.ts
-var LoreBookConverterPlugin = class extends import_obsidian4.Plugin {
+var LoreBookConverterPlugin = class extends import_obsidian5.Plugin {
   mergeSettings(data) {
     var _a, _b, _c, _d;
-    const normalizeStringList = (value) => {
-      if (!Array.isArray(value)) {
-        return [];
-      }
-      return value.map((item) => typeof item === "string" ? item.trim() : "").filter((item) => item.length > 0);
-    };
     const merged = {
       ...DEFAULT_SETTINGS,
       ...data,
-      sourceSelection: {
-        ...DEFAULT_SETTINGS.sourceSelection,
-        ...(_a = data == null ? void 0 : data.sourceSelection) != null ? _a : {}
+      tagScoping: {
+        ...DEFAULT_SETTINGS.tagScoping,
+        ...(_a = data == null ? void 0 : data.tagScoping) != null ? _a : {}
       },
       weights: {
         ...DEFAULT_SETTINGS.weights,
@@ -4273,11 +4207,10 @@ var LoreBookConverterPlugin = class extends import_obsidian4.Plugin {
         ...(_d = data == null ? void 0 : data.defaultEntry) != null ? _d : {}
       }
     };
-    merged.sourceSelection.requireLorebookFlag = Boolean(merged.sourceSelection.requireLorebookFlag);
-    merged.sourceSelection.includeFolders = normalizeStringList(merged.sourceSelection.includeFolders);
-    merged.sourceSelection.excludeFolders = normalizeStringList(merged.sourceSelection.excludeFolders);
-    merged.sourceSelection.includeTags = normalizeStringList(merged.sourceSelection.includeTags);
-    merged.sourceSelection.excludeTags = normalizeStringList(merged.sourceSelection.excludeTags);
+    merged.tagScoping.tagPrefix = normalizeTagPrefix(merged.tagScoping.tagPrefix) || DEFAULT_SETTINGS.tagScoping.tagPrefix;
+    merged.tagScoping.activeScope = normalizeScope(merged.tagScoping.activeScope);
+    merged.tagScoping.membershipMode = merged.tagScoping.membershipMode === "cascade" ? "cascade" : "exact";
+    merged.tagScoping.includeUntagged = Boolean(merged.tagScoping.includeUntagged);
     if (merged.defaultEntry.constant) {
       merged.defaultEntry.vectorized = false;
       merged.defaultEntry.selective = false;
@@ -4298,34 +4231,34 @@ var LoreBookConverterPlugin = class extends import_obsidian4.Plugin {
   }
   async onload() {
     this.settings = this.mergeSettings(await this.loadData());
-    (0, import_obsidian4.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    (0, import_obsidian5.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
     </svg>`);
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
-    this.addRibbonIcon("lorebook", "Convert to Lorebook", () => {
+    this.addRibbonIcon("lorebook", "Build LoreVault Export", () => {
       this.convertToLorebook();
     });
     this.addCommand({
       id: "convert-to-lorebook",
-      name: "Convert Vault to Lorebook",
+      name: "Build LoreVault Export",
       callback: () => {
         this.convertToLorebook();
       }
     });
     this.addCommand({
       id: "create-lorebook-template",
-      name: "Create Lorebook Entry Template",
+      name: "Create LoreVault Entry Template",
       callback: async () => {
         try {
           const template = await createTemplate(this.app, this.settings);
           const activeFile = this.app.workspace.getActiveFile();
           if (activeFile) {
             await this.app.vault.modify(activeFile, template);
-            new import_obsidian4.Notice(`Template applied to ${activeFile.name}`);
+            new import_obsidian5.Notice(`Template applied to ${activeFile.name}`);
           } else {
-            const fileName = `Lorebook_Entry_${Date.now()}.md`;
+            const fileName = `LoreVault_Entry_${Date.now()}.md`;
             await this.app.vault.create(fileName, template);
-            new import_obsidian4.Notice(`Created new template: ${fileName}`);
+            new import_obsidian5.Notice(`Created new template: ${fileName}`);
           }
         } catch (error) {
           console.error("Template creation cancelled", error);
@@ -4344,7 +4277,7 @@ var LoreBookConverterPlugin = class extends import_obsidian4.Plugin {
       const progress = new ProgressBar(
         files.length + 2,
         // Files + graph building + exporting
-        "Analyzing vault structure..."
+        "Building LoreVault context..."
       );
       await fileProcessor.processFiles(files, progress);
       progress.setStatus("Building relationship graph...");
@@ -4359,14 +4292,14 @@ var LoreBookConverterPlugin = class extends import_obsidian4.Plugin {
       progress.setStatus("Calculating entry priorities...");
       graphAnalyzer.calculateEntryPriorities();
       progress.setStatus("Exporting to JSON...");
-      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}.json`;
+      const outputPath = this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
       const exporter = new LoreBookExporter(this.app);
       await exporter.exportLoreBookJson(fileProcessor.getEntries(), outputPath, this.settings);
       progress.update();
-      progress.success(`Conversion complete! Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
+      progress.success(`LoreVault build complete. Processed ${Object.keys(fileProcessor.getEntries()).length} entries.`);
     } catch (error) {
       console.error("Conversion failed:", error);
-      new import_obsidian4.Notice(`Conversion failed: ${error.message}`);
+      new import_obsidian5.Notice(`Conversion failed: ${error.message}`);
     }
   }
 };

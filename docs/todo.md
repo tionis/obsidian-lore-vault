@@ -4,16 +4,16 @@ Reference design: `docs/planning.md`.
 
 ## Phase 0: Rename and Positioning
 
-- [ ] Rename plugin-facing labels from "Lorebook Converter" to "LoreVault".
-- [ ] Update `manifest.json` name/description and docs naming.
+- [x] Rename plugin-facing labels from "Lorebook Converter" to "LoreVault".
+- [x] Update `manifest.json` name/description and docs naming.
 - [ ] Add migration note for users upgrading from old naming.
 
 ## Phase 1: Tag-Driven Lorebook Discovery
 
-- [ ] Implement discovery of lorebook scopes from `#lorebook/...` tags.
+- [x] Implement discovery of lorebook scopes from `#lorebook/...` tags.
 - [ ] Add deterministic scope ordering.
-- [ ] Implement membership mode setting: `exact` vs `cascade`.
-- [ ] Add tests for scope expansion and membership.
+- [x] Implement membership mode setting: `exact` vs `cascade`.
+- [x] Add tests for scope expansion and membership.
 
 ## Phase 2: Dual Section Build (`world_info` + `rag`)
 

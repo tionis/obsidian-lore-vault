@@ -4301,7 +4301,7 @@ ${body}
   }
 };
 
-// src/lorebooks-manager-modal.ts
+// src/lorebooks-manager-view.ts
 var import_obsidian6 = require("obsidian");
 
 // src/lorebooks-manager-collector.ts
@@ -4444,7 +4444,8 @@ function buildScopeSummaries(notes, settings, scopeOverride) {
   });
 }
 
-// src/lorebooks-manager-modal.ts
+// src/lorebooks-manager-view.ts
+var LOREVAULT_MANAGER_VIEW_TYPE = "lorevault-manager-view";
 function formatScopeLabel(scope) {
   return scope || "(all)";
 }
@@ -4476,16 +4477,28 @@ function formatReason(reason) {
       return reason;
   }
 }
-var LorebooksManagerModal = class extends import_obsidian6.Modal {
-  constructor(app, plugin) {
-    super(app);
+var LorebooksManagerView = class extends import_obsidian6.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
     this.plugin = plugin;
   }
-  onOpen() {
+  getViewType() {
+    return LOREVAULT_MANAGER_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "LoreVault Manager";
+  }
+  getIcon() {
+    return "book-open-text";
+  }
+  async onOpen() {
     this.render();
   }
-  onClose() {
+  async onClose() {
     this.contentEl.empty();
+  }
+  refresh() {
+    this.render();
   }
   renderToolbar(container) {
     const toolbar = container.createDiv({ cls: "lorevault-manager-toolbar" });
@@ -4495,6 +4508,7 @@ var LorebooksManagerModal = class extends import_obsidian6.Modal {
     buildAllButton.addEventListener("click", async () => {
       try {
         await this.plugin.convertToLorebook();
+        this.render();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         new import_obsidian6.Notice(`Build failed: ${message}`);
@@ -4519,6 +4533,7 @@ var LorebooksManagerModal = class extends import_obsidian6.Modal {
       try {
         await this.plugin.convertToLorebook(summary.scope);
         new import_obsidian6.Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
+        this.render();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         new import_obsidian6.Notice(`Scope build failed: ${message}`);
@@ -4537,7 +4552,8 @@ var LorebooksManagerModal = class extends import_obsidian6.Modal {
     }
     const details = card.createEl("details", { cls: "lorevault-manager-debug" });
     details.createEl("summary", { text: "Debug: Inclusion and Routing Decisions" });
-    const table = details.createEl("table", { cls: "lorevault-manager-table" });
+    const tableWrap = details.createDiv({ cls: "lorevault-manager-table-wrap" });
+    const table = tableWrap.createEl("table", { cls: "lorevault-manager-table" });
     const headRow = table.createEl("thead").createEl("tr");
     headRow.createEl("th", { text: "Note" });
     headRow.createEl("th", { text: "Decision" });
@@ -4559,7 +4575,7 @@ var LorebooksManagerModal = class extends import_obsidian6.Modal {
   render() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.addClass("lorevault-manager-modal");
+    contentEl.addClass("lorevault-manager-view");
     const titleRow = contentEl.createDiv({ cls: "lorevault-manager-title-row" });
     const icon = titleRow.createSpan({ cls: "lorevault-manager-icon" });
     (0, import_obsidian6.setIcon)(icon, "book-open-text");
@@ -5117,6 +5133,29 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
   getBaseOutputPath() {
     return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
   }
+  refreshManagerViews() {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorebooksManagerView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+  async openLorebooksManagerView() {
+    var _a;
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE)[0];
+    if (!leaf) {
+      leaf = (_a = this.app.workspace.getRightLeaf(false)) != null ? _a : this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_MANAGER_VIEW_TYPE,
+        active: true
+      });
+    }
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorebooksManagerView) {
+      leaf.view.refresh();
+    }
+  }
   discoverAllScopes(files) {
     var _a;
     const scopes = /* @__PURE__ */ new Set();
@@ -5182,6 +5221,7 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
   async onload() {
     this.settings = this.mergeSettings(await this.loadData());
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
+    this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, (leaf) => new LorebooksManagerView(leaf, this));
     (0, import_obsidian8.addIcon)("lorebook", `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M25,10 L80,10 C85,10 90,15 90,20 L90,80 C90,85 85,90 80,90 L25,90 C20,90 15,85 15,80 L15,20 C15,15 20,10 25,10 Z M25,20 L25,80 L80,80 L80,20 Z M35,30 L70,30 L70,35 L35,35 Z M35,45 L70,45 L70,50 L35,50 Z M35,60 L70,60 L70,65 L35,65 Z"/>
     </svg>`);
@@ -5190,7 +5230,7 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
       this.convertToLorebook();
     });
     this.addRibbonIcon("lorebook", "Open LoreVault Manager", () => {
-      new LorebooksManagerModal(this.app, this).open();
+      void this.openLorebooksManagerView();
     });
     this.addCommand({
       id: "convert-to-lorebook",
@@ -5203,7 +5243,7 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
       id: "open-lorebooks-manager",
       name: "Open LoreVault Manager",
       callback: () => {
-        new LorebooksManagerModal(this.app, this).open();
+        void this.openLorebooksManagerView();
       }
     });
     this.addCommand({
@@ -5235,25 +5275,33 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
     });
     this.registerEvent(this.app.vault.on("create", (file) => {
       this.liveContextIndex.markFileChanged(file);
+      this.refreshManagerViews();
     }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       this.liveContextIndex.markFileChanged(file);
+      this.refreshManagerViews();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.liveContextIndex.markFileChanged(file);
+      this.refreshManagerViews();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.liveContextIndex.markRenamed(file, oldPath);
+      this.refreshManagerViews();
     }));
     void this.liveContextIndex.initialize().catch((error) => {
       console.error("Failed to initialize live context index:", error);
     });
+  }
+  async onunload() {
+    this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
   }
   async saveData(settings) {
     var _a;
     this.settings = this.mergeSettings(settings);
     await super.saveData(this.settings);
     (_a = this.liveContextIndex) == null ? void 0 : _a.requestFullRefresh();
+    this.refreshManagerViews();
   }
   resolveScopeFromActiveFile(activeFile) {
     var _a;
@@ -5406,6 +5454,7 @@ var LoreBookConverterPlugin = class extends import_obsidian8.Plugin {
       }
       new import_obsidian8.Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
       this.liveContextIndex.requestFullRefresh();
+      this.refreshManagerViews();
     } catch (error) {
       console.error("Conversion failed:", error);
       new import_obsidian8.Notice(`Conversion failed: ${error.message}`);

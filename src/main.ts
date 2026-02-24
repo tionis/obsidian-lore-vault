@@ -8,7 +8,7 @@ import { LoreBookExporter } from './lorebook-exporter';
 import { LoreBookConverterSettingTab } from './settings-tab';
 import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
-import { LorebooksManagerModal } from './lorebooks-manager-modal';
+import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
 import { LiveContextIndex } from './live-context-index';
 import {
   assertUniqueOutputPaths,
@@ -23,6 +23,32 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath || `${this.app.vault.getName()}-lorevault.json`;
+  }
+
+  private refreshManagerViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorebooksManagerView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
+  async openLorebooksManagerView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_MANAGER_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorebooksManagerView) {
+      leaf.view.refresh();
+    }
   }
 
   private discoverAllScopes(files: TFile[]): string[] {
@@ -99,6 +125,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
+    this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
 
     // Add custom icon
     addIcon('lorebook', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -114,7 +141,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addRibbonIcon('lorebook', 'Open LoreVault Manager', () => {
-      new LorebooksManagerModal(this.app, this).open();
+      void this.openLorebooksManagerView();
     });
 
     // Add command
@@ -130,7 +157,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       id: 'open-lorebooks-manager',
       name: 'Open LoreVault Manager',
       callback: () => {
-        new LorebooksManagerModal(this.app, this).open();
+        void this.openLorebooksManagerView();
       }
     });
 
@@ -171,18 +198,22 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on('create', file => {
       this.liveContextIndex.markFileChanged(file);
+      this.refreshManagerViews();
     }));
 
     this.registerEvent(this.app.vault.on('modify', file => {
       this.liveContextIndex.markFileChanged(file);
+      this.refreshManagerViews();
     }));
 
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
+      this.refreshManagerViews();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       this.liveContextIndex.markRenamed(file, oldPath);
+      this.refreshManagerViews();
     }));
 
     void this.liveContextIndex.initialize().catch(error => {
@@ -190,10 +221,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
   }
 
+  async onunload() {
+    this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
+  }
+
   async saveData(settings: any) {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
     await super.saveData(this.settings);
     this.liveContextIndex?.requestFullRefresh();
+    this.refreshManagerViews();
   }
 
   private resolveScopeFromActiveFile(activeFile: TFile | null): string | undefined {
@@ -371,6 +407,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
       this.liveContextIndex.requestFullRefresh();
+      this.refreshManagerViews();
     } catch (error) {
       console.error('Conversion failed:', error);
       new Notice(`Conversion failed: ${error.message}`);

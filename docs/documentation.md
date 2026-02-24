@@ -163,7 +163,7 @@ Output build fails fast if path collisions are detected.
 
 ## LoreVault Manager UI
 
-Command: `Open LoreVault Manager`
+Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel)
 
 Capabilities:
 

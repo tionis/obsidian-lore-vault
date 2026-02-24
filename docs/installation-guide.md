@@ -44,7 +44,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - You should now see a book icon in the left sidebar ribbon
    - The command palette (Ctrl+P or Cmd+P) should include:
      - "Build LoreVault Export"
-     - "Open LoreVault Manager"
+     - "Open LoreVault Manager" (opens right sidebar panel)
      - "Continue Story with Context"
      - "Create LoreVault Entry Template"
 

@@ -121,11 +121,11 @@
   background-color: var(--background-modifier-border-hover);
 }
 
-/* Lorebooks Manager Modal */
-.lorevault-manager-modal {
-  width: min(1200px, 95vw);
-  max-height: 85vh;
+/* Lorebooks Manager View */
+.lorevault-manager-view {
+  height: 100%;
   overflow-y: auto;
+  padding: 12px;
 }
 
 .lorevault-manager-title-row {
@@ -179,6 +179,10 @@
 
 .lorevault-manager-debug {
   margin-top: 8px;
+}
+
+.lorevault-manager-table-wrap {
+  overflow-x: auto;
 }
 
 .lorevault-manager-table {

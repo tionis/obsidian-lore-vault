@@ -1,10 +1,9 @@
-import { App, Modal, Notice, setIcon } from 'obsidian';
+import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
-import {
-  ScopeSummary,
-  buildScopeSummaries
-} from './lorebooks-manager-data';
+import { ScopeSummary, buildScopeSummaries } from './lorebooks-manager-data';
+
+export const LOREVAULT_MANAGER_VIEW_TYPE = 'lorevault-manager-view';
 
 function formatScopeLabel(scope: string): string {
   return scope || '(all)';
@@ -40,20 +39,36 @@ function formatReason(reason: string): string {
   }
 }
 
-export class LorebooksManagerModal extends Modal {
+export class LorebooksManagerView extends ItemView {
   private plugin: LoreBookConverterPlugin;
 
-  constructor(app: App, plugin: LoreBookConverterPlugin) {
-    super(app);
+  constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
+    super(leaf);
     this.plugin = plugin;
   }
 
-  onOpen(): void {
+  getViewType(): string {
+    return LOREVAULT_MANAGER_VIEW_TYPE;
+  }
+
+  getDisplayText(): string {
+    return 'LoreVault Manager';
+  }
+
+  getIcon(): string {
+    return 'book-open-text';
+  }
+
+  async onOpen(): Promise<void> {
     this.render();
   }
 
-  onClose(): void {
+  async onClose(): Promise<void> {
     this.contentEl.empty();
+  }
+
+  refresh(): void {
+    this.render();
   }
 
   private renderToolbar(container: HTMLElement): void {
@@ -66,6 +81,7 @@ export class LorebooksManagerModal extends Modal {
     buildAllButton.addEventListener('click', async () => {
       try {
         await this.plugin.convertToLorebook();
+        this.render();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(`Build failed: ${message}`);
@@ -94,6 +110,7 @@ export class LorebooksManagerModal extends Modal {
       try {
         await this.plugin.convertToLorebook(summary.scope);
         new Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
+        this.render();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(`Scope build failed: ${message}`);
@@ -116,7 +133,8 @@ export class LorebooksManagerModal extends Modal {
     const details = card.createEl('details', { cls: 'lorevault-manager-debug' });
     details.createEl('summary', { text: 'Debug: Inclusion and Routing Decisions' });
 
-    const table = details.createEl('table', { cls: 'lorevault-manager-table' });
+    const tableWrap = details.createDiv({ cls: 'lorevault-manager-table-wrap' });
+    const table = tableWrap.createEl('table', { cls: 'lorevault-manager-table' });
     const headRow = table.createEl('thead').createEl('tr');
     headRow.createEl('th', { text: 'Note' });
     headRow.createEl('th', { text: 'Decision' });
@@ -140,7 +158,7 @@ export class LorebooksManagerModal extends Modal {
   private render(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.addClass('lorevault-manager-modal');
+    contentEl.addClass('lorevault-manager-view');
 
     const titleRow = contentEl.createDiv({ cls: 'lorevault-manager-title-row' });
     const icon = titleRow.createSpan({ cls: 'lorevault-manager-icon' });

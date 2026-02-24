@@ -6,4 +6,5 @@ Use these docs as the canonical reference for current behavior:
 - `docs/documentation.md` (detailed behavior spec)
 - `docs/installation-guide.md` (install and setup steps)
 - `docs/profile-schema.md` (draft multi-target profile schema)
-- `docs/todo.md` (possible future improvements)
+- `docs/planning.md` (LoreVault product and architecture planning)
+- `docs/todo.md` (phased implementation roadmap)

@@ -94,4 +94,5 @@ See:
 - `docs/documentation.md`
 - `docs/installation-guide.md`
 - `docs/profile-schema.md`
+- `docs/planning.md`
 - `docs/todo.md`

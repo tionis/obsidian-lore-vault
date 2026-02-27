@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'fs';
+import * as path from 'path';
 import { assembleScopeContext, ScopeContextPack } from '../src/context-query';
 import { LoreBookEntry, RagDocument } from '../src/models';
 
@@ -57,6 +59,30 @@ function createRagDocument(uid: number, title: string, path: string, content: st
   };
 }
 
+interface GraphFixture {
+  query: string;
+  tokenBudget: number;
+  maxGraphHops: number;
+  graphHopDecay: number;
+  worldInfo: Array<{
+    uid: number;
+    key: string[];
+    comment: string;
+    order: number;
+    constant?: boolean;
+    content: string;
+    wikilinks?: string[];
+  }>;
+  expectedWorldInfoOrder: number[];
+  expectedSeedUids: number[];
+  expectedPathByUid: {[key: string]: number[]};
+}
+
+function readFixture<T>(relativePath: string): T {
+  const fixturePath = path.join(__dirname, '..', '..', 'fixtures', relativePath);
+  return JSON.parse(readFileSync(fixturePath, 'utf8')) as T;
+}
+
 test('assembleScopeContext selects deterministic world_info and rag matches', () => {
   const pack: ScopeContextPack = {
     scope: 'universe',
@@ -84,6 +110,8 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
   assert.equal(context.worldInfo[1].entry.uid, 2);
   assert.equal(context.rag[0].document.uid, 10);
   assert.equal(context.rag[1].document.uid, 11);
+  assert.ok(context.worldInfo[0].reasons.length > 0);
+  assert.ok(context.worldInfo[0].contentTier === 'short' || context.worldInfo[0].contentTier === 'medium' || context.worldInfo[0].contentTier === 'full');
   assert.ok(context.markdown.includes('### world_info'));
   assert.ok(context.markdown.includes('### rag'));
 });
@@ -108,11 +136,69 @@ test('assembleScopeContext enforces token budget caps', () => {
   const context = assembleScopeContext(pack, {
     queryText: 'Aurelia',
     tokenBudget: 256,
+    worldInfoBudgetRatio: 0.5,
     maxWorldInfoEntries: 10,
     maxRagDocuments: 10
   });
 
   assert.ok(context.usedTokens <= 256);
-  assert.ok(context.worldInfo.length <= 1);
+  assert.ok(context.worldInfo.length <= 2);
   assert.ok(context.rag.length <= 1);
+  assert.ok(context.explainability.worldInfoBudget.droppedByBudget >= 1);
+});
+
+test('assembleScopeContext applies deterministic graph expansion and explainability', () => {
+  const fixture = readFixture<GraphFixture>(path.join('context-query', 'graph-expansion.json'));
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: fixture.worldInfo.map(item => createWorldInfoEntry(
+      item.uid,
+      item.key,
+      item.content,
+      item.order,
+      {
+        comment: item.comment,
+        constant: Boolean(item.constant),
+        wikilinks: item.wikilinks ?? []
+      }
+    )),
+    ragDocuments: [
+      createRagDocument(10, 'Background', 'notes/background.md', 'General background details.')
+    ],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const first = assembleScopeContext(pack, {
+    queryText: fixture.query,
+    tokenBudget: fixture.tokenBudget,
+    maxGraphHops: fixture.maxGraphHops,
+    graphHopDecay: fixture.graphHopDecay,
+    ragFallbackPolicy: 'off'
+  });
+  const second = assembleScopeContext(pack, {
+    queryText: fixture.query,
+    tokenBudget: fixture.tokenBudget,
+    maxGraphHops: fixture.maxGraphHops,
+    graphHopDecay: fixture.graphHopDecay,
+    ragFallbackPolicy: 'off'
+  });
+
+  const firstOrder = first.worldInfo.map(item => item.entry.uid);
+  const secondOrder = second.worldInfo.map(item => item.entry.uid);
+  assert.deepEqual(firstOrder, fixture.expectedWorldInfoOrder);
+  assert.deepEqual(secondOrder, fixture.expectedWorldInfoOrder);
+  assert.deepEqual(first.explainability.seeds.map(seed => seed.uid), fixture.expectedSeedUids);
+  assert.equal(first.explainability.rag.enabled, false);
+  assert.equal(first.rag.length, 0);
+
+  for (const [uid, expectedPath] of Object.entries(fixture.expectedPathByUid)) {
+    const selected = first.worldInfo.find(item => item.entry.uid === Number(uid));
+    assert.ok(selected, `missing uid ${uid}`);
+    assert.deepEqual(selected?.pathUids, expectedPath);
+    if (expectedPath.length > 0) {
+      assert.ok((selected?.reasons ?? []).length > 0);
+    }
+  }
 });

@@ -1,0 +1,49 @@
+{
+  "query": "Alice plans the mission",
+  "tokenBudget": 900,
+  "maxGraphHops": 2,
+  "graphHopDecay": 0.6,
+  "worldInfo": [
+    {
+      "uid": 1,
+      "key": ["Alice"],
+      "comment": "Alice",
+      "order": 500,
+      "content": "Alice is the primary point-of-view character.",
+      "wikilinks": ["Bob"]
+    },
+    {
+      "uid": 2,
+      "key": ["Bob"],
+      "comment": "Bob",
+      "order": 450,
+      "content": "Bob is Alice's ally and strategist.",
+      "wikilinks": ["Cara"]
+    },
+    {
+      "uid": 3,
+      "key": ["Cara"],
+      "comment": "Cara",
+      "order": 430,
+      "content": "Cara handles logistics and supply chains.",
+      "wikilinks": []
+    },
+    {
+      "uid": 4,
+      "key": ["Atlas"],
+      "comment": "Atlas Doctrine",
+      "order": 300,
+      "constant": true,
+      "content": "Global operating principles that apply across scenes.",
+      "wikilinks": []
+    }
+  ],
+  "expectedWorldInfoOrder": [1, 2, 3, 4],
+  "expectedSeedUids": [1],
+  "expectedPathByUid": {
+    "1": [1],
+    "2": [1, 2],
+    "3": [1, 2, 3],
+    "4": []
+  }
+}

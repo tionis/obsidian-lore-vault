@@ -274,21 +274,40 @@ export class LorebooksRoutingDebugView extends ItemView {
     section.createEl('p', {
       text: `Used tokens: ${result.usedTokens}/${result.tokenBudget} | world_info ${result.worldInfo.length} | rag ${result.rag.length}`
     });
+    section.createEl('p', {
+      cls: 'lorevault-routing-subtle',
+      text: `RAG policy ${result.explainability.rag.policy} | enabled ${result.explainability.rag.enabled ? 'yes' : 'no'} | seed confidence ${result.explainability.rag.seedConfidence.toFixed(2)} (threshold ${result.explainability.rag.threshold})`
+    });
+    if (result.explainability.worldInfoBudget.droppedUids.length > 0) {
+      section.createEl('p', {
+        cls: 'lorevault-routing-subtle',
+        text: `world_info cutoff: dropped ${result.explainability.worldInfoBudget.droppedUids.length} entries (${result.explainability.worldInfoBudget.droppedByBudget} budget, ${result.explainability.worldInfoBudget.droppedByLimit} max-entry limit)`
+      });
+    }
 
     const worldInfoList = section.createDiv({ cls: 'lorevault-routing-entry-list' });
     for (const selected of result.worldInfo) {
       const details = worldInfoList.createEl('details', { cls: 'lorevault-routing-entry' });
       details.createEl('summary', {
-        text: `${selected.entry.comment} | score ${selected.score.toFixed(2)} | matched ${selected.matchedKeywords.join(', ') || '(constant/order only)'}`
+        text: `${selected.entry.comment} | score ${selected.score.toFixed(2)} | tier ${selected.contentTier} | matched ${selected.matchedKeywords.join(', ') || '(graph/constant/order)'}`
       });
       details.createEl('p', {
-        text: `UID ${selected.entry.uid} | order ${selected.entry.order} | trigger ${formatTriggerMode(selected.entry)} | keys ${selected.entry.key.join(', ') || '(none)'}`
+        text: `UID ${selected.entry.uid} | order ${selected.entry.order} | hop ${selected.hopDistance} | seed ${selected.seedUid ?? '-'} | trigger ${formatTriggerMode(selected.entry)}`
+      });
+      details.createEl('p', {
+        text: `Score breakdown: seed ${selected.scoreBreakdown.seed.toFixed(2)} | graph ${selected.scoreBreakdown.graph.toFixed(2)} | constant ${selected.scoreBreakdown.constant.toFixed(2)} | order ${selected.scoreBreakdown.order.toFixed(2)}`
+      });
+      details.createEl('p', {
+        text: `Path: ${selected.pathUids.length > 0 ? selected.pathUids.join(' -> ') : '(none)'}`
+      });
+      details.createEl('p', {
+        text: `Reasons: ${selected.reasons.join(' | ') || '(none)'}`
       });
       const contentDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
-      contentDetails.createEl('summary', { text: `Content (~${estimateTokens(selected.entry.content)} tokens)` });
+      contentDetails.createEl('summary', { text: `Content (~${estimateTokens(selected.includedContent)} tokens)` });
       contentDetails.createEl('pre', {
         cls: 'lorevault-routing-content',
-        text: selected.entry.content || ''
+        text: selected.includedContent || ''
       });
     }
 

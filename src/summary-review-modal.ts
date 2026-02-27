@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import { GeneratedSummaryMode } from './summary-utils';
 
 export interface SummaryReviewResult {
-  action: 'cancel' | 'frontmatter';
+  action: 'cancel' | 'section';
   summaryText: string;
 }
 
@@ -44,7 +44,7 @@ export class SummaryReviewModal extends Modal {
 
     if (this.existingSummary.trim()) {
       const existing = contentEl.createDiv({ cls: 'lorevault-summary-existing' });
-      existing.createEl('h3', { text: 'Existing Frontmatter Summary' });
+      existing.createEl('h3', { text: 'Existing Summary' });
       const existingTextarea = existing.createEl('textarea', { cls: 'lorevault-summary-textarea lorevault-summary-textarea-existing' });
       existingTextarea.readOnly = true;
       existingTextarea.value = this.existingSummary;
@@ -67,13 +67,13 @@ export class SummaryReviewModal extends Modal {
       this.finish({ action: 'cancel', summaryText: this.summaryText.trim() });
     });
 
-    actions.createEl('button', { text: 'Write Frontmatter Summary' }).addEventListener('click', () => {
+    actions.createEl('button', { text: 'Write Summary Section' }).addEventListener('click', () => {
       const normalized = this.summaryText.trim();
       if (!normalized) {
         new Notice('Summary is empty.');
         return;
       }
-      this.finish({ action: 'frontmatter', summaryText: normalized });
+      this.finish({ action: 'section', summaryText: normalized });
     });
   }
 

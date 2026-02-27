@@ -42,7 +42,7 @@ This document is the implementation-level reference for core architecture and ru
   - story/chapter metadata parsing
   - deterministic thread ordering (metadata + prev/next links)
 - `src/chapter-summary-store.ts`
-  - rolling chapter-summary cache (`frontmatter` -> excerpt fallback)
+  - rolling chapter-summary cache (`## Summary` section -> frontmatter fallback -> excerpt fallback)
 - `src/summary-utils.ts`
   - summary normalization and world_info content resolution
 - `src/summary-review-modal.ts`
@@ -234,7 +234,8 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 - resolves current note thread
 - selects bounded prior chapters
 - resolves snippets through rolling chapter summary cache/store
-  - prefers frontmatter `summary`
+  - prefers `## Summary` section
+  - then frontmatter `summary`
   - then deterministic body-head excerpt
 - injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 
@@ -256,13 +257,13 @@ Flow:
 3. call completion provider (non-stream request)
 4. normalize summary text (single paragraph, capped length)
 5. show review modal with edit + accept options
-6. write accepted summary into note frontmatter
+6. write accepted summary into note `## Summary` section
 7. request index/view refresh and chapter-summary cache invalidation for affected note
 
 Precedence contract:
 
-- world_info entry content: `frontmatter summary` -> note body
-- chapter memory summary: `frontmatter summary` -> deterministic excerpt
+- world_info entry content: `## Summary` section -> `frontmatter summary` fallback -> note body
+- chapter memory summary: `## Summary` section -> `frontmatter summary` fallback -> deterministic excerpt
 
 ## Story Chat Persistence
 

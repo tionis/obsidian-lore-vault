@@ -5,10 +5,11 @@ import {
   getFrontmatterValue,
   stripFrontmatter
 } from './frontmatter-utils';
+import { extractSummarySectionFromBody, stripSummarySectionFromBody } from './summary-utils';
 
 export interface ChapterSummarySnapshot {
   text: string;
-  source: 'frontmatter' | 'excerpt';
+  source: 'section' | 'frontmatter' | 'excerpt';
 }
 
 interface ChapterSummaryCacheEntry {
@@ -43,6 +44,18 @@ export class ChapterSummaryStore {
       return cached.summary;
     }
 
+    const raw = await this.app.vault.cachedRead(file);
+    const bodyWithSummarySection = stripFrontmatter(raw).trim();
+    const summaryFromSection = extractSummarySectionFromBody(bodyWithSummarySection);
+    if (summaryFromSection) {
+      const summary: ChapterSummarySnapshot = {
+        text: summaryFromSection,
+        source: 'section'
+      };
+      this.cache.set(file.path, { mtime, summary });
+      return summary;
+    }
+
     const summaryFromFrontmatter = asString(getFrontmatterValue(frontmatter, 'summary'))?.trim() ?? '';
     if (summaryFromFrontmatter) {
       const summary: ChapterSummarySnapshot = {
@@ -53,8 +66,7 @@ export class ChapterSummaryStore {
       return summary;
     }
 
-    const raw = await this.app.vault.cachedRead(file);
-    const body = stripFrontmatter(raw).trim();
+    const body = stripSummarySectionFromBody(bodyWithSummarySection);
     if (!body) {
       this.cache.delete(file.path);
       return null;

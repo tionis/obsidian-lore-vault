@@ -188,7 +188,7 @@ Chapter-memory specific behavior:
 
 - generation should be hash-aware and re-run only when chapter content materially changes
 - summary writes should target frontmatter `summary` with explicit user approval
-- chapter-memory layer must keep deterministic fallback (`frontmatter summary` -> excerpt)
+- chapter-memory layer must keep deterministic fallback (`## Summary` section -> `frontmatter summary` fallback -> excerpt)
 
 ## Future: Cost Management and Usage Tracking
 

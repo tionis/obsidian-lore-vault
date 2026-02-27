@@ -13,7 +13,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Optional backlink-aware graph expansion toggle for retrieval hops
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
-- Optional LLM summary workflows (world_info + chapter) with review/approval and frontmatter writes
+- Optional LLM summary workflows (world_info + chapter) with review/approval and in-note summary-section writes
 - Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
@@ -81,8 +81,8 @@ root: true
 ```
 
 Entry content defaults to the markdown body (frontmatter block removed).  
-If `summary` is present, it overrides entry content.  
-If `summary` is missing, LoreVault falls back to note body content.
+If a `## Summary` section is present, it overrides entry content.  
+If section summary is missing, LoreVault falls back to frontmatter `summary`, then note body content.
 
 ## Retrieval Routing
 
@@ -101,7 +101,7 @@ retrieval: auto   # auto | world_info | rag | both | none
 
 Routing behavior:
 
-- `world_info` uses compact entry content (`summary` when present, else note body)
+- `world_info` uses compact entry content (`## Summary` section when present, else frontmatter `summary`, else note body)
 - live retrieval can upgrade high-score entries to full note body when budget allows (falls back to lexical/semantic excerpt lift when needed)
 - `rag` uses the full note body (frontmatter removed)
 
@@ -261,10 +261,10 @@ Behavior:
 - uses configured completion provider/model to propose a compact summary
 - opens review modal before acceptance
 - review action:
-  - `Write Frontmatter Summary`: write `summary` frontmatter
+  - `Write Summary Section`: write/update `## Summary` section in the note body
 - precedence:
-  - world_info content: `frontmatter summary` -> note body
-  - chapter memory: `frontmatter summary` -> deterministic excerpt
+  - world_info content: `## Summary` section -> `frontmatter summary` (fallback) -> note body
+  - chapter memory: `## Summary` section -> `frontmatter summary` (fallback) -> deterministic excerpt
 
 Story-level scope override (frontmatter):
 
@@ -352,7 +352,7 @@ Current capabilities:
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
 - regenerate appends a new assistant message version; users can switch active versions
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
-- chapter memory shown in layer trace indicates summary source (`frontmatter` or `excerpt`)
+- chapter memory shown in layer trace indicates summary source (`section`, `frontmatter`, or `excerpt`)
 
 Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.
 

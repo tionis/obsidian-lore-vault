@@ -40,6 +40,18 @@ test('resolveScopeOutputPaths supports custom sqlite base path', () => {
   assert.equal(resolved.sqlitePath, 'packs/universe-yggdrasil/canon.db');
 });
 
+test('resolveScopeOutputPaths normalizes backslash separators to vault-style paths', () => {
+  const resolved = resolveScopeOutputPaths(
+    'sillytavern\\lorevault.json',
+    'characters/minor',
+    false,
+    'lorebooks\\'
+  );
+  assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault-characters-minor.json');
+  assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault-characters-minor.rag.md');
+  assert.equal(resolved.sqlitePath, 'lorebooks/characters-minor.db');
+});
+
 test('assertUniqueOutputPaths throws on collisions', () => {
   const first = resolveScopeOutputPaths('sillytavern/lorevault-{scope}', 'World A', false);
   const second = resolveScopeOutputPaths('sillytavern/lorevault-{scope}', 'world-a', false);

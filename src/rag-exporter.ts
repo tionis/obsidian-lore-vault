@@ -23,6 +23,7 @@ export class RagExporter {
     outputPath: string,
     scopeLabel: string
   ): Promise<void> {
+    const normalizedOutputPath = outputPath.replace(/\\/g, '/');
     const sortedDocuments = [...documents].sort(compareRagDocs);
     const normalizedScopeLabel = scopeLabel || '(all)';
 
@@ -43,7 +44,7 @@ export class RagExporter {
       const isAbsolutePath = path.isAbsolute(outputPath);
 
       if (!isAbsolutePath) {
-        await this.app.vault.adapter.write(outputPath, markdown);
+        await this.app.vault.adapter.write(normalizedOutputPath, markdown);
       } else {
         const dirPath = path.dirname(outputPath);
         if (!fs.existsSync(dirPath)) {

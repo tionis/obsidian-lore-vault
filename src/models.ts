@@ -95,9 +95,12 @@ export interface StoryChatContextMeta {
   usedLorebookContext: boolean;
   usedManualContext: boolean;
   usedSpecificNotesContext: boolean;
+  usedChapterMemoryContext?: boolean;
   scopes: string[];
   specificNotePaths: string[];
   unresolvedNoteRefs: string[];
+  chapterMemoryItems?: string[];
+  layerTrace?: string[];
   contextTokens: number;
   worldInfoCount: number;
   ragCount: number;

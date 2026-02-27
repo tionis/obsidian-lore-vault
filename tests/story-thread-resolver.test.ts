@@ -1,10 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'fs';
+import * as path from 'path';
 import {
   parseStoryThreadNodeFromFrontmatter,
   resolveStoryThread,
   StoryThreadNode
 } from '../src/story-thread-resolver';
+
+interface StoryThreadFixture {
+  cases: Array<{
+    name: string;
+    currentPath: string;
+    nodes: StoryThreadNode[];
+    expectedOrderedPaths: string[];
+    expectedCurrentIndex: number;
+  }>;
+}
+
+function readFixture<T>(relativePath: string): T {
+  const fixturePath = path.join(__dirname, '..', '..', 'fixtures', relativePath);
+  return JSON.parse(readFileSync(fixturePath, 'utf8')) as T;
+}
 
 test('parseStoryThreadNodeFromFrontmatter parses story/chapter schema and refs', () => {
   const node = parseStoryThreadNodeFromFrontmatter(
@@ -107,4 +124,15 @@ test('resolveStoryThread respects prev/next links with deterministic tie-breaks'
     'story/gamma.md'
   ]);
   assert.equal(resolution?.currentIndex, 2);
+});
+
+test('resolveStoryThread fixture suite covers multi-chapter coherence deterministically', () => {
+  const fixture = readFixture<StoryThreadFixture>(path.join('story-thread', 'cases.json'));
+
+  for (const fixtureCase of fixture.cases) {
+    const resolution = resolveStoryThread(fixtureCase.nodes, fixtureCase.currentPath);
+    assert.ok(resolution, `${fixtureCase.name}: expected resolution`);
+    assert.deepEqual(resolution?.orderedPaths, fixtureCase.expectedOrderedPaths, `${fixtureCase.name}: ordered paths`);
+    assert.equal(resolution?.currentIndex, fixtureCase.expectedCurrentIndex, `${fixtureCase.name}: current index`);
+  }
 });

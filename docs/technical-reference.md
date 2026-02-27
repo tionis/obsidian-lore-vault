@@ -37,6 +37,8 @@ This document is the implementation-level reference for core architecture and ru
 - `src/story-thread-resolver.ts`
   - story/chapter metadata parsing
   - deterministic thread ordering (metadata + prev/next links)
+- `src/chapter-summary-store.ts`
+  - rolling chapter-summary cache (frontmatter summary preferred, deterministic excerpt fallback)
 
 ## Export Pipeline Contract
 
@@ -164,8 +166,9 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 
 - resolves current note thread
 - selects bounded prior chapters
-- prefers frontmatter `summary` as memory snippet
-- otherwise trims chapter body head to bounded size
+- resolves snippets through rolling chapter summary cache/store
+  - prefers frontmatter `summary`
+  - falls back to deterministic body-head excerpt
 - injects `<story_chapter_memory>` block before lorebook context
 
 This provides a dedicated chapter-memory layer before graph retrieval.

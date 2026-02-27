@@ -134,7 +134,8 @@ export class LorevaultHelpView extends ItemView {
         'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
         'Writing Completion settings support reusable model presets for quick provider/model A/B testing.',
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
-        'Story Chat supports per-chat scope selection, manual context, and specific-note context lists.'
+        'Story Chat supports per-chat scope selection, manual context, and specific-note context lists.',
+        'Assistant turns expose a layer trace so you can see which context layer contributed injected data.'
       ],
       actions: [
         { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }

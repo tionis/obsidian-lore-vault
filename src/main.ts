@@ -26,6 +26,7 @@ import {
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
 import { LiveContextIndex } from './live-context-index';
+import { ChapterSummaryStore } from './chapter-summary-store';
 import { EmbeddingService } from './embedding-service';
 import { requestStoryContinuationStream } from './completion-provider';
 import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
@@ -46,8 +47,6 @@ import {
 import * as path from 'path';
 import {
   FrontmatterData,
-  asString,
-  getFrontmatterValue,
   normalizeFrontmatter,
   stripFrontmatter
 } from './frontmatter-utils';
@@ -74,6 +73,7 @@ export interface GenerationTelemetry {
   ragCount: number;
   worldInfoItems: string[];
   ragItems: string[];
+  contextLayerTrace: string[];
   lastError: string;
 }
 
@@ -95,6 +95,7 @@ export interface StoryChatTurnResult {
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
+  private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
   private generationInFlight = false;
   private generationAbortController: AbortController | null = null;
@@ -167,6 +168,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       ragCount: 0,
       worldInfoItems: [],
       ragItems: [],
+      contextLayerTrace: [],
       lastError: ''
     };
   }
@@ -176,7 +178,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       ...this.generationTelemetry,
       scopes: [...this.generationTelemetry.scopes],
       worldInfoItems: [...this.generationTelemetry.worldInfoItems],
-      ragItems: [...this.generationTelemetry.ragItems]
+      ragItems: [...this.generationTelemetry.ragItems],
+      contextLayerTrace: [...this.generationTelemetry.contextLayerTrace]
     };
   }
 
@@ -208,6 +211,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     if (update.ragItems) {
       next.ragItems = [...update.ragItems];
+    }
+    if (update.contextLayerTrace) {
+      next.contextLayerTrace = [...update.contextLayerTrace];
     }
     this.generationTelemetry = next;
     this.scheduleManagerRefresh();
@@ -246,7 +252,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       worldInfoCount: 0,
       ragCount: 0,
       worldInfoItems: [],
-      ragItems: []
+      ragItems: [],
+      contextLayerTrace: []
     });
     this.setGenerationStatus('idle', 'idle');
   }
@@ -436,6 +443,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         scopes: [...message.contextMeta.scopes],
         specificNotePaths: [...message.contextMeta.specificNotePaths],
         unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
+        chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
+        layerTrace: [...(message.contextMeta.layerTrace ?? [])],
         worldInfoItems: [...message.contextMeta.worldInfoItems],
         ragItems: [...message.contextMeta.ragItems]
       } : undefined
@@ -454,6 +463,8 @@ export default class LoreBookConverterPlugin extends Plugin {
           scopes: [...message.contextMeta.scopes],
           specificNotePaths: [...message.contextMeta.specificNotePaths],
           unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
+          chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
+          layerTrace: [...(message.contextMeta.layerTrace ?? [])],
           worldInfoItems: [...message.contextMeta.worldInfoItems],
           ragItems: [...message.contextMeta.ragItems]
         } : undefined
@@ -706,6 +717,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     const chatHistory = this.buildChatHistorySnippet(request.history);
     const querySeed = [request.userMessage, chatHistory].filter(Boolean).join('\n');
+    const chatHistoryTokens = chatHistory ? this.estimateTokens(chatHistory) : 0;
 
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
@@ -731,7 +743,26 @@ export default class LoreBookConverterPlugin extends Plugin {
     const specificNotePaths = noteContextResult.includedPaths;
     const unresolvedNoteRefs = noteContextResult.unresolvedRefs;
 
-    let availableForLorebookContext = remainingAfterPrompt - specificNotesTokens;
+    let chapterMemoryMarkdown = '';
+    let chapterMemoryTokens = 0;
+    let chapterMemoryItems: string[] = [];
+    let chapterMemoryLayerTrace: string[] = [];
+    const activeStoryFile = this.app.workspace.getActiveFile();
+    if (activeStoryFile) {
+      const remainingAfterSpecificNotes = Math.max(0, remainingAfterPrompt - specificNotesTokens);
+      if (remainingAfterSpecificNotes > 96) {
+        const chapterMemoryBudget = useLorebookContext
+          ? Math.min(700, Math.max(96, Math.floor(remainingAfterSpecificNotes * 0.25)))
+          : Math.min(900, Math.max(96, Math.floor(remainingAfterSpecificNotes * 0.45)));
+        const chapterMemory = await this.buildChapterMemoryContext(activeStoryFile, chapterMemoryBudget);
+        chapterMemoryMarkdown = chapterMemory.markdown;
+        chapterMemoryTokens = chapterMemory.usedTokens;
+        chapterMemoryItems = chapterMemory.items;
+        chapterMemoryLayerTrace = chapterMemory.layerTrace;
+      }
+    }
+
+    let availableForLorebookContext = remainingAfterPrompt - specificNotesTokens - chapterMemoryTokens;
     if (availableForLorebookContext < 64) {
       availableForLorebookContext = 64;
     }
@@ -774,16 +805,39 @@ export default class LoreBookConverterPlugin extends Plugin {
     const ragItems = contexts
       .flatMap(context => context.rag.slice(0, 6).map(item => item.document.title))
       .slice(0, 12);
+    const totalWorldInfoCount = contexts.reduce((sum, context) => sum + context.worldInfo.length, 0);
+    const totalRagCount = contexts.reduce((sum, context) => sum + context.rag.length, 0);
+    const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
+    const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
+    const layerTrace: string[] = [];
+    layerTrace.push(`local_window: chat_history ~${chatHistoryTokens} tokens`);
+    if (manualContextTokens > 0) {
+      layerTrace.push(`manual_context: ~${manualContextTokens} tokens`);
+    }
+    if (specificNotesTokens > 0) {
+      layerTrace.push(`specific_notes: ${specificNotePaths.length} notes, ~${specificNotesTokens} tokens`);
+    }
+    if (chapterMemoryTokens > 0) {
+      layerTrace.push(`chapter_memory: ${chapterMemoryItems.length} chapter summaries, ~${chapterMemoryTokens} tokens`);
+      layerTrace.push(...chapterMemoryLayerTrace);
+    }
+    if (useLorebookContext) {
+      layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${usedContextTokens} tokens`);
+      layerTrace.push(`fallback_rag: ${totalRagCount} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} scopes enabled)`);
+    }
     const contextMeta: StoryChatContextMeta = {
       usedLorebookContext: useLorebookContext,
       usedManualContext: manualContext.length > 0,
       usedSpecificNotesContext: specificNotePaths.length > 0,
+      usedChapterMemoryContext: chapterMemoryItems.length > 0,
       scopes: selectedScopes,
       specificNotePaths,
       unresolvedNoteRefs,
-      contextTokens: usedContextTokens + manualContextTokens + specificNotesTokens,
-      worldInfoCount: contexts.reduce((sum, context) => sum + context.worldInfo.length, 0),
-      ragCount: contexts.reduce((sum, context) => sum + context.rag.length, 0),
+      chapterMemoryItems,
+      layerTrace,
+      contextTokens: usedContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
+      worldInfoCount: totalWorldInfoCount,
+      ragCount: totalRagCount,
       worldInfoItems,
       ragItems
     };
@@ -804,6 +858,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       '<specific_notes_context>',
       specificNotesContextMarkdown || '[No specific notes selected.]',
       '</specific_notes_context>',
+      '',
+      '<chapter_memory_context>',
+      chapterMemoryMarkdown || '[No chapter memory available.]',
+      '</chapter_memory_context>',
       '',
       '<lorevault_scopes>',
       scopeLabels.join(', '),
@@ -831,13 +889,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextWindowTokens: completion.contextWindowTokens,
       maxInputTokens,
       promptReserveTokens: completion.promptReserveTokens,
-      contextUsedTokens: usedContextTokens + manualContextTokens + specificNotesTokens,
-      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - manualContextTokens - specificNotesTokens),
+      contextUsedTokens: usedContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - manualContextTokens - specificNotesTokens - chapterMemoryTokens),
       maxOutputTokens: completion.maxOutputTokens,
       worldInfoCount: contextMeta.worldInfoCount,
       ragCount: contextMeta.ragCount,
       worldInfoItems,
       ragItems,
+      contextLayerTrace: contextMeta.layerTrace ?? [],
       lastError: ''
     });
     this.setGenerationStatus('chat generating', 'busy');
@@ -900,6 +959,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       ragCount: contextMeta.ragCount,
       worldInfoItems: contextMeta.worldInfoItems,
       ragItems: contextMeta.ragItems,
+      contextLayerTrace: contextMeta.layerTrace ?? [],
       lastError: ''
     });
 
@@ -1113,6 +1173,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             usedLorebookContext: Boolean(message.contextMeta.usedLorebookContext),
             usedManualContext: Boolean(message.contextMeta.usedManualContext),
             usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
+            usedChapterMemoryContext: Boolean(message.contextMeta.usedChapterMemoryContext),
             scopes: Array.isArray(message.contextMeta.scopes)
               ? message.contextMeta.scopes
                 .map((scope: string) => normalizeScope(scope))
@@ -1123,6 +1184,12 @@ export default class LoreBookConverterPlugin extends Plugin {
               : [],
             unresolvedNoteRefs: Array.isArray(message.contextMeta.unresolvedNoteRefs)
               ? message.contextMeta.unresolvedNoteRefs.map((item: unknown) => String(item))
+              : [],
+            chapterMemoryItems: Array.isArray(message.contextMeta.chapterMemoryItems)
+              ? message.contextMeta.chapterMemoryItems.map((item: unknown) => String(item))
+              : [],
+            layerTrace: Array.isArray(message.contextMeta.layerTrace)
+              ? message.contextMeta.layerTrace.map((item: unknown) => String(item))
               : [],
             contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
             worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
@@ -1156,6 +1223,7 @@ export default class LoreBookConverterPlugin extends Plugin {
               usedLorebookContext: Boolean(message.contextMeta.usedLorebookContext),
               usedManualContext: Boolean(message.contextMeta.usedManualContext),
               usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
+              usedChapterMemoryContext: Boolean(message.contextMeta.usedChapterMemoryContext),
               scopes: Array.isArray(message.contextMeta.scopes)
                 ? message.contextMeta.scopes
                   .map((scope: string) => normalizeScope(scope))
@@ -1166,6 +1234,12 @@ export default class LoreBookConverterPlugin extends Plugin {
                 : [],
               unresolvedNoteRefs: Array.isArray(message.contextMeta.unresolvedNoteRefs)
                 ? message.contextMeta.unresolvedNoteRefs.map((item: unknown) => String(item))
+                : [],
+              chapterMemoryItems: Array.isArray(message.contextMeta.chapterMemoryItems)
+                ? message.contextMeta.chapterMemoryItems.map((item: unknown) => String(item))
+                : [],
+              layerTrace: Array.isArray(message.contextMeta.layerTrace)
+                ? message.contextMeta.layerTrace.map((item: unknown) => String(item))
                 : [],
               contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
               worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
@@ -1210,6 +1284,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
+    this.chapterSummaryStore = new ChapterSummaryStore(this.app);
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
@@ -1361,6 +1436,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on('create', file => {
       this.liveContextIndex.markFileChanged(file);
+      this.chapterSummaryStore.invalidatePath(file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -1369,6 +1445,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on('modify', file => {
       this.liveContextIndex.markFileChanged(file);
+      this.chapterSummaryStore.invalidatePath(file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -1377,6 +1454,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
+      this.chapterSummaryStore.invalidatePath(file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -1385,6 +1463,8 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       this.liveContextIndex.markRenamed(file, oldPath);
+      this.chapterSummaryStore.invalidatePath(oldPath);
+      this.chapterSummaryStore.invalidatePath(file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -1470,15 +1550,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     markdown: string;
     usedTokens: number;
     items: string[];
+    layerTrace: string[];
   }> {
     if (!activeFile || tokenBudget <= 0) {
-      return { markdown: '', usedTokens: 0, items: [] };
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
     }
 
     const nodes = this.collectStoryThreadNodes();
     const resolution = resolveStoryThread(nodes, activeFile.path);
     if (!resolution || resolution.currentIndex <= 0) {
-      return { markdown: '', usedTokens: 0, items: [] };
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
     }
 
     const nodeByPath = new Map(nodes.map(node => [node.path, node]));
@@ -1488,6 +1569,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const sections: string[] = [];
     const items: string[] = [];
+    const layerTrace: string[] = [];
     let usedTokens = 0;
 
     for (const priorPath of priorPaths) {
@@ -1502,11 +1584,12 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       const cache = this.app.metadataCache.getFileCache(file);
       const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-      const summary = asString(getFrontmatterValue(frontmatter, 'summary'));
-      const raw = await this.app.vault.cachedRead(file);
-      const body = stripFrontmatter(raw).trim();
-      const memoryText = summary ?? this.trimTextHeadToTokenBudget(body, 180);
-      if (!memoryText.trim()) {
+      const summary = await this.chapterSummaryStore.resolveSummary(
+        file,
+        frontmatter,
+        body => this.trimTextHeadToTokenBudget(body, 180)
+      );
+      if (!summary?.text.trim()) {
         continue;
       }
 
@@ -1519,7 +1602,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         `### ${chapterPrefix}: ${chapterTitle}`,
         `Source: \`${priorPath}\``,
         '',
-        memoryText
+        summary.text
       ].join('\n');
 
       const sectionTokens = this.estimateTokens(section);
@@ -1530,12 +1613,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       usedTokens += sectionTokens;
       sections.push(section);
       items.push(chapterTitle);
+      layerTrace.push(`chapter_memory:${chapterTitle} (${summary.source}, ~${sectionTokens} tokens)`);
     }
 
     return {
       markdown: sections.join('\n\n---\n\n'),
       usedTokens,
-      items
+      items,
+      layerTrace
     };
   }
 
@@ -1668,6 +1753,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       let chapterMemoryMarkdown = '';
       let chapterMemoryTokens = 0;
       let chapterMemoryItems: string[] = [];
+      let chapterMemoryLayerTrace: string[] = [];
       if (availableForContext > 96 && activeFile) {
         const chapterMemoryBudget = Math.min(
           900,
@@ -1677,6 +1763,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         chapterMemoryMarkdown = chapterMemory.markdown;
         chapterMemoryTokens = chapterMemory.usedTokens;
         chapterMemoryItems = chapterMemory.items;
+        chapterMemoryLayerTrace = chapterMemory.layerTrace;
         availableForContext -= chapterMemoryTokens;
       }
       availableForContext = Math.max(64, availableForContext);
@@ -1739,6 +1826,15 @@ export default class LoreBookConverterPlugin extends Plugin {
       const ragDetails = contexts
         .flatMap(item => item.rag.slice(0, 6).map(entry => entry.document.title))
         .slice(0, 8);
+      const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
+      const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
+      const contextLayerTrace: string[] = [
+        `local_window: ~${storyTokens} tokens`,
+        `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryTokens} tokens`,
+        ...chapterMemoryLayerTrace,
+        `graph_memory(world_info): ${totalWorldInfo} entries, ~${usedContextTokens} tokens`,
+        `fallback_rag: ${totalRag} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`
+      ];
       const scopeLabel = this.renderScopeListLabel(selectedScopeLabels);
       this.updateGenerationTelemetry({
         state: 'generating',
@@ -1752,6 +1848,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         ragCount: totalRag,
         worldInfoItems: worldInfoDetails,
         ragItems: ragDetails,
+        contextLayerTrace,
         generatedTokens: 0,
         lastError: ''
       });
@@ -1767,7 +1864,8 @@ export default class LoreBookConverterPlugin extends Plugin {
           `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
           `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
-          `rag: ${ragDetails.join(', ') || '(none)'}`
+          `rag: ${ragDetails.join(', ') || '(none)'}`,
+          `layers: ${contextLayerTrace.join(' | ')}`
         ].join('\n')
       );
       const userPrompt = [
@@ -1846,6 +1944,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         ragCount: totalRag,
         worldInfoItems: worldInfoDetails,
         ragItems: ragDetails,
+        contextLayerTrace,
         lastError: ''
       });
       new Notice(

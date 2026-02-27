@@ -88,6 +88,12 @@ Reference design: `docs/planning.md`.
 - [ ] Add send/stop/regenerate controls with streaming output.
 - [ ] Add tests for chat state persistence and deterministic context assembly.
 
+## Phase 10.5: Product Boundary Hardening
+
+- [ ] Mark human book/EPUB export as out-of-scope for LoreVault core docs and settings.
+- [ ] Define companion-plugin contract for publishing bundles (tag/page selectors + asset inclusion).
+- [ ] Ensure LoreVault exports expose stable inputs for downstream publishing tools.
+
 ## Phase 11: Graph-First Retrieval Engine (Primary)
 
 - [ ] Replace primary retrieval path with seed-match + graph expansion over `world_info`.
@@ -96,6 +102,15 @@ Reference design: `docs/planning.md`.
 - [ ] Add budget-aware summary tier selection (`short` -> `medium` -> `full`).
 - [ ] Add retrieval explainability artifacts (seed reason, path, score factors, budget cutoff).
 - [ ] Add fixture-backed tests for multi-hop inclusion behavior and determinism.
+
+## Phase 11.5: Long-Form Story Memory
+
+- [ ] Add chapter/story frontmatter schema support (`storyId`, `chapter`, optional prev/next links).
+- [ ] Build deterministic story-thread resolver from metadata + links.
+- [ ] Add rolling chapter summary store for prior chapters/scenes.
+- [ ] Add layered context assembly: local window -> chapter memory -> graph memory -> optional fallback.
+- [ ] Add context inspector traces showing which layer contributed each injected item.
+- [ ] Add fixtures for multi-chapter coherence and deterministic chapter-order resolution.
 
 ## Phase 12: Optional Retrieval Extensions (Fallback/Advanced)
 
@@ -111,4 +126,6 @@ Reference design: `docs/planning.md`.
 - [ ] What minimum seed-confidence threshold should trigger fallback retrieval?
 - [ ] Should graph expansion use only wikilinks first, or also explicit relation fields in frontmatter?
 - [ ] For chat mode, should lorebook selection persist per-note, per-workspace, or per-chat thread?
+- [ ] Should chapter order prefer explicit `chapter` numeric field over graph/topological order when both exist?
+- [ ] What chapter summary granularity should be default (scene-level, chapter-level, or adaptive)?
 - [ ] Should lorebook scope tags in note body be supported, or frontmatter tags only?

@@ -20,6 +20,21 @@ Rationale:
 - graph expansion from explicitly mentioned entities gives predictable context growth
 - users need inspectable context composition during live generation/chat, not opaque retrieval
 
+## Scope Boundaries
+
+LoreVault core should optimize for context engineering and writing-assistant retrieval.
+
+Out of core scope:
+
+- human reading bundle targets (EPUB/PDF/print-style books)
+- full publishing/asset-packaging workflows
+
+Recommended direction:
+
+- keep LoreVault focused on context packs, chat, and generation tooling
+- optionally build a separate companion plugin for human-oriented bundling
+- companion plugin can consume tag/page selectors and export book-style artifacts with bundled assets
+
 ## Rename Direction
 
 Current name: **LoreVault** (renamed from Lorebook Converter).
@@ -190,6 +205,38 @@ Debug output must explain:
 - expansion path (`A -> B -> C`)
 - score contribution per factor
 - final inclusion/exclusion due to token budget
+
+## Long-Form Story Strategy
+
+Long-form support should be explicit and deterministic, not folder-guess-heavy.
+
+Canonical unit:
+
+- chapter note (or scene note) with stable metadata
+
+Recommended metadata (frontmatter-first):
+
+- `storyId`: stable story identifier
+- `chapter`: chapter/scene index
+- `chapterTitle`: optional display title
+- `arc`: optional grouping label
+- `previousChapter`: optional explicit link/path
+- `nextChapter`: optional explicit link/path
+- `lorebooks`/scope selectors for context boundaries
+
+Conventions:
+
+- folder layout is optional convenience, not source of truth
+- frontmatter/link graph takes precedence over folder heuristics
+
+Context layering for generation/chat:
+
+1. local writing window (near cursor, current chapter)
+2. chapter memory (rolling summaries of prior chapters/scenes)
+3. story graph memory (entity/lore expansion from `world_info`)
+4. optional fallback retrieval (embeddings/tool calls when confidence is low)
+
+This keeps short-term coherence (scene continuity) and long-term coherence (story/world consistency) while staying inspectable.
 
 ## Optional Retrieval Extensions
 

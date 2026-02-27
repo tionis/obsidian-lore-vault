@@ -83,6 +83,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',
+      noteContextRefs: [],
       messages: [],
       maxMessages: 80,
       ...(overrides.storyChat ?? {})

@@ -217,8 +217,9 @@ Current capabilities:
 - per-chat lorebook scope selection (including none)
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
+- specific notes context references (one note per line, path/basename/`[[wikilink]]`)
 - send/stop/regenerate controls
-- per-response context inspector (scopes, token estimate, `world_info`/`rag` items)
+- per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 
 Chat state (messages + context controls) is persisted in plugin data.
 

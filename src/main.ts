@@ -28,7 +28,8 @@ import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
 import { AssembledContext } from './context-query';
 import * as path from 'path';
-import { FrontmatterData, normalizeFrontmatter } from './frontmatter-utils';
+import { FrontmatterData, normalizeFrontmatter, stripFrontmatter } from './frontmatter-utils';
+import { normalizeLinkTarget } from './link-target-index';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -59,6 +60,7 @@ export interface StoryChatTurnRequest {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  noteContextRefs: string[];
   history: StoryChatMessage[];
   onDelta: (delta: string) => void;
 }
@@ -96,6 +98,18 @@ export default class LoreBookConverterPlugin extends Plugin {
       return text;
     }
     return text.slice(text.length - maxChars).trimStart();
+  }
+
+  private trimTextHeadToTokenBudget(text: string, tokenBudget: number): string {
+    if (!text.trim()) {
+      return '';
+    }
+
+    const maxChars = Math.max(256, tokenBudget * 4);
+    if (text.length <= maxChars) {
+      return text;
+    }
+    return text.slice(0, maxChars).trimEnd();
   }
 
   private renderScopeListLabel(scopes: string[]): string {
@@ -302,6 +316,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextMeta: message.contextMeta ? {
         ...message.contextMeta,
         scopes: [...message.contextMeta.scopes],
+        specificNotePaths: [...message.contextMeta.specificNotePaths],
+        unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
         worldInfoItems: [...message.contextMeta.worldInfoItems],
         ragItems: [...message.contextMeta.ragItems]
       } : undefined
@@ -312,6 +328,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return {
       ...this.settings.storyChat,
       selectedScopes: [...this.settings.storyChat.selectedScopes],
+      noteContextRefs: [...this.settings.storyChat.noteContextRefs],
       messages: this.getStoryChatMessages()
     };
   }
@@ -368,6 +385,131 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.trimTextToTokenBudget(rendered, 900);
   }
 
+  private normalizeNoteContextRef(rawRef: string): string {
+    let normalized = rawRef.trim();
+    if (!normalized) {
+      return '';
+    }
+
+    const wikilinkMatch = normalized.match(/^\[\[([\s\S]+)\]\]$/);
+    if (wikilinkMatch) {
+      normalized = wikilinkMatch[1].trim();
+      const pipeIndex = normalized.indexOf('|');
+      if (pipeIndex >= 0) {
+        normalized = normalized.slice(0, pipeIndex);
+      }
+    }
+
+    return normalizeLinkTarget(normalized);
+  }
+
+  private resolveNoteContextFile(ref: string): TFile | null {
+    const normalizedRef = this.normalizeNoteContextRef(ref);
+    if (!normalizedRef) {
+      return null;
+    }
+
+    const activePath = this.app.workspace.getActiveFile()?.path ?? '';
+    const resolvedFromLink = this.app.metadataCache.getFirstLinkpathDest(normalizedRef, activePath);
+    if (resolvedFromLink instanceof TFile) {
+      return resolvedFromLink;
+    }
+
+    const directCandidates = [normalizedRef, `${normalizedRef}.md`];
+    for (const candidate of directCandidates) {
+      const found = this.app.vault.getAbstractFileByPath(candidate);
+      if (found instanceof TFile) {
+        return found;
+      }
+    }
+
+    const basename = path.basename(normalizedRef);
+    const byBasename = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.basename.localeCompare(basename, undefined, { sensitivity: 'accent' }) === 0);
+    if (byBasename.length === 1) {
+      return byBasename[0];
+    }
+
+    return null;
+  }
+
+  private async buildSpecificNotesContext(
+    refs: string[],
+    tokenBudget: number
+  ): Promise<{
+    markdown: string;
+    usedTokens: number;
+    includedPaths: string[];
+    unresolvedRefs: string[];
+  }> {
+    const normalizedRefs = refs
+      .map(ref => this.normalizeNoteContextRef(ref))
+      .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
+    if (normalizedRefs.length === 0 || tokenBudget <= 0) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        includedPaths: [],
+        unresolvedRefs: []
+      };
+    }
+
+    let usedTokens = 0;
+    const sections: string[] = [];
+    const includedPaths: string[] = [];
+    const unresolvedRefs: string[] = [];
+    const usedFilePaths = new Set<string>();
+
+    for (const ref of normalizedRefs) {
+      const file = this.resolveNoteContextFile(ref);
+      if (!file) {
+        unresolvedRefs.push(ref);
+        continue;
+      }
+      if (usedFilePaths.has(file.path)) {
+        continue;
+      }
+
+      const remaining = tokenBudget - usedTokens;
+      if (remaining < 32) {
+        break;
+      }
+
+      const raw = await this.app.vault.cachedRead(file);
+      const body = stripFrontmatter(raw).trim();
+      if (!body) {
+        continue;
+      }
+
+      // Reserve some structural overhead for headers/source labels.
+      const bodyBudget = Math.max(64, remaining - 32);
+      const snippet = this.trimTextHeadToTokenBudget(body, bodyBudget);
+      const section = [
+        `### ${file.basename}`,
+        `Source: \`${file.path}\``,
+        '',
+        snippet
+      ].join('\n');
+      const sectionTokens = this.estimateTokens(section);
+      if (usedTokens + sectionTokens > tokenBudget) {
+        continue;
+      }
+
+      usedTokens += sectionTokens;
+      usedFilePaths.add(file.path);
+      includedPaths.push(file.path);
+      sections.push(section);
+    }
+
+    return {
+      markdown: sections.join('\n\n---\n\n'),
+      usedTokens,
+      includedPaths,
+      unresolvedRefs
+    };
+  }
+
   public async runStoryChatTurn(request: StoryChatTurnRequest): Promise<StoryChatTurnResult> {
     if (this.generationInFlight) {
       throw new Error('LoreVault generation is already running.');
@@ -386,21 +528,44 @@ export default class LoreBookConverterPlugin extends Plugin {
       : [];
     const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
     const manualContext = request.manualContext.trim();
+    const noteContextRefs = request.noteContextRefs
+      .map(ref => this.normalizeNoteContextRef(ref))
+      .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     const chatHistory = this.buildChatHistorySnippet(request.history);
     const querySeed = [request.userMessage, chatHistory].filter(Boolean).join('\n');
 
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
     const manualContextTokens = manualContext ? this.estimateTokens(manualContext) : 0;
-    let availableForLorebookContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - manualContextTokens;
+    const remainingAfterPrompt = Math.max(
+      64,
+      maxInputTokens - completion.promptReserveTokens - instructionOverhead - manualContextTokens
+    );
 
+    const useSpecificNotesContext = noteContextRefs.length > 0;
+    const useLorebookContext = request.useLorebookContext && selectedScopes.length > 0;
+    let noteContextBudget = 0;
+    if (useSpecificNotesContext) {
+      noteContextBudget = useLorebookContext
+        ? Math.max(96, Math.floor(remainingAfterPrompt * 0.4))
+        : remainingAfterPrompt;
+      noteContextBudget = Math.min(noteContextBudget, remainingAfterPrompt);
+    }
+
+    const noteContextResult = await this.buildSpecificNotesContext(noteContextRefs, noteContextBudget);
+    const specificNotesContextMarkdown = noteContextResult.markdown;
+    const specificNotesTokens = noteContextResult.usedTokens;
+    const specificNotePaths = noteContextResult.includedPaths;
+    const unresolvedNoteRefs = noteContextResult.unresolvedRefs;
+
+    let availableForLorebookContext = remainingAfterPrompt - specificNotesTokens;
     if (availableForLorebookContext < 64) {
       availableForLorebookContext = 64;
     }
 
     let contexts: AssembledContext[] = [];
     let usedContextTokens = 0;
-    if (request.useLorebookContext && selectedScopes.length > 0) {
+    if (useLorebookContext) {
       let contextBudget = Math.min(
         this.settings.defaultLoreBook.tokenBudget,
         Math.max(64, availableForLorebookContext)
@@ -437,10 +602,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       .flatMap(context => context.rag.slice(0, 6).map(item => item.document.title))
       .slice(0, 12);
     const contextMeta: StoryChatContextMeta = {
-      usedLorebookContext: request.useLorebookContext && selectedScopes.length > 0,
+      usedLorebookContext: useLorebookContext,
       usedManualContext: manualContext.length > 0,
+      usedSpecificNotesContext: specificNotePaths.length > 0,
       scopes: selectedScopes,
-      contextTokens: usedContextTokens + manualContextTokens,
+      specificNotePaths,
+      unresolvedNoteRefs,
+      contextTokens: usedContextTokens + manualContextTokens + specificNotesTokens,
       worldInfoCount: contexts.reduce((sum, context) => sum + context.worldInfo.length, 0),
       ragCount: contexts.reduce((sum, context) => sum + context.rag.length, 0),
       worldInfoItems,
@@ -459,6 +627,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       '<manual_context>',
       manualContext || '[No manual context provided.]',
       '</manual_context>',
+      '',
+      '<specific_notes_context>',
+      specificNotesContextMarkdown || '[No specific notes selected.]',
+      '</specific_notes_context>',
       '',
       '<lorevault_scopes>',
       scopeLabels.join(', '),
@@ -486,8 +658,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextWindowTokens: completion.contextWindowTokens,
       maxInputTokens,
       promptReserveTokens: completion.promptReserveTokens,
-      contextUsedTokens: usedContextTokens + manualContextTokens,
-      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - manualContextTokens),
+      contextUsedTokens: usedContextTokens + manualContextTokens + specificNotesTokens,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - manualContextTokens - specificNotesTokens),
       maxOutputTokens: completion.maxOutputTokens,
       worldInfoCount: contextMeta.worldInfoCount,
       ragCount: contextMeta.ragCount,
@@ -670,6 +842,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index);
     merged.storyChat.useLorebookContext = Boolean(merged.storyChat.useLorebookContext);
     merged.storyChat.manualContext = (merged.storyChat.manualContext ?? '').toString();
+    const noteContextRefs = Array.isArray(merged.storyChat.noteContextRefs)
+      ? merged.storyChat.noteContextRefs
+      : [];
+    merged.storyChat.noteContextRefs = noteContextRefs
+      .map(ref => normalizeLinkTarget(String(ref ?? '')))
+      .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     merged.storyChat.maxMessages = Math.max(10, Math.floor(merged.storyChat.maxMessages || DEFAULT_SETTINGS.storyChat.maxMessages));
 
     const messages = Array.isArray(merged.storyChat.messages) ? merged.storyChat.messages : [];
@@ -685,10 +863,17 @@ export default class LoreBookConverterPlugin extends Plugin {
           contextMeta: message.contextMeta ? {
             usedLorebookContext: Boolean(message.contextMeta.usedLorebookContext),
             usedManualContext: Boolean(message.contextMeta.usedManualContext),
+            usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
             scopes: Array.isArray(message.contextMeta.scopes)
               ? message.contextMeta.scopes
                 .map((scope: string) => normalizeScope(scope))
                 .filter((scope: string | null): scope is string => Boolean(scope))
+              : [],
+            specificNotePaths: Array.isArray(message.contextMeta.specificNotePaths)
+              ? message.contextMeta.specificNotePaths.map((item: unknown) => String(item))
+              : [],
+            unresolvedNoteRefs: Array.isArray(message.contextMeta.unresolvedNoteRefs)
+              ? message.contextMeta.unresolvedNoteRefs.map((item: unknown) => String(item))
               : [],
             contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
             worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),

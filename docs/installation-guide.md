@@ -113,9 +113,10 @@ If you prefer to build the plugin from source:
    - Run command "Open Story Chat"
    - Select lorebook scopes to use (or disable lorebook context for manual-only chat)
    - Optional: add manual context text in the panel
+   - Optional: add specific note references (one per line, path/basename/`[[wikilink]]`) for precise context injection
    - Send prompts and watch streamed responses
    - Use Stop/Regenerate as needed
-   - Expand per-turn context inspector blocks to see selected scopes and pulled items
+   - Expand per-turn context inspector blocks to see selected scopes, resolved notes, and pulled items
 
 ## Troubleshooting
 

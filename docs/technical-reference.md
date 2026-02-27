@@ -42,12 +42,9 @@ This document is the implementation-level reference for core architecture and ru
   - story/chapter metadata parsing
   - deterministic thread ordering (metadata + prev/next links)
 - `src/chapter-summary-store.ts`
-  - rolling chapter-summary cache (`frontmatter` -> `generated` -> excerpt fallback)
-- `src/generated-summary-store.ts`
-  - persisted accepted-summary cache
-  - deterministic keying by `(mode, path)` with signature guard
+  - rolling chapter-summary cache (`frontmatter` -> excerpt fallback)
 - `src/summary-utils.ts`
-  - summary normalization and deterministic signature builder
+  - summary normalization and world_info content resolution
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
 - `src/cost-utils.ts`
@@ -232,7 +229,6 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 - selects bounded prior chapters
 - resolves snippets through rolling chapter summary cache/store
   - prefers frontmatter `summary`
-  - then approved generated summary cache
   - then deterministic body-head excerpt
 - injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 
@@ -254,23 +250,13 @@ Flow:
 3. call completion provider (non-stream request)
 4. normalize summary text (single paragraph, capped length)
 5. show review modal with edit + accept options
-6. persist accepted summary in generated-summary cache
-7. optionally write accepted summary into note frontmatter
-8. request index/view refresh and chapter-summary cache invalidation for affected note
-
-Signature + cache contract:
-
-- summary signature combines:
-  - mode
-  - body hash
-  - prompt/model/settings signature (`provider`, `model`, prompt version, max input/output chars)
-- cache lookup requires exact signature match; stale summaries are ignored automatically
-- delete/rename handlers invalidate stored summaries by note path
+6. write accepted summary into note frontmatter
+7. request index/view refresh and chapter-summary cache invalidation for affected note
 
 Precedence contract:
 
-- world_info entry content: `frontmatter summary` -> `generated summary` -> note body
-- chapter memory summary: `frontmatter summary` -> `generated summary` -> deterministic excerpt
+- world_info entry content: `frontmatter summary` -> note body
+- chapter memory summary: `frontmatter summary` -> deterministic excerpt
 
 ## Story Chat Persistence
 

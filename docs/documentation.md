@@ -96,7 +96,7 @@ Content:
 
 - markdown body (frontmatter stripped)
 - overridden by `summary` when present
-- if `summary` is missing and generated world_info summaries are enabled, LoreVault uses approved generated-summary cache before body fallback
+- if `summary` is missing, LoreVault uses the note body
 
 ## Retrieval Routing
 
@@ -183,7 +183,7 @@ Fixture coverage includes:
 - rag markdown export ordering
 - rag chunking determinism
 - non-English retrieval/metadata compatibility
-- summary precedence behavior (`frontmatter` > `generated` > fallback body/excerpt)
+- summary precedence behavior (`frontmatter` > fallback body/excerpt)
 
 Large-vault profiling command (`npm run profile:large-vault`) provides deterministic synthetic timing baselines for graph build/ranking/query behavior.
 
@@ -318,7 +318,7 @@ Long-form story metadata (new):
 - `nextChapter`: optional links/paths to following chapter notes
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
-Chapter memory uses a rolling summary store (`frontmatter summary` preferred, approved generated-summary fallback, deterministic excerpt fallback) so repeated generations avoid unnecessary re-parsing.
+Chapter memory uses a rolling summary store (`frontmatter summary` preferred, deterministic excerpt fallback) so repeated generations avoid unnecessary re-parsing.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 
 ## Auto Summary Workflows (Phase 9)
@@ -335,34 +335,25 @@ Review/acceptance flow:
 1. LoreVault reads note body and builds a constrained summary prompt.
 2. Completion provider returns candidate summary.
 3. Review modal lets user edit and choose:
-  - `Approve Cache` (cache only)
-  - `Write Frontmatter Summary` (cache + frontmatter write)
+  - `Write Frontmatter Summary` (frontmatter write)
   - `Cancel`
 
 Storage and determinism:
 
-- accepted summaries are stored in `.obsidian/plugins/lore-vault/cache/generated-summaries.json`
-- cache lookup requires signature match:
-  - mode (`world_info` or `chapter`)
-  - note body hash
-  - model/provider and summary-setting signature
-- content/model/settings change invalidates prior cache hit deterministically
+- accepted summaries are written into note frontmatter (`summary`)
+- deterministic output comes from explicit source notes plus deterministic processing/ranking/export order
 
 Precedence:
 
 - world_info export content:
   - frontmatter `summary`
-  - accepted generated summary
   - note body
 - chapter memory:
   - frontmatter `summary`
-  - accepted generated summary
   - deterministic excerpt fallback
 
 Settings (LoreVault -> Auto Summaries):
 
-- `Use Generated World Info Summaries`
-- `Use Generated Chapter Summaries`
 - `Summary Max Input Chars`
 - `Summary Max Output Chars`
 

@@ -119,13 +119,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
     summaries: {
       promptVersion: 1,
       maxInputChars: 12000,
-      maxSummaryChars: 320,
-      worldInfo: {
-        useGeneratedSummary: true
-      },
-      chapter: {
-        useGeneratedSummary: true
-      }
+      maxSummaryChars: 320
     },
     costTracking: {
       enabled: false,

@@ -187,8 +187,8 @@ Current constraints:
 Chapter-memory specific behavior:
 
 - generation should be hash-aware and re-run only when chapter content materially changes
-- summary writes should target frontmatter `summary` (or parallel generated-summary cache) with explicit user approval
-- chapter-memory layer must keep deterministic fallback (`frontmatter summary` -> generated summary -> excerpt)
+- summary writes should target frontmatter `summary` with explicit user approval
+- chapter-memory layer must keep deterministic fallback (`frontmatter summary` -> excerpt)
 
 ## Future: Cost Management and Usage Tracking
 

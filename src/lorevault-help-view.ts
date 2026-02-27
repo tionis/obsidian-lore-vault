@@ -131,10 +131,9 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Auto Summaries', {
       bullets: [
         'Generate world_info or chapter summaries with command-palette actions.',
-        'Review modal allows edit + approval before storing/writing summaries.',
-        'Approve Cache stores generated summary only in cache.',
-        'Write Frontmatter Summary stores cache and updates frontmatter summary field.',
-        'Precedence: frontmatter summary -> generated summary -> body/excerpt fallback.'
+        'Review modal allows editing before writing to note frontmatter.',
+        'Accepted summaries are written to the note `summary` field.',
+        'Precedence: frontmatter summary -> body/excerpt fallback.'
       ]
     });
 

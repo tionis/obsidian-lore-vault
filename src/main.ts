@@ -36,7 +36,6 @@ import {
 } from './lorevault-story-delta-view';
 import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
-import { GeneratedSummaryStore } from './generated-summary-store';
 import { EmbeddingService } from './embedding-service';
 import {
   CompletionUsageReport,
@@ -70,7 +69,6 @@ import {
 } from './frontmatter-utils';
 import { normalizeLinkTarget } from './link-target-index';
 import {
-  buildGeneratedSummarySignature,
   GeneratedSummaryMode,
   normalizeGeneratedSummaryText
 } from './summary-utils';
@@ -128,7 +126,6 @@ export interface StoryChatTurnResult {
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
-  private generatedSummaryStore!: GeneratedSummaryStore;
   private usageLedgerStore!: UsageLedgerStore;
   private readonly sessionStartedAt = Date.now();
   private chapterSummaryStore!: ChapterSummaryStore;
@@ -973,15 +970,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     };
   }
 
-  private async resolveGeneratedSummary(
-    filePath: string,
-    mode: GeneratedSummaryMode,
-    bodyText: string
-  ): Promise<string | null> {
-    const signature = buildGeneratedSummarySignature(mode, bodyText, this.settings);
-    return this.generatedSummaryStore.getAcceptedSummary(filePath, mode, signature);
-  }
-
   private buildSummaryPrompt(mode: GeneratedSummaryMode, title: string, bodyText: string): {
     systemPrompt: string;
     userPrompt: string;
@@ -1024,8 +1012,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     mode: GeneratedSummaryMode
   ): Promise<{
     normalizedSummary: string;
-    signature: string;
-    bodyText: string;
     existingFrontmatterSummary: string;
   }> {
     if (!this.settings.completion.enabled) {
@@ -1074,11 +1060,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       throw new Error('Summary model returned empty text.');
     }
 
-    const signature = buildGeneratedSummarySignature(mode, bodyText, this.settings);
     return {
       normalizedSummary,
-      signature,
-      bodyText,
       existingFrontmatterSummary
     };
   }
@@ -1163,18 +1146,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       return 'cancelled';
     }
 
-    await this.generatedSummaryStore.setAcceptedSummary(
-      file.path,
-      mode,
-      candidate.signature,
-      review.summaryText,
-      this.settings.completion.provider,
-      this.settings.completion.model
-    );
-
-    if (review.action === 'frontmatter') {
-      await this.applySummaryToNoteFrontmatter(file, review.summaryText);
-    }
+    await this.applySummaryToNoteFrontmatter(file, review.summaryText);
 
     this.liveContextIndex.requestFullRefresh();
     this.chapterSummaryStore.invalidatePath(file.path);
@@ -1654,15 +1626,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       },
       summaries: {
         ...DEFAULT_SETTINGS.summaries,
-        ...(data?.summaries ?? {}),
-        worldInfo: {
-          ...DEFAULT_SETTINGS.summaries.worldInfo,
-          ...(data?.summaries?.worldInfo ?? {})
-        },
-        chapter: {
-          ...DEFAULT_SETTINGS.summaries.chapter,
-          ...(data?.summaries?.chapter ?? {})
-        }
+        ...(data?.summaries ?? {})
       },
       costTracking: {
         ...DEFAULT_SETTINGS.costTracking,
@@ -1770,8 +1734,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       80,
       Math.min(2000, Math.floor(Number(merged.summaries.maxSummaryChars)))
     );
-    merged.summaries.worldInfo.useGeneratedSummary = Boolean(merged.summaries.worldInfo.useGeneratedSummary);
-    merged.summaries.chapter.useGeneratedSummary = Boolean(merged.summaries.chapter.useGeneratedSummary);
 
     merged.costTracking.enabled = Boolean(merged.costTracking.enabled);
     merged.costTracking.ledgerPath = (merged.costTracking.ledgerPath ?? '')
@@ -2007,18 +1969,12 @@ export default class LoreBookConverterPlugin extends Plugin {
   async onload() {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
-    this.generatedSummaryStore = new GeneratedSummaryStore(this.app);
     this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
     this.liveContextIndex = new LiveContextIndex(
       this.app,
-      () => this.settings,
-      (filePath, mode, bodyText) => this.resolveGeneratedSummary(filePath, mode, bodyText)
+      () => this.settings
     );
-    this.chapterSummaryStore = new ChapterSummaryStore(
-      this.app,
-      () => this.settings,
-      this.generatedSummaryStore
-    );
+    this.chapterSummaryStore = new ChapterSummaryStore(this.app);
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
@@ -2264,7 +2220,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
-      void this.generatedSummaryStore.invalidatePath(file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -2275,16 +2230,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.chapterSummaryStore.invalidatePath(oldPath);
       this.chapterSummaryStore.invalidatePath(file.path);
-      void this.generatedSummaryStore.invalidatePath(oldPath);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     }));
-
-    void this.generatedSummaryStore.initialize().catch(error => {
-      console.error('Failed to initialize generated summary store:', error);
-    });
 
     void this.usageLedgerStore.initialize().catch(error => {
       console.error('Failed to initialize usage ledger store:', error);
@@ -2888,8 +2838,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           files,
           buildAllScopes,
           embeddingService,
-          progress,
-          (filePath, mode, bodyText) => this.resolveGeneratedSummary(filePath, mode, bodyText)
+          progress
         );
 
         const scopedSettings = scopePackResult.scopedSettings;

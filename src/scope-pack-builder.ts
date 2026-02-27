@@ -5,7 +5,6 @@ import { GraphAnalyzer } from './graph-analyzer';
 import { ProgressBar } from './progress-bar';
 import { EmbeddingService } from './embedding-service';
 import { chunkRagDocuments } from './rag-chunker';
-import { GeneratedSummaryMode } from './summary-utils';
 
 function cloneSettings(settings: ConverterSettings): ConverterSettings {
   return {
@@ -17,11 +16,7 @@ function cloneSettings(settings: ConverterSettings): ConverterSettings {
     sqlite: { ...settings.sqlite },
     embeddings: { ...settings.embeddings },
     retrieval: { ...settings.retrieval },
-    summaries: {
-      ...settings.summaries,
-      worldInfo: { ...settings.summaries.worldInfo },
-      chapter: { ...settings.summaries.chapter }
-    },
+    summaries: { ...settings.summaries },
     completion: { ...settings.completion }
   };
 }
@@ -48,12 +43,7 @@ export async function buildScopePack(
   files: TFile[],
   buildAllScopes: boolean,
   embeddingService: EmbeddingService | null,
-  progress?: ProgressBar,
-  resolveGeneratedSummary?: (
-    filePath: string,
-    mode: GeneratedSummaryMode,
-    bodyText: string
-  ) => Promise<string | null>
+  progress?: ProgressBar
 ): Promise<ScopePackBuildResult> {
   const scopedSettings = cloneSettings(settings);
   scopedSettings.tagScoping.activeScope = scope;
@@ -64,7 +54,7 @@ export async function buildScopePack(
   const stepper = progress ?? createSilentProgress();
   stepper.setStatus(`Scope ${scope || '(all)'}: processing files...`);
 
-  const fileProcessor = new FileProcessor(app, scopedSettings, resolveGeneratedSummary);
+  const fileProcessor = new FileProcessor(app, scopedSettings);
   await fileProcessor.processFiles(files, stepper);
 
   stepper.setStatus(`Scope ${scope || '(all)'}: building relationship graph...`);

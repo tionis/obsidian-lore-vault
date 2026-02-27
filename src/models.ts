@@ -210,12 +210,6 @@ export interface ConverterSettings {
     promptVersion: number;
     maxInputChars: number;
     maxSummaryChars: number;
-    worldInfo: {
-      useGeneratedSummary: boolean;
-    };
-    chapter: {
-      useGeneratedSummary: boolean;
-    };
   };
   costTracking: {
     enabled: boolean;
@@ -321,13 +315,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   summaries: {
     promptVersion: 1,
     maxInputChars: 12000,
-    maxSummaryChars: 320,
-    worldInfo: {
-      useGeneratedSummary: true
-    },
-    chapter: {
-      useGeneratedSummary: true
-    }
+    maxSummaryChars: 320
   },
   costTracking: {
     enabled: false,

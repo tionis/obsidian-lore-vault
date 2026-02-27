@@ -3,6 +3,7 @@ import LoreBookConverterPlugin from './main';
 import { requestStoryContinuation } from './completion-provider';
 import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
 import { extractWikiPagesFromStory, StoryExtractionResult } from './story-extraction';
+import { openVaultFolderPicker } from './folder-suggest-modal';
 
 export const LOREVAULT_STORY_EXTRACT_VIEW_TYPE = 'lorevault-story-extract-view';
 
@@ -165,14 +166,26 @@ export class LorevaultStoryExtractView extends ItemView {
     contentEl.addClass('lorevault-import-view');
     contentEl.createEl('h2', { text: 'Extract Wiki Pages from Story' });
 
+    let targetFolderInput: { setValue: (value: string) => void } | null = null;
     new Setting(contentEl)
       .setName('Target Folder')
       .setDesc('Folder where extracted wiki pages will be created/updated.')
-      .addText(text => text
-        .setPlaceholder('LoreVault/import')
-        .setValue(this.targetFolder)
-        .onChange(value => {
-          this.targetFolder = value.trim();
+      .addText(text => {
+        targetFolderInput = text;
+        text
+          .setPlaceholder('LoreVault/import')
+          .setValue(this.targetFolder)
+          .onChange(value => {
+            this.targetFolder = value.trim();
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          openVaultFolderPicker(this.app, path => {
+            this.targetFolder = path;
+            targetFolderInput?.setValue(path);
+          });
         }));
 
     new Setting(contentEl)

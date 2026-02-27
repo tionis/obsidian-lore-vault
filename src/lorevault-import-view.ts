@@ -5,6 +5,7 @@ import {
   buildImportedWikiPages,
   parseSillyTavernLorebookJson
 } from './sillytavern-import';
+import { openVaultFolderPicker } from './folder-suggest-modal';
 
 export const LOREVAULT_IMPORT_VIEW_TYPE = 'lorevault-import-view';
 
@@ -46,14 +47,26 @@ export class LorevaultImportView extends ItemView {
   }
 
   private buildSharedInputs(container: HTMLElement): void {
+    let targetFolderInput: { setValue: (value: string) => void } | null = null;
     new Setting(container)
       .setName('Target Folder')
       .setDesc('Folder where imported wiki pages will be created/updated.')
-      .addText(text => text
-        .setPlaceholder('LoreVault/import')
-        .setValue(this.targetFolder)
-        .onChange(value => {
-          this.targetFolder = value.trim();
+      .addText(text => {
+        targetFolderInput = text;
+        text
+          .setPlaceholder('LoreVault/import')
+          .setValue(this.targetFolder)
+          .onChange(value => {
+            this.targetFolder = value.trim();
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          openVaultFolderPicker(this.app, path => {
+            this.targetFolder = path;
+            targetFolderInput?.setValue(path);
+          });
         }));
 
     new Setting(container)

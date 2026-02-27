@@ -444,7 +444,7 @@ Commands:
 
 Shared panel inputs:
 
-- target folder
+- target folder (manual path or Browse picker)
 - default tags
 - lorebook name converted into a lorebook tag using configured `tagPrefix`
 

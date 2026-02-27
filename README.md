@@ -19,6 +19,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Embedded user help panel (`Open LoreVault Help`)
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
+- Unicode-aware retrieval tokenization for non-English keywords/titles
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
 
 ## Migration Notes

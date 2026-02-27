@@ -81,6 +81,7 @@ Flow:
   - `key` / `keywords`
   - aliases (`keysecondary` when present)
   - entry comment/title token and phrase matches
+  - Unicode-aware tokenization (non-English keywords/titles are supported)
 2. build deterministic adjacency graph from wikilink-normalized relations
 3. run bounded hop expansion from seeds
 4. apply hop decay and accumulate score factors
@@ -241,3 +242,20 @@ Any behavior change in these areas must be accompanied by:
 - test/fixture updates
 - docs updates (`README.md`, `docs/documentation.md`, this file)
 - roadmap/todo adjustment when applicable
+
+## Large-Vault Profiling
+
+Use the deterministic profiling command for synthetic large-vault baselines:
+
+```bash
+npm run profile:large-vault
+```
+
+Optional environment variables:
+
+- `LOREVAULT_PROFILE_ENTRIES` (default `3000`)
+- `LOREVAULT_PROFILE_AVG_LINKS` (default `5`)
+- `LOREVAULT_PROFILE_CONTENT_CHARS` (default `420`)
+- `LOREVAULT_PROFILE_RUNS` (default `3`)
+
+The profile reports average timing for graph build, ranking, and context query assembly.

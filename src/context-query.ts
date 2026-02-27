@@ -94,7 +94,7 @@ function normalizeText(value: string): string {
 
 function tokenize(value: string): string[] {
   const normalized = normalizeText(value);
-  const matches = normalized.match(/[a-z0-9][a-z0-9_-]*/g);
+  const matches = normalized.match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu);
   if (!matches) {
     return [];
   }

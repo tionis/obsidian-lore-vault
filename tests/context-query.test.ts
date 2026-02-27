@@ -247,3 +247,28 @@ test('assembleScopeContext keeps auto fallback deterministic when seed confidenc
     second.rag.map(item => item.score)
   );
 });
+
+test('assembleScopeContext supports non-English keyword tokenization', () => {
+  const pack: ScopeContextPack = {
+    scope: 'multiverse',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(1, ['герой'], 'Русский профиль героя.', 500, { comment: 'Герой' }),
+      createWorldInfoEntry(2, ['東京'], '東京の都市情報。', 450, { comment: '東京' }),
+      createWorldInfoEntry(3, ['fallback'], 'Unrelated fallback entry.', 10)
+    ],
+    ragDocuments: [],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const context = assembleScopeContext(pack, {
+    queryText: 'герой отправляется в 東京',
+    tokenBudget: 800,
+    ragFallbackPolicy: 'off'
+  });
+
+  const selected = context.worldInfo.map(item => item.entry.uid);
+  assert.ok(selected.includes(1));
+  assert.ok(selected.includes(2));
+});

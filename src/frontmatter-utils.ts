@@ -16,7 +16,7 @@ export function normalizeFrontmatter(frontmatter: FrontmatterData | null | undef
   }
 
   for (const [key, value] of Object.entries(frontmatter)) {
-    if (key === 'position') {
+    if (normalizeKey(key) === 'position') {
       continue;
     }
     normalized[normalizeKey(key)] = value;

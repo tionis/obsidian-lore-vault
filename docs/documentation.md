@@ -157,6 +157,7 @@ Computation:
 ```bash
 npm run build
 npm test
+npm run profile:large-vault
 ```
 
 Fixture coverage includes:
@@ -168,6 +169,9 @@ Fixture coverage includes:
 - output path resolution/collision checks
 - rag markdown export ordering
 - rag chunking determinism
+- non-English retrieval/metadata compatibility
+
+Large-vault profiling command (`npm run profile:large-vault`) provides deterministic synthetic timing baselines for graph build/ranking/query behavior.
 
 ## Output Naming Rules
 

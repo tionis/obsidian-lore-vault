@@ -215,6 +215,7 @@ npm test
 
 See:
 
+- `docs/approach.md`
 - `docs/documentation.md`
 - `docs/installation-guide.md`
 - `docs/profile-schema.md`

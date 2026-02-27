@@ -277,6 +277,10 @@ Live query combines:
 
 Command: `Continue Story with Context`
 Also available in markdown editor right-click menu as `LoreVault: Continue Story with Context`.
+The same editor menu also exposes note-scoped summary actions when eligible:
+
+- `LoreVault: Generate World Info Summary` for notes with lorebook-scope tags.
+- `LoreVault: Generate Chapter Summary` for notes with story/chapter frontmatter.
 
 Provider options:
 
@@ -329,6 +333,11 @@ Commands:
 - `Generate Chapter Summary (Active Note)`
 - `Generate World Info Summaries (Active Scope)`
 - `Generate Chapter Summaries (Current Story)`
+
+Editor context menu behavior:
+
+- world_info summary action appears only when the current note is in a lorebook scope (tag-derived).
+- chapter summary action appears only when the current note resolves as a story/chapter note from frontmatter.
 
 Review/acceptance flow:
 

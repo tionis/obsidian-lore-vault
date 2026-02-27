@@ -232,7 +232,10 @@ Behavior:
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
 - reports active scopes and pulled `world_info`/`rag` items at generation start
-- adds a right-click editor context-menu action: `LoreVault: Continue Story with Context`
+- adds right-click editor context-menu actions:
+  - `LoreVault: Continue Story with Context`
+  - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
+  - `LoreVault: Generate Chapter Summary` (only when note has chapter/story frontmatter)
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
@@ -247,6 +250,11 @@ Commands:
 - `Generate Chapter Summary (Active Note)`
 - `Generate World Info Summaries (Active Scope)`
 - `Generate Chapter Summaries (Current Story)`
+
+Right-click editor menu:
+
+- `LoreVault: Generate World Info Summary` appears for notes tagged into a lorebook scope.
+- `LoreVault: Generate Chapter Summary` appears for notes with story/chapter frontmatter.
 
 Behavior:
 

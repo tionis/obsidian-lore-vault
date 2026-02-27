@@ -130,7 +130,8 @@ export class LorevaultHelpView extends ItemView {
 
     this.renderSection(contentEl, 'Auto Summaries', {
       bullets: [
-        'Generate world_info or chapter summaries with command-palette actions.',
+        'Generate world_info or chapter summaries from command palette or the editor context menu.',
+        'Context menu shows world_info summary only for lorebook-tagged notes, and chapter summary only for story/chapter frontmatter notes.',
         'Review modal allows editing before writing to note frontmatter.',
         'Accepted summaries are written to the note `summary` field.',
         'Precedence: frontmatter summary -> body/excerpt fallback.'

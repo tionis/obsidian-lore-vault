@@ -1158,6 +1158,21 @@ export default class LoreBookConverterPlugin extends Plugin {
     return 'saved';
   }
 
+  private async generateSummaryForNote(file: TFile, mode: GeneratedSummaryMode): Promise<void> {
+    try {
+      const result = await this.generateSummaryForFile(file, mode);
+      if (result !== 'saved') {
+        return;
+      }
+      const label = mode === 'chapter' ? 'chapter' : 'world_info';
+      new Notice(`Saved ${label} summary for ${file.basename}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Summary generation failed:', error);
+      new Notice(`Summary generation failed: ${message}`);
+    }
+  }
+
   private async generateSummaryForActiveNote(mode: GeneratedSummaryMode): Promise<void> {
     const activeFile = this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
@@ -1165,18 +1180,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    try {
-      const result = await this.generateSummaryForFile(activeFile, mode);
-      if (result !== 'saved') {
-        return;
-      }
-      const label = mode === 'chapter' ? 'chapter' : 'world_info';
-      new Notice(`Saved ${label} summary for ${activeFile.basename}.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('Summary generation failed:', error);
-      new Notice(`Summary generation failed: ${message}`);
-    }
+    await this.generateSummaryForNote(activeFile, mode);
   }
 
   private hasFrontmatterSummary(file: TFile): boolean {
@@ -2155,8 +2159,35 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     });
 
-    this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, _editor: Editor, _info: MarkdownView | MarkdownFileInfo) => {
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, _editor: Editor, info: MarkdownView | MarkdownFileInfo) => {
+      const targetFile = this.resolveFileFromEditorMenuInfo(info);
+      const isLorebookNote = targetFile ? this.noteBelongsToLorebookScope(targetFile) : false;
+      const isChapterNote = targetFile ? this.noteHasChapterFrontmatter(targetFile) : false;
+
       menu.addSeparator();
+
+      if (targetFile && isLorebookNote) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Generate World Info Summary')
+            .setIcon('file-text')
+            .onClick(() => {
+              void this.generateSummaryForNote(targetFile, 'world_info');
+            });
+        });
+      }
+
+      if (targetFile && isChapterNote) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Generate Chapter Summary')
+            .setIcon('file-text')
+            .onClick(() => {
+              void this.generateSummaryForNote(targetFile, 'chapter');
+            });
+        });
+      }
+
       menu.addItem(item => {
         if (this.generationInFlight) {
           item.setTitle('LoreVault: Generation Running');
@@ -2294,6 +2325,25 @@ export default class LoreBookConverterPlugin extends Plugin {
       return undefined;
     }
     return scopes[0];
+  }
+
+  private resolveFileFromEditorMenuInfo(info: MarkdownView | MarkdownFileInfo): TFile | null {
+    if (info instanceof MarkdownView) {
+      return info.file ?? this.app.workspace.getActiveFile();
+    }
+    return info.file ?? this.app.workspace.getActiveFile();
+  }
+
+  private noteBelongsToLorebookScope(file: TFile): boolean {
+    return Boolean(this.resolveScopeFromActiveFile(file));
+  }
+
+  private noteHasChapterFrontmatter(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return Boolean(
+      parseStoryThreadNodeFromFrontmatter(file.path, file.basename, frontmatter)
+    );
   }
 
   private resolveStoryScopesFromFrontmatter(activeFile: TFile | null): string[] {

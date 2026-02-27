@@ -319,6 +319,38 @@ export class LiveContextIndex {
     options: ContextQueryOptions,
     scopeOverride?: string
   ): Promise<AssembledContext> {
+    const { pack } = await this.resolveScopePack(scopeOverride);
+
+    const semanticBoostByDocUid: {[key: number]: number} = {};
+    const settings = this.getSettings();
+    const embeddingService = this.getEmbeddingService(settings);
+
+    if (embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
+      const queryEmbedding = await embeddingService.embedQuery(options.queryText);
+      const chunkScores = embeddingService.scoreChunks(queryEmbedding, pack.ragChunks, pack.ragChunkEmbeddings);
+
+      for (const chunkScore of chunkScores) {
+        // Boost lexical scores using best semantic chunk per document.
+        const boost = chunkScore.score * 150;
+        const current = semanticBoostByDocUid[chunkScore.docUid] ?? 0;
+        if (boost > current) {
+          semanticBoostByDocUid[chunkScore.docUid] = boost;
+        }
+      }
+    }
+
+    return assembleScopeContext(pack, {
+      ...options,
+      ragSemanticBoostByDocUid: semanticBoostByDocUid
+    });
+  }
+
+  async getScopePack(scopeOverride?: string): Promise<ScopeContextPack> {
+    const { pack } = await this.resolveScopePack(scopeOverride);
+    return pack;
+  }
+
+  private async resolveScopePack(scopeOverride?: string): Promise<{scope: string; pack: ScopeContextPack}> {
     await this.flushRefreshQueue();
     if (this.scopes.size === 0) {
       await this.rebuildAllScopes();
@@ -343,27 +375,9 @@ export class LiveContextIndex {
       throw new Error(`No context pack for scope "${resolvedScope || '(all)'}".`);
     }
 
-    const semanticBoostByDocUid: {[key: number]: number} = {};
-    const settings = this.getSettings();
-    const embeddingService = this.getEmbeddingService(settings);
-
-    if (embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
-      const queryEmbedding = await embeddingService.embedQuery(options.queryText);
-      const chunkScores = embeddingService.scoreChunks(queryEmbedding, pack.ragChunks, pack.ragChunkEmbeddings);
-
-      for (const chunkScore of chunkScores) {
-        // Boost lexical scores using best semantic chunk per document.
-        const boost = chunkScore.score * 150;
-        const current = semanticBoostByDocUid[chunkScore.docUid] ?? 0;
-        if (boost > current) {
-          semanticBoostByDocUid[chunkScore.docUid] = boost;
-        }
-      }
-    }
-
-    return assembleScopeContext(pack, {
-      ...options,
-      ragSemanticBoostByDocUid: semanticBoostByDocUid
-    });
+    return {
+      scope: resolvedScope,
+      pack
+    };
   }
 }

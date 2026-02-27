@@ -344,6 +344,19 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.plugin.saveData(this.plugin.settings);
         }));
 
+    containerEl.createEl('h3', { text: 'Story Chat' });
+
+    new Setting(containerEl)
+      .setName('Story Chat Conversation Folder')
+      .setDesc('Vault folder where Story Chat conversation notes are stored.')
+      .addText(text => text
+        .setPlaceholder('LoreVault/chat')
+        .setValue(this.plugin.settings.storyChat.chatFolder)
+        .onChange(async (value) => {
+          this.plugin.settings.storyChat.chatFolder = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
     containerEl.createEl('h3', { text: 'Writing Completion' });
     containerEl.createEl('p', {
       text: 'Configure LLM generation for "Continue Story with Context".'

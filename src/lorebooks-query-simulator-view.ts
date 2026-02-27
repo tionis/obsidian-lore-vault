@@ -402,6 +402,12 @@ export class LorebooksQuerySimulationView extends ItemView {
           text: `world_info cutoff: dropped ${result.explainability.worldInfoBudget.droppedUids.length} entries (${result.explainability.worldInfoBudget.droppedByBudget} budget, ${result.explainability.worldInfoBudget.droppedByLimit} max-entry limit)`
         });
       }
+      if (result.explainability.worldInfoBudget.bodyLiftedUids.length > 0) {
+        details.createEl('p', {
+          cls: 'lorevault-routing-subtle',
+          text: `world_info body lift: ${result.explainability.worldInfoBudget.bodyLiftedUids.length}/${result.explainability.worldInfoBudget.bodyLiftMaxEntries} entries (cap ${result.explainability.worldInfoBudget.bodyLiftTokenCapPerEntry} tokens each)`
+        });
+      }
 
       const worldInfoDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
       worldInfoDetails.createEl('summary', {

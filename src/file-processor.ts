@@ -61,6 +61,7 @@ export class FileProcessor {
   private settings: ConverterSettings;
   private linkTargetIndex: LinkTargetIndex = new LinkTargetIndex();
   private entries: {[key: number]: LoreBookEntry} = {};
+  private worldInfoBodyByUid: {[key: number]: string} = {};
   private ragDocuments: RagDocument[] = [];
   private nextUid: number = 0;
   private rootUid: number | null = null;
@@ -222,6 +223,7 @@ export class FileProcessor {
       if (rootFlag === true && this.rootUid === null) {
         this.rootUid = uid;
       }
+      this.worldInfoBodyByUid[uid] = noteBody;
 
       return entry;
     } catch (e) {
@@ -262,6 +264,10 @@ export class FileProcessor {
     return this.entries;
   }
 
+  getWorldInfoBodyByUid(): {[key: number]: string} {
+    return this.worldInfoBodyByUid;
+  }
+
   getRagDocuments(): RagDocument[] {
     return this.ragDocuments;
   }
@@ -269,6 +275,7 @@ export class FileProcessor {
   reset(): void {
     this.linkTargetIndex.reset();
     this.entries = {};
+    this.worldInfoBodyByUid = {};
     this.ragDocuments = [];
     this.nextUid = 0;
     this.rootUid = null;

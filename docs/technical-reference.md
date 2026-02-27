@@ -188,6 +188,7 @@ World info tiering:
 - initial inclusion at `short`
 - opportunistic upgrade to `medium`
 - opportunistic upgrade to `full`
+- high-score entries can receive query-focused `full_body` lifts (body excerpts) when budget allows
 - upgrades only occur when budget permits
 
 Budget diagnostics:

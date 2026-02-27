@@ -188,6 +188,7 @@ export class LiveContextIndex {
     return {
       scope: result.pack.scope,
       worldInfoEntries: result.pack.worldInfoEntries,
+      worldInfoBodyByUid: result.worldInfoBodyByUid,
       ragDocuments: result.pack.ragDocuments,
       ragChunks: result.pack.ragChunks,
       ragChunkEmbeddings: result.pack.ragChunkEmbeddings,

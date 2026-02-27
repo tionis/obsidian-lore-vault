@@ -748,3 +748,35 @@
   border-radius: 8px;
   padding: 10px;
 }
+
+.lorevault-story-delta-change-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lorevault-story-delta-change {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.lorevault-story-delta-change-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.lorevault-story-delta-change pre {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}

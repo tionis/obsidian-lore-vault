@@ -11,13 +11,12 @@ Reference design: `docs/planning.md`.
 - Phase 9 auto-summary workflows are complete.
 - Phase 13 cost tracking is complete (usage hooks + ledger + manager UI + JSON/CSV export + aggregation tests).
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
-- Phase 15 foundation is in progress (story-delta panel + deterministic planning/apply baseline implemented).
-- Current priority is finishing Phase 15 per-change approval UX.
+- Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
+- Current priority is refining structured-merge conflict UX.
 
 ## Active Execution Order
 
-1. Add per-change approval workflow to the Phase 15 story-delta panel.
-2. Refine structured-merge conflict UX.
+1. Refine structured-merge conflict UX.
 
 ## Completed Foundations (Historical)
 
@@ -135,7 +134,7 @@ Reference design: `docs/planning.md`.
   - proposed summary/keyword/content updates
   - rationale/confidence per change
 - [x] Resolve operations against existing wiki pages with deterministic matching and conflict handling.
-- [ ] Add dry-run diff preview and per-change approval before writes.
+- [x] Add dry-run diff preview and per-change approval before writes.
 - [x] Add idempotence checks so rerunning the same story update does not duplicate content.
 - [x] Add fixtures/tests for deterministic merge/update behavior on existing pages.
 

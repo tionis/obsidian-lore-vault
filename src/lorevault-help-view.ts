@@ -160,7 +160,8 @@ export class LorevaultHelpView extends ItemView {
         'Import SillyTavern Lorebook opens a panel with target folder, default tags, and lorebook-name tag mapping.',
         'Paste lorebook JSON, run Preview, then Import to create/update wiki pages deterministically.',
         'Extract Wiki Pages from Story runs deterministic chunked extraction with per-chunk validation and preview/apply workflow.',
-        'Apply Story Delta to Existing Wiki updates notes in a target folder using safe_append or structured_merge policies with low-confidence gating.'
+        'Apply Story Delta to Existing Wiki updates notes in a target folder using safe_append or structured_merge policies with low-confidence gating.',
+        'Story Delta preview now shows dry-run diffs and per-change approval checkboxes before Apply Selected writes.'
       ]
     });
 

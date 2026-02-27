@@ -256,11 +256,12 @@ Current status:
 - deterministic chunked extraction reused from story extraction pipeline
 - deterministic page matching + policy-driven update planning (`safe_append`/`structured_merge`)
 - low-confidence update gating with preview warnings
-- global preview/apply flow is implemented
+- dry-run diff preview per planned change is implemented
+- per-change approval selection + apply-selected workflow is implemented
 
 Next increment:
 
-- per-change approval UI before writes (instead of all-or-nothing apply)
+- structured-merge conflict UX refinement (dedicated conflict review and override controls)
 
 Goal:
 

@@ -323,6 +323,7 @@ Current behavior:
   - selected lorebook scopes
   - `Use Lorebook Context` toggle
   - manual context text
+  - specific note references (`path`, basename, or `[[wikilink]]`)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
 - persists chat transcript and controls in plugin data
 
@@ -330,8 +331,11 @@ Turn context assembly:
 
 - optional lorebook retrieval for selected scopes
 - optional manual context block
+- optional specific-note context blocks resolved from note references
 - recent chat history window
 - deterministic context inspector metadata attached to assistant turns:
   - selected scopes
+  - resolved specific note paths
+  - unresolved note references
   - context token estimate
   - selected `world_info` and `rag` item labels

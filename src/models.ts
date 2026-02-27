@@ -94,7 +94,10 @@ export interface LoreBook {
 export interface StoryChatContextMeta {
   usedLorebookContext: boolean;
   usedManualContext: boolean;
+  usedSpecificNotesContext: boolean;
   scopes: string[];
+  specificNotePaths: string[];
+  unresolvedNoteRefs: string[];
   contextTokens: number;
   worldInfoCount: number;
   ragCount: number;
@@ -179,6 +182,7 @@ export interface ConverterSettings {
     selectedScopes: string[];
     useLorebookContext: boolean;
     manualContext: string;
+    noteContextRefs: string[];
     messages: StoryChatMessage[];
     maxMessages: number;
   };
@@ -253,6 +257,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     selectedScopes: [],
     useLorebookContext: true,
     manualContext: '',
+    noteContextRefs: [],
     messages: [],
     maxMessages: 80
   }

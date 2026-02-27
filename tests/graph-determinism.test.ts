@@ -121,6 +121,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',
+      noteContextRefs: [],
       messages: [],
       maxMessages: 80
     }

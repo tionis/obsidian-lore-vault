@@ -16,11 +16,19 @@ function formatTime(timestamp: number): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function parseNoteContextRefs(value: string): string[] {
+  return value
+    .split(/\r?\n|,/g)
+    .map(item => item.trim())
+    .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+}
+
 export class StoryChatView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedScopes = new Set<string>();
   private useLorebookContext = true;
   private manualContext = '';
+  private noteContextRefs: string[] = [];
   private messages: StoryChatMessage[] = [];
   private isSending = false;
   private stopRequested = false;
@@ -76,6 +84,7 @@ export class StoryChatView extends ItemView {
     this.selectedScopes = new Set(config.selectedScopes);
     this.useLorebookContext = config.useLorebookContext;
     this.manualContext = config.manualContext;
+    this.noteContextRefs = [...config.noteContextRefs];
     this.messages = config.messages;
   }
 
@@ -95,11 +104,13 @@ export class StoryChatView extends ItemView {
       selectedScopes: string[];
       useLorebookContext: boolean;
       manualContext: string;
+      noteContextRefs: string[];
       messages?: StoryChatMessage[];
     } = {
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
       useLorebookContext: this.useLorebookContext,
-      manualContext: this.manualContext
+      manualContext: this.manualContext,
+      noteContextRefs: [...this.noteContextRefs]
     };
 
     if (includeMessages) {
@@ -221,6 +232,43 @@ export class StoryChatView extends ItemView {
       this.manualContext = manualInput.value;
       this.schedulePersist(false);
     });
+
+    const notesSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
+    const notesHeader = notesSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
+    notesHeader.createEl('strong', { text: 'Specific Notes Context' });
+    const notesButtons = notesHeader.createDiv({ cls: 'lorevault-chat-scope-buttons' });
+
+    const addActiveButton = notesButtons.createEl('button', { text: 'Add Active' });
+    addActiveButton.addEventListener('click', () => {
+      const active = this.app.workspace.getActiveFile();
+      if (!active) {
+        new Notice('No active note to add.');
+        return;
+      }
+      if (!this.noteContextRefs.includes(active.path)) {
+        this.noteContextRefs.push(active.path);
+        this.schedulePersist(false);
+        this.render();
+      }
+    });
+
+    const clearNotesButton = notesButtons.createEl('button', { text: 'Clear' });
+    clearNotesButton.disabled = this.noteContextRefs.length === 0;
+    clearNotesButton.addEventListener('click', () => {
+      this.noteContextRefs = [];
+      this.schedulePersist(false);
+      this.render();
+    });
+
+    const notesInput = notesSection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    notesInput.placeholder = 'One note reference per line (path, basename, or [[wikilink]]).';
+    notesInput.value = this.noteContextRefs.join('\n');
+    notesInput.addEventListener('input', () => {
+      this.noteContextRefs = parseNoteContextRefs(notesInput.value);
+      this.schedulePersist(false);
+    });
   }
 
   private renderMessages(container: HTMLElement): void {
@@ -248,11 +296,17 @@ export class StoryChatView extends ItemView {
       if (message.role === 'assistant' && message.contextMeta) {
         const details = row.createEl('details', { cls: 'lorevault-chat-context-meta' });
         details.createEl('summary', {
-          text: `Context: scopes ${message.contextMeta.scopes.join(', ') || '(none)'} | world_info ${message.contextMeta.worldInfoCount} | rag ${message.contextMeta.ragCount}`
+          text: `Context: scopes ${message.contextMeta.scopes.join(', ') || '(none)'} | notes ${message.contextMeta.specificNotePaths.length} | world_info ${message.contextMeta.worldInfoCount} | rag ${message.contextMeta.ragCount}`
         });
         details.createEl('p', {
-          text: `Tokens: ${message.contextMeta.contextTokens} | lorebook: ${message.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${message.contextMeta.usedManualContext ? 'on' : 'off'}`
+          text: `Tokens: ${message.contextMeta.contextTokens} | lorebook: ${message.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${message.contextMeta.usedManualContext ? 'on' : 'off'} | specific-notes: ${message.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
         });
+
+        const specificNotesList = details.createEl('p');
+        specificNotesList.setText(`specific notes: ${message.contextMeta.specificNotePaths.join(', ') || '(none)'}`);
+
+        const unresolved = details.createEl('p');
+        unresolved.setText(`unresolved note refs: ${message.contextMeta.unresolvedNoteRefs.join(', ') || '(none)'}`);
 
         const worldInfoList = details.createEl('p');
         worldInfoList.setText(`world_info: ${message.contextMeta.worldInfoItems.join(', ') || '(none)'}`);
@@ -391,6 +445,7 @@ export class StoryChatView extends ItemView {
         selectedScopes: [...this.selectedScopes],
         useLorebookContext: this.useLorebookContext,
         manualContext: this.manualContext,
+        noteContextRefs: this.noteContextRefs,
         history,
         onDelta: delta => {
           assistantMessage.content += delta;

@@ -9,6 +9,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Canonical SQLite pack export per scope (`.db`)
 - Dual exports per scope: `world_info` JSON and `rag` markdown
 - Optional embedding-based semantic RAG with hash-cache
+- Optional LLM completion generation for story continuation
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
@@ -182,7 +183,10 @@ Behavior:
   - `world_info` by keyword/trigger relevance
   - `rag` by term-overlap relevance
 - applies token-budgeted context assembly
-- inserts a deterministic context block plus a continuation draft heading at cursor
+- sends context + story window to configured completion provider
+- inserts generated continuation text at cursor (no raw context dump)
+
+Configure generation under Settings -> LoreVault -> Writing Completion.
 
 ## Development
 

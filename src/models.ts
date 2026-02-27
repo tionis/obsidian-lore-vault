@@ -143,6 +143,17 @@ export interface ConverterSettings {
     maxChunkChars: number;
     overlapChars: number;
   };
+  completion: {
+    enabled: boolean;
+    provider: 'openrouter' | 'ollama' | 'openai_compatible';
+    endpoint: string;
+    apiKey: string;
+    model: string;
+    systemPrompt: string;
+    temperature: number;
+    maxOutputTokens: number;
+    timeoutMs: number;
+  };
 }
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
@@ -196,5 +207,16 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     minChunkChars: 300,
     maxChunkChars: 1800,
     overlapChars: 200
+  },
+  completion: {
+    enabled: false,
+    provider: 'openrouter',
+    endpoint: 'https://openrouter.ai/api/v1',
+    apiKey: '',
+    model: 'openai/gpt-4o-mini',
+    systemPrompt: 'You are a story-writing assistant. Continue the story in the same tone, perspective, and tense. Use provided lore context as constraints. Output only the continuation text with no explanations or headings.',
+    temperature: 0.7,
+    maxOutputTokens: 700,
+    timeoutMs: 60000
   }
 };

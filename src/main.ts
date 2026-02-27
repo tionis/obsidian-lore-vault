@@ -9,6 +9,7 @@ import { RagExporter } from './rag-exporter';
 import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
 import { LiveContextIndex } from './live-context-index';
 import { EmbeddingService } from './embedding-service';
+import { requestStoryContinuation } from './completion-provider';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
@@ -122,6 +123,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       embeddings: {
         ...DEFAULT_SETTINGS.embeddings,
         ...(data?.embeddings ?? {})
+      },
+      completion: {
+        ...DEFAULT_SETTINGS.completion,
+        ...(data?.completion ?? {})
       }
     };
 
@@ -181,6 +186,19 @@ export default class LoreBookConverterPlugin extends Plugin {
       Math.floor(merged.embeddings.maxChunkChars)
     );
     merged.embeddings.overlapChars = Math.max(0, Math.floor(merged.embeddings.overlapChars));
+
+    merged.completion.enabled = Boolean(merged.completion.enabled);
+    merged.completion.provider = (
+      merged.completion.provider === 'ollama' ||
+      merged.completion.provider === 'openai_compatible'
+    ) ? merged.completion.provider : 'openrouter';
+    merged.completion.endpoint = merged.completion.endpoint.trim() || DEFAULT_SETTINGS.completion.endpoint;
+    merged.completion.apiKey = merged.completion.apiKey.trim();
+    merged.completion.model = merged.completion.model.trim() || DEFAULT_SETTINGS.completion.model;
+    merged.completion.systemPrompt = merged.completion.systemPrompt.trim() || DEFAULT_SETTINGS.completion.systemPrompt;
+    merged.completion.temperature = Math.max(0, Math.min(2, Number(merged.completion.temperature)));
+    merged.completion.maxOutputTokens = Math.max(64, Math.floor(merged.completion.maxOutputTokens));
+    merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
 
     return merged;
   }
@@ -356,6 +374,31 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized.slice(normalized.length - maxChars);
   }
 
+  private extractStoryWindow(text: string): string {
+    const normalized = text.trim();
+    if (!normalized) {
+      return '';
+    }
+
+    const maxChars = 12000;
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return normalized.slice(normalized.length - maxChars);
+  }
+
+  private prepareInsertText(cursorCh: number, continuation: string): string {
+    const body = continuation.trim();
+    if (!body) {
+      return '';
+    }
+
+    if (cursorCh === 0) {
+      return `${body}\n`;
+    }
+    return `\n${body}\n`;
+  }
+
   async continueStoryWithContext(): Promise<void> {
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!markdownView) {
@@ -368,31 +411,55 @@ export default class LoreBookConverterPlugin extends Plugin {
     const cursor = editor.getCursor();
     const textBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
     const queryText = this.extractQueryWindow(textBeforeCursor);
+    const storyWindow = this.extractStoryWindow(textBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
     const scopedQuery = queryText || fallbackQuery;
     const scope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
 
     try {
+      if (!this.settings.completion.enabled) {
+        new Notice('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
+        return;
+      }
+      if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+        new Notice('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
+        return;
+      }
+
       const context = await this.liveContextIndex.query({
         queryText: scopedQuery,
         tokenBudget: this.settings.defaultLoreBook.tokenBudget
       }, scope);
 
-      const insertBlock = [
+      new Notice(`Generating continuation for scope ${context.scope || '(all)'}...`);
+      const userPrompt = [
+        'Continue the story from where it currently ends.',
+        'Respect the lore context as canon constraints.',
+        'Output only the continuation text.',
         '',
+        `<lorevault_scope>${context.scope || '(all)'}</lorevault_scope>`,
         '',
-        '<!-- LoreVault Context Start -->',
+        '<lorevault_context>',
         context.markdown,
-        '<!-- LoreVault Context End -->',
+        '</lorevault_context>',
         '',
-        '### Continue Story Draft',
-        '[Write continuation here based on the context above.]',
-        ''
+        '<story_so_far>',
+        storyWindow || '[No story text yet. Start the scene naturally.]',
+        '</story_so_far>'
       ].join('\n');
 
-      editor.replaceRange(insertBlock, cursor);
+      const completion = await requestStoryContinuation(this.settings.completion, {
+        systemPrompt: this.settings.completion.systemPrompt,
+        userPrompt
+      });
+      const insertText = this.prepareInsertText(cursor.ch, completion);
+      if (!insertText.trim()) {
+        throw new Error('Completion provider returned empty output.');
+      }
+
+      editor.replaceRange(insertText, cursor);
       new Notice(
-        `Inserted context for scope ${context.scope || '(all)'} (${context.worldInfo.length} world_info, ${context.rag.length} rag).`
+        `Inserted continuation for scope ${context.scope || '(all)'} (${context.worldInfo.length} world_info, ${context.rag.length} rag).`
       );
     } catch (error) {
       console.error('Continue Story with Context failed:', error);

@@ -103,6 +103,17 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       minChunkChars: 300,
       maxChunkChars: 1800,
       overlapChars: 200
+    },
+    completion: {
+      enabled: false,
+      provider: 'openrouter',
+      endpoint: 'https://openrouter.ai/api/v1',
+      apiKey: '',
+      model: 'openai/gpt-4o-mini',
+      systemPrompt: 'Continue the story.',
+      temperature: 0.7,
+      maxOutputTokens: 700,
+      timeoutMs: 60000
     }
   };
 }

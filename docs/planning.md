@@ -32,6 +32,7 @@ Current execution sequence:
 6. implement optional world_info auto-summary workflow
 7. add cost estimation/tracking workflow (far-future; provider integration dependent)
 8. add inbound import/extraction workflow for ST lorebooks and stories (far-future)
+9. add story-driven wiki update workflow for maintaining existing pages after writing (far-future)
 
 Priority note:
 
@@ -170,15 +171,25 @@ Chunking:
   - `note`
   - `section`
 
-## Future: World Info Auto-Summary
+## Future: Auto-Summary Workflows (`world_info` + chapter memory)
 
-Add automatic summary generation for `world_info` entries as a future phase.
+Add automatic summary generation as a future phase for both:
+
+- `world_info` entries (compact trigger content)
+- chapter notes used by long-form chapter-memory injection
 
 Constraints:
 
 - opt-in and review-first
 - deterministic output once accepted
 - preserve manual `summary` override precedence
+- explicit traceability for generated-vs-manual summary source
+
+Chapter-memory specific constraints:
+
+- generation should be hash-aware and re-run only when chapter content materially changes
+- summary writes should target frontmatter `summary` (or parallel generated-summary cache) with explicit user approval
+- chapter-memory layer must keep deterministic fallback (`frontmatter summary` -> generated summary -> excerpt)
 
 ## Future: Cost Management and Usage Tracking
 
@@ -231,6 +242,33 @@ Constraints:
 - deterministic output ordering and merge behavior
 - explicit conflict strategy (append/merge/overwrite policy)
 - strict schema validation with recoverable error handling per chunk
+
+## Future: Story-Driven Wiki Update Workflow
+
+Add a separate workflow to update existing wiki pages from story evolution.
+
+Goal:
+
+- keep lore/wiki pages synchronized with story changes after drafting
+- avoid full re-import when only incremental updates are needed
+
+This is distinct from story -> wiki extraction:
+
+- extraction creates/bootstraps pages from raw story text
+- story-driven update targets existing pages and proposes deltas/edits
+
+Shared internals:
+
+- deterministic chunking
+- schema-constrained LLM extraction
+- merge/conflict handling primitives
+
+Distinct requirements:
+
+- deterministic page matching against existing notes
+- per-change confidence/rationale output
+- dry-run diff preview and approval before writes
+- idempotent update application (reruns should not duplicate changes)
 
 ## Obsidian UX Direction
 

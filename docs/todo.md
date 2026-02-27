@@ -8,14 +8,15 @@ Reference design: `docs/planning.md`.
 - Story Chat foundation is implemented (Phase 10 core UX done).
 - Optional retrieval extensions (Phase 12) are complete.
 - Phase 8 hardening is complete.
-- Current priority is implementing optional world_info auto-summary workflow (Phase 9).
+- Current priority is implementing optional auto-summary workflows (Phase 9) for `world_info` and chapter memory.
 - Hardening/perf pass (Phase 8), auto-summary work (Phase 9), cost tracking work (Phase 13), and import/extraction work (Phase 14) are deferred until the graph-first core is stable.
 
 ## Active Execution Order
 
-1. Implement optional world_info auto-summary workflow (Phase 9).
+1. Implement optional auto-summary workflows (Phase 9) for `world_info` and chapter memory.
 2. Implement cost estimation/tracking workflow (Phase 13, far future).
 3. Implement inbound wiki import/extraction workflow (Phase 14, far future).
+4. Implement story-driven wiki update workflow (Phase 15, far future).
 
 ## Completed Foundations (Historical)
 
@@ -77,12 +78,17 @@ Reference design: `docs/planning.md`.
 - [x] Add compatibility tests for non-English and edge-case metadata.
 - [x] Tune default ranking weights using representative fixtures.
 
-## Phase 9: World Info Auto-Summary (Deferred Future Work)
+## Phase 9: Auto-Summary Workflows (Deferred Future Work)
 
 - [ ] Add optional automatic summary generation for `world_info` entries.
 - [ ] Add review/approval workflow before summary replacement.
 - [ ] Preserve deterministic export after summary acceptance.
 - [ ] Add tests for manual `summary` precedence over generated summaries.
+- [ ] Add optional automatic chapter summary generation for long-form story notes.
+- [ ] Integrate generated chapter summaries into chapter-memory store (same acceptance/traceability model as world_info summaries).
+- [ ] Add review/approval workflow before writing chapter frontmatter `summary` updates.
+- [ ] Add deterministic cache invalidation by chapter content hash/model signature.
+- [ ] Add tests for chapter summary precedence (`frontmatter summary` > generated summary > deterministic excerpt fallback).
 
 ## Phase 13: Cost Estimation and Tracking (Deferred Far Future Work)
 
@@ -114,6 +120,24 @@ Reference design: `docs/planning.md`.
 - [ ] Add import/extraction dry-run preview and error reporting before writes.
 - [ ] Add fixtures/tests for deterministic import output and multi-chunk merge behavior.
 
+## Phase 15: Story-Driven Wiki Updates (Deferred Far Future Work)
+
+- [ ] Add command + panel: `Apply Story Delta to Existing Wiki`.
+- [ ] Add panel inputs:
+  - source story markdown/story note selection
+  - target wiki folder/tag scope
+  - update policy (safe append vs structured merge)
+  - default tags/lorebook tag mapping for newly created pages
+- [ ] Reuse deterministic chunking + schema-constrained extraction pipeline from story extraction work.
+- [ ] Add LLM output schema for update operations:
+  - target page key/path
+  - proposed summary/keyword/content updates
+  - rationale/confidence per change
+- [ ] Resolve operations against existing wiki pages with deterministic matching and conflict handling.
+- [ ] Add dry-run diff preview and per-change approval before writes.
+- [ ] Add idempotence checks so rerunning the same story update does not duplicate content.
+- [ ] Add fixtures/tests for deterministic merge/update behavior on existing pages.
+
 ## Open Questions
 
 - [ ] Should embedding fallback be global or per-lorebook configurable?
@@ -128,3 +152,4 @@ Reference design: `docs/planning.md`.
 - [ ] For story extraction, should we prefer context injection of generated pages, tool-calls, or hybrid?
 - [ ] How should conflicting updates to the same extracted wiki page be resolved by default?
 - [ ] Should imported lorebook entries always create one-note-per-entry, or support grouped page layouts?
+- [ ] For story-driven wiki updates, should low-confidence updates be dropped by default or queued for manual review?

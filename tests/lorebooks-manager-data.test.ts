@@ -92,6 +92,13 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       },
       ...(overrides.summaries ?? {})
     },
+    costTracking: {
+      enabled: false,
+      ledgerPath: '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
+      defaultInputCostPerMillionUsd: 0,
+      defaultOutputCostPerMillionUsd: 0,
+      ...(overrides.costTracking ?? {})
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',

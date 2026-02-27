@@ -366,6 +366,37 @@ Settings (LoreVault -> Auto Summaries):
 - `Summary Max Input Chars`
 - `Summary Max Output Chars`
 
+## Cost Tracking (Experimental, Phase 13 groundwork)
+
+Current implemented scope:
+
+- completion and summary requests capture usage when provider payload includes token usage
+- records are written to a local usage ledger JSON file
+- cost calculation uses:
+  - provider-reported cost when available
+  - fallback estimate from configured input/output USD-per-1M rates
+  - `unknown` when neither is available
+
+Settings:
+
+- `Enable Cost Tracking`
+- `Usage Ledger Path`
+- `Default Input Cost / 1M Tokens (USD)`
+- `Default Output Cost / 1M Tokens (USD)`
+
+Ledger default path:
+
+- `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+
+Each record contains deterministic fields:
+
+- timestamp
+- operation (`summary_world_info`, `summary_chapter`, `story_chat_turn`, `editor_continuation`)
+- provider/model
+- prompt/completion/total tokens
+- reported/estimated cost and cost source
+- operation metadata
+
 ## LoreVault Manager UI
 
 Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel)

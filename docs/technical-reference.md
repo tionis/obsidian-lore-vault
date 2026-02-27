@@ -50,6 +50,10 @@ This document is the implementation-level reference for core architecture and ru
   - summary normalization and deterministic signature builder
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
+- `src/cost-utils.ts`
+  - usage-cost estimation helpers (`provider_reported` vs `estimated` vs `unknown`)
+- `src/usage-ledger-store.ts`
+  - persistent usage ledger storage with deterministic entry shape/order
 
 ## Export Pipeline Contract
 
@@ -273,6 +277,33 @@ Embedded docs view:
 - settings shortcut button: `Open LoreVault Help`
 
 This is the primary user-facing in-plugin guide for command flow and feature behavior.
+
+## Cost Tracking Groundwork (Phase 13)
+
+Implemented scope:
+
+- completion provider usage capture hooks for:
+  - active-note continuation stream
+  - story chat stream
+  - summary generation requests
+- usage metadata recorded when provider response includes token usage fields
+- optional ledger persistence (`settings.costTracking.enabled`)
+- fallback USD estimation via configured per-million token rates
+
+Core contracts:
+
+- ledger path defaults to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+- record fields are normalized and sorted deterministically on persist
+- cost source is explicit per record:
+  - `provider_reported`
+  - `estimated`
+  - `unknown`
+
+Current non-goals in this phase:
+
+- provider pricing auto-sync
+- aggregated dashboard/budget warnings
+- CSV/JSON export reports beyond the canonical ledger file
 
 ## Determinism Requirements (Implementation)
 

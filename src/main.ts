@@ -30,6 +30,7 @@ import { ChapterSummaryStore } from './chapter-summary-store';
 import { GeneratedSummaryStore } from './generated-summary-store';
 import { EmbeddingService } from './embedding-service';
 import {
+  CompletionUsageReport,
   createCompletionRetrievalToolPlanner,
   requestStoryContinuation,
   requestStoryContinuationStream
@@ -67,6 +68,8 @@ import {
 import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries } from './lorebooks-manager-data';
+import { UsageLedgerStore } from './usage-ledger-store';
+import { estimateUsageCostUsd } from './cost-utils';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -112,6 +115,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
   private generatedSummaryStore!: GeneratedSummaryStore;
+  private usageLedgerStore!: UsageLedgerStore;
   private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
   private generationInFlight = false;
@@ -188,6 +192,57 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextLayerTrace: [],
       lastError: ''
     };
+  }
+
+  private resolveUsageLedgerPath(): string {
+    const configured = this.settings.costTracking.ledgerPath.trim();
+    if (!configured) {
+      return DEFAULT_SETTINGS.costTracking.ledgerPath;
+    }
+    return configured;
+  }
+
+  private syncUsageLedgerStorePath(): void {
+    if (!this.usageLedgerStore) {
+      return;
+    }
+    this.usageLedgerStore.setFilePath(this.resolveUsageLedgerPath());
+  }
+
+  private async recordCompletionUsage(
+    operation: string,
+    usage: CompletionUsageReport,
+    metadata: {[key: string]: unknown} = {}
+  ): Promise<void> {
+    if (!this.settings.costTracking.enabled) {
+      return;
+    }
+
+    const cost = estimateUsageCostUsd(
+      usage.promptTokens,
+      usage.completionTokens,
+      this.settings.costTracking.defaultInputCostPerMillionUsd,
+      this.settings.costTracking.defaultOutputCostPerMillionUsd,
+      usage.reportedCostUsd
+    );
+
+    try {
+      await this.usageLedgerStore.append({
+        timestamp: Date.now(),
+        operation,
+        provider: usage.provider,
+        model: usage.model,
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+        reportedCostUsd: cost.reportedCostUsd,
+        estimatedCostUsd: cost.estimatedCostUsd,
+        costSource: cost.source,
+        metadata
+      });
+    } catch (error) {
+      console.error('Failed to record usage entry:', error);
+    }
   }
 
   getGenerationTelemetry(): GenerationTelemetry {
@@ -848,10 +903,23 @@ export default class LoreBookConverterPlugin extends Plugin {
     ).trim();
 
     const prompt = this.buildSummaryPrompt(mode, file.basename, bodyText);
+    let usageReport: CompletionUsageReport | null = null;
     const rawSummary = await requestStoryContinuation(this.settings.completion, {
       systemPrompt: prompt.systemPrompt,
-      userPrompt: prompt.userPrompt
+      userPrompt: prompt.userPrompt,
+      onUsage: usage => {
+        usageReport = usage;
+      }
     });
+    if (usageReport) {
+      await this.recordCompletionUsage(
+        mode === 'chapter' ? 'summary_chapter' : 'summary_world_info',
+        usageReport,
+        {
+          notePath: file.path
+        }
+      );
+    }
 
     const normalizedSummary = normalizeGeneratedSummaryText(
       rawSummary,
@@ -1323,6 +1391,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     let assistantText = '';
     let streamFailure: Error | null = null;
+    let completionUsage: CompletionUsageReport | null = null;
     try {
       await requestStoryContinuationStream(completion, {
         systemPrompt: completion.systemPrompt,
@@ -1338,6 +1407,9 @@ export default class LoreBookConverterPlugin extends Plugin {
             statusText: 'chat generating'
           });
         },
+        onUsage: usage => {
+          completionUsage = usage;
+        },
         abortSignal: this.generationAbortController.signal
       });
     } catch (error) {
@@ -1348,6 +1420,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.generationInFlight = false;
       this.generationAbortController = null;
       this.setGenerationStatus('idle', 'idle');
+    }
+
+    if (completionUsage) {
+      await this.recordCompletionUsage('story_chat_turn', completionUsage, {
+        scopeCount: selectedScopes.length,
+        usedLorebookContext: useLorebookContext,
+        usedManualContext: manualContext.length > 0,
+        usedSpecificNotesContext: specificNotePaths.length > 0,
+        usedChapterMemoryContext: chapterMemoryItems.length > 0
+      });
     }
 
     if (streamFailure) {
@@ -1436,6 +1518,10 @@ export default class LoreBookConverterPlugin extends Plugin {
           ...DEFAULT_SETTINGS.summaries.chapter,
           ...(data?.summaries?.chapter ?? {})
         }
+      },
+      costTracking: {
+        ...DEFAULT_SETTINGS.costTracking,
+        ...(data?.costTracking ?? {})
       },
       completion: {
         ...DEFAULT_SETTINGS.completion,
@@ -1541,6 +1627,23 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     merged.summaries.worldInfo.useGeneratedSummary = Boolean(merged.summaries.worldInfo.useGeneratedSummary);
     merged.summaries.chapter.useGeneratedSummary = Boolean(merged.summaries.chapter.useGeneratedSummary);
+
+    merged.costTracking.enabled = Boolean(merged.costTracking.enabled);
+    merged.costTracking.ledgerPath = (merged.costTracking.ledgerPath ?? '')
+      .toString()
+      .trim()
+      .replace(/\\/g, '/');
+    if (!merged.costTracking.ledgerPath) {
+      merged.costTracking.ledgerPath = DEFAULT_SETTINGS.costTracking.ledgerPath;
+    }
+    const inputRate = Number(merged.costTracking.defaultInputCostPerMillionUsd);
+    const outputRate = Number(merged.costTracking.defaultOutputCostPerMillionUsd);
+    merged.costTracking.defaultInputCostPerMillionUsd = Number.isFinite(inputRate) && inputRate >= 0
+      ? inputRate
+      : DEFAULT_SETTINGS.costTracking.defaultInputCostPerMillionUsd;
+    merged.costTracking.defaultOutputCostPerMillionUsd = Number.isFinite(outputRate) && outputRate >= 0
+      ? outputRate
+      : DEFAULT_SETTINGS.costTracking.defaultOutputCostPerMillionUsd;
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (
@@ -1745,6 +1848,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
     this.generatedSummaryStore = new GeneratedSummaryStore(this.app);
+    this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
     this.liveContextIndex = new LiveContextIndex(
       this.app,
       () => this.settings,
@@ -1979,6 +2083,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       console.error('Failed to initialize generated summary store:', error);
     });
 
+    void this.usageLedgerStore.initialize().catch(error => {
+      console.error('Failed to initialize usage ledger store:', error);
+    });
+
     void this.liveContextIndex.initialize().catch(error => {
       console.error('Failed to initialize live context index:', error);
     });
@@ -2000,6 +2108,10 @@ export default class LoreBookConverterPlugin extends Plugin {
   async saveData(settings: any) {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
     await super.saveData(this.settings);
+    this.syncUsageLedgerStorePath();
+    void this.usageLedgerStore.initialize().catch(error => {
+      console.error('Failed to initialize usage ledger store:', error);
+    });
     this.liveContextIndex?.requestFullRefresh();
     this.syncIdleGenerationTelemetryToSettings();
     this.refreshManagerViews();
@@ -2433,6 +2545,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       let generatedText = '';
       let lastStatusUpdate = 0;
+      let completionUsage: CompletionUsageReport | null = null;
 
       await requestStoryContinuationStream(completion, {
         systemPrompt: completion.systemPrompt,
@@ -2461,8 +2574,20 @@ export default class LoreBookConverterPlugin extends Plugin {
             );
           }
         },
+        onUsage: usage => {
+          completionUsage = usage;
+        },
         abortSignal: this.generationAbortController.signal
       });
+
+      if (completionUsage) {
+        await this.recordCompletionUsage('editor_continuation', completionUsage, {
+          scopeCount: selectedScopeLabels.length,
+          worldInfoCount: totalWorldInfo,
+          ragCount: totalRag,
+          usedChapterMemoryContext: chapterMemoryItems.length > 0
+        });
+      }
 
       if (!generatedText.trim()) {
         throw new Error('Completion provider returned empty output.');

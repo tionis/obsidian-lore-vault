@@ -217,6 +217,12 @@ export interface ConverterSettings {
       useGeneratedSummary: boolean;
     };
   };
+  costTracking: {
+    enabled: boolean;
+    ledgerPath: string;
+    defaultInputCostPerMillionUsd: number;
+    defaultOutputCostPerMillionUsd: number;
+  };
   completion: {
     enabled: boolean;
     provider: 'openrouter' | 'ollama' | 'openai_compatible';
@@ -319,6 +325,12 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     chapter: {
       useGeneratedSummary: true
     }
+  },
+  costTracking: {
+    enabled: false,
+    ledgerPath: '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
+    defaultInputCostPerMillionUsd: 0,
+    defaultOutputCostPerMillionUsd: 0
   },
   completion: {
     enabled: false,

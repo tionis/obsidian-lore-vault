@@ -9,11 +9,12 @@ Reference design: `docs/planning.md`.
 - Optional retrieval extensions (Phase 12) are complete.
 - Phase 8 hardening is complete.
 - Phase 9 auto-summary workflows are complete.
-- Current priority shifts to deferred future phases: cost tracking (13), import/extraction (14), and story-delta updates (15).
+- Phase 13 groundwork is in progress (usage hooks + ledger + fallback estimation implemented).
+- Current priority is finishing remaining Phase 13 UX/reporting pieces, then import/extraction (14), then story-delta updates (15).
 
 ## Active Execution Order
 
-1. Implement cost estimation/tracking workflow (Phase 13, far future).
+1. Finish remaining Phase 13 cost-tracking UI/reporting tasks.
 2. Implement inbound wiki import/extraction workflow (Phase 14, far future).
 3. Implement story-driven wiki update workflow (Phase 15, far future).
 
@@ -91,9 +92,9 @@ Reference design: `docs/planning.md`.
 
 ## Phase 13: Cost Estimation and Tracking (Deferred Far Future Work)
 
-- [ ] Add OpenRouter usage capture hooks (input/output tokens and provider response metadata).
-- [ ] Add cost estimation model that maps usage to estimated USD cost per request/turn/export.
-- [ ] Add persistent usage ledger with deterministic records (timestamp, model, scope/chat operation, usage, cost estimate).
+- [x] Add OpenRouter usage capture hooks (input/output tokens and provider response metadata).
+- [x] Add cost estimation model that maps usage to estimated USD cost per request/turn/export.
+- [x] Add persistent usage ledger with deterministic records (timestamp, model, scope/chat operation, usage, cost estimate).
 - [ ] Add optional UI surface for session/day/project cost totals and budget warnings.
 - [ ] Add export/report format for external analysis (CSV/JSON).
 - [ ] Add tests for deterministic aggregation and fallback behavior when pricing metadata is missing.

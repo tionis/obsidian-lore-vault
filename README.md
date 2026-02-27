@@ -13,6 +13,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
 - Optional LLM summary workflows (world_info + chapter) with review/approval and generated-summary cache
+- Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
 - Dedicated routing debug panel for inclusion/routing diagnostics
@@ -231,6 +232,7 @@ Behavior:
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
+Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`.
 
 ## Auto Summary Commands (Phase 9)
 

@@ -11,6 +11,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Optional embedding-based semantic RAG with hash-cache
 - Optional LLM completion generation for story continuation
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
+- Dedicated routing debug panel for inclusion/routing diagnostics
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
@@ -169,9 +170,21 @@ Manager features:
 - per-scope counts (included notes, `world_info`, `rag`)
 - scope warnings when sections are empty
 - generation monitor (running state, active scopes, token budget, selected context items, output progress)
-- `Build/Export Scope` action
+- `Build/Export` action per scope
+- `Inspect Routing` action per scope
 - `Open Output Folder` action (opens SQLite output root)
-- debug drill-down table showing why each note is included/excluded and how it is routed
+
+## Routing Debug
+
+Use command `Open LoreVault Routing Debug` to open a dedicated diagnostics view.
+
+Routing debug features:
+
+- scope selector
+- note-level inclusion/exclusion reasons
+- retrieval mode and keyword presence
+- resolved route (`world_info`, `rag`, both, or none)
+- detected scope tags per note
 
 ## Writing Assistant Commands (MVP)
 
@@ -213,16 +226,18 @@ Command: `Open Story Chat`
 Current capabilities:
 
 - persistent right-sidebar chat panel
+- in-chat generation monitor (state, scopes, context/output token usage)
 - streaming assistant responses
 - per-chat lorebook scope selection (including none)
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
 - specific notes context references (one note per line, path/basename/`[[wikilink]]`)
 - live resolved/unresolved preview for specific note references
-- send/stop/regenerate controls
+- message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
+- fork snapshot management (load/delete)
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 
-Chat state (messages + context controls) is persisted in plugin data.
+Chat state (messages + context controls + fork snapshots) is persisted in plugin data.
 
 ## Development
 

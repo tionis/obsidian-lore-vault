@@ -45,6 +45,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - The command palette (Ctrl+P or Cmd+P) should include:
      - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
+     - "Open LoreVault Routing Debug" (opens dedicated routing diagnostics panel)
      - "Open Story Chat" (opens right sidebar panel)
      - "Continue Story with Context"
      - "Create LoreVault Entry Template"
@@ -99,6 +100,7 @@ If you prefer to build the plugin from source:
    - Use frontmatter `retrieval: auto|world_info|rag|both|none` to override per note
    - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
    - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
+   - Use "Open LoreVault Routing Debug" for full note-level inclusion/routing diagnostics
    - Monitor the progress bar as your vault is converted
 
 4. **Use writing-assistant context insertion**
@@ -107,7 +109,7 @@ If you prefer to build the plugin from source:
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
    - LoreVault queries token-budgeted context (`world_info` + `rag`) and streams generated continuation text
-   - Open "Open LoreVault Manager" to watch generation state, active scopes, token usage, and selected context items live
+   - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
 5. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
@@ -115,7 +117,8 @@ If you prefer to build the plugin from source:
    - Optional: add manual context text in the panel
    - Optional: add specific note references (one per line, path/basename/`[[wikilink]]`) for precise context injection
    - Send prompts and watch streamed responses
-   - Use Stop/Regenerate as needed
+   - Use message actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
+   - Load/delete conversation fork snapshots from the context panel
    - Expand per-turn context inspector blocks to see selected scopes, resolved notes, and pulled items
 
 ## Troubleshooting

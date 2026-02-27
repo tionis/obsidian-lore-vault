@@ -85,6 +85,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       manualContext: '',
       noteContextRefs: [],
       messages: [],
+      forkSnapshots: [],
       maxMessages: 80,
       ...(overrides.storyChat ?? {})
     },

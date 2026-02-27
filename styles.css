@@ -126,6 +126,9 @@
   height: 100%;
   overflow-y: auto;
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .lorevault-manager-title-row {
@@ -143,42 +146,73 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 16px;
+}
+
+.lorevault-manager-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorevault-manager-section h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lorevault-manager-scope-grid {
+  display: grid;
+  gap: 10px;
 }
 
 .lorevault-manager-card {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   padding: 12px;
-  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lorevault-manager-card-kicker {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .lorevault-manager-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 .lorevault-manager-card-header h3 {
   margin: 0;
+  font-size: 15px;
 }
 
 .lorevault-manager-stats {
-  margin: 10px 0;
+  margin: 0;
+  font-size: 12px;
 }
 
 .lorevault-manager-warnings {
-  margin: 8px 0 10px;
+  margin: 0;
   padding-left: 20px;
+  font-size: 12px;
 }
 
 .lorevault-manager-warning-item {
   color: var(--text-warning);
 }
 
-.lorevault-manager-debug {
-  margin-top: 8px;
+.lorevault-manager-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .lorevault-manager-table-wrap {
@@ -205,7 +239,7 @@
 }
 
 .lorevault-manager-generation-stats {
-  margin: 8px 0;
+  margin: 0;
   font-size: 12px;
 }
 
@@ -235,6 +269,44 @@
 .lorevault-manager-subheading {
   margin: 8px 0 4px;
   font-size: 12px;
+}
+
+/* Routing Debug View */
+.lorevault-routing-view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lorevault-routing-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lorevault-routing-icon {
+  display: inline-flex;
+}
+
+.lorevault-routing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lorevault-routing-summary {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.lorevault-routing-summary p {
+  margin: 4px 0;
 }
 
 /* Story Chat View */
@@ -267,6 +339,24 @@
 .lorevault-chat-actions {
   display: flex;
   gap: 8px;
+}
+
+.lorevault-chat-generation-monitor {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lorevault-chat-generation-monitor h3 {
+  margin: 0 0 2px;
+}
+
+.lorevault-chat-generation-monitor p {
+  margin: 0;
+  font-size: 12px;
 }
 
 .lorevault-chat-controls {
@@ -350,6 +440,36 @@
   padding-left: 18px;
 }
 
+.lorevault-chat-forks {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-chat-forks p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.lorevault-chat-fork-row {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.lorevault-chat-fork-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .lorevault-chat-messages {
   display: flex;
   flex-direction: column;
@@ -381,6 +501,24 @@
 }
 
 .lorevault-chat-context-meta {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.lorevault-chat-context-meta p {
+  margin: 4px 0;
+}
+
+.lorevault-chat-message-editor {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.lorevault-chat-message-edit-actions,
+.lorevault-chat-message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 8px;
 }
 

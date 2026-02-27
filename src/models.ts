@@ -113,6 +113,17 @@ export interface StoryChatMessage {
   contextMeta?: StoryChatContextMeta;
 }
 
+export interface StoryChatForkSnapshot {
+  id: string;
+  title: string;
+  createdAt: number;
+  messages: StoryChatMessage[];
+  selectedScopes: string[];
+  useLorebookContext: boolean;
+  manualContext: string;
+  noteContextRefs: string[];
+}
+
 export interface ConverterSettings {
   tagScoping: {
     tagPrefix: string;
@@ -184,6 +195,7 @@ export interface ConverterSettings {
     manualContext: string;
     noteContextRefs: string[];
     messages: StoryChatMessage[];
+    forkSnapshots: StoryChatForkSnapshot[];
     maxMessages: number;
   };
 }
@@ -259,6 +271,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     manualContext: '',
     noteContextRefs: [],
     messages: [],
+    forkSnapshots: [],
     maxMessages: 80
   }
 };

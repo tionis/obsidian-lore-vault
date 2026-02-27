@@ -123,6 +123,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       manualContext: '',
       noteContextRefs: [],
       messages: [],
+      forkSnapshots: [],
       maxMessages: 80
     }
   };

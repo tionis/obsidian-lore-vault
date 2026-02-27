@@ -249,8 +249,8 @@ Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel
 
 Capabilities:
 
-- lists discovered scopes with deterministic ordering
-- includes a persistent generation monitor card
+- lists discovered scopes with deterministic ordering in compact cards
+- separates generation monitor from scope actions for clearer layout
 - shows counts:
   - included notes
   - `world_info` entries
@@ -263,9 +263,20 @@ Capabilities:
   - selected `world_info` and `rag` items used for the active/last run
 - warns when scopes have no included notes or no entries in one section
 - actions:
-  - `Build/Export Scope`
+  - `Build/Export` per scope
+  - `Inspect Routing` per scope
+  - `Open Routing Debug` (toolbar)
   - `Open Output Folder` (opens SQLite output root)
-- debug drill-down per scope:
+
+## Routing Debug UI
+
+Command: `Open LoreVault Routing Debug`
+
+Capabilities:
+
+- opens a dedicated workspace view with more horizontal space for routing diagnostics
+- scope selector for switching debug target
+- full inclusion/routing table for selected scope:
   - note path
   - inclusion/exclusion reason
   - retrieval mode and keyword presence
@@ -318,7 +329,8 @@ Command: `Open Story Chat`
 Current behavior:
 
 - opens a persistent workspace view (non-modal)
-- supports streaming send/stop/regenerate turn controls
+- includes an in-chat generation monitor (state, scopes, token usage, output progress)
+- supports streaming send/stop controls
 - stores per-chat context controls:
   - selected lorebook scopes
   - `Use Lorebook Context` toggle
@@ -326,7 +338,12 @@ Current behavior:
   - specific note references (`path`, basename, or `[[wikilink]]`)
 - shows live resolved/unresolved preview for specific note references
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
-- persists chat transcript and controls in plugin data
+- supports per-message actions:
+  - `Edit` past user/assistant messages
+  - `Fork Here` to save branch snapshots at any turn
+  - `Regenerate` on latest assistant turn
+- provides fork snapshot controls to load/delete alternate conversation branches
+- persists chat transcript, controls, and fork snapshots in plugin data
 
 Turn context assembly:
 

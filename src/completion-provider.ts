@@ -166,11 +166,69 @@ function summarizeCompletionPayloadShape(payload: any): string {
   }
 }
 
+function summarizeCompletionFailure(payload: any): string {
+  const choice = payload?.choices?.[0] ?? {};
+  const finishReason = String(choice?.finish_reason ?? '').trim();
+  const nativeFinishReason = String(choice?.native_finish_reason ?? '').trim();
+  const provider = String(payload?.provider ?? '').trim();
+  const model = String(payload?.model ?? '').trim();
+  const refusal = normalizeContentValue(choice?.message?.refusal);
+  const reasoning = normalizeContentValue(choice?.message?.reasoning);
+  const parts = [
+    finishReason ? `finish_reason=${finishReason}` : '',
+    nativeFinishReason ? `native_finish_reason=${nativeFinishReason}` : '',
+    provider ? `provider=${provider}` : '',
+    model ? `model=${model}` : '',
+    refusal ? `refusal=${JSON.stringify(refusal.slice(0, 160))}` : '',
+    reasoning ? `reasoning=${JSON.stringify(reasoning.slice(0, 160))}` : ''
+  ].filter(Boolean);
+  if (parts.length === 0) {
+    return 'failure_details_unavailable';
+  }
+  return parts.join(' ');
+}
+
+function isAbortLikeCompletionFailure(payload: any): boolean {
+  const choice = payload?.choices?.[0] ?? {};
+  const finishReason = String(choice?.finish_reason ?? '').trim().toLowerCase();
+  const nativeFinishReason = String(choice?.native_finish_reason ?? '').trim().toLowerCase();
+  return (
+    finishReason === 'error' ||
+    finishReason === 'abort' ||
+    nativeFinishReason === 'error' ||
+    nativeFinishReason === 'abort'
+  );
+}
+
+function extractOpenRouterProviderId(payload: any): string {
+  const raw = String(payload?.provider ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  return raw.toLowerCase();
+}
+
+function extractOpenAiCompletionTextOrEmpty(payload: any): string {
+  try {
+    return extractOpenAiCompletionText(payload).trim();
+  } catch (_error) {
+    return '';
+  }
+}
+
 function extractOpenAiCompletionText(payload: any): string {
   const first = payload?.choices?.[0];
   const messageContent = normalizeContentValue(first?.message?.content);
   if (messageContent) {
     return messageContent;
+  }
+  const refusalContent = normalizeContentValue(first?.message?.refusal);
+  if (refusalContent) {
+    return refusalContent;
+  }
+  const reasoningContent = normalizeContentValue(first?.message?.reasoning);
+  if (reasoningContent) {
+    return reasoningContent;
   }
   const textContent = normalizeContentValue(first?.text);
   if (textContent) {
@@ -181,7 +239,7 @@ function extractOpenAiCompletionText(payload: any): string {
     return responseApiText;
   }
   throw new Error(
-    `Completion response did not contain text content. ${summarizeCompletionPayloadShape(payload)}`
+    `Completion response did not contain text content. ${summarizeCompletionFailure(payload)} ${summarizeCompletionPayloadShape(payload)}`
   );
 }
 
@@ -637,27 +695,72 @@ export async function requestStoryContinuation(
     return extractOllamaCompletionText(payload).trim();
   }
 
-  const payload = await fetchJson(
-    resolveOpenAiCompletionsUrl(config.endpoint),
-    {
-      model: config.model,
-      messages,
-      temperature: config.temperature,
-      max_tokens: config.maxOutputTokens
-    },
+  const url = resolveOpenAiCompletionsUrl(config.endpoint);
+  const baseBody: Record<string, unknown> = {
+    model: config.model,
+    messages,
+    temperature: config.temperature,
+    max_tokens: config.maxOutputTokens
+  };
+
+  const reportUsage = (payload: any): void => {
+    const usage = parseOpenAiUsage(payload);
+    if (usage && request.onUsage) {
+      request.onUsage({
+        provider: config.provider,
+        model: config.model,
+        source: 'openai_usage',
+        ...usage
+      });
+    }
+  };
+
+  const firstPayload = await fetchJson(
+    url,
+    baseBody,
     headers,
     config.timeoutMs
   );
-  const usage = parseOpenAiUsage(payload);
-  if (usage && request.onUsage) {
-    request.onUsage({
-      provider: config.provider,
-      model: config.model,
-      source: 'openai_usage',
-      ...usage
-    });
+  reportUsage(firstPayload);
+
+  const firstText = extractOpenAiCompletionTextOrEmpty(firstPayload);
+  if (firstText) {
+    return firstText;
   }
-  return extractOpenAiCompletionText(payload).trim();
+
+  if (config.provider === 'openrouter' && isAbortLikeCompletionFailure(firstPayload)) {
+    const providerId = extractOpenRouterProviderId(firstPayload);
+    const retryBody: Record<string, unknown> = {
+      ...baseBody,
+      provider: providerId
+        ? {
+          allow_fallbacks: true,
+          ignore: [providerId]
+        }
+        : {
+          allow_fallbacks: true
+        }
+    };
+
+    const retryPayload = await fetchJson(
+      url,
+      retryBody,
+      headers,
+      config.timeoutMs
+    );
+    reportUsage(retryPayload);
+
+    const retryText = extractOpenAiCompletionTextOrEmpty(retryPayload);
+    if (retryText) {
+      return retryText;
+    }
+
+    throw new Error(
+      `Completion failed after OpenRouter provider retry. first=(${summarizeCompletionFailure(firstPayload)}) retry=(${summarizeCompletionFailure(retryPayload)})`
+    );
+  }
+
+  return extractOpenAiCompletionText(firstPayload).trim();
 }
 
 export async function requestStoryContinuationStream(

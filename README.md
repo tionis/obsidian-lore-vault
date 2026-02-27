@@ -131,6 +131,7 @@ Details:
 
 - `order = max(1, floor(weighted_score))`
 - ties are broken deterministically by ascending UID offsets
+- defaults are tuned via representative fixtures (`fixtures/graph/default-weights-representative.json`)
 
 ## Output Files
 

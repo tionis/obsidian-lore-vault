@@ -56,6 +56,12 @@ This document is the implementation-level reference for core architecture and ru
   - persistent usage ledger storage with deterministic entry shape/order
 - `src/usage-ledger-report.ts`
   - deterministic aggregation/snapshot + CSV serialization
+- `src/sillytavern-import.ts`
+  - deterministic ST lorebook parse + wiki note materialization + apply writes
+- `src/lorevault-import-view.ts`
+  - import panel UI (`Import SillyTavern Lorebook`)
+- `src/lorevault-story-extract-view.ts`
+  - extraction panel scaffold (`Extract Wiki Pages from Story`)
 
 ## Export Pipeline Contract
 
@@ -312,6 +318,21 @@ Current non-goals in this phase:
 
 - provider pricing auto-sync
 - per-scope spend attribution heuristics beyond stored metadata dimensions
+
+## Phase 14 Import/Extraction (Current Progress)
+
+Implemented:
+
+- inbound SillyTavern lorebook JSON import command/view
+- deterministic entry normalization and sorting
+- deterministic file naming/path allocation
+- deterministic frontmatter/body mapping for generated wiki pages
+- preview and apply import flows
+
+In progress:
+
+- story markdown extraction command/view is scaffolded
+- chunked schema-constrained extraction and merge pipeline are pending
 
 ## Determinism Requirements (Implementation)
 

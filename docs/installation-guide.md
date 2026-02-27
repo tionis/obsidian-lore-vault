@@ -56,6 +56,8 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Generate Chapter Summaries (Current Story)"
      - "Export Usage Report (JSON)"
      - "Export Usage Report (CSV)"
+     - "Import SillyTavern Lorebook"
+     - "Extract Wiki Pages from Story"
      - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
@@ -158,6 +160,13 @@ If you prefer to build the plugin from source:
    - Use message version selectors to switch between regenerated assistant variants
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
    - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, and tool-hook layer traces
+
+8. **Import Existing Lorebook JSON (Phase 14 in progress)**
+   - Run command `Import SillyTavern Lorebook`
+   - Set target folder, default tags, and lorebook name
+   - Paste lorebook JSON in the panel text field
+   - Click `Preview` to inspect planned file paths
+   - Click `Import` to create/update generated wiki notes deterministically
 
 ## Troubleshooting
 

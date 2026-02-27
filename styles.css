@@ -721,3 +721,30 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Import / Extraction Views */
+.lorevault-import-view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorevault-import-view textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.lorevault-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lorevault-import-output {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+}

@@ -25,6 +25,11 @@ import {
 } from './lorebooks-query-simulator-view';
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
+import { LOREVAULT_IMPORT_VIEW_TYPE, LorevaultImportView } from './lorevault-import-view';
+import {
+  LOREVAULT_STORY_EXTRACT_VIEW_TYPE,
+  LorevaultStoryExtractView
+} from './lorevault-story-extract-view';
 import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
 import { GeneratedSummaryStore } from './generated-summary-store';
@@ -549,6 +554,40 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultHelpView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openImportLorebookView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_IMPORT_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultImportView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openStoryExtractionView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_STORY_EXTRACT_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultStoryExtractView) {
       leaf.view.refresh();
     }
   }
@@ -1960,6 +1999,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
     this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
+    this.registerView(LOREVAULT_IMPORT_VIEW_TYPE, leaf => new LorevaultImportView(leaf, this));
+    this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
 
     // Add custom ribbon icons with clearer intent.
     addIcon('lorevault-build', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -2048,6 +2089,22 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open LoreVault Help',
       callback: () => {
         void this.openHelpView();
+      }
+    });
+
+    this.addCommand({
+      id: 'import-sillytavern-lorebook',
+      name: 'Import SillyTavern Lorebook',
+      callback: () => {
+        void this.openImportLorebookView();
+      }
+    });
+
+    this.addCommand({
+      id: 'extract-wiki-pages-from-story',
+      name: 'Extract Wiki Pages from Story',
+      callback: () => {
+        void this.openStoryExtractionView();
       }
     });
 
@@ -2210,6 +2267,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
       window.clearTimeout(this.managerRefreshTimer);
       this.managerRefreshTimer = null;

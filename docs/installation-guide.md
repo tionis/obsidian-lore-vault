@@ -113,12 +113,14 @@ If you prefer to build the plugin from source:
 
 5. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
+   - Use the conversation dropdown at the top to switch chats; use `New Chat` to create one
    - Select lorebook scopes to use (or disable lorebook context for manual-only chat)
    - Optional: add manual context text in the panel
-   - Optional: add specific note references (one per line, path/basename/`[[wikilink]]`) for precise context injection
+   - Optional: add specific note references using `Add Note` or `Add Active`; remove list items as needed
    - Send prompts and watch streamed responses
    - Use message actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
-   - Load/delete conversation fork snapshots from the context panel
+   - Use message version selectors to switch between regenerated assistant variants
+   - Each chat/fork is stored as a markdown note in `LoreVault/chat`
    - Expand per-turn context inspector blocks to see selected scopes, resolved notes, and pulled items
 
 ## Troubleshooting

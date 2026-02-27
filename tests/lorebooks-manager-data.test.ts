@@ -80,6 +80,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       ...(overrides.completion ?? {})
     },
     storyChat: {
+      chatFolder: 'LoreVault/chat',
+      activeConversationPath: '',
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',

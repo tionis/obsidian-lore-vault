@@ -227,17 +227,18 @@ Current capabilities:
 
 - persistent right-sidebar chat panel
 - in-chat generation monitor (state, scopes, context/output token usage)
+- conversation selector (dropdown) with `New Chat` creation
 - streaming assistant responses
 - per-chat lorebook scope selection (including none)
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
-- specific notes context references (one note per line, path/basename/`[[wikilink]]`)
-- live resolved/unresolved preview for specific note references
+- specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
+- each chat/fork is saved as a markdown note under `LoreVault/chat`
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
-- fork snapshot management (load/delete)
+- regenerate appends a new assistant message version; users can switch active versions
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 
-Chat state (messages + context controls + fork snapshots) is persisted in plugin data.
+Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.
 
 ## Development
 

@@ -920,6 +920,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     const selectedScopes = Array.isArray(merged.storyChat.selectedScopes)
       ? merged.storyChat.selectedScopes
       : [];
+    merged.storyChat.chatFolder = (merged.storyChat.chatFolder ?? '').toString().trim() || DEFAULT_SETTINGS.storyChat.chatFolder;
+    merged.storyChat.activeConversationPath = (merged.storyChat.activeConversationPath ?? '').toString().trim();
     merged.storyChat.selectedScopes = selectedScopes
       .map(scope => normalizeScope(scope))
       .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index);

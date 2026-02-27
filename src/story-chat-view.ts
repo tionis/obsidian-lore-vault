@@ -1,12 +1,58 @@
-import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
+import {
+  App,
+  FuzzySuggestModal,
+  ItemView,
+  Notice,
+  TFile,
+  WorkspaceLeaf,
+  setIcon
+} from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import {
   StoryChatContextMeta,
-  StoryChatForkSnapshot,
   StoryChatMessage
 } from './models';
 
 export const LOREVAULT_STORY_CHAT_VIEW_TYPE = 'lorevault-story-chat-view';
+
+const CHAT_SCHEMA_VERSION = 1;
+const CHAT_CODE_BLOCK_LANGUAGE = 'lorevault-chat';
+
+interface ChatMessageVersion {
+  id: string;
+  content: string;
+  createdAt: number;
+  contextMeta?: StoryChatContextMeta;
+}
+
+interface ConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  createdAt: number;
+  versions: ChatMessageVersion[];
+  activeVersionId: string;
+}
+
+interface ConversationDocument {
+  schemaVersion: number;
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  selectedScopes: string[];
+  useLorebookContext: boolean;
+  manualContext: string;
+  noteContextRefs: string[];
+  messages: ConversationMessage[];
+}
+
+interface ConversationSummary {
+  id: string;
+  title: string;
+  path: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 function formatScope(scope: string): string {
   return scope || '(all)';
@@ -31,25 +77,61 @@ function formatTokenValue(value: number): string {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)).toString() : '0';
 }
 
-function parseNoteContextRefs(value: string): string[] {
-  return value
-    .split(/\r?\n|,/g)
-    .map(item => item.trim())
-    .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+function slugifyTitle(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'chat';
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return values.filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
+}
+
+class NotePickerModal extends FuzzySuggestModal<TFile> {
+  private files: TFile[];
+  private onChoose: (file: TFile) => void;
+
+  constructor(app: App, files: TFile[], onChoose: (file: TFile) => void) {
+    super(app);
+    this.files = [...files].sort((a, b) => a.path.localeCompare(b.path));
+    this.onChoose = onChoose;
+    this.setPlaceholder('Pick a note to add as specific context...');
+  }
+
+  getItems(): TFile[] {
+    return this.files;
+  }
+
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  onChooseItem(file: TFile): void {
+    this.onChoose(file);
+  }
 }
 
 export class StoryChatView extends ItemView {
   private plugin: LoreBookConverterPlugin;
+  private chatFolder = 'LoreVault/chat';
+  private activeConversationPath = '';
+  private conversationId = '';
+  private conversationTitle = '';
+  private conversationCreatedAt = 0;
   private selectedScopes = new Set<string>();
   private useLorebookContext = true;
   private manualContext = '';
   private noteContextRefs: string[] = [];
-  private messages: StoryChatMessage[] = [];
-  private forkSnapshots: StoryChatForkSnapshot[] = [];
+  private messages: ConversationMessage[] = [];
+  private conversationSummaries: ConversationSummary[] = [];
   private isSending = false;
   private stopRequested = false;
   private saveTimer: number | null = null;
   private telemetryTimer: number | null = null;
+  private ignoreRefreshUntil = 0;
   private inputDraft = '';
   private inputEl: HTMLTextAreaElement | null = null;
   private statusEl: HTMLElement | null = null;
@@ -58,6 +140,7 @@ export class StoryChatView extends ItemView {
   private generationTokensEl: HTMLElement | null = null;
   private generationOutputEl: HTMLElement | null = null;
   private editingMessageId: string | null = null;
+  private editingVersionId: string | null = null;
   private editingMessageDraft = '';
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
@@ -78,7 +161,9 @@ export class StoryChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    this.loadFromSettings();
+    this.loadSettingsState();
+    await this.loadConversationSummaries();
+    await this.ensureConversationLoaded();
     this.render();
     this.startTelemetryPolling();
   }
@@ -92,18 +177,33 @@ export class StoryChatView extends ItemView {
       window.clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
     }
-    await this.persistConfig(true, true);
+    await this.saveCurrentConversation();
     this.contentEl.empty();
   }
 
   refresh(): void {
-    if (this.isSending) {
-      this.updateGenerationMonitor();
+    // Avoid full rerenders from vault modify events while editing/sending.
+    this.updateGenerationMonitor();
+    if (Date.now() < this.ignoreRefreshUntil) {
       return;
     }
+  }
 
-    this.loadFromSettings();
-    this.render();
+  private loadSettingsState(): void {
+    const config = this.plugin.getStoryChatConfig();
+    this.chatFolder = config.chatFolder?.trim() || 'LoreVault/chat';
+    this.activeConversationPath = config.activeConversationPath?.trim() || '';
+  }
+
+  private async persistSettingsState(): Promise<void> {
+    await this.plugin.updateStoryChatConfig({
+      chatFolder: this.chatFolder,
+      activeConversationPath: this.activeConversationPath
+    });
+  }
+
+  private createId(prefix: string): string {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   private cloneContextMeta(meta: StoryChatContextMeta | undefined): StoryChatContextMeta | undefined {
@@ -121,72 +221,388 @@ export class StoryChatView extends ItemView {
     };
   }
 
-  private cloneMessage(message: StoryChatMessage): StoryChatMessage {
+  private cloneVersion(version: ChatMessageVersion): ChatMessageVersion {
+    return {
+      ...version,
+      contextMeta: this.cloneContextMeta(version.contextMeta)
+    };
+  }
+
+  private cloneMessage(message: ConversationMessage): ConversationMessage {
     return {
       ...message,
-      contextMeta: this.cloneContextMeta(message.contextMeta)
+      versions: message.versions.map(version => this.cloneVersion(version))
     };
   }
 
-  private cloneSnapshot(snapshot: StoryChatForkSnapshot): StoryChatForkSnapshot {
+  private getSelectedVersion(message: ConversationMessage): ChatMessageVersion {
+    return message.versions.find(version => version.id === message.activeVersionId) ?? message.versions[0];
+  }
+
+  private normalizeConversationDocument(raw: unknown, fallbackTitle: string): ConversationDocument {
+    const payload = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
+    const now = Date.now();
+    const normalizedMessages = Array.isArray(payload.messages) ? payload.messages : [];
+    const messages: ConversationMessage[] = normalizedMessages
+      .map((item): ConversationMessage | null => {
+        if (!item || typeof item !== 'object') {
+          return null;
+        }
+        const candidate = item as Record<string, unknown>;
+        const role = candidate.role === 'assistant' ? 'assistant' : (candidate.role === 'user' ? 'user' : null);
+        if (!role) {
+          return null;
+        }
+
+        const rawVersions = Array.isArray(candidate.versions) ? candidate.versions : [];
+        const versions: ChatMessageVersion[] = rawVersions
+          .map((version): ChatMessageVersion | null => {
+            if (!version || typeof version !== 'object') {
+              return null;
+            }
+            const candidateVersion = version as Record<string, unknown>;
+            const id = typeof candidateVersion.id === 'string' && candidateVersion.id.trim()
+              ? candidateVersion.id
+              : this.createId('ver');
+            const content = typeof candidateVersion.content === 'string'
+              ? candidateVersion.content
+              : String(candidateVersion.content ?? '');
+            const createdAt = Number.isFinite(candidateVersion.createdAt)
+              ? Math.floor(Number(candidateVersion.createdAt))
+              : now;
+
+            const contextMetaRaw = candidateVersion.contextMeta;
+            let contextMeta: StoryChatContextMeta | undefined;
+            if (contextMetaRaw && typeof contextMetaRaw === 'object') {
+              const meta = contextMetaRaw as Record<string, unknown>;
+              contextMeta = {
+                usedLorebookContext: Boolean(meta.usedLorebookContext),
+                usedManualContext: Boolean(meta.usedManualContext),
+                usedSpecificNotesContext: Boolean(meta.usedSpecificNotesContext),
+                scopes: Array.isArray(meta.scopes)
+                  ? meta.scopes.map(value => String(value ?? ''))
+                  : [],
+                specificNotePaths: Array.isArray(meta.specificNotePaths)
+                  ? meta.specificNotePaths.map(value => String(value ?? ''))
+                  : [],
+                unresolvedNoteRefs: Array.isArray(meta.unresolvedNoteRefs)
+                  ? meta.unresolvedNoteRefs.map(value => String(value ?? ''))
+                  : [],
+                contextTokens: Math.max(0, Math.floor(Number(meta.contextTokens ?? 0))),
+                worldInfoCount: Math.max(0, Math.floor(Number(meta.worldInfoCount ?? 0))),
+                ragCount: Math.max(0, Math.floor(Number(meta.ragCount ?? 0))),
+                worldInfoItems: Array.isArray(meta.worldInfoItems)
+                  ? meta.worldInfoItems.map(value => String(value ?? ''))
+                  : [],
+                ragItems: Array.isArray(meta.ragItems)
+                  ? meta.ragItems.map(value => String(value ?? ''))
+                  : []
+              };
+            }
+
+            return {
+              id,
+              content,
+              createdAt,
+              contextMeta
+            };
+          })
+          .filter((version): version is ChatMessageVersion => Boolean(version));
+
+        if (versions.length === 0) {
+          const fallbackContent = typeof candidate.content === 'string'
+            ? candidate.content
+            : String(candidate.content ?? '');
+          versions.push({
+            id: this.createId('ver'),
+            content: fallbackContent,
+            createdAt: Number.isFinite(candidate.createdAt) ? Math.floor(Number(candidate.createdAt)) : now
+          });
+        }
+
+        const activeVersionIdRaw = typeof candidate.activeVersionId === 'string'
+          ? candidate.activeVersionId
+          : '';
+        const activeVersionId = versions.some(version => version.id === activeVersionIdRaw)
+          ? activeVersionIdRaw
+          : versions[0].id;
+
+        return {
+          id: typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id : this.createId(role),
+          role,
+          createdAt: Number.isFinite(candidate.createdAt) ? Math.floor(Number(candidate.createdAt)) : versions[0].createdAt,
+          versions,
+          activeVersionId
+        };
+      })
+      .filter((message): message is ConversationMessage => Boolean(message));
+
+    const selectedScopes = Array.isArray(payload.selectedScopes)
+      ? dedupeStrings(payload.selectedScopes.map(value => String(value ?? '').trim()))
+      : [];
+    const noteContextRefs = Array.isArray(payload.noteContextRefs)
+      ? dedupeStrings(payload.noteContextRefs.map(value => String(value ?? '').trim()))
+      : [];
+
     return {
-      ...snapshot,
-      selectedScopes: [...snapshot.selectedScopes],
-      noteContextRefs: [...snapshot.noteContextRefs],
-      messages: snapshot.messages.map(message => this.cloneMessage(message))
+      schemaVersion: Number.isFinite(payload.schemaVersion) ? Math.floor(Number(payload.schemaVersion)) : CHAT_SCHEMA_VERSION,
+      id: typeof payload.id === 'string' && payload.id.trim() ? payload.id : this.createId('conv'),
+      title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : fallbackTitle,
+      createdAt: Number.isFinite(payload.createdAt) ? Math.floor(Number(payload.createdAt)) : now,
+      updatedAt: Number.isFinite(payload.updatedAt) ? Math.floor(Number(payload.updatedAt)) : now,
+      selectedScopes,
+      useLorebookContext: Boolean(payload.useLorebookContext ?? true),
+      manualContext: typeof payload.manualContext === 'string' ? payload.manualContext : '',
+      noteContextRefs,
+      messages
     };
   }
 
-  private createMessageId(prefix: string): string {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  private parseConversationMarkdown(markdown: string, fallbackTitle: string): ConversationDocument | null {
+    const match = markdown.match(/```lorevault-chat\s*([\s\S]*?)```/i);
+    if (!match) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(match[1].trim()) as unknown;
+      return this.normalizeConversationDocument(parsed, fallbackTitle);
+    } catch (error) {
+      console.error('Failed to parse LoreVault chat payload:', error);
+      return null;
+    }
   }
 
-  private loadFromSettings(): void {
-    const config = this.plugin.getStoryChatConfig();
-    this.selectedScopes = new Set(config.selectedScopes);
-    this.useLorebookContext = config.useLorebookContext;
-    this.manualContext = config.manualContext;
-    this.noteContextRefs = [...config.noteContextRefs];
-    this.messages = config.messages.map(message => this.cloneMessage(message));
-    this.forkSnapshots = config.forkSnapshots
-      .map(snapshot => this.cloneSnapshot(snapshot))
-      .sort((a, b) => b.createdAt - a.createdAt);
+  private serializeConversationMarkdown(document: ConversationDocument): string {
+    const payload = {
+      ...document,
+      messages: document.messages.map(message => ({
+        ...message,
+        versions: message.versions.map(version => ({
+          ...version,
+          contextMeta: this.cloneContextMeta(version.contextMeta)
+        }))
+      }))
+    };
+
+    return [
+      `# ${document.title}`,
+      '',
+      `\`\`\`${CHAT_CODE_BLOCK_LANGUAGE}`,
+      JSON.stringify(payload, null, 2),
+      '```',
+      ''
+    ].join('\n');
   }
 
-  private schedulePersist(includeMessages = false, includeForkSnapshots = false): void {
+  private async ensureFolderExists(folderPath: string): Promise<void> {
+    const normalized = folderPath
+      .split('/')
+      .map(part => part.trim())
+      .filter(Boolean);
+    if (normalized.length === 0) {
+      return;
+    }
+
+    let current = '';
+    for (const part of normalized) {
+      current = current ? `${current}/${part}` : part;
+      const existing = this.app.vault.getAbstractFileByPath(current);
+      if (!existing) {
+        await this.app.vault.createFolder(current);
+      }
+    }
+  }
+
+  private async getUniqueConversationPath(title: string): Promise<string> {
+    const folder = this.chatFolder;
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    const slug = slugifyTitle(title);
+    let attempt = 0;
+
+    while (attempt < 200) {
+      const suffix = attempt === 0 ? '' : `-${attempt}`;
+      const candidate = `${folder}/${stamp}-${slug}${suffix}.md`;
+      if (!this.app.vault.getAbstractFileByPath(candidate)) {
+        return candidate;
+      }
+      attempt += 1;
+    }
+
+    return `${folder}/${Date.now()}-${slug}-${Math.random().toString(36).slice(2, 8)}.md`;
+  }
+
+  private applyConversationDocument(document: ConversationDocument, path: string): void {
+    this.activeConversationPath = path;
+    this.conversationId = document.id;
+    this.conversationTitle = document.title;
+    this.conversationCreatedAt = document.createdAt;
+    this.selectedScopes = new Set(document.selectedScopes);
+    this.useLorebookContext = document.useLorebookContext;
+    this.manualContext = document.manualContext;
+    this.noteContextRefs = [...document.noteContextRefs];
+    this.messages = document.messages.map(message => this.cloneMessage(message));
+    this.editingMessageId = null;
+    this.editingVersionId = null;
+    this.editingMessageDraft = '';
+  }
+
+  private buildCurrentConversationDocument(updatedAt: number): ConversationDocument {
+    return {
+      schemaVersion: CHAT_SCHEMA_VERSION,
+      id: this.conversationId || this.createId('conv'),
+      title: this.conversationTitle || 'Story Chat',
+      createdAt: this.conversationCreatedAt || updatedAt,
+      updatedAt,
+      selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
+      useLorebookContext: this.useLorebookContext,
+      manualContext: this.manualContext,
+      noteContextRefs: [...this.noteContextRefs],
+      messages: this.messages.map(message => this.cloneMessage(message))
+    };
+  }
+
+  private async loadConversationSummaries(): Promise<void> {
+    const prefix = `${this.chatFolder}/`;
+    const files = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.path.startsWith(prefix));
+    const summaries: ConversationSummary[] = [];
+
+    for (const file of files) {
+      try {
+        const content = await this.app.vault.cachedRead(file);
+        const parsed = this.parseConversationMarkdown(content, file.basename);
+        if (!parsed) {
+          continue;
+        }
+        summaries.push({
+          id: parsed.id,
+          title: parsed.title,
+          path: file.path,
+          createdAt: parsed.createdAt,
+          updatedAt: parsed.updatedAt
+        });
+      } catch (error) {
+        console.error(`Failed to inspect chat conversation ${file.path}:`, error);
+      }
+    }
+
+    summaries.sort((a, b) => {
+      if (a.updatedAt !== b.updatedAt) {
+        return b.updatedAt - a.updatedAt;
+      }
+      return a.title.localeCompare(b.title);
+    });
+
+    this.conversationSummaries = summaries;
+  }
+
+  private async loadConversationByPath(path: string): Promise<boolean> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      return false;
+    }
+
+    const markdown = await this.app.vault.cachedRead(file);
+    const parsed = this.parseConversationMarkdown(markdown, file.basename);
+    if (!parsed) {
+      return false;
+    }
+
+    this.applyConversationDocument(parsed, file.path);
+    await this.persistSettingsState();
+    return true;
+  }
+
+  private async ensureConversationLoaded(): Promise<void> {
+    if (this.activeConversationPath) {
+      const loaded = await this.loadConversationByPath(this.activeConversationPath);
+      if (loaded) {
+        return;
+      }
+    }
+
+    if (this.conversationSummaries.length > 0) {
+      const loaded = await this.loadConversationByPath(this.conversationSummaries[0].path);
+      if (loaded) {
+        return;
+      }
+    }
+
+    await this.createConversation('Story Chat', null);
+  }
+
+  private async createConversation(title: string, sourceMessageIndex: number | null): Promise<void> {
+    await this.ensureFolderExists(this.chatFolder);
+    const now = Date.now();
+    const sourceMessages = sourceMessageIndex === null
+      ? []
+      : this.messages.slice(0, sourceMessageIndex + 1).map(message => this.cloneMessage(message));
+    const document: ConversationDocument = {
+      schemaVersion: CHAT_SCHEMA_VERSION,
+      id: this.createId('conv'),
+      title: title.trim() || 'Story Chat',
+      createdAt: now,
+      updatedAt: now,
+      selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
+      useLorebookContext: this.useLorebookContext,
+      manualContext: this.manualContext,
+      noteContextRefs: [...this.noteContextRefs],
+      messages: sourceMessages
+    };
+
+    const path = await this.getUniqueConversationPath(document.title);
+    await this.app.vault.create(path, this.serializeConversationMarkdown(document));
+    this.applyConversationDocument(document, path);
+    await this.persistSettingsState();
+    await this.loadConversationSummaries();
+  }
+
+  private async saveCurrentConversation(): Promise<void> {
+    if (!this.activeConversationPath) {
+      return;
+    }
+
+    const updatedAt = Date.now();
+    const document = this.buildCurrentConversationDocument(updatedAt);
+    const markdown = this.serializeConversationMarkdown(document);
+    const existing = this.app.vault.getAbstractFileByPath(this.activeConversationPath);
+    this.ignoreRefreshUntil = Date.now() + 800;
+
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, markdown);
+    } else {
+      await this.ensureFolderExists(this.chatFolder);
+      await this.app.vault.create(this.activeConversationPath, markdown);
+    }
+
+    const existingSummary = this.conversationSummaries.find(summary => summary.path === this.activeConversationPath);
+    if (existingSummary) {
+      existingSummary.title = document.title;
+      existingSummary.updatedAt = document.updatedAt;
+    } else {
+      this.conversationSummaries.push({
+        id: document.id,
+        title: document.title,
+        path: this.activeConversationPath,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt
+      });
+    }
+    this.conversationSummaries.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  private scheduleConversationSave(): void {
     if (this.saveTimer !== null) {
       window.clearTimeout(this.saveTimer);
     }
 
     this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
-      void this.persistConfig(includeMessages, includeForkSnapshots);
-    }, 350);
-  }
-
-  private async persistConfig(includeMessages = false, includeForkSnapshots = false): Promise<void> {
-    const update: {
-      selectedScopes: string[];
-      useLorebookContext: boolean;
-      manualContext: string;
-      noteContextRefs: string[];
-      messages?: StoryChatMessage[];
-      forkSnapshots?: StoryChatForkSnapshot[];
-    } = {
-      selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
-      useLorebookContext: this.useLorebookContext,
-      manualContext: this.manualContext,
-      noteContextRefs: [...this.noteContextRefs]
-    };
-
-    if (includeMessages) {
-      update.messages = this.messages.map(message => this.cloneMessage(message));
-    }
-    if (includeForkSnapshots) {
-      update.forkSnapshots = this.forkSnapshots.map(snapshot => this.cloneSnapshot(snapshot));
-    }
-
-    await this.plugin.updateStoryChatConfig(update);
+      void this.saveCurrentConversation();
+    }, 400);
   }
 
   private setStatus(message: string): void {
@@ -230,6 +646,36 @@ export class StoryChatView extends ItemView {
     );
   }
 
+  private renderConversationBar(container: HTMLElement): void {
+    const row = container.createDiv({ cls: 'lorevault-chat-conversation-row' });
+    row.createEl('strong', { text: 'Conversation' });
+
+    const selector = row.createEl('select', { cls: 'dropdown lorevault-chat-conversation-select' });
+    for (const summary of this.conversationSummaries) {
+      const option = selector.createEl('option');
+      option.value = summary.path;
+      option.text = `${summary.title} · ${formatDateTime(summary.updatedAt)}`;
+    }
+    selector.value = this.activeConversationPath;
+    selector.disabled = this.isSending || this.conversationSummaries.length === 0;
+    selector.addEventListener('change', () => {
+      void this.switchConversation(selector.value);
+    });
+
+    const actions = row.createDiv({ cls: 'lorevault-chat-conversation-actions' });
+    const newButton = actions.createEl('button', { text: 'New Chat' });
+    newButton.disabled = this.isSending;
+    newButton.addEventListener('click', () => {
+      void this.createConversationAndRender('Story Chat', null);
+    });
+
+    const openButton = actions.createEl('button', { text: 'Open Note' });
+    openButton.disabled = !this.activeConversationPath;
+    openButton.addEventListener('click', () => {
+      void this.openActiveConversationNote();
+    });
+  }
+
   private renderHeader(container: HTMLElement): void {
     const header = container.createDiv({ cls: 'lorevault-chat-header' });
     const titleRow = header.createDiv({ cls: 'lorevault-chat-title-row' });
@@ -238,20 +684,6 @@ export class StoryChatView extends ItemView {
     titleRow.createEl('h2', { text: 'Story Chat' });
 
     const actions = header.createDiv({ cls: 'lorevault-chat-actions' });
-
-    const clearButton = actions.createEl('button', { text: 'Clear Chat' });
-    clearButton.disabled = this.isSending || this.messages.length === 0;
-    clearButton.addEventListener('click', async () => {
-      if (this.isSending) {
-        return;
-      }
-      this.messages = [];
-      this.editingMessageId = null;
-      this.editingMessageDraft = '';
-      await this.plugin.clearStoryChatMessages();
-      this.render();
-    });
-
     const stopButton = actions.createEl('button', { text: 'Stop' });
     stopButton.disabled = !this.isSending;
     stopButton.addEventListener('click', () => {
@@ -283,7 +715,7 @@ export class StoryChatView extends ItemView {
     toggleInput.checked = this.useLorebookContext;
     toggleInput.addEventListener('change', () => {
       this.useLorebookContext = toggleInput.checked;
-      this.schedulePersist(false, false);
+      this.scheduleConversationSave();
       this.render();
     });
     toggleRow.createEl('label', { text: 'Use Lorebook Context' });
@@ -301,7 +733,7 @@ export class StoryChatView extends ItemView {
       }
       const scopes = this.plugin.getAvailableScopes();
       this.selectedScopes = new Set(scopes);
-      this.schedulePersist(false, false);
+      this.scheduleConversationSave();
       this.render();
     });
 
@@ -309,7 +741,7 @@ export class StoryChatView extends ItemView {
     noneButton.disabled = !this.useLorebookContext;
     noneButton.addEventListener('click', () => {
       this.selectedScopes.clear();
-      this.schedulePersist(false, false);
+      this.scheduleConversationSave();
       this.render();
     });
 
@@ -329,7 +761,7 @@ export class StoryChatView extends ItemView {
           } else {
             this.selectedScopes.delete(scope);
           }
-          this.schedulePersist(false, false);
+          this.scheduleConversationSave();
         });
         row.createEl('label', { text: formatScope(scope) });
       }
@@ -344,13 +776,30 @@ export class StoryChatView extends ItemView {
     manualInput.value = this.manualContext;
     manualInput.addEventListener('input', () => {
       this.manualContext = manualInput.value;
-      this.schedulePersist(false, false);
+      this.scheduleConversationSave();
     });
 
-    const notesSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
+    this.renderSpecificNotesControls(controls);
+  }
+
+  private renderSpecificNotesControls(container: HTMLElement): void {
+    const notesSection = container.createDiv({ cls: 'lorevault-chat-manual' });
     const notesHeader = notesSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
     notesHeader.createEl('strong', { text: 'Specific Notes Context' });
     const notesButtons = notesHeader.createDiv({ cls: 'lorevault-chat-scope-buttons' });
+
+    const addNoteButton = notesButtons.createEl('button', { text: 'Add Note' });
+    addNoteButton.addEventListener('click', () => {
+      const files = this.app.vault.getMarkdownFiles();
+      const modal = new NotePickerModal(this.app, files, file => {
+        if (!this.noteContextRefs.includes(file.path)) {
+          this.noteContextRefs.push(file.path);
+          this.scheduleConversationSave();
+          this.render();
+        }
+      });
+      modal.open();
+    });
 
     const addActiveButton = notesButtons.createEl('button', { text: 'Add Active' });
     addActiveButton.addEventListener('click', () => {
@@ -361,123 +810,81 @@ export class StoryChatView extends ItemView {
       }
       if (!this.noteContextRefs.includes(active.path)) {
         this.noteContextRefs.push(active.path);
-        this.schedulePersist(false, false);
+        this.scheduleConversationSave();
         this.render();
       }
     });
 
-    const clearNotesButton = notesButtons.createEl('button', { text: 'Clear' });
-    clearNotesButton.disabled = this.noteContextRefs.length === 0;
-    clearNotesButton.addEventListener('click', () => {
+    const clearButton = notesButtons.createEl('button', { text: 'Clear' });
+    clearButton.disabled = this.noteContextRefs.length === 0;
+    clearButton.addEventListener('click', () => {
       this.noteContextRefs = [];
-      this.schedulePersist(false, false);
-      this.render();
-    });
-
-    const notesInput = notesSection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    notesInput.placeholder = 'One note reference per line (path, basename, or [[wikilink]]).';
-    notesInput.value = this.noteContextRefs.join('\n');
-    notesInput.addEventListener('input', () => {
-      this.noteContextRefs = parseNoteContextRefs(notesInput.value);
-      this.schedulePersist(false, false);
+      this.scheduleConversationSave();
       this.render();
     });
 
     const preview = this.plugin.previewNoteContextRefs(this.noteContextRefs);
-    const previewSection = notesSection.createDiv({ cls: 'lorevault-chat-note-preview' });
-    previewSection.createEl('p', {
-      text: `Resolved notes: ${preview.resolvedPaths.length}`
-    });
+    const resolvedSet = new Set(preview.resolvedPaths);
+    const unresolvedSet = new Set(preview.unresolvedRefs);
+    const list = notesSection.createDiv({ cls: 'lorevault-chat-note-list' });
 
-    if (preview.resolvedPaths.length > 0) {
-      const resolvedList = previewSection.createEl('ul');
-      for (const item of preview.resolvedPaths.slice(0, 8)) {
-        resolvedList.createEl('li', { text: item });
-      }
-      if (preview.resolvedPaths.length > 8) {
-        previewSection.createEl('p', {
-          text: `+${preview.resolvedPaths.length - 8} more`
-        });
-      }
-    }
-
-    if (preview.unresolvedRefs.length > 0) {
-      const unresolvedTitle = previewSection.createEl('p', {
-        text: `Unresolved references: ${preview.unresolvedRefs.length}`
-      });
-      unresolvedTitle.addClass('lorevault-manager-warning-item');
-
-      const unresolvedList = previewSection.createEl('ul');
-      for (const ref of preview.unresolvedRefs.slice(0, 8)) {
-        const li = unresolvedList.createEl('li', { text: ref });
-        li.addClass('lorevault-manager-warning-item');
-      }
-      if (preview.unresolvedRefs.length > 8) {
-        previewSection.createEl('p', {
-          text: `+${preview.unresolvedRefs.length - 8} more unresolved`
-        });
-      }
-    }
-
-    this.renderForkControls(controls);
-  }
-
-  private renderForkControls(container: HTMLElement): void {
-    const section = container.createDiv({ cls: 'lorevault-chat-forks' });
-    section.createEl('strong', { text: 'Conversation Forks' });
-
-    if (this.forkSnapshots.length === 0) {
-      section.createEl('p', { text: 'No fork snapshots yet.' });
+    if (this.noteContextRefs.length === 0) {
+      list.createEl('p', { text: 'No specific notes selected.' });
       return;
     }
 
-    for (const snapshot of this.forkSnapshots) {
-      const row = section.createDiv({ cls: 'lorevault-chat-fork-row' });
-      row.createEl('span', {
-        text: `${snapshot.title} · ${formatDateTime(snapshot.createdAt)} · ${snapshot.messages.length} messages`
-      });
+    for (let index = 0; index < this.noteContextRefs.length; index += 1) {
+      const ref = this.noteContextRefs[index];
+      const row = list.createDiv({ cls: 'lorevault-chat-note-row' });
+      const label = row.createEl('span', { text: ref });
 
-      const actions = row.createDiv({ cls: 'lorevault-chat-fork-actions' });
-      const loadButton = actions.createEl('button', { text: 'Load' });
-      loadButton.disabled = this.isSending;
-      loadButton.addEventListener('click', () => {
-        void this.loadForkSnapshot(snapshot.id);
-      });
+      if (resolvedSet.has(ref)) {
+        label.addClass('lorevault-chat-note-resolved');
+      } else if (unresolvedSet.has(ref)) {
+        label.addClass('lorevault-chat-note-unresolved');
+      }
 
-      const deleteButton = actions.createEl('button', { text: 'Delete' });
-      deleteButton.disabled = this.isSending;
-      deleteButton.addEventListener('click', () => {
-        void this.deleteForkSnapshot(snapshot.id);
+      const removeButton = row.createEl('button', { text: 'Remove' });
+      removeButton.addEventListener('click', () => {
+        this.noteContextRefs.splice(index, 1);
+        this.scheduleConversationSave();
+        this.render();
       });
+    }
+
+    if (preview.unresolvedRefs.length > 0) {
+      const unresolved = notesSection.createEl('p', {
+        text: `Unresolved references: ${preview.unresolvedRefs.join(', ')}`
+      });
+      unresolved.addClass('lorevault-manager-warning-item');
     }
   }
 
-  private renderAssistantContextMeta(container: HTMLElement, message: StoryChatMessage): void {
-    if (message.role !== 'assistant' || !message.contextMeta) {
+  private renderAssistantContextMeta(container: HTMLElement, version: ChatMessageVersion, message: ConversationMessage): void {
+    if (message.role !== 'assistant' || !version.contextMeta) {
       return;
     }
 
     const details = container.createEl('details', { cls: 'lorevault-chat-context-meta' });
     details.createEl('summary', {
-      text: `Injected context · scopes ${message.contextMeta.scopes.join(', ') || '(none)'} · notes ${message.contextMeta.specificNotePaths.length} · world_info ${message.contextMeta.worldInfoCount} · rag ${message.contextMeta.ragCount}`
+      text: `Injected context · scopes ${version.contextMeta.scopes.join(', ') || '(none)'} · notes ${version.contextMeta.specificNotePaths.length} · world_info ${version.contextMeta.worldInfoCount} · rag ${version.contextMeta.ragCount}`
     });
     details.createEl('p', {
-      text: `Tokens: ${message.contextMeta.contextTokens} | lorebook: ${message.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${message.contextMeta.usedManualContext ? 'on' : 'off'} | specific-notes: ${message.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
+      text: `Tokens: ${version.contextMeta.contextTokens} | lorebook: ${version.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${version.contextMeta.usedManualContext ? 'on' : 'off'} | specific-notes: ${version.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
     });
 
-    const specificNotesList = details.createEl('p');
-    specificNotesList.setText(`specific notes: ${message.contextMeta.specificNotePaths.join(', ') || '(none)'}`);
-
-    const unresolved = details.createEl('p');
-    unresolved.setText(`unresolved note refs: ${message.contextMeta.unresolvedNoteRefs.join(', ') || '(none)'}`);
-
-    const worldInfoList = details.createEl('p');
-    worldInfoList.setText(`world_info: ${message.contextMeta.worldInfoItems.join(', ') || '(none)'}`);
-
-    const ragList = details.createEl('p');
-    ragList.setText(`rag: ${message.contextMeta.ragItems.join(', ') || '(none)'}`);
+    details.createEl('p', {
+      text: `specific notes: ${version.contextMeta.specificNotePaths.join(', ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `unresolved note refs: ${version.contextMeta.unresolvedNoteRefs.join(', ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `world_info: ${version.contextMeta.worldInfoItems.join(', ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `rag: ${version.contextMeta.ragItems.join(', ') || '(none)'}`
+    });
   }
 
   private renderMessageEditor(container: HTMLElement): void {
@@ -497,16 +904,43 @@ export class StoryChatView extends ItemView {
     const cancelButton = actions.createEl('button', { text: 'Cancel' });
     cancelButton.addEventListener('click', () => {
       this.editingMessageId = null;
+      this.editingVersionId = null;
       this.editingMessageDraft = '';
+      this.render();
+    });
+  }
+
+  private renderMessageVersionSwitcher(container: HTMLElement, message: ConversationMessage): void {
+    if (message.versions.length <= 1) {
+      return;
+    }
+
+    const row = container.createDiv({ cls: 'lorevault-chat-version-row' });
+    row.createEl('span', { text: 'Version:' });
+    const selector = row.createEl('select', { cls: 'dropdown lorevault-chat-version-select' });
+
+    for (let index = 0; index < message.versions.length; index += 1) {
+      const version = message.versions[index];
+      const option = selector.createEl('option');
+      option.value = version.id;
+      option.text = `v${index + 1} · ${formatTime(version.createdAt)}`;
+    }
+
+    selector.value = message.activeVersionId;
+    selector.disabled = this.isSending;
+    selector.addEventListener('change', () => {
+      message.activeVersionId = selector.value;
+      this.scheduleConversationSave();
       this.render();
     });
   }
 
   private renderMessages(container: HTMLElement): void {
     const list = container.createDiv({ cls: 'lorevault-chat-messages' });
-    const latestAssistantId = [...this.messages]
+    const latestAssistantMessage = [...this.messages]
       .reverse()
-      .find(message => message.role === 'assistant')?.id ?? null;
+      .find(message => message.role === 'assistant') ?? null;
+    const latestAssistantId = latestAssistantMessage?.id ?? null;
 
     if (this.messages.length === 0) {
       list.createEl('p', {
@@ -517,6 +951,7 @@ export class StoryChatView extends ItemView {
 
     for (let index = 0; index < this.messages.length; index += 1) {
       const message = this.messages[index];
+      const version = this.getSelectedVersion(message);
       const row = list.createDiv({
         cls: `lorevault-chat-message lorevault-chat-message-${message.role}`
       });
@@ -525,13 +960,18 @@ export class StoryChatView extends ItemView {
       const meta = row.createDiv({ cls: 'lorevault-chat-message-meta' });
       meta.setText(`${message.role === 'assistant' ? 'Assistant' : 'You'} · ${formatTime(message.createdAt)}`);
 
-      this.renderAssistantContextMeta(row, message);
+      this.renderMessageVersionSwitcher(row, message);
+      this.renderAssistantContextMeta(row, version, message);
 
-      if (this.editingMessageId === message.id && !this.isSending) {
+      if (
+        this.editingMessageId === message.id &&
+        this.editingVersionId === version.id &&
+        !this.isSending
+      ) {
         this.renderMessageEditor(row);
       } else {
         const content = row.createDiv({ cls: 'lorevault-chat-message-content' });
-        content.setText(message.content || (this.isSending && message.role === 'assistant' ? '...' : ''));
+        content.setText(version.content || (this.isSending && message.role === 'assistant' ? '...' : ''));
       }
 
       const messageActions = row.createDiv({ cls: 'lorevault-chat-message-actions' });
@@ -539,25 +979,26 @@ export class StoryChatView extends ItemView {
       const editButton = messageActions.createEl('button', { text: 'Edit' });
       editButton.disabled = this.isSending;
       editButton.addEventListener('click', () => {
-        if (this.isSending) {
-          return;
-        }
         this.editingMessageId = message.id;
-        this.editingMessageDraft = message.content;
+        this.editingVersionId = version.id;
+        this.editingMessageDraft = version.content;
         this.render();
       });
 
       const forkButton = messageActions.createEl('button', { text: 'Fork Here' });
       forkButton.disabled = this.isSending;
       forkButton.addEventListener('click', () => {
-        void this.createForkFromMessage(index);
+        void this.createConversationAndRender(
+          `${this.conversationTitle || 'Story Chat'} Fork`,
+          index
+        );
       });
 
       if (message.role === 'assistant' && message.id === latestAssistantId) {
         const regenerateButton = messageActions.createEl('button', { text: 'Regenerate' });
         regenerateButton.disabled = this.isSending;
         regenerateButton.addEventListener('click', () => {
-          void this.regenerateLastAssistantTurn();
+          void this.regenerateLatestAssistantVersion();
         });
       }
     }
@@ -591,90 +1032,74 @@ export class StoryChatView extends ItemView {
     contentEl.addClass('lorevault-chat-view');
 
     this.renderHeader(contentEl);
+    this.renderConversationBar(contentEl);
     this.renderGenerationMonitor(contentEl);
     this.renderContextControls(contentEl);
     this.renderMessages(contentEl);
     this.renderComposer(contentEl);
   }
 
+  private async createConversationAndRender(title: string, sourceMessageIndex: number | null): Promise<void> {
+    if (this.isSending) {
+      return;
+    }
+    await this.createConversation(title, sourceMessageIndex);
+    new Notice(`Conversation created: ${this.conversationTitle}`);
+    this.render();
+  }
+
+  private async switchConversation(path: string): Promise<void> {
+    if (this.isSending || !path || path === this.activeConversationPath) {
+      return;
+    }
+    await this.saveCurrentConversation();
+    const loaded = await this.loadConversationByPath(path);
+    if (!loaded) {
+      new Notice('Failed to load selected conversation.');
+      await this.loadConversationSummaries();
+      this.render();
+      return;
+    }
+    this.render();
+  }
+
+  private async openActiveConversationNote(): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(this.activeConversationPath);
+    if (!(file instanceof TFile)) {
+      new Notice('Conversation note not found.');
+      return;
+    }
+    await this.app.workspace.getLeaf(true).openFile(file);
+  }
+
   private async saveMessageEdit(): Promise<void> {
-    if (this.isSending || !this.editingMessageId) {
+    if (this.isSending || !this.editingMessageId || !this.editingVersionId) {
       return;
     }
 
     const message = this.messages.find(item => item.id === this.editingMessageId);
     if (!message) {
       this.editingMessageId = null;
+      this.editingVersionId = null;
       this.editingMessageDraft = '';
       this.render();
       return;
     }
 
-    message.content = this.editingMessageDraft;
+    const version = message.versions.find(item => item.id === this.editingVersionId);
+    if (!version) {
+      this.editingMessageId = null;
+      this.editingVersionId = null;
+      this.editingMessageDraft = '';
+      this.render();
+      return;
+    }
+
+    version.content = this.editingMessageDraft;
     this.editingMessageId = null;
+    this.editingVersionId = null;
     this.editingMessageDraft = '';
-    await this.persistConfig(true, false);
-    this.render();
-  }
-
-  private async createForkFromMessage(messageIndex: number): Promise<void> {
-    if (this.isSending || messageIndex < 0 || messageIndex >= this.messages.length) {
-      return;
-    }
-
-    const anchor = this.messages[messageIndex];
-    const snapshot: StoryChatForkSnapshot = {
-      id: this.createMessageId('fork'),
-      title: `Fork from ${anchor.role} ${formatTime(anchor.createdAt) || 'turn'}`,
-      createdAt: Date.now(),
-      messages: this.messages
-        .slice(0, messageIndex + 1)
-        .map(message => this.cloneMessage(message)),
-      selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
-      useLorebookContext: this.useLorebookContext,
-      manualContext: this.manualContext,
-      noteContextRefs: [...this.noteContextRefs]
-    };
-
-    this.forkSnapshots = [snapshot, ...this.forkSnapshots].slice(0, 20);
-    await this.persistConfig(false, true);
-    new Notice('Fork snapshot saved.');
-    this.render();
-  }
-
-  private async loadForkSnapshot(snapshotId: string): Promise<void> {
-    if (this.isSending) {
-      return;
-    }
-
-    const snapshot = this.forkSnapshots.find(item => item.id === snapshotId);
-    if (!snapshot) {
-      return;
-    }
-
-    this.messages = snapshot.messages.map(message => this.cloneMessage(message));
-    this.selectedScopes = new Set(snapshot.selectedScopes);
-    this.useLorebookContext = snapshot.useLorebookContext;
-    this.manualContext = snapshot.manualContext;
-    this.noteContextRefs = [...snapshot.noteContextRefs];
-    this.editingMessageId = null;
-    this.editingMessageDraft = '';
-    await this.persistConfig(true, false);
-    this.render();
-    new Notice(`Loaded fork: ${snapshot.title}`);
-  }
-
-  private async deleteForkSnapshot(snapshotId: string): Promise<void> {
-    if (this.isSending) {
-      return;
-    }
-
-    const previousCount = this.forkSnapshots.length;
-    this.forkSnapshots = this.forkSnapshots.filter(item => item.id !== snapshotId);
-    if (this.forkSnapshots.length === previousCount) {
-      return;
-    }
-    await this.persistConfig(false, true);
+    await this.saveCurrentConversation();
     this.render();
   }
 
@@ -691,35 +1116,20 @@ export class StoryChatView extends ItemView {
     await this.runTurn(prompt, true);
   }
 
-  private async regenerateLastAssistantTurn(): Promise<void> {
-    if (this.isSending || this.messages.length === 0) {
-      return;
-    }
-
-    const lastAssistantIndex = [...this.messages]
-      .map((message, index) => ({ message, index }))
-      .reverse()
-      .find(entry => entry.message.role === 'assistant')?.index;
-
-    let targetUserPrompt = '';
-    if (typeof lastAssistantIndex === 'number' && lastAssistantIndex > 0) {
-      const prior = this.messages[lastAssistantIndex - 1];
-      if (prior?.role === 'user') {
-        targetUserPrompt = prior.content;
-      }
-      this.messages.splice(lastAssistantIndex, 1);
-    } else {
-      const lastUser = [...this.messages].reverse().find(message => message.role === 'user');
-      targetUserPrompt = lastUser?.content ?? '';
-    }
-
-    if (!targetUserPrompt.trim()) {
-      new Notice('No prior user turn available to regenerate.');
-      return;
-    }
-
-    this.render();
-    await this.runTurn(targetUserPrompt, false);
+  private buildHistoryForGeneration(excludeMessageId?: string): StoryChatMessage[] {
+    return this.messages
+      .filter(message => message.id !== excludeMessageId)
+      .map(message => {
+        const selected = this.getSelectedVersion(message);
+        return {
+          id: message.id,
+          role: message.role,
+          content: selected.content,
+          createdAt: message.createdAt,
+          contextMeta: this.cloneContextMeta(selected.contextMeta)
+        } as StoryChatMessage;
+      })
+      .filter(message => message.content.trim().length > 0);
   }
 
   private updateAssistantMessageContent(messageId: string, content: string): void {
@@ -730,7 +1140,45 @@ export class StoryChatView extends ItemView {
     row.setText(content || '...');
   }
 
-  private async runTurn(prompt: string, appendUser: boolean): Promise<void> {
+  private async regenerateLatestAssistantVersion(): Promise<void> {
+    if (this.isSending || this.messages.length === 0) {
+      return;
+    }
+
+    const lastAssistantIndex = [...this.messages]
+      .map((message, index) => ({ message, index }))
+      .reverse()
+      .find(entry => entry.message.role === 'assistant')?.index;
+
+    if (typeof lastAssistantIndex !== 'number') {
+      new Notice('No assistant message available to regenerate.');
+      return;
+    }
+
+    let targetUserPrompt = '';
+    if (lastAssistantIndex > 0) {
+      const prior = this.messages[lastAssistantIndex - 1];
+      const selected = prior ? this.getSelectedVersion(prior) : null;
+      if (prior?.role === 'user' && selected) {
+        targetUserPrompt = selected.content;
+      }
+    } else {
+      const lastUser = [...this.messages].reverse().find(message => message.role === 'user');
+      if (lastUser) {
+        targetUserPrompt = this.getSelectedVersion(lastUser).content;
+      }
+    }
+
+    if (!targetUserPrompt.trim()) {
+      new Notice('No prior user turn available to regenerate.');
+      return;
+    }
+
+    const assistant = this.messages[lastAssistantIndex];
+    await this.runTurn(targetUserPrompt, false, assistant.id);
+  }
+
+  private async runTurn(prompt: string, appendUser: boolean, regenerateMessageId?: string): Promise<void> {
     if (this.isSending) {
       return;
     }
@@ -738,6 +1186,7 @@ export class StoryChatView extends ItemView {
     this.stopRequested = false;
     this.isSending = true;
     this.editingMessageId = null;
+    this.editingVersionId = null;
     this.editingMessageDraft = '';
 
     const preview = this.plugin.previewNoteContextRefs(this.noteContextRefs);
@@ -748,54 +1197,113 @@ export class StoryChatView extends ItemView {
     }
 
     if (appendUser) {
-      this.messages.push({
-        id: this.createMessageId('user'),
-        role: 'user',
+      const now = Date.now();
+      const userVersion: ChatMessageVersion = {
+        id: this.createId('ver'),
         content: prompt,
-        createdAt: Date.now()
+        createdAt: now
+      };
+      this.messages.push({
+        id: this.createId('user'),
+        role: 'user',
+        createdAt: now,
+        versions: [userVersion],
+        activeVersionId: userVersion.id
       });
     }
 
-    const assistantMessage: StoryChatMessage = {
-      id: this.createMessageId('assistant'),
-      role: 'assistant',
-      content: '',
-      createdAt: Date.now()
-    };
-    this.messages.push(assistantMessage);
-    this.messages = this.messages.slice(-this.plugin.getStoryChatConfig().maxMessages);
+    let assistantMessage: ConversationMessage | null = null;
+    let activeVersion: ChatMessageVersion | null = null;
+    let createdNewMessage = false;
+    let previousActiveVersionId = '';
+
+    if (regenerateMessageId) {
+      const target = this.messages.find(message => message.id === regenerateMessageId && message.role === 'assistant');
+      if (target) {
+        previousActiveVersionId = target.activeVersionId;
+        const version: ChatMessageVersion = {
+          id: this.createId('ver'),
+          content: '',
+          createdAt: Date.now()
+        };
+        target.versions.push(version);
+        target.activeVersionId = version.id;
+        assistantMessage = target;
+        activeVersion = version;
+      }
+    }
+
+    if (!assistantMessage || !activeVersion) {
+      const now = Date.now();
+      const version: ChatMessageVersion = {
+        id: this.createId('ver'),
+        content: '',
+        createdAt: now
+      };
+      assistantMessage = {
+        id: this.createId('assistant'),
+        role: 'assistant',
+        createdAt: now,
+        versions: [version],
+        activeVersionId: version.id
+      };
+      activeVersion = version;
+      this.messages.push(assistantMessage);
+      createdNewMessage = true;
+    }
+
+    if (!assistantMessage || !activeVersion) {
+      this.isSending = false;
+      throw new Error('Unable to prepare assistant message for generation.');
+    }
+
+    const targetAssistantMessage = assistantMessage;
+    const targetVersion = activeVersion;
+
+    const maxMessages = Math.max(10, this.plugin.getStoryChatConfig().maxMessages);
+    if (this.messages.length > maxMessages) {
+      this.messages = this.messages.slice(-maxMessages);
+    }
+
     this.render();
     this.setStatus('Generating response...');
 
     try {
-      const history = this.messages
-        .filter(message => message.id !== assistantMessage.id)
-        .filter(message => message.content.trim().length > 0);
       const result = await this.plugin.runStoryChatTurn({
         userMessage: prompt,
         selectedScopes: [...this.selectedScopes],
         useLorebookContext: this.useLorebookContext,
         manualContext: this.manualContext,
         noteContextRefs: this.noteContextRefs,
-        history,
+        history: this.buildHistoryForGeneration(targetAssistantMessage.id),
         onDelta: delta => {
-          assistantMessage.content += delta;
-          this.updateAssistantMessageContent(assistantMessage.id, assistantMessage.content);
+          targetVersion.content += delta;
+          this.updateAssistantMessageContent(targetAssistantMessage.id, targetVersion.content);
           this.updateGenerationMonitor();
         }
       });
 
-      assistantMessage.content = result.assistantText;
-      assistantMessage.contextMeta = result.contextMeta;
+      targetVersion.content = result.assistantText;
+      targetVersion.contextMeta = this.cloneContextMeta(result.contextMeta);
       this.setStatus('Idle');
-      await this.persistConfig(true, false);
+      await this.saveCurrentConversation();
       this.render();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (this.stopRequested && !assistantMessage.content.trim()) {
-        assistantMessage.content = '[Generation stopped.]';
-      } else if (!assistantMessage.content.trim()) {
-        this.messages = this.messages.filter(item => item.id !== assistantMessage.id);
+      const contentNow = targetVersion.content.trim();
+
+      if (this.stopRequested && !contentNow) {
+        targetVersion.content = '[Generation stopped.]';
+      } else if (!contentNow) {
+        if (createdNewMessage) {
+          this.messages = this.messages.filter(item => item.id !== targetAssistantMessage.id);
+        } else {
+          const target = this.messages.find(item => item.id === targetAssistantMessage.id);
+          if (target) {
+            target.versions = target.versions.filter(item => item.id !== targetVersion.id);
+            target.activeVersionId = previousActiveVersionId || (target.versions[0]?.id ?? '');
+          }
+        }
       }
 
       if (!this.stopRequested) {
@@ -804,7 +1312,7 @@ export class StoryChatView extends ItemView {
       } else {
         this.setStatus('Stopped');
       }
-      await this.persistConfig(true, false);
+      await this.saveCurrentConversation();
       this.render();
     } finally {
       this.isSending = false;

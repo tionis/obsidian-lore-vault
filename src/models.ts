@@ -190,6 +190,8 @@ export interface ConverterSettings {
     timeoutMs: number;
   };
   storyChat: {
+    chatFolder: string;
+    activeConversationPath: string;
     selectedScopes: string[];
     useLorebookContext: boolean;
     manualContext: string;
@@ -266,6 +268,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     timeoutMs: 60000
   },
   storyChat: {
+    chatFolder: 'LoreVault/chat',
+    activeConversationPath: '',
     selectedScopes: [],
     useLorebookContext: true,
     manualContext: '',

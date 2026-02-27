@@ -341,6 +341,27 @@
   gap: 8px;
 }
 
+.lorevault-chat-conversation-row {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lorevault-chat-conversation-select {
+  min-width: 240px;
+  flex: 1 1 280px;
+}
+
+.lorevault-chat-conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .lorevault-chat-generation-monitor {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
@@ -424,50 +445,37 @@
   resize: vertical;
 }
 
-.lorevault-chat-note-preview {
+.lorevault-chat-note-list {
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 8px;
   font-size: 12px;
-}
-
-.lorevault-chat-note-preview p {
-  margin: 4px 0;
-}
-
-.lorevault-chat-note-preview ul {
-  margin: 4px 0 6px;
-  padding-left: 18px;
-}
-
-.lorevault-chat-forks {
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.lorevault-chat-forks p {
+.lorevault-chat-note-list p {
   margin: 0;
-  font-size: 12px;
 }
 
-.lorevault-chat-fork-row {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  padding: 6px 8px;
+.lorevault-chat-note-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
 }
 
-.lorevault-chat-fork-actions {
-  display: flex;
-  gap: 6px;
+.lorevault-chat-note-row span {
+  overflow-wrap: anywhere;
+}
+
+.lorevault-chat-note-resolved {
+  color: var(--text-normal);
+}
+
+.lorevault-chat-note-unresolved {
+  color: var(--text-warning);
 }
 
 .lorevault-chat-messages {
@@ -494,6 +502,22 @@
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 4px;
+}
+
+.lorevault-chat-version-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.lorevault-chat-version-row span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lorevault-chat-version-select {
+  min-width: 140px;
 }
 
 .lorevault-chat-message-content {

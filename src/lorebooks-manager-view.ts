@@ -2,6 +2,7 @@ import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { ScopeSummary, buildScopeSummaries } from './lorebooks-manager-data';
+import { UsageLedgerTotals } from './usage-ledger-report';
 
 export const LOREVAULT_MANAGER_VIEW_TYPE = 'lorevault-manager-view';
 
@@ -21,8 +22,20 @@ function formatSecondsAgo(timestamp: number): string {
   return `${seconds}s ago`;
 }
 
+function formatUsd(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '$0.0000';
+  }
+  return `$${value.toFixed(4)}`;
+}
+
+function formatCostSummary(label: string, totals: UsageLedgerTotals): string {
+  return `${label}: ${totals.requests} req | tokens ${formatTokenValue(totals.totalTokens)} | known ${formatUsd(totals.costUsdKnown)} | unknown ${totals.unknownCostCount}`;
+}
+
 export class LorebooksManagerView extends ItemView {
   private plugin: LoreBookConverterPlugin;
+  private renderVersion = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -42,7 +55,7 @@ export class LorebooksManagerView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    this.render();
+    await this.render();
   }
 
   async onClose(): Promise<void> {
@@ -50,7 +63,7 @@ export class LorebooksManagerView extends ItemView {
   }
 
   refresh(): void {
-    this.render();
+    void this.render();
   }
 
   private renderToolbar(container: HTMLElement): void {
@@ -198,6 +211,89 @@ export class LorebooksManagerView extends ItemView {
     this.renderGenerationCard(section);
   }
 
+  private async renderCostSection(container: HTMLElement, renderVersion: number): Promise<void> {
+    const section = container.createDiv({ cls: 'lorevault-manager-section' });
+    section.createEl('h3', { text: 'Usage and Cost' });
+    const card = section.createDiv({ cls: 'lorevault-manager-card lorevault-manager-generation-card' });
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: 'Loading usage summary...'
+    });
+
+    try {
+      const snapshot = await this.plugin.getUsageReportSnapshot();
+      if (renderVersion !== this.renderVersion) {
+        return;
+      }
+
+      card.empty();
+      card.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: `Updated: ${formatSecondsAgo(snapshot.generatedAt)}`
+      });
+
+      card.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: formatCostSummary('Session', snapshot.totals.session)
+      });
+
+      card.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: formatCostSummary('Today (UTC)', snapshot.totals.day)
+      });
+
+      card.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: formatCostSummary('Project', snapshot.totals.project)
+      });
+
+      if (snapshot.warnings.length > 0) {
+        const warnings = card.createEl('ul', { cls: 'lorevault-manager-warnings' });
+        for (const warning of snapshot.warnings) {
+          const item = warnings.createEl('li', { text: warning });
+          item.addClass('lorevault-manager-warning-item');
+        }
+      }
+
+      const details = card.createEl('details', { cls: 'lorevault-manager-debug' });
+      details.createEl('summary', { text: 'Top Usage Breakdown' });
+
+      const opHeading = details.createEl('h4', { text: 'By Operation' });
+      opHeading.addClass('lorevault-manager-subheading');
+      const opList = details.createEl('ul');
+      for (const item of snapshot.byOperation.slice(0, 8)) {
+        opList.createEl('li', {
+          text: `${item.key}: ${item.requests} req | ${formatTokenValue(item.totalTokens)} tokens | ${formatUsd(item.costUsdKnown)}`
+        });
+      }
+      if (snapshot.byOperation.length === 0) {
+        details.createEl('p', { text: '(none)' });
+      }
+
+      const modelHeading = details.createEl('h4', { text: 'By Model' });
+      modelHeading.addClass('lorevault-manager-subheading');
+      const modelList = details.createEl('ul');
+      for (const item of snapshot.byModel.slice(0, 8)) {
+        modelList.createEl('li', {
+          text: `${item.key}: ${item.requests} req | ${formatTokenValue(item.totalTokens)} tokens | ${formatUsd(item.costUsdKnown)}`
+        });
+      }
+      if (snapshot.byModel.length === 0) {
+        details.createEl('p', { text: '(none)' });
+      }
+    } catch (error) {
+      if (renderVersion !== this.renderVersion) {
+        return;
+      }
+      card.empty();
+      const message = error instanceof Error ? error.message : String(error);
+      card.createEl('p', {
+        cls: 'lorevault-manager-warning-item',
+        text: `Failed to load usage summary: ${message}`
+      });
+    }
+  }
+
   private renderScopesSection(container: HTMLElement, summaries: ScopeSummary[]): void {
     const section = container.createDiv({ cls: 'lorevault-manager-section' });
     section.createEl('h3', { text: 'Lorebook Scopes' });
@@ -208,7 +304,9 @@ export class LorebooksManagerView extends ItemView {
     }
   }
 
-  private render(): void {
+  private async render(): Promise<void> {
+    this.renderVersion += 1;
+    const renderVersion = this.renderVersion;
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('lorevault-manager-view');
@@ -220,6 +318,7 @@ export class LorebooksManagerView extends ItemView {
 
     this.renderToolbar(contentEl);
     this.renderGenerationSection(contentEl);
+    await this.renderCostSection(contentEl, renderVersion);
 
     const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
     const summaries = buildScopeSummaries(notes, this.plugin.settings);

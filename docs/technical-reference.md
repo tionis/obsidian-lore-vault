@@ -54,6 +54,8 @@ This document is the implementation-level reference for core architecture and ru
   - usage-cost estimation helpers (`provider_reported` vs `estimated` vs `unknown`)
 - `src/usage-ledger-store.ts`
   - persistent usage ledger storage with deterministic entry shape/order
+- `src/usage-ledger-report.ts`
+  - deterministic aggregation/snapshot + CSV serialization
 
 ## Export Pipeline Contract
 
@@ -278,7 +280,7 @@ Embedded docs view:
 
 This is the primary user-facing in-plugin guide for command flow and feature behavior.
 
-## Cost Tracking Groundwork (Phase 13)
+## Cost Tracking (Phase 13)
 
 Implemented scope:
 
@@ -289,21 +291,27 @@ Implemented scope:
 - usage metadata recorded when provider response includes token usage fields
 - optional ledger persistence (`settings.costTracking.enabled`)
 - fallback USD estimation via configured per-million token rates
+- manager panel usage/cost monitor (session/day/project totals + warnings + top breakdowns)
+- usage report export commands:
+  - `Export Usage Report (JSON)`
+  - `Export Usage Report (CSV)`
 
 Core contracts:
 
 - ledger path defaults to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+- usage report output dir defaults to `.obsidian/plugins/lore-vault/reports`
 - record fields are normalized and sorted deterministically on persist
 - cost source is explicit per record:
   - `provider_reported`
   - `estimated`
   - `unknown`
+- day rollups use UTC day boundaries
+- report CSV row ordering is deterministic (`timestamp ASC`, `id ASC`)
 
 Current non-goals in this phase:
 
 - provider pricing auto-sync
-- aggregated dashboard/budget warnings
-- CSV/JSON export reports beyond the canonical ledger file
+- per-scope spend attribution heuristics beyond stored metadata dimensions
 
 ## Determinism Requirements (Implementation)
 

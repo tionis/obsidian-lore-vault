@@ -222,6 +222,9 @@ export interface ConverterSettings {
     ledgerPath: string;
     defaultInputCostPerMillionUsd: number;
     defaultOutputCostPerMillionUsd: number;
+    reportOutputDir: string;
+    dailyBudgetUsd: number;
+    sessionBudgetUsd: number;
   };
   completion: {
     enabled: boolean;
@@ -330,7 +333,10 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     enabled: false,
     ledgerPath: '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
     defaultInputCostPerMillionUsd: 0,
-    defaultOutputCostPerMillionUsd: 0
+    defaultOutputCostPerMillionUsd: 0,
+    reportOutputDir: '.obsidian/plugins/lore-vault/reports',
+    dailyBudgetUsd: 0,
+    sessionBudgetUsd: 0
   },
   completion: {
     enabled: false,

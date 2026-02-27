@@ -54,6 +54,8 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Generate Chapter Summary (Active Note)"
      - "Generate World Info Summaries (Active Scope)"
      - "Generate Chapter Summaries (Current Story)"
+     - "Export Usage Report (JSON)"
+     - "Export Usage Report (CSV)"
      - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
@@ -97,7 +99,7 @@ If you prefer to build the plugin from source:
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: configure Auto Summaries (`world_info/chapter generated-summary usage`, summary input/output character caps)
-   - Optional: enable Cost Tracking and set fallback USD-per-1M token rates for usage ledger estimates
+   - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, set report output directory, and optional daily/session budget warnings
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
 

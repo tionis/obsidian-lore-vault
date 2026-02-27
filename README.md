@@ -181,6 +181,7 @@ Manager features:
 - per-scope counts (included notes, `world_info`, `rag`)
 - scope warnings when sections are empty
 - generation monitor (running state, active scopes, token budget, selected context items, output progress)
+- usage and cost monitor (session/day/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
 - `Build/Export` action per scope
 - `Inspect Routing` action per scope
 - toolbar shortcuts to open routing and query simulation diagnostics
@@ -233,6 +234,7 @@ Behavior:
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
 Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`.
+Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
 
 ## Auto Summary Commands (Phase 9)
 

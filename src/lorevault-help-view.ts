@@ -143,7 +143,9 @@ export class LorevaultHelpView extends ItemView {
         'Continue Story with Context streams generated text into the active editor at the cursor.',
         'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
         'Writing Completion settings support reusable model presets for quick provider/model A/B testing.',
-        'Optional Cost Tracking settings can persist token/cost usage records for continuation, chat, and summary runs.',
+        'Optional Cost Tracking settings persist token/cost usage records for continuation, chat, and summary runs.',
+        'Manager panel includes usage/cost rollups (session/day/project) with optional budget warnings.',
+        'Use commands Export Usage Report (JSON/CSV) for deterministic report exports.',
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
         'Story Chat supports per-chat scope selection, manual context, and specific-note context lists.',
         'Assistant turns expose a layer trace so you can see which context layer contributed injected data.'

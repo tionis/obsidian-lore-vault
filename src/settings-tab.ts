@@ -1124,6 +1124,43 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    new Setting(containerEl)
+      .setName('Usage Report Output Directory')
+      .setDesc('Directory for exported usage reports (JSON/CSV).')
+      .addText(text => text
+        .setPlaceholder('.obsidian/plugins/lore-vault/reports')
+        .setValue(this.plugin.settings.costTracking.reportOutputDir)
+        .onChange(async (value) => {
+          this.plugin.settings.costTracking.reportOutputDir = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Daily Budget Warning (USD)')
+      .setDesc('Warn in manager panel when known daily (UTC) cost exceeds this amount. Set 0 to disable.')
+      .addText(text => text
+        .setValue(this.plugin.settings.costTracking.dailyBudgetUsd.toString())
+        .onChange(async (value) => {
+          const numValue = Number(value);
+          if (!Number.isNaN(numValue) && numValue >= 0) {
+            this.plugin.settings.costTracking.dailyBudgetUsd = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Session Budget Warning (USD)')
+      .setDesc('Warn in manager panel when known session cost exceeds this amount. Set 0 to disable.')
+      .addText(text => text
+        .setValue(this.plugin.settings.costTracking.sessionBudgetUsd.toString())
+        .onChange(async (value) => {
+          const numValue = Number(value);
+          if (!Number.isNaN(numValue) && numValue >= 0) {
+            this.plugin.settings.costTracking.sessionBudgetUsd = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
 
     new Setting(containerEl)

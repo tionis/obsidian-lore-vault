@@ -437,6 +437,7 @@ Commands:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
+- `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
 
 Shared panel inputs:
 
@@ -472,6 +473,16 @@ Current merge policy (default):
 - summary: merge into compact combined summary
 - keywords/aliases: deterministic union with case-insensitive dedupe
 - content: append unique blocks only (normalized-text dedupe)
+- story delta update policy:
+  - `safe_append`: keep existing metadata for existing notes, append unique updates
+  - `structured_merge`: merge summary/keywords/aliases and append unique updates
+- low-confidence story-delta operations are skipped by default using configurable threshold
+- story delta note matching order:
+  - explicit/normalized `pageKey`
+  - normalized `title`
+  - deterministic new-note creation in target folder
+- story delta can use inline markdown or load source markdown from a story note path
+- story delta supports optional scope-tag filter when selecting existing notes from target folder
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope

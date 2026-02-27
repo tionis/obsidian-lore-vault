@@ -66,6 +66,12 @@ This document is the implementation-level reference for core architecture and ru
   - deterministic chunking
   - per-chunk extraction prompt/validation
   - iterative merge pipeline and final page rendering
+- `src/lorevault-story-delta-view.ts`
+  - story delta update panel (`Apply Story Delta to Existing Wiki`) with preview/apply flow
+- `src/story-delta-update.ts`
+  - deterministic chunked delta extraction
+  - low-confidence gating
+  - existing page matching and idempotent merge planning
 
 ## Export Pipeline Contract
 
@@ -336,6 +342,27 @@ Implemented:
 - deterministic chunking and per-chunk schema-constrained extraction
 - iterative existing-page state injection between chunks
 - deterministic merge behavior (summary merge, set unions, unique content append)
+
+## Phase 15 Story Delta Updates (Current Progress)
+
+Implemented:
+
+- story-delta command/view (`Apply Story Delta to Existing Wiki`)
+- source story input from inline markdown or note path
+- deterministic target-page loading from folder with optional scope-tag filter
+- deterministic chunking reuse (`splitStoryMarkdownIntoChunks`)
+- schema-constrained delta operations including confidence + rationale
+- low-confidence operation skip policy with warnings/preview counts
+- deterministic operation matching (`pageKey` first, title fallback, then deterministic create)
+- merge policies:
+  - `safe_append`: preserve metadata on existing notes, append unique content blocks
+  - `structured_merge`: deterministic summary/keyword/alias merge + unique content append
+- idempotence guard: duplicate content blocks are not appended on rerun
+- fixture-backed tests for parsing, gating, deterministic paths, and idempotence behavior
+
+Still pending in this phase:
+
+- per-change approval UI before write (current apply is global)
 
 ## Determinism Requirements (Implementation)
 

@@ -248,9 +248,19 @@ Constraints:
 - explicit conflict strategy (append/merge/overwrite policy)
 - strict schema validation with recoverable error handling per chunk
 
-## Future: Story-Driven Wiki Update Workflow
+## Story-Driven Wiki Update Workflow (Phase 15 Foundation)
 
-Add a separate workflow to update existing wiki pages from story evolution.
+Current status:
+
+- foundation implemented via command/panel: `Apply Story Delta to Existing Wiki`
+- deterministic chunked extraction reused from story extraction pipeline
+- deterministic page matching + policy-driven update planning (`safe_append`/`structured_merge`)
+- low-confidence update gating with preview warnings
+- global preview/apply flow is implemented
+
+Next increment:
+
+- per-change approval UI before writes (instead of all-or-nothing apply)
 
 Goal:
 

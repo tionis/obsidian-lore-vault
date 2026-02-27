@@ -218,6 +218,7 @@ Current capabilities:
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
 - specific notes context references (one note per line, path/basename/`[[wikilink]]`)
+- live resolved/unresolved preview for specific note references
 - send/stop/regenerate controls
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 

@@ -324,6 +324,7 @@ Current behavior:
   - `Use Lorebook Context` toggle
   - manual context text
   - specific note references (`path`, basename, or `[[wikilink]]`)
+- shows live resolved/unresolved preview for specific note references
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
 - persists chat transcript and controls in plugin data
 

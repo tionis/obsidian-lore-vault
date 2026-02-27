@@ -334,6 +334,22 @@
   resize: vertical;
 }
 
+.lorevault-chat-note-preview {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.lorevault-chat-note-preview p {
+  margin: 4px 0;
+}
+
+.lorevault-chat-note-preview ul {
+  margin: 4px 0 6px;
+  padding-left: 18px;
+}
+
 .lorevault-chat-messages {
   display: flex;
   flex-direction: column;

@@ -236,3 +236,52 @@ test('runModelDrivenRetrievalHooks enforces maxPlanningTimeMs per turn', async (
   assert.equal(result.stopReason, 'time_limit');
   assert.equal(result.executedCalls, 0);
 });
+
+test('runModelDrivenRetrievalHooks supports non-English search tokens', async () => {
+  const catalog = createRetrievalToolCatalog([
+    {
+      scope: 'multiverse',
+      entries: [
+        createEntry(1, 'Герой', ['герой'], 'Описание героя.', 200),
+        createEntry(2, '東京', ['東京'], '都市の説明。', 180)
+      ]
+    }
+  ]);
+
+  let turn = 0;
+  const planner: RetrievalToolPlanner = async () => {
+    turn += 1;
+    if (turn === 1) {
+      return {
+        assistantText: '',
+        finishReason: 'tool_calls',
+        toolCalls: [
+          { id: 'c1', name: 'search_entries', argumentsJson: JSON.stringify({ query: 'герой 東京', limit: 4 }) }
+        ]
+      };
+    }
+    return {
+      assistantText: 'done',
+      finishReason: 'stop',
+      toolCalls: []
+    };
+  };
+
+  const result = await runModelDrivenRetrievalHooks({
+    queryText: 'герой 東京',
+    selectedScopes: ['multiverse'],
+    contextTokenBudget: 700,
+    catalog,
+    planner,
+    limits: {
+      maxCalls: 3,
+      maxResultTokens: 1200,
+      maxPlanningTimeMs: 3000,
+      maxInjectedEntries: 6
+    }
+  });
+
+  assert.equal(result.executedCalls, 1);
+  assert.ok(result.selectedItems.some(item => item.includes('Герой')));
+  assert.ok(result.selectedItems.some(item => item.includes('東京')));
+});

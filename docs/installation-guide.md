@@ -71,6 +71,7 @@ If you prefer to build the plugin from source:
    ```bash
    npm run build
    npm test
+   npm run profile:large-vault
    ```
 
 4. **Copy the built files to your Obsidian vault**

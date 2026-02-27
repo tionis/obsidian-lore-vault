@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'fs';
+import * as path from 'path';
 import { ConverterSettings } from '../src/models';
 import {
   LorebookNoteMetadata,
@@ -118,6 +120,35 @@ function note(
   return { path, basename, scopes, frontmatter };
 }
 
+function readFixture<T>(relativePath: string): T {
+  const fixturePath = path.join(__dirname, '..', '..', 'fixtures', relativePath);
+  return JSON.parse(readFileSync(fixturePath, 'utf8')) as T;
+}
+
+interface MixedRoutingFixture {
+  settings: {
+    activeScope: string;
+    membershipMode: 'exact' | 'cascade';
+    includeUntagged: boolean;
+  };
+  notes: Array<{
+    path: string;
+    scopes: string[];
+    frontmatter: LorebookNoteMetadata['frontmatter'];
+    expected: {
+      reason: string;
+      includeWorldInfo: boolean;
+      includeRag: boolean;
+    };
+  }>;
+  expectedSummary: {
+    scope: string;
+    includedNotes: number;
+    worldInfoEntries: number;
+    ragDocuments: number;
+  };
+}
+
 test('buildScopeSummaries routes notes to world_info and rag with overrides', () => {
   const settings = createSettings({
     tagScoping: {
@@ -183,4 +214,38 @@ test('buildScopeSummaries disables includeUntagged while building all discovered
 
   const untagged = summaries[0].notes.find(entry => entry.path === 'untagged.md');
   assert.equal(untagged?.reason, 'untagged_excluded');
+});
+
+test('buildScopeSummaries follows fixture-defined mixed routing and cascade behavior', () => {
+  const fixture = readFixture<MixedRoutingFixture>(path.join('lorebooks-manager-data', 'mixed-routing.json'));
+  const settings = createSettings({
+    tagScoping: {
+      tagPrefix: 'lorebook',
+      activeScope: fixture.settings.activeScope,
+      membershipMode: fixture.settings.membershipMode,
+      includeUntagged: fixture.settings.includeUntagged
+    }
+  });
+
+  const notes: LorebookNoteMetadata[] = fixture.notes.map(item =>
+    note(item.path, item.scopes, item.frontmatter)
+  );
+
+  const summaries = buildScopeSummaries(notes, settings);
+  assert.equal(summaries.length, 1);
+
+  const summary = summaries[0];
+  assert.equal(summary.scope, fixture.expectedSummary.scope);
+  assert.equal(summary.includedNotes, fixture.expectedSummary.includedNotes);
+  assert.equal(summary.worldInfoEntries, fixture.expectedSummary.worldInfoEntries);
+  assert.equal(summary.ragDocuments, fixture.expectedSummary.ragDocuments);
+
+  const byPath = new Map(summary.notes.map(entry => [entry.path, entry]));
+  for (const item of fixture.notes) {
+    const actual = byPath.get(item.path);
+    assert.ok(actual, `missing note debug row for ${item.path}`);
+    assert.equal(actual?.reason, item.expected.reason, `${item.path}: reason mismatch`);
+    assert.equal(actual?.includeWorldInfo, item.expected.includeWorldInfo, `${item.path}: includeWorldInfo mismatch`);
+    assert.equal(actual?.includeRag, item.expected.includeRag, `${item.path}: includeRag mismatch`);
+  }
 });

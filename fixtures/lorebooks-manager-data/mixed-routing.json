@@ -1,0 +1,105 @@
+{
+  "settings": {
+    "activeScope": "universe/yggdrasil",
+    "membershipMode": "cascade",
+    "includeUntagged": false
+  },
+  "notes": [
+    {
+      "path": "a.md",
+      "scopes": ["universe/yggdrasil"],
+      "frontmatter": { "keywords": ["Aurelia"] },
+      "expected": {
+        "reason": "included",
+        "includeWorldInfo": true,
+        "includeRag": false
+      }
+    },
+    {
+      "path": "b.md",
+      "scopes": ["universe/yggdrasil/regions"],
+      "frontmatter": {},
+      "expected": {
+        "reason": "included",
+        "includeWorldInfo": false,
+        "includeRag": true
+      }
+    },
+    {
+      "path": "c.md",
+      "scopes": ["universe"],
+      "frontmatter": { "retrieval": "both" },
+      "expected": {
+        "reason": "included",
+        "includeWorldInfo": true,
+        "includeRag": true
+      }
+    },
+    {
+      "path": "d.md",
+      "scopes": ["universe/other"],
+      "frontmatter": { "keywords": ["Drift"] },
+      "expected": {
+        "reason": "scope_mismatch",
+        "includeWorldInfo": false,
+        "includeRag": false
+      }
+    },
+    {
+      "path": "e.md",
+      "scopes": ["universe/yggdrasil"],
+      "frontmatter": { "retrieval": "none", "keywords": ["Echo"] },
+      "expected": {
+        "reason": "retrieval_disabled",
+        "includeWorldInfo": false,
+        "includeRag": false
+      }
+    },
+    {
+      "path": "f.md",
+      "scopes": ["universe/yggdrasil"],
+      "frontmatter": { "exclude": true, "keywords": ["Forbidden"] },
+      "expected": {
+        "reason": "excluded_by_frontmatter",
+        "includeWorldInfo": false,
+        "includeRag": false
+      }
+    },
+    {
+      "path": "g.md",
+      "scopes": [],
+      "frontmatter": { "keywords": ["Ghost"] },
+      "expected": {
+        "reason": "untagged_excluded",
+        "includeWorldInfo": false,
+        "includeRag": false
+      }
+    },
+    {
+      "path": "h.md",
+      "scopes": ["universe/yggdrasil/factions"],
+      "frontmatter": { "retrieval": "world_info" },
+      "expected": {
+        "reason": "included",
+        "includeWorldInfo": true,
+        "includeRag": false
+      }
+    },
+    {
+      "path": "i.md",
+      "scopes": ["universe/yggdrasil/factions"],
+      "frontmatter": { "retrieval": "rag", "keywords": ["Iron"] },
+      "expected": {
+        "reason": "included",
+        "includeWorldInfo": false,
+        "includeRag": true
+      }
+    }
+  ],
+  "expectedSummary": {
+    "scope": "universe/yggdrasil",
+    "includedNotes": 5,
+    "worldInfoEntries": 3,
+    "ragDocuments": 3
+  }
+}

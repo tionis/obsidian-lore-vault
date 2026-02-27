@@ -153,6 +153,7 @@ RAG ranking:
 
 - lexical score over title/path/content
 - optional semantic boost from embeddings cache/chunk vectors
+- optional semantic paragraph reranking for world_info body excerpt fallback
 - deterministic tie-breaks: `score DESC`, then `path/title/uid`
 
 ### Tool Retrieval Hooks (Optional Advanced Layer)
@@ -189,7 +190,9 @@ World info tiering:
 - initial inclusion at `short`
 - opportunistic upgrade to `medium`
 - opportunistic upgrade to `full`
-- high-score entries can receive query-focused `full_body` lifts (body excerpts) when budget allows
+- high-score entries first try `full_body` lift with full note body when budget allows
+- if full note body does not fit, lift falls back to deterministic excerpt selection
+- excerpt selection uses lexical paragraph scoring and optional embedding-based semantic paragraph boosts
 - upgrades only occur when budget permits
 - body-lift explainability records per-entry decision status (`applied` / specific skip reason)
 

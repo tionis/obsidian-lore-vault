@@ -584,7 +584,8 @@ Token budgeting:
 - splits budget between sections (`world_info` 70%, `rag` 30% by default)
 - iteratively shrinks per-scope context budget if total selected context exceeds input budget
 - `world_info` starts at `short` tier, then upgrades to `medium`/`full` if budget remains
-- top-scoring entries can be lifted to query-focused `full_body` excerpts (from note body) when budget allows
+- top-scoring entries can be lifted to `full_body` using full note body when budget allows; if not, LoreVault falls back to excerpt lift
+- excerpt lift is deterministic lexical paragraph scoring and gains semantic paragraph rerank when embeddings are enabled
 - skips entries/documents that would exceed section budget and reports cutoff diagnostics
 - context block is used for generation input and is not inserted into the note
 

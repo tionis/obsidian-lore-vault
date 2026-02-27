@@ -471,3 +471,57 @@ test('assembleScopeContext supports disabling body lift via query options', () =
     'skipped_disabled'
   );
 });
+
+test('assembleScopeContext uses semantic paragraph boosts when provided for excerpt lift', () => {
+  const summary = 'Baalthasar is a dark elven archmage and strategist.';
+  const paragraphA = 'At the Siege of Ashglass, Baalthasar routed the vanguard and held the eastern breach. '.repeat(36);
+  const paragraphB = 'Later, the silver reliquary cracked under moonlight and exposed a hidden relic resonance pattern. '.repeat(36);
+  const fullBody = [
+    summary,
+    '',
+    paragraphA.trim(),
+    '',
+    paragraphB.trim()
+  ].join('\n');
+
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(
+        1,
+        ['Baalthasar'],
+        summary,
+        900,
+        { comment: 'Baalthasar' }
+      )
+    ],
+    worldInfoBodyByUid: {
+      1: fullBody
+    },
+    ragDocuments: [],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const withoutSemantic = assembleScopeContext(pack, {
+    queryText: 'Baalthasar siege outcome',
+    tokenBudget: 900,
+    ragFallbackPolicy: 'off'
+  });
+  const withSemantic = assembleScopeContext(pack, {
+    queryText: 'Baalthasar siege outcome',
+    tokenBudget: 900,
+    ragFallbackPolicy: 'off',
+    worldInfoBodySemanticBoostByUid: {
+      1: {
+        2: 0.92
+      }
+    }
+  });
+
+  const withoutText = withoutSemantic.worldInfo.find(item => item.entry.uid === 1)?.includedContent ?? '';
+  const withText = withSemantic.worldInfo.find(item => item.entry.uid === 1)?.includedContent ?? '';
+  assert.ok(!withoutText.includes('silver reliquary cracked under moonlight'));
+  assert.ok(withText.includes('silver reliquary cracked under moonlight'));
+});

@@ -23,6 +23,7 @@ export interface ContextQueryOptions {
   worldInfoBodyLiftTokenCapPerEntry?: number;
   worldInfoBodyLiftMinScore?: number;
   worldInfoBodyLiftMaxHopDistance?: number;
+  worldInfoBodySemanticBoostByUid?: {[key: number]: {[paragraphIndex: number]: number}};
   ragSemanticBoostByDocUid?: {[key: number]: number};
   maxGraphHops?: number;
   graphHopDecay?: number;
@@ -265,7 +266,8 @@ function buildQueryFocusedBodyExcerpt(
   bodyText: string,
   queryText: string,
   matchedKeywords: string[],
-  maxChars: number
+  maxChars: number,
+  semanticBoostByParagraphIndex?: {[paragraphIndex: number]: number}
 ): string {
   const cleanedBody = bodyText
     .replace(/\r\n?/g, '\n')
@@ -313,6 +315,13 @@ function buildQueryFocusedBodyExcerpt(
         if (normalized.includes(token)) {
           score += 2;
         }
+      }
+
+      const semanticBoost = semanticBoostByParagraphIndex?.[index] ?? 0;
+      if (semanticBoost > 0) {
+        // Similarity scores are 0..1, so this keeps semantic influence noticeable
+        // without completely overriding lexical anchors.
+        score += semanticBoost * 24;
       }
 
       return {
@@ -934,7 +943,8 @@ export function assembleScopeContext(
     (selectedWorldInfo.length === 0 || seedConfidence < ragFallbackSeedScoreThreshold)
   );
 
-  // For high-confidence core entries, upgrade compact summary context with focused body excerpts.
+  // For high-confidence core entries, upgrade compact summary context with full body when possible;
+  // otherwise fall back to excerpt lifts.
   const worldInfoBodyByUid = pack.worldInfoBodyByUid ?? {};
   const bodyLiftedUids: number[] = [];
   const bodyLiftDecisions: WorldInfoBodyLiftDecision[] = [];
@@ -1144,7 +1154,8 @@ export function assembleScopeContext(
       bodyText,
       options.queryText,
       candidate.matchedKeywords,
-      bodyCharsCap
+      bodyCharsCap,
+      options.worldInfoBodySemanticBoostByUid?.[candidate.entry.uid]
     );
     if (!bodyExcerpt || bodyExcerpt === candidate.includedContent) {
       bodyLiftDecisions.push({
@@ -1186,13 +1197,17 @@ export function assembleScopeContext(
 
     bodyLiftedUids.push(candidate.entry.uid);
     const excerptTokens = estimateTokens(bodyExcerpt);
+    const semanticParagraphBoosts = options.worldInfoBodySemanticBoostByUid?.[candidate.entry.uid];
+    const semanticRerankUsed = Boolean(
+      semanticParagraphBoosts && Object.keys(semanticParagraphBoosts).length > 0
+    );
     selectedWorldInfo[index] = {
       ...candidate,
       contentTier: 'full_body',
       includedContent: bodyExcerpt,
       reasons: [
         ...candidate.reasons,
-        `lift:query-focused excerpt (~${excerptTokens} tokens)`
+        `lift:query-focused excerpt${semanticRerankUsed ? ' (semantic rerank)' : ''} (~${excerptTokens} tokens)`
       ]
     };
     const appliedDelta = Math.max(0, excerptDelta);
@@ -1206,7 +1221,7 @@ export function assembleScopeContext(
       fromTier,
       toTier: 'full_body',
       status: 'applied',
-      reason: `Applied query-focused excerpt (~${excerptTokens} tokens).`,
+      reason: `Applied query-focused excerpt${semanticRerankUsed ? ' with semantic rerank' : ''} (~${excerptTokens} tokens).`,
       liftedTokens: excerptTokens,
       deltaTokens: appliedDelta
     });

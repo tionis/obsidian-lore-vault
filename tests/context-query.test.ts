@@ -336,7 +336,7 @@ test('assembleScopeContext expands via backlinks when enabled', () => {
   assert.equal(withBacklinks.explainability.graph.includeBacklinksInGraphExpansion, true);
 });
 
-test('assembleScopeContext lifts high-score entries to query-focused body excerpts', () => {
+test('assembleScopeContext lifts high-score entries to full note body when budget allows', () => {
   const pack: ScopeContextPack = {
     scope: 'universe',
     builtAt: 1,
@@ -379,14 +379,59 @@ test('assembleScopeContext lifts high-score entries to query-focused body excerp
   const baalthasar = context.worldInfo.find(item => item.entry.uid === 1);
   assert.ok(baalthasar);
   assert.equal(baalthasar?.contentTier, 'full_body');
-  assert.ok((baalthasar?.includedContent ?? '').includes('Siege of Ashglass'));
+  assert.equal(baalthasar?.includedContent, pack.worldInfoBodyByUid?.[1]);
   assert.ok(context.explainability.worldInfoBudget.bodyLiftedUids.includes(1));
   assert.equal(context.explainability.worldInfoBudget.bodyLift.enabled, true);
   assert.ok(context.explainability.worldInfoBudget.bodyLift.decisions.length > 0);
-  assert.equal(
-    context.explainability.worldInfoBudget.bodyLift.decisions.find(item => item.uid === 1)?.status,
-    'applied'
-  );
+  const decision = context.explainability.worldInfoBudget.bodyLift.decisions.find(item => item.uid === 1);
+  assert.equal(decision?.status, 'applied');
+  assert.ok((decision?.reason ?? '').includes('full note body'));
+});
+
+test('assembleScopeContext falls back to query-focused excerpt when full note body exceeds lift budget', () => {
+  const longMiddle = 'Baalthasar recorded Siege of Ashglass details and tactical sequence. '.repeat(80);
+  const longTail = 'Aftermath at the Obsidian Steps. '.repeat(80);
+  const fullBody = [
+    'Baalthasar is a dark elven archmage and strategist.',
+    '',
+    longMiddle,
+    '',
+    longTail
+  ].join('\n');
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(
+        1,
+        ['Baalthasar'],
+        'Baalthasar is a dark elven archmage and strategist.',
+        900,
+        { comment: 'Baalthasar' }
+      )
+    ],
+    worldInfoBodyByUid: {
+      1: fullBody
+    },
+    ragDocuments: [],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const context = assembleScopeContext(pack, {
+    queryText: 'What happened at the Siege of Ashglass for Baalthasar?',
+    tokenBudget: 900,
+    ragFallbackPolicy: 'off'
+  });
+
+  const baalthasar = context.worldInfo.find(item => item.entry.uid === 1);
+  assert.ok(baalthasar);
+  assert.equal(baalthasar?.contentTier, 'full_body');
+  assert.notEqual(baalthasar?.includedContent, fullBody);
+  assert.ok((baalthasar?.includedContent ?? '').includes('Siege of Ashglass'));
+  const decision = context.explainability.worldInfoBudget.bodyLift.decisions.find(item => item.uid === 1);
+  assert.equal(decision?.status, 'applied');
+  assert.ok((decision?.reason ?? '').includes('query-focused excerpt'));
 });
 
 test('assembleScopeContext supports disabling body lift via query options', () => {

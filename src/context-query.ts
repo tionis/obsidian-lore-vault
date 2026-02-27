@@ -52,7 +52,7 @@ export interface WorldInfoBodyLiftDecision {
   toTier: WorldInfoContentTier;
   status: WorldInfoBodyLiftDecisionStatus;
   reason: string;
-  excerptTokens: number;
+  liftedTokens: number;
   deltaTokens: number;
 }
 
@@ -977,7 +977,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_disabled',
         reason: 'Body lift is disabled.',
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -993,7 +993,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_limit',
         reason: `Reached max lifted entries (${bodyLiftMaxEntries}).`,
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -1009,7 +1009,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_budget',
         reason: 'No body-lift budget remaining.',
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -1025,7 +1025,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_hop_distance',
         reason: `hopDistance ${candidate.hopDistance} > max ${bodyLiftMaxHopDistance}.`,
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -1041,7 +1041,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_score',
         reason: `score ${formatScore(candidate.score)} < min ${formatScore(bodyLiftMinScore)}.`,
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -1058,7 +1058,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_no_body',
         reason: 'No note body available for this entry.',
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -1075,7 +1075,7 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_body_matches_summary',
         reason: 'Body text matches summary content.',
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
@@ -1090,8 +1090,51 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_body_too_similar',
         reason: 'Body is too similar/short compared with summary content.',
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
+      });
+      continue;
+    }
+
+    const currentSection = renderWorldInfoSection(
+      candidate.entry,
+      candidate.matchedKeywords,
+      candidate.contentTier,
+      candidate.includedContent
+    );
+    const fullBodySection = renderWorldInfoSection(
+      candidate.entry,
+      candidate.matchedKeywords,
+      'full_body',
+      bodyText
+    );
+    const fullBodyDelta = estimateTokens(fullBodySection) - estimateTokens(currentSection);
+    if (fullBodyDelta <= bodyLiftBudget) {
+      const appliedFullBodyTokens = estimateTokens(bodyText);
+      bodyLiftedUids.push(candidate.entry.uid);
+      selectedWorldInfo[index] = {
+        ...candidate,
+        contentTier: 'full_body',
+        includedContent: bodyText,
+        reasons: [
+          ...candidate.reasons,
+          `lift:full note body (~${appliedFullBodyTokens} tokens)`
+        ]
+      };
+      const appliedDelta = Math.max(0, fullBodyDelta);
+      usedWorldInfoTokens += appliedDelta;
+      bodyLiftBudget -= appliedDelta;
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: 'full_body',
+        status: 'applied',
+        reason: `Applied full note body (~${appliedFullBodyTokens} tokens).`,
+        liftedTokens: appliedFullBodyTokens,
+        deltaTokens: appliedDelta
       });
       continue;
     }
@@ -1113,26 +1156,19 @@ export function assembleScopeContext(
         toTier: fromTier,
         status: 'skipped_excerpt_empty',
         reason: 'Could not extract additional body context beyond current tier.',
-        excerptTokens: 0,
+        liftedTokens: 0,
         deltaTokens: 0
       });
       continue;
     }
-
-    const currentSection = renderWorldInfoSection(
-      candidate.entry,
-      candidate.matchedKeywords,
-      candidate.contentTier,
-      candidate.includedContent
-    );
-    const upgradedSection = renderWorldInfoSection(
+    const excerptSection = renderWorldInfoSection(
       candidate.entry,
       candidate.matchedKeywords,
       'full_body',
       bodyExcerpt
     );
-    const delta = estimateTokens(upgradedSection) - estimateTokens(currentSection);
-    if (delta > bodyLiftBudget) {
+    const excerptDelta = estimateTokens(excerptSection) - estimateTokens(currentSection);
+    if (excerptDelta > bodyLiftBudget) {
       bodyLiftDecisions.push({
         uid: candidate.entry.uid,
         comment: candidate.entry.comment,
@@ -1141,24 +1177,25 @@ export function assembleScopeContext(
         fromTier,
         toTier: fromTier,
         status: 'skipped_budget',
-        reason: `Upgrade requires ${delta} tokens; remaining body-lift budget is ${bodyLiftBudget}.`,
-        excerptTokens: estimateTokens(bodyExcerpt),
-        deltaTokens: delta
+        reason: `Full body requires ${fullBodyDelta} tokens and excerpt requires ${excerptDelta}; remaining body-lift budget is ${bodyLiftBudget}.`,
+        liftedTokens: estimateTokens(bodyExcerpt),
+        deltaTokens: excerptDelta
       });
       continue;
     }
 
     bodyLiftedUids.push(candidate.entry.uid);
+    const excerptTokens = estimateTokens(bodyExcerpt);
     selectedWorldInfo[index] = {
       ...candidate,
       contentTier: 'full_body',
       includedContent: bodyExcerpt,
       reasons: [
         ...candidate.reasons,
-        `lift:body excerpt (~${estimateTokens(bodyExcerpt)} tokens)`
+        `lift:query-focused excerpt (~${excerptTokens} tokens)`
       ]
     };
-    const appliedDelta = Math.max(0, delta);
+    const appliedDelta = Math.max(0, excerptDelta);
     usedWorldInfoTokens += appliedDelta;
     bodyLiftBudget -= appliedDelta;
     bodyLiftDecisions.push({
@@ -1169,8 +1206,8 @@ export function assembleScopeContext(
       fromTier,
       toTier: 'full_body',
       status: 'applied',
-      reason: `Applied body excerpt (~${estimateTokens(bodyExcerpt)} tokens).`,
-      excerptTokens: estimateTokens(bodyExcerpt),
+      reason: `Applied query-focused excerpt (~${excerptTokens} tokens).`,
+      liftedTokens: excerptTokens,
       deltaTokens: appliedDelta
     });
   }

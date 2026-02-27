@@ -262,8 +262,8 @@ Flow:
 
 Precedence contract:
 
-- world_info entry content: `## Summary` section -> `frontmatter summary` fallback -> note body
-- chapter memory summary: `## Summary` section -> `frontmatter summary` fallback -> deterministic excerpt
+- world_info entry content: first paragraph under `## Summary` -> `frontmatter summary` fallback -> note body
+- chapter memory summary: first paragraph under `## Summary` -> `frontmatter summary` fallback -> deterministic excerpt
 
 ## Story Chat Persistence
 

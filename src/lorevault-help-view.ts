@@ -138,7 +138,7 @@ export class LorevaultHelpView extends ItemView {
         'Context menu shows world_info summary only for lorebook-tagged notes, and chapter summary only for story/chapter frontmatter notes.',
         'Review modal allows editing before writing summary updates.',
         'Accepted summaries are written to a `## Summary` section in the note body.',
-        'Precedence: `## Summary` section -> `frontmatter summary` fallback -> body/excerpt fallback.'
+        'Precedence: first paragraph under `## Summary` -> `frontmatter summary` fallback -> body/excerpt fallback.'
       ]
     });
 

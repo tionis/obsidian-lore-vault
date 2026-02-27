@@ -62,6 +62,48 @@ test('summary section helpers extract and strip deterministic summary blocks', (
   );
 });
 
+test('summary section extraction only reads the first summary paragraph', () => {
+  const delimited = [
+    '# Character',
+    '',
+    '## Summary',
+    '',
+    'Line one of summary.',
+    'Line two of same paragraph.',
+    '',
+    'Body paragraph starts here.',
+    'More body.'
+  ].join('\n');
+
+  assert.equal(
+    extractSummarySectionFromBody(delimited),
+    'Line one of summary. Line two of same paragraph.'
+  );
+  assert.equal(
+    stripSummarySectionFromBody(delimited),
+    ['# Character', '', 'Body paragraph starts here.', 'More body.'].join('\n')
+  );
+
+  const noDelimiter = [
+    '# Character',
+    '',
+    '## Summary',
+    '',
+    'Summary first line only.',
+    'Body continues without blank delimiter.',
+    'Still body content.'
+  ].join('\n');
+
+  assert.equal(
+    extractSummarySectionFromBody(noDelimiter),
+    'Summary first line only.'
+  );
+  assert.equal(
+    stripSummarySectionFromBody(noDelimiter),
+    ['# Character', '', 'Body continues without blank delimiter.', 'Still body content.'].join('\n')
+  );
+});
+
 test('upsertSummarySectionInMarkdown places summary after first h1 and replaces existing summary section', () => {
   const withH1 = [
     '---',
@@ -82,4 +124,20 @@ test('upsertSummarySectionInMarkdown places summary after first h1 and replaces 
   const replaced = upsertSummarySectionInMarkdown(inserted, 'Updated summary text.');
   assert.ok(!replaced.includes('Canonical compact summary.'));
   assert.ok(replaced.includes('## Summary\n\nUpdated summary text.'));
+});
+
+test('upsertSummarySectionInMarkdown writes exactly one summary paragraph', () => {
+  const source = [
+    '# Title',
+    '',
+    'Body starts here.'
+  ].join('\n');
+
+  const inserted = upsertSummarySectionInMarkdown(
+    source,
+    'First summary line.\nSecond summary line.\n\nIgnored second paragraph.'
+  );
+
+  assert.ok(inserted.includes('## Summary\n\nFirst summary line. Second summary line.\n\nBody starts here.'));
+  assert.equal(inserted.includes('Ignored second paragraph.'), false);
 });

@@ -8,6 +8,13 @@ interface ActionItem {
   onClick: () => void;
 }
 
+interface HelpSectionOptions {
+  bullets: string[];
+  actions?: ActionItem[];
+  note?: string;
+  codeSample?: string;
+}
+
 export class LorevaultHelpView extends ItemView {
   private plugin: LoreBookConverterPlugin;
 
@@ -43,16 +50,30 @@ export class LorevaultHelpView extends ItemView {
   private renderSection(
     container: HTMLElement,
     title: string,
-    bullets: string[],
-    actions: ActionItem[] = []
+    options: HelpSectionOptions
   ): void {
     const section = container.createDiv({ cls: 'lorevault-help-section' });
     section.createEl('h3', { text: title });
     const list = section.createEl('ul');
-    for (const bullet of bullets) {
+    for (const bullet of options.bullets) {
       list.createEl('li', { text: bullet });
     }
 
+    if (options.note) {
+      section.createEl('p', {
+        cls: 'lorevault-help-note',
+        text: options.note
+      });
+    }
+
+    if (options.codeSample) {
+      section.createEl('pre', {
+        cls: 'lorevault-help-code',
+        text: options.codeSample
+      });
+    }
+
+    const actions = options.actions ?? [];
     if (actions.length > 0) {
       const row = section.createDiv({ cls: 'lorevault-help-actions' });
       for (const action of actions) {
@@ -72,43 +93,77 @@ export class LorevaultHelpView extends ItemView {
     setIcon(icon, 'help-circle');
     titleRow.createEl('h2', { text: 'LoreVault Help' });
 
-    this.renderSection(contentEl, 'Start Here', [
-      'Tag notes with #lorebook/... to define scopes.',
-      'Use frontmatter keywords/key for world_info routing.',
-      'Use frontmatter retrieval to override routing: auto | world_info | rag | both | none.',
-      'Build one scope at a time with Build Active Lorebook Scope.'
-    ], [
-      { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() },
-      { label: 'Open Routing Debug', onClick: () => void this.plugin.openRoutingDebugView() }
-    ]);
+    this.renderSection(contentEl, 'Quick Start', {
+      bullets: [
+        'Tag notes with #lorebook/... to assign scope membership.',
+        'Add frontmatter keywords/key for world_info routing.',
+        'Use frontmatter retrieval override when needed: auto | world_info | rag | both | none.',
+        'Run Build Active Lorebook Scope from command palette or ribbon.'
+      ],
+      actions: [
+        { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() },
+        { label: 'Open Routing Debug', onClick: () => void this.plugin.openRoutingDebugView() }
+      ]
+    });
 
-    this.renderSection(contentEl, 'Generation and Chat', [
-      'Continue Story with Context streams text directly into the editor.',
-      'Story Chat provides persistent note-backed chats, forks, and message versions.',
-      'Story notes can set lorebook scopes via frontmatter keys: lorebooks, lorebookScopes, lorevaultScopes, activeLorebooks.',
-      'Long-form stories can set storyId/chapter/chapterTitle and previousChapter/nextChapter for deterministic chapter memory injection.'
-    ], [
-      { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }
-    ]);
+    this.renderSection(contentEl, 'Long-Form Story Workflow', {
+      bullets: [
+        'Create one note per chapter/scene and keep a stable storyId for the same story thread.',
+        'Set chapter numbers where possible so thread order is explicit and deterministic.',
+        'Optionally set previousChapter/nextChapter links to enforce explicit sequence edges.',
+        'Add summary in chapter frontmatter for higher-quality chapter memory injection.'
+      ],
+      note: 'Current behavior: chapter memory injection is used by Continue Story with Context. Story Chat currently uses lorebook/manual/specific-note context but not chapter memory.',
+      codeSample: [
+        '---',
+        'storyId: chronicles-main',
+        'chapter: 7',
+        'chapterTitle: "Crossing the Spine"',
+        'previousChapter: [[story/ch06-the-fallout]]',
+        'nextChapter: [[story/ch08-the-reckoning]]',
+        'lorebooks: [universe/core, universe/yggdrasil]',
+        'summary: "Short chapter recap for memory injection."',
+        '---'
+      ].join('\n')
+    });
 
-    this.renderSection(contentEl, 'Retrieval Controls', [
-      'Primary retrieval is graph-first world_info selection.',
-      'RAG fallback policy is configurable: off | auto | always.',
-      'Graph controls: max hops, hop decay, and seed threshold for auto fallback.',
-      'Generation telemetry shows scope usage and token budgets in Manager and Story Chat.'
-    ]);
+    this.renderSection(contentEl, 'Generation and Chat', {
+      bullets: [
+        'Continue Story with Context streams generated text into the active editor at the cursor.',
+        'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
+        'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
+        'Story Chat supports per-chat scope selection, manual context, and specific-note context lists.'
+      ],
+      actions: [
+        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }
+      ]
+    });
 
-    this.renderSection(contentEl, 'Export Artifacts', [
-      'Canonical output is one SQLite pack per scope (<scope>.db).',
-      'Downstream outputs are derived from SQLite under the same root (world_info JSON + rag markdown).',
-      'Each scope now includes a deterministic manifest (<scope>.manifest.json) for downstream tooling contracts.'
-    ]);
+    this.renderSection(contentEl, 'Retrieval and Budget Controls', {
+      bullets: [
+        'Primary retrieval is graph-first world_info (seed matches + bounded graph expansion).',
+        'RAG fallback policy is configurable in settings: off | auto | always.',
+        'Graph controls: max hops, hop decay, and seed threshold for auto fallback.',
+        'Token budgets are enforced; world_info content is tiered short -> medium -> full when budget allows.'
+      ]
+    });
 
-    this.renderSection(contentEl, 'Repository Docs', [
-      'README.md: quick behavior summary and command-level guide.',
-      'docs/documentation.md: detailed behavior and contracts.',
-      'docs/technical-reference.md: architecture-level technical detail.',
-      'docs/planning.md and docs/todo.md: product roadmap and implementation status.'
-    ]);
+    this.renderSection(contentEl, 'Exports and Downstream Use', {
+      bullets: [
+        'Canonical artifact: one SQLite pack per scope (<scope>.db).',
+        'Downstream exports are derived under the same root (world_info JSON + rag markdown).',
+        'Each scope writes a deterministic manifest (<scope>.manifest.json) with artifact paths and stats.',
+        'Companion tools should consume SQLite + manifest instead of re-parsing vault notes.'
+      ]
+    });
+
+    this.renderSection(contentEl, 'Documentation', {
+      bullets: [
+        'README.md: concise behavior summary and commands.',
+        'docs/documentation.md: detailed feature behavior and settings.',
+        'docs/technical-reference.md: implementation-level architecture/contracts.',
+        'docs/planning.md + docs/todo.md: roadmap and implementation status.'
+      ]
+    });
   }
 }

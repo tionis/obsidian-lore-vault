@@ -13,6 +13,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Optional backlink-aware graph expansion toggle for retrieval hops
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
+- Prompt-driven selection text commands with optional lore context and diff-based apply confirmation
 - Optional LLM summary workflows (world_info + chapter) with review/approval and in-note summary-section writes
 - Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
@@ -234,6 +235,7 @@ Behavior:
 - reports active scopes and pulled `world_info`/`rag` items at generation start
 - adds right-click editor context-menu actions:
   - `LoreVault: Continue Story with Context`
+  - `LoreVault: Run Text Command on Selection` (only when editor selection is non-empty)
   - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
   - `LoreVault: Generate Chapter Summary` (only when note has chapter/story frontmatter)
 
@@ -241,6 +243,35 @@ Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
 Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`.
 Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
+
+## Text Commands
+
+Command palette:
+
+- `Run Text Command on Selection`
+
+Editor context menu:
+
+- `LoreVault: Run Text Command on Selection` (shown only when text is selected)
+
+Behavior:
+
+- opens a prompt modal with:
+  - prompt template selection from your stored collection
+  - editable custom prompt text
+  - per-run toggle for lorebook context injection
+- submits selected text + prompt (and optional lore context) to the configured completion model
+- returns transformed text only
+- by default opens a review modal with original text + diff preview before apply
+- optional auto-accept can apply directly without review
+
+Settings path: `Settings -> LoreVault -> Text Commands`
+
+- auto-accept toggle
+- default lore-context toggle
+- context token budget
+- text-command system prompt
+- prompt collection JSON editor (`Save Collection` / `Load Defaults`)
 
 ## Auto Summary Commands (Phase 9)
 

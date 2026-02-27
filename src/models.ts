@@ -142,6 +142,52 @@ export interface CompletionPreset {
   timeoutMs: number;
 }
 
+export interface TextCommandPromptTemplate {
+  id: string;
+  name: string;
+  prompt: string;
+  includeLorebookContext: boolean;
+}
+
+export const DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES: TextCommandPromptTemplate[] = [
+  {
+    id: 'clarity-tighten',
+    name: 'Tighten for Clarity',
+    prompt: 'Rewrite for clarity and flow while preserving meaning, tone, and key details. Remove redundancy and awkward phrasing.',
+    includeLorebookContext: false
+  },
+  {
+    id: 'concise-trim',
+    name: 'Make More Concise',
+    prompt: 'Condense this text to be shorter and sharper while retaining essential facts and intent.',
+    includeLorebookContext: false
+  },
+  {
+    id: 'style-prose',
+    name: 'Improve Prose Style',
+    prompt: 'Refine sentence rhythm and word choice for polished narrative prose without changing plot facts.',
+    includeLorebookContext: false
+  },
+  {
+    id: 'dialogue-naturalize',
+    name: 'Naturalize Dialogue',
+    prompt: 'Rewrite dialogue so it sounds natural and character-consistent while preserving speaker intent.',
+    includeLorebookContext: true
+  },
+  {
+    id: 'canon-consistency',
+    name: 'Canon Consistency Pass',
+    prompt: 'Edit this text to improve consistency with established lore and character/world facts while preserving core intent.',
+    includeLorebookContext: true
+  }
+];
+
+export function cloneDefaultTextCommandPromptTemplates(): TextCommandPromptTemplate[] {
+  return DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES.map(template => ({
+    ...template
+  }));
+}
+
 export interface ConverterSettings {
   tagScoping: {
     tagPrefix: string;
@@ -246,6 +292,13 @@ export interface ConverterSettings {
     messages: StoryChatMessage[];
     forkSnapshots: StoryChatForkSnapshot[];
     maxMessages: number;
+  };
+  textCommands: {
+    autoAcceptEdits: boolean;
+    defaultIncludeLorebookContext: boolean;
+    maxContextTokens: number;
+    systemPrompt: string;
+    prompts: TextCommandPromptTemplate[];
   };
 }
 
@@ -353,5 +406,12 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     messages: [],
     forkSnapshots: [],
     maxMessages: 80
+  },
+  textCommands: {
+    autoAcceptEdits: false,
+    defaultIncludeLorebookContext: false,
+    maxContextTokens: 1400,
+    systemPrompt: 'You are a precise editing assistant for markdown writing. Apply the user instruction to the provided text and return only the transformed text.',
+    prompts: cloneDefaultTextCommandPromptTemplates()
   }
 };

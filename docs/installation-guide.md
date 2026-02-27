@@ -50,6 +50,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Open Story Chat" (opens right sidebar panel)
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
+     - "Run Text Command on Selection"
      - "Generate World Info Summary (Active Note)"
      - "Generate Chapter Summary (Active Note)"
      - "Generate World Info Summaries (Active Scope)"
@@ -58,6 +59,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Export Usage Report (CSV)"
      - "Import SillyTavern Lorebook"
      - "Extract Wiki Pages from Story"
+     - "Apply Story Delta to Existing Wiki"
      - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
@@ -149,7 +151,14 @@ If you prefer to build the plugin from source:
      - world_info: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> body
      - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> excerpt
 
-7. **Use Story Chat (Phase 10 foundation)**
+7. **Optional: Run text commands on selection**
+   - Select text in editor
+   - Right-click and run `LoreVault: Run Text Command on Selection` (or run command palette action `Run Text Command on Selection`)
+   - Choose/edit prompt template and optional lorebook-context toggle
+   - Review diff modal and click `Apply Edit` (unless auto-accept is enabled)
+   - Configure defaults in Settings -> LoreVault -> `Text Commands`
+
+8. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
    - Use the conversation dropdown at the top to switch chats; use `New Chat` to create one
    - Optional: set the conversation note folder in Settings -> LoreVault -> `Story Chat Conversation Folder`
@@ -162,7 +171,7 @@ If you prefer to build the plugin from source:
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
    - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, and tool-hook layer traces
 
-8. **Import Existing Lorebook JSON (Phase 14)**
+9. **Import Existing Lorebook JSON (Phase 14)**
   - Run command `Import SillyTavern Lorebook`
   - Set target folder (manual path or `Browse`), default tags, and lorebook name
   - Paste lorebook JSON in the panel text field
@@ -170,7 +179,7 @@ If you prefer to build the plugin from source:
   - Imported summaries are written to note `## Summary` sections
   - Click `Import` to create/update generated wiki notes deterministically
 
-9. **Extract Wiki Pages from Story (Phase 14)**
+10. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`
    - Set target folder (manual path or `Browse`), default tags, lorebook name, and chunk/extraction limits
    - Paste story markdown
@@ -179,7 +188,7 @@ If you prefer to build the plugin from source:
    - Extracted summaries are written to note `## Summary` sections
    - Click `Apply Preview` to write generated/updated wiki pages
 
-10. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
+11. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
    - Run command `Apply Story Delta to Existing Wiki`
    - Provide story markdown directly or set `Source Story Note Path` and click `Use Active Note`
    - Set target wiki folder (manual path or `Browse`) and optional scope tag filter

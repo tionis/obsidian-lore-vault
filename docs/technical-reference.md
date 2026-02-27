@@ -47,6 +47,10 @@ This document is the implementation-level reference for core architecture and ru
   - summary normalization and world_info content resolution
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
+- `src/text-command-modal.ts`
+  - prompt/template selection modal for selection rewrite commands
+- `src/text-command-review-modal.ts` + `src/text-command-diff.ts`
+  - diff preview + review/apply flow for selection edits
 - `src/cost-utils.ts`
   - usage-cost estimation helpers (`provider_reported` vs `estimated` vs `unknown`)
 - `src/usage-ledger-store.ts`
@@ -264,6 +268,31 @@ Precedence contract:
 
 - world_info entry content: first paragraph under `## Summary` -> `frontmatter summary` fallback -> note body
 - chapter memory summary: first paragraph under `## Summary` -> `frontmatter summary` fallback -> deterministic excerpt
+
+## Text Command Internals
+
+Entrypoints in `src/main.ts`:
+
+- command: `Run Text Command on Selection`
+- editor menu action: `LoreVault: Run Text Command on Selection`
+
+Flow:
+
+1. capture selected editor range + source text
+2. open prompt modal (`src/text-command-modal.ts`)
+3. optionally retrieve lore context (scope/frontmatter resolution mirrors continuation behavior)
+4. call completion provider with text-command system prompt + user prompt payload
+5. optionally record usage ledger entry (`operation = text_command_edit`)
+6. if auto-accept disabled, open review modal with unified diff preview (`src/text-command-review-modal.ts`)
+7. apply replacement only when selection still matches captured source text
+
+Settings contract (`ConverterSettings.textCommands`):
+
+- `autoAcceptEdits` (default false)
+- `defaultIncludeLorebookContext`
+- `maxContextTokens`
+- `systemPrompt`
+- `prompts[]` (id/name/prompt/includeLorebookContext)
 
 ## Story Chat Persistence
 

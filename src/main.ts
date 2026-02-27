@@ -32,6 +32,7 @@ import { buildScopePack } from './scope-pack-builder';
 import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
 import { AssembledContext, ScopeContextPack } from './context-query';
+import { buildScopeExportManifest, writeScopeExportManifest } from './export-manifest';
 import * as path from 'path';
 import { FrontmatterData, normalizeFrontmatter, stripFrontmatter } from './frontmatter-utils';
 import { normalizeLinkTarget } from './link-target-index';
@@ -1676,13 +1677,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       }));
 
       assertUniqueOutputPaths(scopeAssignments, {
-        includeSqlite: this.settings.sqlite.enabled
+        includeSqlite: this.settings.sqlite.enabled,
+        includeManifest: this.settings.sqlite.enabled
       });
 
       for (const assignment of scopeAssignments) {
         const { scope, paths } = assignment;
         const progress = new ProgressBar(
-          files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + rag
+          files.length + 8, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + rag + manifest
           `Building LoreVault scope: ${scope || '(all)'}`
         );
 
@@ -1723,6 +1725,13 @@ export default class LoreBookConverterPlugin extends Plugin {
         progress.setStatus(`Scope ${scope || '(all)'}: exporting RAG markdown...`);
         await ragExporter.exportRagMarkdown(ragDocuments, paths.ragPath, scope || '(all)');
         progress.update();
+
+        if (this.settings.sqlite.enabled) {
+          progress.setStatus(`Scope ${scope || '(all)'}: writing export manifest...`);
+          const manifest = buildScopeExportManifest(scopePackResult.pack, paths);
+          await writeScopeExportManifest(this.app, manifest, paths.manifestPath);
+          progress.update();
+        }
 
         progress.success(
           `Scope ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} rag docs.`

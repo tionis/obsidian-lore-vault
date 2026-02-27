@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS,
   LoreBookEntry,
   StoryChatContextMeta,
+  StoryChatForkSnapshot,
   StoryChatMessage
 } from './models';
 import { ProgressBar } from './progress-bar';
@@ -13,6 +14,10 @@ import { LoreBookConverterSettingTab } from './settings-tab';
 import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
 import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
+import {
+  LOREVAULT_ROUTING_DEBUG_VIEW_TYPE,
+  LorebooksRoutingDebugView
+} from './lorebooks-routing-debug-view';
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LiveContextIndex } from './live-context-index';
 import { EmbeddingService } from './embedding-service';
@@ -232,6 +237,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshRoutingDebugViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorebooksRoutingDebugView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
   private refreshStoryChatViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
     for (const leaf of leaves) {
@@ -254,6 +268,24 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorebooksManagerView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openRoutingDebugView(scope?: string): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_ROUTING_DEBUG_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorebooksRoutingDebugView) {
+      leaf.view.setScope(scope ?? null);
       leaf.view.refresh();
     }
   }
@@ -324,12 +356,32 @@ export default class LoreBookConverterPlugin extends Plugin {
     }));
   }
 
+  public getStoryChatForkSnapshots(): StoryChatForkSnapshot[] {
+    return this.settings.storyChat.forkSnapshots.map(snapshot => ({
+      ...snapshot,
+      selectedScopes: [...snapshot.selectedScopes],
+      noteContextRefs: [...snapshot.noteContextRefs],
+      messages: snapshot.messages.map(message => ({
+        ...message,
+        contextMeta: message.contextMeta ? {
+          ...message.contextMeta,
+          scopes: [...message.contextMeta.scopes],
+          specificNotePaths: [...message.contextMeta.specificNotePaths],
+          unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
+          worldInfoItems: [...message.contextMeta.worldInfoItems],
+          ragItems: [...message.contextMeta.ragItems]
+        } : undefined
+      }))
+    }));
+  }
+
   public getStoryChatConfig(): ConverterSettings['storyChat'] {
     return {
       ...this.settings.storyChat,
       selectedScopes: [...this.settings.storyChat.selectedScopes],
       noteContextRefs: [...this.settings.storyChat.noteContextRefs],
-      messages: this.getStoryChatMessages()
+      messages: this.getStoryChatMessages(),
+      forkSnapshots: this.getStoryChatForkSnapshots()
     };
   }
 
@@ -920,6 +972,71 @@ export default class LoreBookConverterPlugin extends Plugin {
       })
       .slice(-merged.storyChat.maxMessages);
 
+    const forkSnapshots = Array.isArray(merged.storyChat.forkSnapshots) ? merged.storyChat.forkSnapshots : [];
+    merged.storyChat.forkSnapshots = forkSnapshots
+      .map((snapshot: any): StoryChatForkSnapshot | null => {
+        if (!snapshot) {
+          return null;
+        }
+        const snapshotMessages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+        const normalizedMessages: StoryChatMessage[] = snapshotMessages
+          .filter((message: any) => message && (message.role === 'user' || message.role === 'assistant'))
+          .map((message: any): StoryChatMessage => ({
+            id: typeof message.id === 'string' && message.id ? message.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            role: message.role === 'assistant' ? 'assistant' : 'user',
+            content: (message.content ?? '').toString(),
+            createdAt: Number.isFinite(message.createdAt) ? Math.floor(message.createdAt) : Date.now(),
+            contextMeta: message.contextMeta ? {
+              usedLorebookContext: Boolean(message.contextMeta.usedLorebookContext),
+              usedManualContext: Boolean(message.contextMeta.usedManualContext),
+              usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
+              scopes: Array.isArray(message.contextMeta.scopes)
+                ? message.contextMeta.scopes
+                  .map((scope: string) => normalizeScope(scope))
+                  .filter((scope: string | null): scope is string => Boolean(scope))
+                : [],
+              specificNotePaths: Array.isArray(message.contextMeta.specificNotePaths)
+                ? message.contextMeta.specificNotePaths.map((item: unknown) => String(item))
+                : [],
+              unresolvedNoteRefs: Array.isArray(message.contextMeta.unresolvedNoteRefs)
+                ? message.contextMeta.unresolvedNoteRefs.map((item: unknown) => String(item))
+                : [],
+              contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
+              worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
+              ragCount: Math.max(0, Math.floor(message.contextMeta.ragCount ?? 0)),
+              worldInfoItems: Array.isArray(message.contextMeta.worldInfoItems)
+                ? message.contextMeta.worldInfoItems.map((item: unknown) => String(item))
+                : [],
+              ragItems: Array.isArray(message.contextMeta.ragItems)
+                ? message.contextMeta.ragItems.map((item: unknown) => String(item))
+                : []
+            } : undefined
+          }))
+          .slice(-merged.storyChat.maxMessages);
+
+        const selectedSnapshotScopes = Array.isArray(snapshot.selectedScopes) ? snapshot.selectedScopes : [];
+        const selectedScopes = selectedSnapshotScopes
+          .map((scope: unknown) => normalizeScope(String(scope ?? '')))
+          .filter((scope: string | null, index: number, array: Array<string | null>): scope is string => Boolean(scope) && array.indexOf(scope) === index);
+        const noteRefs = Array.isArray(snapshot.noteContextRefs) ? snapshot.noteContextRefs : [];
+        const noteContextRefs = noteRefs
+          .map((ref: unknown) => normalizeLinkTarget(String(ref ?? '')))
+          .filter((ref: string | null, index: number, array: Array<string | null>): ref is string => Boolean(ref) && array.indexOf(ref) === index);
+
+        return {
+          id: typeof snapshot.id === 'string' && snapshot.id ? snapshot.id : `fork-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title: typeof snapshot.title === 'string' && snapshot.title.trim() ? snapshot.title.trim() : 'Fork Snapshot',
+          createdAt: Number.isFinite(snapshot.createdAt) ? Math.floor(snapshot.createdAt) : Date.now(),
+          messages: normalizedMessages,
+          selectedScopes,
+          useLorebookContext: Boolean(snapshot.useLorebookContext),
+          manualContext: (snapshot.manualContext ?? '').toString(),
+          noteContextRefs
+        };
+      })
+      .filter((snapshot): snapshot is StoryChatForkSnapshot => Boolean(snapshot))
+      .slice(-20);
+
     return merged;
   }
 
@@ -928,6 +1045,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.settings = this.mergeSettings(await this.loadData());
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
+    this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
 
     // Add custom ribbon icons with clearer intent.
@@ -981,6 +1099,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open LoreVault Manager',
       callback: () => {
         void this.openLorebooksManagerView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-routing-debug',
+      name: 'Open LoreVault Routing Debug',
+      callback: () => {
+        void this.openRoutingDebugView();
       }
     });
 
@@ -1048,24 +1174,28 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', file => {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
       this.refreshStoryChatViews();
     }));
 
     this.registerEvent(this.app.vault.on('modify', file => {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
       this.refreshStoryChatViews();
     }));
 
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
       this.refreshStoryChatViews();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
       this.refreshStoryChatViews();
     }));
 
@@ -1076,6 +1206,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async onunload() {
     this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
       window.clearTimeout(this.managerRefreshTimer);
@@ -1089,6 +1220,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     await super.saveData(this.settings);
     this.liveContextIndex?.requestFullRefresh();
     this.refreshManagerViews();
+    this.refreshRoutingDebugViews();
     this.refreshStoryChatViews();
   }
 
@@ -1549,6 +1681,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
       this.liveContextIndex.requestFullRefresh();
       this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
       this.refreshStoryChatViews();
     } catch (error) {
       console.error('Conversion failed:', error);

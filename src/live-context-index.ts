@@ -341,6 +341,10 @@ export class LiveContextIndex {
 
     return assembleScopeContext(pack, {
       ...options,
+      maxGraphHops: options.maxGraphHops ?? settings.retrieval.maxGraphHops,
+      graphHopDecay: options.graphHopDecay ?? settings.retrieval.graphHopDecay,
+      ragFallbackPolicy: options.ragFallbackPolicy ?? settings.retrieval.ragFallbackPolicy,
+      ragFallbackSeedScoreThreshold: options.ragFallbackSeedScoreThreshold ?? settings.retrieval.ragFallbackSeedScoreThreshold,
       ragSemanticBoostByDocUid: semanticBoostByDocUid
     });
   }

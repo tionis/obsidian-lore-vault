@@ -176,6 +176,12 @@ export interface ConverterSettings {
     maxChunkChars: number;
     overlapChars: number;
   };
+  retrieval: {
+    maxGraphHops: number;
+    graphHopDecay: number;
+    ragFallbackPolicy: 'off' | 'auto' | 'always';
+    ragFallbackSeedScoreThreshold: number;
+  };
   completion: {
     enabled: boolean;
     provider: 'openrouter' | 'ollama' | 'openai_compatible';
@@ -253,6 +259,12 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     minChunkChars: 300,
     maxChunkChars: 1800,
     overlapChars: 200
+  },
+  retrieval: {
+    maxGraphHops: 2,
+    graphHopDecay: 0.55,
+    ragFallbackPolicy: 'auto',
+    ragFallbackSeedScoreThreshold: 120
   },
   completion: {
     enabled: false,

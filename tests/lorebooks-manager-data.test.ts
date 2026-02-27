@@ -25,7 +25,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       file_depth: 2000,
       ...(overrides.weights ?? {})
     },
-    outputPath: '',
+    outputPath: overrides.outputPath ?? '',
     defaultLoreBook: {
       orderByTitle: false,
       useDroste: true,
@@ -65,6 +65,13 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       overlapChars: 200,
       ...(overrides.embeddings ?? {})
     },
+    retrieval: {
+      maxGraphHops: 2,
+      graphHopDecay: 0.55,
+      ragFallbackPolicy: 'auto',
+      ragFallbackSeedScoreThreshold: 120,
+      ...(overrides.retrieval ?? {})
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',
@@ -90,8 +97,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       forkSnapshots: [],
       maxMessages: 80,
       ...(overrides.storyChat ?? {})
-    },
-    ...overrides
+    }
   };
 }
 

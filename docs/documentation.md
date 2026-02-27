@@ -344,6 +344,7 @@ Query behavior:
     - term overlap in title/path/content
     - optional semantic boost from embeddings
     - default fallback policy is `auto` (used when seed confidence is low or no `world_info` matches are selected)
+    - configurable fallback policy: `off|auto|always`
 - completion:
   - builds a prompt from scope context + recent story window
   - calls configured completion provider with streaming enabled
@@ -367,6 +368,13 @@ Token budgeting:
 - `world_info` starts at `short` tier, then upgrades to `medium`/`full` if budget remains
 - skips entries/documents that would exceed section budget and reports cutoff diagnostics
 - context block is used for generation input and is not inserted into the note
+
+Retrieval tuning settings (applies immediately to live query and generation):
+
+- `RAG Fallback Policy`
+- `RAG Auto Fallback Seed Threshold`
+- `Max Graph Hops`
+- `Graph Hop Decay`
 
 ## Story Chat Panel
 

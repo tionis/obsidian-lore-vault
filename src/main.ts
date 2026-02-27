@@ -546,15 +546,11 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   async openHelpView(): Promise<void> {
-    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_HELP_VIEW_TYPE)[0];
-
-    if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
-      await leaf.setViewState({
-        type: LOREVAULT_HELP_VIEW_TYPE,
-        active: true
-      });
-    }
+    const leaf = this.app.workspace.getLeaf(true);
+    await leaf.setViewState({
+      type: LOREVAULT_HELP_VIEW_TYPE,
+      active: true
+    });
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultHelpView) {

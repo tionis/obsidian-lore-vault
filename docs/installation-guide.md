@@ -132,7 +132,9 @@ If you prefer to build the plugin from source:
 
 5. **Open embedded help**
    - Run command `Open LoreVault Help`
+   - Help opens in the main editor area as a tab
    - Use it as the in-plugin quick reference for setup, retrieval behavior, and export artifacts
+   - Use the built-in buttons to open lorebook import, story extraction, and lorebook update panels
 
 6. **Optional: Generate and approve summaries**
    - Open a note and run:
@@ -162,7 +164,7 @@ If you prefer to build the plugin from source:
 
 8. **Import Existing Lorebook JSON (Phase 14)**
   - Run command `Import SillyTavern Lorebook`
-  - Set target folder, default tags, and lorebook name
+  - Set target folder (manual path or `Browse`), default tags, and lorebook name
   - Paste lorebook JSON in the panel text field
   - Click `Preview` to inspect planned file paths
   - Imported summaries are written to note `## Summary` sections
@@ -170,7 +172,7 @@ If you prefer to build the plugin from source:
 
 9. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`
-   - Set target folder, default tags, lorebook name, and chunk/extraction limits
+   - Set target folder (manual path or `Browse`), default tags, lorebook name, and chunk/extraction limits
    - Paste story markdown
    - Click `Preview Extraction` to run chunked LLM extraction with deterministic merge preview
    - Inspect planned pages and chunk diagnostics
@@ -180,7 +182,7 @@ If you prefer to build the plugin from source:
 10. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
    - Run command `Apply Story Delta to Existing Wiki`
    - Provide story markdown directly or set `Source Story Note Path` and click `Use Active Note`
-   - Set target wiki folder and optional scope tag filter
+   - Set target wiki folder (manual path or `Browse`) and optional scope tag filter
    - Choose update policy:
      - `safe_append` (default): preserve existing metadata on existing pages
      - `structured_merge`: merge summary-section/keywords/aliases where confidence is high

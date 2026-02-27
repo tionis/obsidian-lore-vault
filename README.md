@@ -288,7 +288,7 @@ Provides an in-plugin overview of:
 - retrieval and fallback behavior
 - build/export artifacts
 - story completion/chat workflow
-- links to repository docs and roadmap files
+- direct actions to open import/extraction/lorebook-update panels
 
 ## Inbound Wiki Panels (Phase 14)
 
@@ -301,7 +301,7 @@ Commands:
 Current behavior:
 
 - `Import SillyTavern Lorebook` opens a panel with:
-  - target folder
+  - target folder (manual path or `Browse` existing folder picker)
   - default tags
   - lorebook name (converted into a lorebook tag)
   - pasted lorebook JSON input
@@ -319,12 +319,14 @@ Story extraction behavior:
 - per-chunk LLM extraction with strict JSON response validation
 - iterative context injection of already-extracted page state between chunks
 - deterministic safe-merge policy (`summary` merge + keyword/alias union + unique content block append)
+- target folder can be selected by path or `Browse` picker
 - generated/updated page summaries are written into note `## Summary` sections
 - preview first, then explicit apply to write pages
 
 Story delta behavior (Phase 15 foundation):
 
 - updates existing notes in a target folder (optional tag filter)
+- target folder can be selected by path or `Browse` picker
 - accepts story markdown directly or from a selected story note path
 - low-confidence operation gating (preview warnings + skipped operation count)
 - deterministic matching to existing pages by `pageKey` then title fallback

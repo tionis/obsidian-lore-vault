@@ -2,6 +2,7 @@ import { ItemView, Notice, Setting, TFile, getAllTags, WorkspaceLeaf } from 'obs
 import LoreBookConverterPlugin from './main';
 import { requestStoryContinuation } from './completion-provider';
 import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
+import { openVaultFolderPicker } from './folder-suggest-modal';
 import {
   buildStoryDeltaPlan,
   StoryDeltaExistingPageInput,
@@ -418,14 +419,26 @@ export class LorevaultStoryDeltaView extends ItemView {
           });
       });
 
+    let targetFolderInput: { setValue: (value: string) => void } | null = null;
     new Setting(contentEl)
       .setName('Target Wiki Folder')
       .setDesc('Only notes in this folder are considered for existing-page updates.')
-      .addText(text => text
-        .setPlaceholder('LoreVault/import')
-        .setValue(this.targetFolder)
-        .onChange(value => {
-          this.targetFolder = value.trim();
+      .addText(text => {
+        targetFolderInput = text;
+        text
+          .setPlaceholder('LoreVault/import')
+          .setValue(this.targetFolder)
+          .onChange(value => {
+            this.targetFolder = value.trim();
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          openVaultFolderPicker(this.app, path => {
+            this.targetFolder = path;
+            targetFolderInput?.setValue(path);
+          });
         }));
 
     new Setting(contentEl)

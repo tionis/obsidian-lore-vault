@@ -126,11 +126,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (this.managerRefreshTimer !== null) {
       return;
     }
+    if (this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE).length === 0) {
+      return;
+    }
 
     this.managerRefreshTimer = window.setTimeout(() => {
       this.managerRefreshTimer = null;
       this.refreshManagerViews();
-    }, 150);
+    }, 600);
   }
 
   private updateGenerationTelemetry(update: Partial<GenerationTelemetry>): void {

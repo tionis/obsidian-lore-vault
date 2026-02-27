@@ -114,6 +114,7 @@ If you prefer to build the plugin from source:
 5. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
    - Use the conversation dropdown at the top to switch chats; use `New Chat` to create one
+   - Optional: set the conversation note folder in Settings -> LoreVault -> `Story Chat Conversation Folder`
    - Select lorebook scopes to use (or disable lorebook context for manual-only chat)
    - Optional: add manual context text in the panel
    - Optional: add specific note references using `Add Note` or `Add Active`; remove list items as needed

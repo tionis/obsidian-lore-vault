@@ -187,6 +187,37 @@ export class StoryChatView extends ItemView {
     if (Date.now() < this.ignoreRefreshUntil) {
       return;
     }
+
+    if (this.isSending) {
+      return;
+    }
+
+    void this.refreshFromSettingsIfNeeded();
+  }
+
+  private async refreshFromSettingsIfNeeded(): Promise<void> {
+    const previousFolder = this.chatFolder;
+    const previousPath = this.activeConversationPath;
+    this.loadSettingsState();
+
+    const folderChanged = this.chatFolder !== previousFolder;
+    const pathChanged = this.activeConversationPath !== previousPath;
+    if (!folderChanged && !pathChanged) {
+      return;
+    }
+
+    await this.loadConversationSummaries();
+
+    if (this.activeConversationPath) {
+      const loaded = await this.loadConversationByPath(this.activeConversationPath);
+      if (loaded) {
+        this.render();
+        return;
+      }
+    }
+
+    await this.ensureConversationLoaded();
+    this.render();
   }
 
   private loadSettingsState(): void {

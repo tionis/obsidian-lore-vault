@@ -181,6 +181,8 @@ Use command `Open LoreVault Routing Debug` to open a dedicated diagnostics view.
 Routing debug features:
 
 - scope selector
+- lorebook contents panel for `world_info` entries (keywords, trigger params, collapsible content)
+- query simulation panel to inspect selected entries/scores/match reasons for arbitrary text
 - note-level inclusion/exclusion reasons
 - retrieval mode and keyword presence
 - resolved route (`world_info`, `rag`, both, or none)
@@ -234,6 +236,7 @@ Current capabilities:
 - manual context block (for manual-only or mixed mode)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
+- chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
 - regenerate appends a new assistant message version; users can switch active versions
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)

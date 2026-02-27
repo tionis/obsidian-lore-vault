@@ -276,6 +276,11 @@ Capabilities:
 
 - opens a dedicated workspace view with more horizontal space for routing diagnostics
 - scope selector for switching debug target
+- lorebook contents panel with `world_info` entries (keywords, trigger parameters, collapsible content)
+- query simulation panel:
+  - input text + token budget
+  - selected entries with score and matched keywords
+  - optional rag candidate diagnostics
 - full inclusion/routing table for selected scope:
   - note path
   - inclusion/exclusion reason
@@ -345,6 +350,7 @@ Current behavior:
 - allows switching between multiple generated versions of a message; only selected version is used for future context
 - persists each chat/fork as a markdown note under `LoreVault/chat`
 - plugin settings persist active conversation path and chat folder
+- chat folder path is configurable in settings (`Story Chat Conversation Folder`)
 
 Turn context assembly:
 

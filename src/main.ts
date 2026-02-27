@@ -31,7 +31,7 @@ import {
 import { buildScopePack } from './scope-pack-builder';
 import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
-import { AssembledContext } from './context-query';
+import { AssembledContext, ScopeContextPack } from './context-query';
 import * as path from 'path';
 import { FrontmatterData, normalizeFrontmatter, stripFrontmatter } from './frontmatter-utils';
 import { normalizeLinkTarget } from './link-target-index';
@@ -205,6 +205,33 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
     this.generationStatusEl.setText(`LoreVault ${message}`);
+  }
+
+  private syncIdleGenerationTelemetryToSettings(): void {
+    if (this.generationInFlight) {
+      return;
+    }
+
+    const completion = this.settings.completion;
+    const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+    this.updateGenerationTelemetry({
+      state: 'idle',
+      statusText: 'idle',
+      provider: completion.provider,
+      model: completion.model,
+      contextWindowTokens: completion.contextWindowTokens,
+      maxInputTokens,
+      promptReserveTokens: completion.promptReserveTokens,
+      maxOutputTokens: completion.maxOutputTokens,
+      contextUsedTokens: 0,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens),
+      generatedTokens: 0,
+      worldInfoCount: 0,
+      ragCount: 0,
+      worldInfoItems: [],
+      ragItems: []
+    });
+    this.setGenerationStatus('idle', 'idle');
   }
 
   private getSQLiteOutputRootPath(): string {
@@ -405,6 +432,10 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   public async clearStoryChatMessages(): Promise<void> {
     await this.setStoryChatMessages([]);
+  }
+
+  public async getScopeContextPack(scope?: string): Promise<ScopeContextPack> {
+    return this.liveContextIndex.getScopePack(scope);
   }
 
   public stopActiveGeneration(): void {
@@ -753,6 +784,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.setGenerationStatus('chat generating', 'busy');
 
     let assistantText = '';
+    let streamFailure: Error | null = null;
     try {
       await requestStoryContinuationStream(completion, {
         systemPrompt: completion.systemPrompt,
@@ -772,7 +804,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
     } catch (error) {
       if (!this.isAbortLikeError(error)) {
-        throw error;
+        streamFailure = error instanceof Error ? error : new Error(String(error));
       }
     } finally {
       this.generationInFlight = false;
@@ -780,8 +812,22 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus('idle', 'idle');
     }
 
+    if (streamFailure) {
+      this.updateGenerationTelemetry({
+        state: 'error',
+        statusText: 'error',
+        lastError: streamFailure.message
+      });
+      throw streamFailure;
+    }
+
     const normalizedAssistantText = assistantText.trim();
     if (!normalizedAssistantText) {
+      this.updateGenerationTelemetry({
+        state: 'idle',
+        statusText: 'idle',
+        lastError: 'Completion provider returned empty output.'
+      });
       throw new Error('Completion provider returned empty output.');
     }
 
@@ -1072,7 +1118,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Add settings tab
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
     this.generationStatusEl = this.addStatusBarItem();
-    this.setGenerationStatus('idle', 'idle');
+    this.syncIdleGenerationTelemetryToSettings();
 
     // Add ribbon icon
     this.addRibbonIcon('lorevault-build', 'Build Active Lorebook Scope', () => {
@@ -1221,6 +1267,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
     await super.saveData(this.settings);
     this.liveContextIndex?.requestFullRefresh();
+    this.syncIdleGenerationTelemetryToSettings();
     this.refreshManagerViews();
     this.refreshRoutingDebugViews();
     this.refreshStoryChatViews();

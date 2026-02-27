@@ -101,6 +101,7 @@ retrieval: auto   # auto | world_info | rag | both | none
 Routing behavior:
 
 - `world_info` uses compact entry content (`summary` when present, else note body)
+- live retrieval can upgrade high-score entries with query-focused body excerpts when budget allows
 - `rag` uses the full note body (frontmatter removed)
 
 ## Root Handling

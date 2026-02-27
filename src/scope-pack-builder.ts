@@ -34,6 +34,7 @@ function createSilentProgress(): ProgressBar {
 export interface ScopePackBuildResult {
   pack: ScopePack;
   scopedSettings: ConverterSettings;
+  worldInfoBodyByUid: {[key: number]: string};
 }
 
 export async function buildScopePack(
@@ -98,6 +99,7 @@ export async function buildScopePack(
 
   return {
     scopedSettings,
+    worldInfoBodyByUid: fileProcessor.getWorldInfoBodyByUid(),
     pack: {
       schemaVersion: 1,
       scope,

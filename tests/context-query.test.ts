@@ -112,7 +112,12 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
   assert.equal(context.rag[0].document.uid, 10);
   assert.equal(context.rag[1].document.uid, 11);
   assert.ok(context.worldInfo[0].reasons.length > 0);
-  assert.ok(context.worldInfo[0].contentTier === 'short' || context.worldInfo[0].contentTier === 'medium' || context.worldInfo[0].contentTier === 'full');
+  assert.ok(
+    context.worldInfo[0].contentTier === 'short' ||
+    context.worldInfo[0].contentTier === 'medium' ||
+    context.worldInfo[0].contentTier === 'full' ||
+    context.worldInfo[0].contentTier === 'full_body'
+  );
   assert.ok(context.markdown.includes('### world_info'));
   assert.ok(context.markdown.includes('### rag'));
 });
@@ -271,4 +276,51 @@ test('assembleScopeContext supports non-English keyword tokenization', () => {
   const selected = context.worldInfo.map(item => item.entry.uid);
   assert.ok(selected.includes(1));
   assert.ok(selected.includes(2));
+});
+
+test('assembleScopeContext lifts high-score entries to query-focused body excerpts', () => {
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(
+        1,
+        ['Baalthasar'],
+        'Baalthasar is a dark elven archmage and strategist.',
+        900,
+        { comment: 'Baalthasar', wikilinks: ['Rin'] }
+      ),
+      createWorldInfoEntry(
+        2,
+        ['Rin'],
+        'Rin is his ally.',
+        650,
+        { comment: 'Rin' }
+      )
+    ],
+    worldInfoBodyByUid: {
+      1: [
+        'Baalthasar is a dark elven archmage and strategist.',
+        '',
+        'At the Siege of Ashglass, Baalthasar shattered the imperial vanguard and sealed the breach with mind and fate magic.',
+        '',
+        'He later negotiated the dragon armistice at the Obsidian Steps after recovering the void lens.'
+      ].join('\n')
+    },
+    ragDocuments: [],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const context = assembleScopeContext(pack, {
+    queryText: 'What happened at the Siege of Ashglass for Baalthasar?',
+    tokenBudget: 2400,
+    ragFallbackPolicy: 'off'
+  });
+
+  const baalthasar = context.worldInfo.find(item => item.entry.uid === 1);
+  assert.ok(baalthasar);
+  assert.equal(baalthasar?.contentTier, 'full_body');
+  assert.ok((baalthasar?.includedContent ?? '').includes('Siege of Ashglass'));
+  assert.ok(context.explainability.worldInfoBudget.bodyLiftedUids.includes(1));
 });

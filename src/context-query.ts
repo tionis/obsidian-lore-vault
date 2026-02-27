@@ -4,6 +4,7 @@ import { normalizeScope } from './lorebook-scoping';
 export interface ScopeContextPack {
   scope: string;
   worldInfoEntries: LoreBookEntry[];
+  worldInfoBodyByUid?: {[key: number]: string};
   ragDocuments: RagDocument[];
   ragChunks: RagChunk[];
   ragChunkEmbeddings: RagChunkEmbedding[];
@@ -23,7 +24,7 @@ export interface ContextQueryOptions {
   ragFallbackSeedScoreThreshold?: number;
 }
 
-export type WorldInfoContentTier = 'short' | 'medium' | 'full';
+export type WorldInfoContentTier = 'short' | 'medium' | 'full' | 'full_body';
 
 export interface WorldInfoScoreBreakdown {
   seed: number;
@@ -74,6 +75,9 @@ export interface AssembledContext {
       droppedByBudget: number;
       droppedByLimit: number;
       droppedUids: number[];
+      bodyLiftedUids: number[];
+      bodyLiftMaxEntries: number;
+      bodyLiftTokenCapPerEntry: number;
     };
     rag: {
       policy: 'off' | 'auto' | 'always';
@@ -183,7 +187,7 @@ function computeContentTierContent(content: string, tier: WorldInfoContentTier):
     return cleaned;
   }
 
-  if (tier === 'full') {
+  if (tier === 'full' || tier === 'full_body') {
     return cleaned;
   }
 
@@ -195,6 +199,124 @@ function computeContentTierContent(content: string, tier: WorldInfoContentTier):
   const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
   const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
   return `${cleaned.slice(0, cut).trimEnd()}\n...`;
+}
+
+function trimContentWithEllipsis(text: string, maxChars: number): string {
+  const cleaned = text.trim();
+  if (cleaned.length <= maxChars) {
+    return cleaned;
+  }
+  const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
+  const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
+  return `${cleaned.slice(0, cut).trimEnd()}\n...`;
+}
+
+function buildQueryFocusedBodyExcerpt(
+  bodyText: string,
+  queryText: string,
+  matchedKeywords: string[],
+  maxChars: number
+): string {
+  const cleanedBody = bodyText
+    .replace(/\r\n?/g, '\n')
+    .trim();
+  if (!cleanedBody) {
+    return '';
+  }
+
+  const paragraphs = cleanedBody
+    .split(/\n{2,}/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean);
+  if (paragraphs.length === 0) {
+    return trimContentWithEllipsis(cleanedBody, maxChars);
+  }
+
+  const queryTokens = new Set(tokenize(queryText).filter(token => token.length >= 3));
+  const keywords = [...new Set(
+    matchedKeywords
+      .map(keyword => keyword.trim().toLowerCase())
+      .filter(Boolean)
+  )];
+
+  const scored = paragraphs
+    .map((paragraph, index) => {
+      const normalized = normalizeText(paragraph);
+      let score = index === 0 ? 1 : 0;
+
+      for (const keyword of keywords) {
+        if (!keyword) {
+          continue;
+        }
+        if (keyword.includes(' ')) {
+          if (normalized.includes(keyword)) {
+            score += 8;
+          }
+          continue;
+        }
+        if (normalized.includes(keyword)) {
+          score += 5;
+        }
+      }
+
+      for (const token of queryTokens) {
+        if (normalized.includes(token)) {
+          score += 2;
+        }
+      }
+
+      return {
+        paragraph,
+        index,
+        score
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  const selected: Array<{index: number; paragraph: string}> = [];
+  let usedChars = 0;
+
+  for (const candidate of scored) {
+    if (candidate.score <= 0) {
+      continue;
+    }
+
+    const normalizedParagraph = candidate.paragraph.trim();
+    if (!normalizedParagraph) {
+      continue;
+    }
+
+    const nextCost = normalizedParagraph.length + (selected.length > 0 ? 2 : 0);
+    if (usedChars + nextCost > maxChars) {
+      if (selected.length === 0) {
+        selected.push({
+          index: candidate.index,
+          paragraph: trimContentWithEllipsis(normalizedParagraph, maxChars)
+        });
+      }
+      continue;
+    }
+
+    selected.push({
+      index: candidate.index,
+      paragraph: normalizedParagraph
+    });
+    usedChars += nextCost;
+
+    if (usedChars >= Math.floor(maxChars * 0.9)) {
+      break;
+    }
+  }
+
+  if (selected.length === 0) {
+    return trimContentWithEllipsis(cleanedBody, maxChars);
+  }
+
+  const combined = selected
+    .sort((a, b) => a.index - b.index)
+    .map(item => item.paragraph)
+    .join('\n\n');
+  return trimContentWithEllipsis(combined, maxChars);
 }
 
 function renderWorldInfoSection(
@@ -703,6 +825,83 @@ export function assembleScopeContext(
     (selectedWorldInfo.length === 0 || seedConfidence < ragFallbackSeedScoreThreshold)
   );
 
+  // For high-confidence core entries, upgrade compact summary context with focused body excerpts.
+  const worldInfoBodyByUid = pack.worldInfoBodyByUid ?? {};
+  const bodyLiftedUids: number[] = [];
+  const bodyLiftMaxEntries = Math.max(1, Math.min(4, Math.floor(tokenBudget / 2500) + 1));
+  const bodyLiftTokenCapPerEntry = Math.max(180, Math.min(1200, Math.floor(tokenBudget * 0.12)));
+  const bodyLiftMinScore = Math.max(90, seedConfidence * 0.45);
+  let bodyLiftBudget = Math.max(0, worldInfoBudget - usedWorldInfoTokens);
+  if (!ragEnabled) {
+    bodyLiftBudget += Math.floor(ragBudget * 0.45);
+  }
+
+  for (let index = 0; index < selectedWorldInfo.length; index += 1) {
+    if (bodyLiftedUids.length >= bodyLiftMaxEntries || bodyLiftBudget <= 0) {
+      break;
+    }
+
+    const candidate = selectedWorldInfo[index];
+    if (candidate.hopDistance > 1 || candidate.score < bodyLiftMinScore) {
+      continue;
+    }
+
+    const bodyText = (worldInfoBodyByUid[candidate.entry.uid] ?? '').trim();
+    if (!bodyText) {
+      continue;
+    }
+
+    const summaryText = candidate.entry.content.trim();
+    if (summaryText && bodyText === summaryText) {
+      continue;
+    }
+    if (summaryText && bodyText.length <= summaryText.length + 48) {
+      continue;
+    }
+
+    const bodyCharsCap = Math.max(720, Math.min(5000, bodyLiftTokenCapPerEntry * 4));
+    const bodyExcerpt = buildQueryFocusedBodyExcerpt(
+      bodyText,
+      options.queryText,
+      candidate.matchedKeywords,
+      bodyCharsCap
+    );
+    if (!bodyExcerpt || bodyExcerpt === candidate.includedContent) {
+      continue;
+    }
+
+    const currentSection = renderWorldInfoSection(
+      candidate.entry,
+      candidate.matchedKeywords,
+      candidate.contentTier,
+      candidate.includedContent
+    );
+    const upgradedSection = renderWorldInfoSection(
+      candidate.entry,
+      candidate.matchedKeywords,
+      'full_body',
+      bodyExcerpt
+    );
+    const delta = estimateTokens(upgradedSection) - estimateTokens(currentSection);
+    if (delta > bodyLiftBudget) {
+      continue;
+    }
+
+    bodyLiftedUids.push(candidate.entry.uid);
+    selectedWorldInfo[index] = {
+      ...candidate,
+      contentTier: 'full_body',
+      includedContent: bodyExcerpt,
+      reasons: [
+        ...candidate.reasons,
+        `lift:body excerpt (~${estimateTokens(bodyExcerpt)} tokens)`
+      ]
+    };
+    const appliedDelta = Math.max(0, delta);
+    usedWorldInfoTokens += appliedDelta;
+    bodyLiftBudget -= appliedDelta;
+  }
+
   const selectedRag: SelectedRagDocument[] = [];
   let usedRagTokens = 0;
   if (ragEnabled && ragBudget > 0) {
@@ -761,7 +960,10 @@ export function assembleScopeContext(
         used: usedWorldInfoTokens,
         droppedByBudget: droppedByBudget.length,
         droppedByLimit: droppedByLimit.length,
-        droppedUids: [...droppedByBudget, ...droppedByLimit]
+        droppedUids: [...droppedByBudget, ...droppedByLimit],
+        bodyLiftedUids,
+        bodyLiftMaxEntries,
+        bodyLiftTokenCapPerEntry
       },
       rag: {
         policy: ragFallbackPolicy,

@@ -171,7 +171,7 @@ export class LorevaultHelpView extends ItemView {
         'Graph controls: max hops, hop decay, and seed threshold for auto fallback.',
         'Optional tool retrieval hooks can fetch targeted entries via search_entries / expand_neighbors / get_entry.',
         'Tool hooks enforce hard limits per turn (call count, tool result tokens, planning time).',
-        'Token budgets are enforced; world_info content is tiered short -> medium -> full when budget allows.',
+        'Token budgets are enforced; world_info content is tiered short -> medium -> full, with high-score body-lift excerpts when budget allows.',
         'Use Query Simulation for multi-scope retrieval testing with override knobs.'
       ]
     });

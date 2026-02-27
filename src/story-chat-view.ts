@@ -1164,7 +1164,7 @@ export class StoryChatView extends ItemView {
   }
 
   private updateAssistantMessageContent(messageId: string, content: string): void {
-    const row = this.contentEl.querySelector(`[data-message-id=\"${messageId}\"] .lorevault-chat-message-content`) as HTMLElement | null;
+    const row = this.contentEl.querySelector(`[data-message-id="${messageId}"] .lorevault-chat-message-content`) as HTMLElement | null;
     if (!row) {
       return;
     }

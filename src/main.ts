@@ -1,4 +1,4 @@
-import { App, MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
+import { MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
 import {
   ConverterSettings,
   DEFAULT_SETTINGS,

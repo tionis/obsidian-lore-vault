@@ -45,6 +45,7 @@ Reference design: `docs/planning.md`.
 - [x] Add token-budgeted context assembly.
 - [x] Add first "Continue Story with Context" command.
 - [x] Wire "Continue Story with Context" to provider-backed completion generation.
+- [x] Add story-note frontmatter scope selection for completion context.
 
 ## Phase 6: Canonical SQLite Pack Pipeline
 

@@ -107,6 +107,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
     retrieval: {
       maxGraphHops: 2,
       graphHopDecay: 0.55,
+      includeBacklinksInGraphExpansion: true,
       ragFallbackPolicy: 'auto',
       ragFallbackSeedScoreThreshold: 120,
       toolCalls: {

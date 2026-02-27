@@ -511,6 +511,7 @@ Capabilities:
 - optional override knobs:
   - `maxGraphHops`
   - `graphHopDecay`
+  - `includeBacklinksInGraphExpansion`
   - `ragFallbackPolicy`
   - `ragFallbackSeedScoreThreshold`
   - `maxWorldInfoEntries`
@@ -523,6 +524,7 @@ Capabilities:
   - `worldInfoBodyLiftMaxHopDistance`
 - per-scope selected `world_info` diagnostics:
   - scores
+  - graph backlink mode
   - graph path
   - reasons
   - content tiers (including `full_body` lifts)
@@ -592,6 +594,7 @@ Retrieval tuning settings (applies immediately to live query and generation):
 - `RAG Auto Fallback Seed Threshold`
 - `Max Graph Hops`
 - `Graph Hop Decay`
+- `Include Backlinks in Graph Expansion`
 - `Enable Tool Retrieval Hooks`
 - `Tool Calls Per Turn`
 - `Tool Result Token Cap`

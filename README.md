@@ -10,6 +10,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Dual exports per scope: `world_info` JSON and `rag` markdown
 - Optional embedding-based semantic RAG with hash-cache
 - Graph-first retrieval with configurable RAG fallback policy (`off|auto|always`)
+- Optional backlink-aware graph expansion toggle for retrieval hops
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
 - Optional LLM summary workflows (world_info + chapter) with review/approval and frontmatter writes
@@ -208,7 +209,7 @@ Query simulation features:
 
 - multi-scope selection (simulate across multiple lorebooks at once)
 - token budget split across selected scopes
-- optional override controls (`maxGraphHops`, `graphHopDecay`, RAG fallback policy/threshold, world_info/rag limits, body-lift knobs)
+- optional override controls (`maxGraphHops`, `graphHopDecay`, backlink expansion, RAG fallback policy/threshold, world_info/rag limits, body-lift knobs)
 - selected `world_info` diagnostics (score breakdown, path/reasons, tier counts, included content tier)
 - body-lift decision trace (applied/skipped reason per entry with score/hop/tier transition)
 - selected `rag` diagnostics (scores and matched terms)

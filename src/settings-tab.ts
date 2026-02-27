@@ -979,6 +979,16 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Include Backlinks in Graph Expansion')
+      .setDesc('Allow reverse-edge expansion so notes that link to matched entities can also be selected.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.retrieval.includeBacklinksInGraphExpansion)
+        .onChange(async (value) => {
+          this.plugin.settings.retrieval.includeBacklinksInGraphExpansion = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
       .setName('Enable Tool Retrieval Hooks')
       .setDesc('Allow model-driven retrieval calls (`search_entries`, `expand_neighbors`, `get_entry`) during generation.')
       .addToggle(toggle => toggle

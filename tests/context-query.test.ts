@@ -278,6 +278,64 @@ test('assembleScopeContext supports non-English keyword tokenization', () => {
   assert.ok(selected.includes(2));
 });
 
+test('assembleScopeContext expands via backlinks when enabled', () => {
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(
+        1,
+        ['PersonA'],
+        'Person A is tied to Place B.',
+        700,
+        { comment: 'Person A', wikilinks: ['Place B'] }
+      ),
+      createWorldInfoEntry(
+        2,
+        ['Place B'],
+        'Place B is a major city.',
+        680,
+        { comment: 'Place B' }
+      )
+    ],
+    ragDocuments: [],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const withoutBacklinks = assembleScopeContext(pack, {
+    queryText: 'What is happening in Place B?',
+    tokenBudget: 900,
+    ragFallbackPolicy: 'off',
+    maxGraphHops: 1,
+    includeBacklinksInGraphExpansion: false
+  });
+
+  const withBacklinks = assembleScopeContext(pack, {
+    queryText: 'What is happening in Place B?',
+    tokenBudget: 900,
+    ragFallbackPolicy: 'off',
+    maxGraphHops: 1,
+    includeBacklinksInGraphExpansion: true
+  });
+
+  const withoutIds = withoutBacklinks.worldInfo.map(item => item.entry.uid);
+  const withIds = withBacklinks.worldInfo.map(item => item.entry.uid);
+
+  assert.ok(withoutIds.includes(2));
+  assert.ok(withIds.includes(2));
+  assert.ok(withIds.includes(1));
+  const withoutA = withoutBacklinks.worldInfo.find(item => item.entry.uid === 1);
+  const withA = withBacklinks.worldInfo.find(item => item.entry.uid === 1);
+  assert.ok(withoutA);
+  assert.ok(withA);
+  assert.equal(withoutA?.scoreBreakdown.graph, 0);
+  assert.ok((withA?.scoreBreakdown.graph ?? 0) > 0);
+  assert.ok((withA?.reasons ?? []).some(reason => reason.includes('[backlink]')));
+  assert.equal(withoutBacklinks.explainability.graph.includeBacklinksInGraphExpansion, false);
+  assert.equal(withBacklinks.explainability.graph.includeBacklinksInGraphExpansion, true);
+});
+
 test('assembleScopeContext lifts high-score entries to query-focused body excerpts', () => {
   const pack: ScopeContextPack = {
     scope: 'universe',

@@ -17,6 +17,7 @@ export interface ContextQueryOptions {
   maxWorldInfoEntries?: number;
   maxRagDocuments?: number;
   worldInfoBudgetRatio?: number;
+  includeBacklinksInGraphExpansion?: boolean;
   worldInfoBodyLiftEnabled?: boolean;
   worldInfoBodyLiftMaxEntries?: number;
   worldInfoBodyLiftTokenCapPerEntry?: number;
@@ -120,6 +121,9 @@ export interface AssembledContext {
         appliedUids: number[];
         decisions: WorldInfoBodyLiftDecision[];
       };
+    };
+    graph: {
+      includeBacklinksInGraphExpansion: boolean;
     };
     rag: {
       policy: 'off' | 'auto' | 'always';
@@ -449,8 +453,16 @@ function comparePaths(a: number[], b: number[]): number {
   return a.length - b.length;
 }
 
-function buildWorldInfoGraph(entries: LoreBookEntry[]): Map<number, number[]> {
-  const adjacency = new Map<number, number[]>();
+interface GraphNeighbor {
+  uid: number;
+  backlink: boolean;
+}
+
+function buildWorldInfoGraph(
+  entries: LoreBookEntry[],
+  includeBacklinksInGraphExpansion: boolean
+): Map<number, GraphNeighbor[]> {
+  const outgoingAdjacency = new Map<number, Set<number>>();
   const targetToUids = new Map<string, number[]>();
 
   const addTarget = (target: string, uid: number): void => {
@@ -486,6 +498,10 @@ function buildWorldInfoGraph(entries: LoreBookEntry[]): Map<number, number[]> {
   }
 
   for (const entry of entries) {
+    outgoingAdjacency.set(entry.uid, new Set<number>());
+  }
+
+  for (const entry of entries) {
     const neighbors = new Set<number>();
     const links = entry.wikilinks ?? [];
     for (const link of links) {
@@ -505,24 +521,68 @@ function buildWorldInfoGraph(entries: LoreBookEntry[]): Map<number, number[]> {
       }
     }
 
-    adjacency.set(entry.uid, [...neighbors].sort((a, b) => a - b));
+    const outgoing = outgoingAdjacency.get(entry.uid);
+    if (outgoing) {
+      for (const uid of neighbors) {
+        outgoing.add(uid);
+      }
+    }
   }
 
-  return adjacency;
+  const adjacency = new Map<number, Map<number, boolean>>();
+  for (const entry of entries) {
+    adjacency.set(entry.uid, new Map<number, boolean>());
+  }
+
+  for (const [sourceUid, neighbors] of outgoingAdjacency) {
+    const sourceMap = adjacency.get(sourceUid);
+    if (!sourceMap) {
+      continue;
+    }
+    for (const targetUid of neighbors) {
+      sourceMap.set(targetUid, false);
+      if (!includeBacklinksInGraphExpansion) {
+        continue;
+      }
+      const reverseMap = adjacency.get(targetUid);
+      if (!reverseMap) {
+        continue;
+      }
+      if (!reverseMap.has(sourceUid)) {
+        reverseMap.set(sourceUid, true);
+      }
+    }
+  }
+
+  const normalized = new Map<number, GraphNeighbor[]>();
+  for (const [uid, neighbors] of adjacency) {
+    normalized.set(
+      uid,
+      [...neighbors.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([neighborUid, backlink]) => ({
+          uid: neighborUid,
+          backlink
+        }))
+    );
+  }
+
+  return normalized;
 }
 
 function scoreWorldInfoEntries(
   entries: LoreBookEntry[],
   queryText: string,
   maxGraphHops: number,
-  graphHopDecay: number
+  graphHopDecay: number,
+  includeBacklinksInGraphExpansion: boolean
 ): {
   seeds: SeedMatch[];
   candidates: SelectedWorldInfoEntry[];
 } {
   const byUid = new Map<number, LoreBookEntry>(entries.map(entry => [entry.uid, entry]));
   const seeds = detectSeedMatches(entries, queryText);
-  const adjacency = buildWorldInfoGraph(entries);
+  const adjacency = buildWorldInfoGraph(entries, includeBacklinksInGraphExpansion);
   const aggregates = new Map<number, GraphCandidate>();
 
   const ensureAggregate = (entry: LoreBookEntry): GraphCandidate => {
@@ -599,7 +659,8 @@ function scoreWorldInfoEntries(
     }
 
     const neighbors = adjacency.get(current.uid) ?? [];
-    for (const neighborUid of neighbors) {
+    for (const neighbor of neighbors) {
+      const neighborUid = neighbor.uid;
       if (current.pathUids.includes(neighborUid)) {
         continue;
       }
@@ -619,7 +680,7 @@ function scoreWorldInfoEntries(
       const aggregate = ensureAggregate(neighborEntry);
       aggregate.graphScore += contribution;
       aggregate.reasons.push(
-        `graph:path ${pathUids.join(' -> ')} (hop ${nextDepth}, +${formatScore(contribution)})`
+        `graph:path ${pathUids.join(' -> ')} (hop ${nextDepth}, +${formatScore(contribution)})${neighbor.backlink ? ' [backlink]' : ''}`
       );
 
       const shouldReplacePath = (
@@ -782,6 +843,7 @@ export function assembleScopeContext(
   const maxRagDocuments = options.maxRagDocuments ?? 6;
   const maxGraphHops = Math.max(0, Math.min(3, Math.floor(options.maxGraphHops ?? 2)));
   const graphHopDecay = Math.max(0.2, Math.min(0.9, Number(options.graphHopDecay ?? 0.55)));
+  const includeBacklinksInGraphExpansion = options.includeBacklinksInGraphExpansion ?? false;
   const ragFallbackPolicy = options.ragFallbackPolicy ?? 'auto';
   const ragFallbackSeedScoreThreshold = Math.max(1, Math.floor(options.ragFallbackSeedScoreThreshold ?? 120));
 
@@ -789,7 +851,8 @@ export function assembleScopeContext(
     pack.worldInfoEntries,
     options.queryText,
     maxGraphHops,
-    graphHopDecay
+    graphHopDecay,
+    includeBacklinksInGraphExpansion
   );
   const worldInfoCandidates = scoredWorldInfo.candidates;
   const ragCandidates = scoreRagDocuments(
@@ -1165,6 +1228,9 @@ export function assembleScopeContext(
         matchedKeywords: [...seed.matchedKeywords],
         reasons: [...seed.reasons]
       })),
+      graph: {
+        includeBacklinksInGraphExpansion
+      },
       worldInfoBudget: {
         budget: worldInfoBudget,
         used: usedWorldInfoTokens,

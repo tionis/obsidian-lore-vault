@@ -348,6 +348,7 @@ export class LiveContextIndex {
       ...options,
       maxGraphHops: options.maxGraphHops ?? settings.retrieval.maxGraphHops,
       graphHopDecay: options.graphHopDecay ?? settings.retrieval.graphHopDecay,
+      includeBacklinksInGraphExpansion: options.includeBacklinksInGraphExpansion ?? settings.retrieval.includeBacklinksInGraphExpansion,
       ragFallbackPolicy: options.ragFallbackPolicy ?? settings.retrieval.ragFallbackPolicy,
       ragFallbackSeedScoreThreshold: options.ragFallbackSeedScoreThreshold ?? settings.retrieval.ragFallbackSeedScoreThreshold,
       ragSemanticBoostByDocUid: semanticBoostByDocUid

@@ -47,6 +47,7 @@ export class LorebooksQuerySimulationView extends ItemView {
   private graphHopDecay: number | null = null;
   private ragFallbackPolicy: 'off' | 'auto' | 'always' | null = null;
   private ragSeedThreshold: number | null = null;
+  private includeBacklinksInGraphExpansion: boolean | null = null;
   private maxWorldInfoEntries: number | null = null;
   private maxRagDocuments: number | null = null;
   private worldInfoBudgetRatio: number | null = null;
@@ -197,6 +198,14 @@ export class LorebooksQuerySimulationView extends ItemView {
     return this.ragSeedThreshold ?? this.getDefaultRagSeedThreshold();
   }
 
+  private getDefaultIncludeBacklinksInGraphExpansion(): boolean {
+    return Boolean(this.plugin.settings.retrieval.includeBacklinksInGraphExpansion);
+  }
+
+  private getEffectiveIncludeBacklinksInGraphExpansion(): boolean {
+    return this.includeBacklinksInGraphExpansion ?? this.getDefaultIncludeBacklinksInGraphExpansion();
+  }
+
   private getDefaultWorldInfoBudgetRatio(): number {
     return 0.7;
   }
@@ -270,6 +279,7 @@ export class LorebooksQuerySimulationView extends ItemView {
     graphHopDecay?: number;
     ragFallbackPolicy?: 'off' | 'auto' | 'always';
     ragFallbackSeedScoreThreshold?: number;
+    includeBacklinksInGraphExpansion?: boolean;
     maxWorldInfoEntries?: number;
     maxRagDocuments?: number;
     worldInfoBudgetRatio?: number;
@@ -286,6 +296,7 @@ export class LorebooksQuerySimulationView extends ItemView {
       graphHopDecay?: number;
       ragFallbackPolicy?: 'off' | 'auto' | 'always';
       ragFallbackSeedScoreThreshold?: number;
+      includeBacklinksInGraphExpansion?: boolean;
       maxWorldInfoEntries?: number;
       maxRagDocuments?: number;
       worldInfoBudgetRatio?: number;
@@ -310,6 +321,9 @@ export class LorebooksQuerySimulationView extends ItemView {
     }
     if (this.ragSeedThreshold !== null) {
       options.ragFallbackSeedScoreThreshold = this.ragSeedThreshold;
+    }
+    if (this.includeBacklinksInGraphExpansion !== null) {
+      options.includeBacklinksInGraphExpansion = this.includeBacklinksInGraphExpansion;
     }
     if (this.maxWorldInfoEntries !== null) {
       options.maxWorldInfoEntries = this.maxWorldInfoEntries;
@@ -490,6 +504,32 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
+    const backlinksField = this.createOverrideField(
+      overrides,
+      'Include Backlinks in Graph Expansion',
+      this.getDefaultIncludeBacklinksInGraphExpansion() ? 'on' : 'off'
+    );
+    const backlinksSelect = backlinksField.createEl('select', { cls: 'dropdown' });
+    backlinksSelect.createEl('option', { value: '', text: `Reset (default ${this.getDefaultIncludeBacklinksInGraphExpansion() ? 'on' : 'off'})` });
+    backlinksSelect.createEl('option', { value: 'true', text: 'Backlinks on' });
+    backlinksSelect.createEl('option', { value: 'false', text: 'Backlinks off' });
+    backlinksSelect.value = this.getEffectiveIncludeBacklinksInGraphExpansion() ? 'true' : 'false';
+    backlinksSelect.addEventListener('change', () => {
+      if (backlinksSelect.value === 'true') {
+        this.includeBacklinksInGraphExpansion = true;
+      } else if (backlinksSelect.value === 'false') {
+        this.includeBacklinksInGraphExpansion = false;
+      } else {
+        this.includeBacklinksInGraphExpansion = null;
+      }
+      const defaultValue = this.getDefaultIncludeBacklinksInGraphExpansion();
+      if (this.includeBacklinksInGraphExpansion === defaultValue) {
+        this.includeBacklinksInGraphExpansion = null;
+      }
+      backlinksSelect.value = this.getEffectiveIncludeBacklinksInGraphExpansion() ? 'true' : 'false';
+      this.results = [];
+    });
+
     const worldInfoLimitField = this.createOverrideField(overrides, 'Max world_info Entries', String(this.getDefaultMaxWorldInfoEntries()));
     const worldInfoLimitInput = worldInfoLimitField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     worldInfoLimitInput.placeholder = '>= 1';
@@ -667,6 +707,10 @@ export class LorebooksQuerySimulationView extends ItemView {
       details.createEl('p', {
         cls: 'lorevault-routing-subtle',
         text: `world_info tiers: short ${tierCounts.short ?? 0}, medium ${tierCounts.medium ?? 0}, full ${tierCounts.full ?? 0}, full_body ${tierCounts.full_body ?? 0}`
+      });
+      details.createEl('p', {
+        cls: 'lorevault-routing-subtle',
+        text: `Graph backlinks: ${result.explainability.graph.includeBacklinksInGraphExpansion ? 'enabled' : 'disabled'}`
       });
       details.createEl('p', {
         cls: 'lorevault-routing-subtle',

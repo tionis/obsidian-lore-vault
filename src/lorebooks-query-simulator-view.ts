@@ -139,6 +139,19 @@ export class LorebooksQuerySimulationView extends ItemView {
     return parsed;
   }
 
+  private createOverrideField(
+    container: HTMLElement,
+    labelText: string,
+    defaultText: string
+  ): HTMLDivElement {
+    const field = container.createDiv({ cls: 'lorevault-routing-override-field' });
+    field.createEl('label', {
+      cls: 'lorevault-routing-override-label',
+      text: `${labelText} (${defaultText})`
+    });
+    return field;
+  }
+
   private getDefaultTokenBudget(): number {
     return Math.max(64, Math.floor(Number(this.plugin.settings.defaultLoreBook.tokenBudget) || 1024));
   }
@@ -422,10 +435,11 @@ export class LorebooksQuerySimulationView extends ItemView {
     const advanced = section.createEl('details');
     advanced.createEl('summary', { text: 'Advanced Overrides (optional)' });
 
-    const overrides = advanced.createDiv({ cls: 'lorevault-routing-query-controls' });
+    const overrides = advanced.createDiv({ cls: 'lorevault-routing-override-grid' });
 
-    const hopInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    hopInput.placeholder = 'maxGraphHops';
+    const hopField = this.createOverrideField(overrides, 'Max Graph Hops', String(this.getDefaultMaxGraphHops()));
+    const hopInput = hopField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    hopInput.placeholder = '0-3';
     hopInput.value = String(this.getEffectiveMaxGraphHops());
     hopInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(hopInput.value, 0, 3);
@@ -435,8 +449,9 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const decayInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    decayInput.placeholder = 'graphHopDecay (0.2-0.9)';
+    const decayField = this.createOverrideField(overrides, 'Graph Hop Decay', String(this.getDefaultGraphHopDecay()));
+    const decayInput = decayField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    decayInput.placeholder = '0.2-0.9';
     decayInput.step = '0.01';
     decayInput.value = String(this.getEffectiveGraphHopDecay());
     decayInput.addEventListener('change', () => {
@@ -447,7 +462,8 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ragPolicySelect = overrides.createEl('select', { cls: 'dropdown' });
+    const ragPolicyField = this.createOverrideField(overrides, 'RAG Fallback Policy', this.getDefaultRagFallbackPolicy());
+    const ragPolicySelect = ragPolicyField.createEl('select', { cls: 'dropdown' });
     ragPolicySelect.createEl('option', { value: '', text: `Reset (default ${this.getDefaultRagFallbackPolicy()})` });
     ragPolicySelect.createEl('option', { value: 'off', text: 'off' });
     ragPolicySelect.createEl('option', { value: 'auto', text: 'auto' });
@@ -462,8 +478,9 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ragThresholdInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    ragThresholdInput.placeholder = 'rag threshold';
+    const ragThresholdField = this.createOverrideField(overrides, 'RAG Seed Threshold', String(this.getDefaultRagSeedThreshold()));
+    const ragThresholdInput = ragThresholdField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    ragThresholdInput.placeholder = '>= 1';
     ragThresholdInput.value = String(this.getEffectiveRagSeedThreshold());
     ragThresholdInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(ragThresholdInput.value, 1);
@@ -473,8 +490,9 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const worldInfoLimitInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    worldInfoLimitInput.placeholder = 'maxWorldInfoEntries';
+    const worldInfoLimitField = this.createOverrideField(overrides, 'Max world_info Entries', String(this.getDefaultMaxWorldInfoEntries()));
+    const worldInfoLimitInput = worldInfoLimitField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    worldInfoLimitInput.placeholder = '>= 1';
     worldInfoLimitInput.value = String(this.getEffectiveMaxWorldInfoEntries());
     worldInfoLimitInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(worldInfoLimitInput.value, 1);
@@ -484,8 +502,9 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ragLimitInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    ragLimitInput.placeholder = 'maxRagDocuments';
+    const ragLimitField = this.createOverrideField(overrides, 'Max RAG Documents', String(this.getDefaultMaxRagDocuments()));
+    const ragLimitInput = ragLimitField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    ragLimitInput.placeholder = '>= 1';
     ragLimitInput.value = String(this.getEffectiveMaxRagDocuments());
     ragLimitInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(ragLimitInput.value, 1);
@@ -495,8 +514,9 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ratioInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    ratioInput.placeholder = 'worldInfoBudgetRatio';
+    const ratioField = this.createOverrideField(overrides, 'world_info Budget Ratio', String(this.getDefaultWorldInfoBudgetRatio()));
+    const ratioInput = ratioField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    ratioInput.placeholder = '0.1-0.95';
     ratioInput.step = '0.05';
     ratioInput.value = String(this.getEffectiveWorldInfoBudgetRatio());
     ratioInput.addEventListener('change', () => {
@@ -507,7 +527,12 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const bodyLiftEnabledSelect = overrides.createEl('select', { cls: 'dropdown' });
+    const bodyLiftEnabledField = this.createOverrideField(
+      overrides,
+      'Body Lift Enabled',
+      this.getDefaultBodyLiftEnabled() ? 'on' : 'off'
+    );
+    const bodyLiftEnabledSelect = bodyLiftEnabledField.createEl('select', { cls: 'dropdown' });
     bodyLiftEnabledSelect.createEl('option', { value: '', text: `Reset (default ${this.getDefaultBodyLiftEnabled() ? 'on' : 'off'})` });
     bodyLiftEnabledSelect.createEl('option', { value: 'true', text: 'bodyLift on' });
     bodyLiftEnabledSelect.createEl('option', { value: 'false', text: 'bodyLift off' });
@@ -528,8 +553,13 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const bodyLiftEntriesInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    bodyLiftEntriesInput.placeholder = 'bodyLift maxEntries';
+    const bodyLiftEntriesField = this.createOverrideField(
+      overrides,
+      'Body Lift Max Entries',
+      String(this.getDefaultBodyLiftMaxEntries())
+    );
+    const bodyLiftEntriesInput = bodyLiftEntriesField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftEntriesInput.placeholder = '1-8';
     bodyLiftEntriesInput.value = String(this.getEffectiveBodyLiftMaxEntries());
     bodyLiftEntriesInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(bodyLiftEntriesInput.value, 1, 8);
@@ -539,8 +569,13 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const bodyLiftCapInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    bodyLiftCapInput.placeholder = 'bodyLift tokens/entry';
+    const bodyLiftCapField = this.createOverrideField(
+      overrides,
+      'Body Lift Token Cap / Entry',
+      String(this.getDefaultBodyLiftTokenCapPerEntry())
+    );
+    const bodyLiftCapInput = bodyLiftCapField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftCapInput.placeholder = '80-2400';
     bodyLiftCapInput.value = String(this.getEffectiveBodyLiftTokenCapPerEntry());
     bodyLiftCapInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(bodyLiftCapInput.value, 80, 2400);
@@ -550,8 +585,13 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const bodyLiftMinScoreInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    bodyLiftMinScoreInput.placeholder = 'bodyLift minScore';
+    const bodyLiftMinScoreField = this.createOverrideField(
+      overrides,
+      'Body Lift Min Score',
+      String(this.getDefaultBodyLiftMinScore())
+    );
+    const bodyLiftMinScoreInput = bodyLiftMinScoreField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftMinScoreInput.placeholder = '>= 1';
     bodyLiftMinScoreInput.step = '0.1';
     bodyLiftMinScoreInput.value = String(this.getEffectiveBodyLiftMinScore());
     bodyLiftMinScoreInput.addEventListener('change', () => {
@@ -562,8 +602,13 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const bodyLiftHopInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    bodyLiftHopInput.placeholder = 'bodyLift maxHop';
+    const bodyLiftHopField = this.createOverrideField(
+      overrides,
+      'Body Lift Max Hop Distance',
+      String(this.getDefaultBodyLiftMaxHopDistance())
+    );
+    const bodyLiftHopInput = bodyLiftHopField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftHopInput.placeholder = '0-3';
     bodyLiftHopInput.value = String(this.getEffectiveBodyLiftMaxHopDistance());
     bodyLiftHopInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(bodyLiftHopInput.value, 0, 3);

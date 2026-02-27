@@ -380,6 +380,31 @@
   width: 120px;
 }
 
+.lorevault-routing-override-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.lorevault-routing-override-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lorevault-routing-override-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.lorevault-routing-override-field .lorevault-routing-budget-input,
+.lorevault-routing-override-field select {
+  width: 100%;
+  min-width: 0;
+}
+
 .lorevault-query-scope-list {
   max-height: 180px;
   overflow-y: auto;

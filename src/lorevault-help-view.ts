@@ -155,8 +155,8 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Canonical artifact: one SQLite pack per scope (<scope>.db).',
         'Downstream exports are derived under the same root (world_info JSON + rag markdown).',
-        'Each scope writes a deterministic manifest (<scope>.manifest.json) with artifact paths and stats.',
-        'Companion tools should consume SQLite + manifest instead of re-parsing vault notes.'
+        'SQLite meta table includes schema/scope/timestamp/count metadata for each build.',
+        'Companion tools should consume SQLite directly instead of re-parsing vault notes.'
       ]
     });
 

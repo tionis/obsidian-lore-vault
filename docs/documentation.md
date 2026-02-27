@@ -211,6 +211,7 @@ Live query combines:
 ## Writing Completion
 
 Command: `Continue Story with Context`
+Also available in markdown editor right-click menu as `LoreVault: Continue Story with Context`.
 
 Provider options:
 

@@ -62,6 +62,35 @@ function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
+function trimTierContent(text: string, maxChars: number): string {
+  const cleaned = text.trim();
+  if (cleaned.length <= maxChars) {
+    return cleaned;
+  }
+  const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
+  const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
+  return `${cleaned.slice(0, cut).trimEnd()}\n...`;
+}
+
+function computeTierContent(content: string, tier: 'short' | 'medium' | 'full'): string {
+  const cleaned = content.trim();
+  if (!cleaned) {
+    return '';
+  }
+  if (tier === 'full') {
+    return cleaned;
+  }
+  return trimTierContent(cleaned, tier === 'short' ? 260 : 900);
+}
+
+function computeBodyLiftCandidateContent(bodyText: string): string {
+  const cleaned = bodyText.trim();
+  if (!cleaned) {
+    return '';
+  }
+  return trimTierContent(cleaned, 1800);
+}
+
 export class LorebooksRoutingDebugView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedScope: string | null = null;
@@ -194,6 +223,11 @@ export class LorebooksRoutingDebugView extends ItemView {
     for (const entry of entries) {
       const details = list.createEl('details', { cls: 'lorevault-routing-entry' });
       const keywords = [...entry.key, ...entry.keysecondary].filter(Boolean);
+      const bodyText = (pack.worldInfoBodyByUid?.[entry.uid] ?? '').trim();
+      const shortTier = computeTierContent(entry.content, 'short');
+      const mediumTier = computeTierContent(entry.content, 'medium');
+      const fullTier = computeTierContent(entry.content, 'full');
+      const fullBodyTier = computeBodyLiftCandidateContent(bodyText);
       details.createEl('summary', {
         text: `${entry.comment || `Entry ${entry.uid}`} | trigger ${formatTriggerMode(entry)} | keys ${keywords.length}`
       });
@@ -207,6 +241,53 @@ export class LorebooksRoutingDebugView extends ItemView {
       details.createEl('p', {
         text: `Secondary keys: ${entry.keysecondary.join(', ') || '(none)'}`
       });
+
+      const liftMeta = [
+        `short ~${estimateTokens(shortTier)} tokens`,
+        `medium ~${estimateTokens(mediumTier)} tokens`,
+        `full ~${estimateTokens(fullTier)} tokens`,
+        bodyText
+          ? `full_body candidate ~${estimateTokens(fullBodyTier)} tokens`
+          : 'full_body candidate unavailable (no source body)'
+      ];
+      details.createEl('p', {
+        cls: 'lorevault-routing-subtle',
+        text: `Lift tiers: ${liftMeta.join(' | ')}`
+      });
+
+      const liftDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
+      liftDetails.createEl('summary', { text: 'Lift Tier Previews' });
+
+      const shortDetails = liftDetails.createEl('details', { cls: 'lorevault-routing-content-details' });
+      shortDetails.createEl('summary', { text: `short (~${estimateTokens(shortTier)} tokens)` });
+      shortDetails.createEl('pre', { cls: 'lorevault-routing-content', text: shortTier });
+
+      const mediumDetails = liftDetails.createEl('details', { cls: 'lorevault-routing-content-details' });
+      mediumDetails.createEl('summary', { text: `medium (~${estimateTokens(mediumTier)} tokens)` });
+      mediumDetails.createEl('pre', { cls: 'lorevault-routing-content', text: mediumTier });
+
+      const fullDetails = liftDetails.createEl('details', { cls: 'lorevault-routing-content-details' });
+      fullDetails.createEl('summary', { text: `full (~${estimateTokens(fullTier)} tokens)` });
+      fullDetails.createEl('pre', { cls: 'lorevault-routing-content', text: fullTier });
+
+      const bodyDetails = liftDetails.createEl('details', { cls: 'lorevault-routing-content-details' });
+      if (!bodyText) {
+        bodyDetails.createEl('summary', { text: 'full_body candidate (unavailable)' });
+        bodyDetails.createEl('p', {
+          cls: 'lorevault-routing-subtle',
+          text: 'No source note body found for this entry in the current scope pack.'
+        });
+      } else if (bodyText.trim() === entry.content.trim()) {
+        bodyDetails.createEl('summary', { text: `full_body candidate (~${estimateTokens(fullBodyTier)} tokens)` });
+        bodyDetails.createEl('p', {
+          cls: 'lorevault-routing-subtle',
+          text: 'Source note body matches world_info content; full_body lift would not add additional detail.'
+        });
+        bodyDetails.createEl('pre', { cls: 'lorevault-routing-content', text: fullBodyTier });
+      } else {
+        bodyDetails.createEl('summary', { text: `full_body candidate (~${estimateTokens(fullBodyTier)} tokens)` });
+        bodyDetails.createEl('pre', { cls: 'lorevault-routing-content', text: fullBodyTier });
+      }
 
       const contentDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
       contentDetails.createEl('summary', {

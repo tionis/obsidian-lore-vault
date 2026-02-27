@@ -42,7 +42,7 @@ export class LorebooksQuerySimulationView extends ItemView {
   private readonly plugin: LoreBookConverterPlugin;
   private readonly selectedScopes = new Set<string>();
   private queryText = '';
-  private tokenBudget = 1024;
+  private tokenBudget: number | null = null;
   private maxGraphHops: number | null = null;
   private graphHopDecay: number | null = null;
   private ragFallbackPolicy: 'off' | 'auto' | 'always' | null = null;
@@ -137,6 +137,117 @@ export class LorebooksQuerySimulationView extends ItemView {
       return null;
     }
     return parsed;
+  }
+
+  private getDefaultTokenBudget(): number {
+    return Math.max(64, Math.floor(Number(this.plugin.settings.defaultLoreBook.tokenBudget) || 1024));
+  }
+
+  private getEffectiveTokenBudget(): number {
+    return this.tokenBudget ?? this.getDefaultTokenBudget();
+  }
+
+  private getDefaultMaxGraphHops(): number {
+    return Math.max(0, Math.min(3, Math.floor(Number(this.plugin.settings.retrieval.maxGraphHops) || 2)));
+  }
+
+  private getEffectiveMaxGraphHops(): number {
+    return this.maxGraphHops ?? this.getDefaultMaxGraphHops();
+  }
+
+  private getDefaultGraphHopDecay(): number {
+    const value = Number(this.plugin.settings.retrieval.graphHopDecay);
+    if (!Number.isFinite(value)) {
+      return 0.55;
+    }
+    return Math.max(0.2, Math.min(0.9, value));
+  }
+
+  private getEffectiveGraphHopDecay(): number {
+    return this.graphHopDecay ?? this.getDefaultGraphHopDecay();
+  }
+
+  private getDefaultRagFallbackPolicy(): 'off' | 'auto' | 'always' {
+    const value = this.plugin.settings.retrieval.ragFallbackPolicy;
+    return value === 'off' || value === 'always' ? value : 'auto';
+  }
+
+  private getEffectiveRagFallbackPolicy(): 'off' | 'auto' | 'always' {
+    return this.ragFallbackPolicy ?? this.getDefaultRagFallbackPolicy();
+  }
+
+  private getDefaultRagSeedThreshold(): number {
+    return Math.max(1, Math.floor(Number(this.plugin.settings.retrieval.ragFallbackSeedScoreThreshold) || 120));
+  }
+
+  private getEffectiveRagSeedThreshold(): number {
+    return this.ragSeedThreshold ?? this.getDefaultRagSeedThreshold();
+  }
+
+  private getDefaultWorldInfoBudgetRatio(): number {
+    return 0.7;
+  }
+
+  private getEffectiveWorldInfoBudgetRatio(): number {
+    return this.worldInfoBudgetRatio ?? this.getDefaultWorldInfoBudgetRatio();
+  }
+
+  private getDefaultMaxWorldInfoEntries(): number {
+    return 8;
+  }
+
+  private getEffectiveMaxWorldInfoEntries(): number {
+    return this.maxWorldInfoEntries ?? this.getDefaultMaxWorldInfoEntries();
+  }
+
+  private getDefaultMaxRagDocuments(): number {
+    return 6;
+  }
+
+  private getEffectiveMaxRagDocuments(): number {
+    return this.maxRagDocuments ?? this.getDefaultMaxRagDocuments();
+  }
+
+  private getDefaultBodyLiftEnabled(): boolean {
+    return true;
+  }
+
+  private getEffectiveBodyLiftEnabled(): boolean {
+    return this.worldInfoBodyLiftEnabled ?? this.getDefaultBodyLiftEnabled();
+  }
+
+  private getDefaultBodyLiftMaxEntries(): number {
+    const budget = this.getEffectiveTokenBudget();
+    return Math.max(1, Math.min(4, Math.floor(budget / 2500) + 1));
+  }
+
+  private getEffectiveBodyLiftMaxEntries(): number {
+    return this.worldInfoBodyLiftMaxEntries ?? this.getDefaultBodyLiftMaxEntries();
+  }
+
+  private getDefaultBodyLiftTokenCapPerEntry(): number {
+    const budget = this.getEffectiveTokenBudget();
+    return Math.max(180, Math.min(1200, Math.floor(budget * 0.12)));
+  }
+
+  private getEffectiveBodyLiftTokenCapPerEntry(): number {
+    return this.worldInfoBodyLiftTokenCapPerEntry ?? this.getDefaultBodyLiftTokenCapPerEntry();
+  }
+
+  private getDefaultBodyLiftMinScore(): number {
+    return 90;
+  }
+
+  private getEffectiveBodyLiftMinScore(): number {
+    return this.worldInfoBodyLiftMinScore ?? this.getDefaultBodyLiftMinScore();
+  }
+
+  private getDefaultBodyLiftMaxHopDistance(): number {
+    return 1;
+  }
+
+  private getEffectiveBodyLiftMaxHopDistance(): number {
+    return this.worldInfoBodyLiftMaxHopDistance ?? this.getDefaultBodyLiftMaxHopDistance();
   }
 
   private buildQueryOptions(perScopeBudget: number): {
@@ -288,17 +399,18 @@ export class LorebooksQuerySimulationView extends ItemView {
     });
 
     const controls = section.createDiv({ cls: 'lorevault-routing-query-controls' });
-    controls.createEl('label', { text: 'Total Token Budget' });
+    controls.createEl('label', { text: `Total Token Budget (default ${this.getDefaultTokenBudget()})` });
     const budgetInput = controls.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     budgetInput.min = '64';
     budgetInput.step = '1';
-    budgetInput.value = String(this.tokenBudget);
+    budgetInput.value = String(this.getEffectiveTokenBudget());
     budgetInput.addEventListener('change', () => {
       const parsed = this.parseOptionalInteger(budgetInput.value, 64);
-      if (parsed !== null) {
-        this.tokenBudget = parsed;
-      }
-      budgetInput.value = String(this.tokenBudget);
+      const defaultBudget = this.getDefaultTokenBudget();
+      this.tokenBudget = parsed === null || parsed === defaultBudget ? null : parsed;
+      budgetInput.value = String(this.getEffectiveTokenBudget());
+      this.results = [];
+      void this.render();
     });
 
     const runButton = controls.createEl('button', { text: this.running ? 'Running...' : 'Run Simulation' });
@@ -314,79 +426,92 @@ export class LorebooksQuerySimulationView extends ItemView {
 
     const hopInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     hopInput.placeholder = 'maxGraphHops';
-    hopInput.value = this.maxGraphHops === null ? '' : String(this.maxGraphHops);
+    hopInput.value = String(this.getEffectiveMaxGraphHops());
     hopInput.addEventListener('change', () => {
-      this.maxGraphHops = this.parseOptionalInteger(hopInput.value, 0, 3);
-      hopInput.value = this.maxGraphHops === null ? '' : String(this.maxGraphHops);
+      const parsed = this.parseOptionalInteger(hopInput.value, 0, 3);
+      const defaultValue = this.getDefaultMaxGraphHops();
+      this.maxGraphHops = parsed === null || parsed === defaultValue ? null : parsed;
+      hopInput.value = String(this.getEffectiveMaxGraphHops());
       this.results = [];
     });
 
     const decayInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     decayInput.placeholder = 'graphHopDecay (0.2-0.9)';
     decayInput.step = '0.01';
-    decayInput.value = this.graphHopDecay === null ? '' : String(this.graphHopDecay);
+    decayInput.value = String(this.getEffectiveGraphHopDecay());
     decayInput.addEventListener('change', () => {
-      this.graphHopDecay = this.parseOptionalFloat(decayInput.value, 0.2, 0.9);
-      decayInput.value = this.graphHopDecay === null ? '' : String(this.graphHopDecay);
+      const parsed = this.parseOptionalFloat(decayInput.value, 0.2, 0.9);
+      const defaultValue = this.getDefaultGraphHopDecay();
+      this.graphHopDecay = parsed === null || Math.abs(parsed - defaultValue) < 1e-9 ? null : parsed;
+      decayInput.value = String(this.getEffectiveGraphHopDecay());
       this.results = [];
     });
 
     const ragPolicySelect = overrides.createEl('select', { cls: 'dropdown' });
-    ragPolicySelect.createEl('option', { value: '', text: '(default policy)' });
+    ragPolicySelect.createEl('option', { value: '', text: `Reset (default ${this.getDefaultRagFallbackPolicy()})` });
     ragPolicySelect.createEl('option', { value: 'off', text: 'off' });
     ragPolicySelect.createEl('option', { value: 'auto', text: 'auto' });
     ragPolicySelect.createEl('option', { value: 'always', text: 'always' });
-    ragPolicySelect.value = this.ragFallbackPolicy ?? '';
+    ragPolicySelect.value = this.getEffectiveRagFallbackPolicy();
     ragPolicySelect.addEventListener('change', () => {
       const value = ragPolicySelect.value;
-      this.ragFallbackPolicy = value === 'off' || value === 'always' ? value : (value === 'auto' ? 'auto' : null);
+      const parsed = value === 'off' || value === 'always' ? value : (value === 'auto' ? 'auto' : null);
+      const defaultValue = this.getDefaultRagFallbackPolicy();
+      this.ragFallbackPolicy = parsed === null || parsed === defaultValue ? null : parsed;
+      ragPolicySelect.value = this.getEffectiveRagFallbackPolicy();
       this.results = [];
     });
 
     const ragThresholdInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     ragThresholdInput.placeholder = 'rag threshold';
-    ragThresholdInput.value = this.ragSeedThreshold === null ? '' : String(this.ragSeedThreshold);
+    ragThresholdInput.value = String(this.getEffectiveRagSeedThreshold());
     ragThresholdInput.addEventListener('change', () => {
-      this.ragSeedThreshold = this.parseOptionalInteger(ragThresholdInput.value, 1);
-      ragThresholdInput.value = this.ragSeedThreshold === null ? '' : String(this.ragSeedThreshold);
+      const parsed = this.parseOptionalInteger(ragThresholdInput.value, 1);
+      const defaultValue = this.getDefaultRagSeedThreshold();
+      this.ragSeedThreshold = parsed === null || parsed === defaultValue ? null : parsed;
+      ragThresholdInput.value = String(this.getEffectiveRagSeedThreshold());
       this.results = [];
     });
 
     const worldInfoLimitInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     worldInfoLimitInput.placeholder = 'maxWorldInfoEntries';
-    worldInfoLimitInput.value = this.maxWorldInfoEntries === null ? '' : String(this.maxWorldInfoEntries);
+    worldInfoLimitInput.value = String(this.getEffectiveMaxWorldInfoEntries());
     worldInfoLimitInput.addEventListener('change', () => {
-      this.maxWorldInfoEntries = this.parseOptionalInteger(worldInfoLimitInput.value, 1);
-      worldInfoLimitInput.value = this.maxWorldInfoEntries === null ? '' : String(this.maxWorldInfoEntries);
+      const parsed = this.parseOptionalInteger(worldInfoLimitInput.value, 1);
+      const defaultValue = this.getDefaultMaxWorldInfoEntries();
+      this.maxWorldInfoEntries = parsed === null || parsed === defaultValue ? null : parsed;
+      worldInfoLimitInput.value = String(this.getEffectiveMaxWorldInfoEntries());
       this.results = [];
     });
 
     const ragLimitInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     ragLimitInput.placeholder = 'maxRagDocuments';
-    ragLimitInput.value = this.maxRagDocuments === null ? '' : String(this.maxRagDocuments);
+    ragLimitInput.value = String(this.getEffectiveMaxRagDocuments());
     ragLimitInput.addEventListener('change', () => {
-      this.maxRagDocuments = this.parseOptionalInteger(ragLimitInput.value, 1);
-      ragLimitInput.value = this.maxRagDocuments === null ? '' : String(this.maxRagDocuments);
+      const parsed = this.parseOptionalInteger(ragLimitInput.value, 1);
+      const defaultValue = this.getDefaultMaxRagDocuments();
+      this.maxRagDocuments = parsed === null || parsed === defaultValue ? null : parsed;
+      ragLimitInput.value = String(this.getEffectiveMaxRagDocuments());
       this.results = [];
     });
 
     const ratioInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     ratioInput.placeholder = 'worldInfoBudgetRatio';
     ratioInput.step = '0.05';
-    ratioInput.value = this.worldInfoBudgetRatio === null ? '' : String(this.worldInfoBudgetRatio);
+    ratioInput.value = String(this.getEffectiveWorldInfoBudgetRatio());
     ratioInput.addEventListener('change', () => {
-      this.worldInfoBudgetRatio = this.parseOptionalFloat(ratioInput.value, 0.1, 0.95);
-      ratioInput.value = this.worldInfoBudgetRatio === null ? '' : String(this.worldInfoBudgetRatio);
+      const parsed = this.parseOptionalFloat(ratioInput.value, 0.1, 0.95);
+      const defaultValue = this.getDefaultWorldInfoBudgetRatio();
+      this.worldInfoBudgetRatio = parsed === null || Math.abs(parsed - defaultValue) < 1e-9 ? null : parsed;
+      ratioInput.value = String(this.getEffectiveWorldInfoBudgetRatio());
       this.results = [];
     });
 
     const bodyLiftEnabledSelect = overrides.createEl('select', { cls: 'dropdown' });
-    bodyLiftEnabledSelect.createEl('option', { value: '', text: 'bodyLift (default)' });
+    bodyLiftEnabledSelect.createEl('option', { value: '', text: `Reset (default ${this.getDefaultBodyLiftEnabled() ? 'on' : 'off'})` });
     bodyLiftEnabledSelect.createEl('option', { value: 'true', text: 'bodyLift on' });
     bodyLiftEnabledSelect.createEl('option', { value: 'false', text: 'bodyLift off' });
-    bodyLiftEnabledSelect.value = this.worldInfoBodyLiftEnabled === null
-      ? ''
-      : (this.worldInfoBodyLiftEnabled ? 'true' : 'false');
+    bodyLiftEnabledSelect.value = this.getEffectiveBodyLiftEnabled() ? 'true' : 'false';
     bodyLiftEnabledSelect.addEventListener('change', () => {
       if (bodyLiftEnabledSelect.value === 'true') {
         this.worldInfoBodyLiftEnabled = true;
@@ -395,43 +520,56 @@ export class LorebooksQuerySimulationView extends ItemView {
       } else {
         this.worldInfoBodyLiftEnabled = null;
       }
+      const defaultValue = this.getDefaultBodyLiftEnabled();
+      if (this.worldInfoBodyLiftEnabled === defaultValue) {
+        this.worldInfoBodyLiftEnabled = null;
+      }
+      bodyLiftEnabledSelect.value = this.getEffectiveBodyLiftEnabled() ? 'true' : 'false';
       this.results = [];
     });
 
     const bodyLiftEntriesInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     bodyLiftEntriesInput.placeholder = 'bodyLift maxEntries';
-    bodyLiftEntriesInput.value = this.worldInfoBodyLiftMaxEntries === null ? '' : String(this.worldInfoBodyLiftMaxEntries);
+    bodyLiftEntriesInput.value = String(this.getEffectiveBodyLiftMaxEntries());
     bodyLiftEntriesInput.addEventListener('change', () => {
-      this.worldInfoBodyLiftMaxEntries = this.parseOptionalInteger(bodyLiftEntriesInput.value, 1, 8);
-      bodyLiftEntriesInput.value = this.worldInfoBodyLiftMaxEntries === null ? '' : String(this.worldInfoBodyLiftMaxEntries);
+      const parsed = this.parseOptionalInteger(bodyLiftEntriesInput.value, 1, 8);
+      const defaultValue = this.getDefaultBodyLiftMaxEntries();
+      this.worldInfoBodyLiftMaxEntries = parsed === null || parsed === defaultValue ? null : parsed;
+      bodyLiftEntriesInput.value = String(this.getEffectiveBodyLiftMaxEntries());
       this.results = [];
     });
 
     const bodyLiftCapInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     bodyLiftCapInput.placeholder = 'bodyLift tokens/entry';
-    bodyLiftCapInput.value = this.worldInfoBodyLiftTokenCapPerEntry === null ? '' : String(this.worldInfoBodyLiftTokenCapPerEntry);
+    bodyLiftCapInput.value = String(this.getEffectiveBodyLiftTokenCapPerEntry());
     bodyLiftCapInput.addEventListener('change', () => {
-      this.worldInfoBodyLiftTokenCapPerEntry = this.parseOptionalInteger(bodyLiftCapInput.value, 80, 2400);
-      bodyLiftCapInput.value = this.worldInfoBodyLiftTokenCapPerEntry === null ? '' : String(this.worldInfoBodyLiftTokenCapPerEntry);
+      const parsed = this.parseOptionalInteger(bodyLiftCapInput.value, 80, 2400);
+      const defaultValue = this.getDefaultBodyLiftTokenCapPerEntry();
+      this.worldInfoBodyLiftTokenCapPerEntry = parsed === null || parsed === defaultValue ? null : parsed;
+      bodyLiftCapInput.value = String(this.getEffectiveBodyLiftTokenCapPerEntry());
       this.results = [];
     });
 
     const bodyLiftMinScoreInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     bodyLiftMinScoreInput.placeholder = 'bodyLift minScore';
     bodyLiftMinScoreInput.step = '0.1';
-    bodyLiftMinScoreInput.value = this.worldInfoBodyLiftMinScore === null ? '' : String(this.worldInfoBodyLiftMinScore);
+    bodyLiftMinScoreInput.value = String(this.getEffectiveBodyLiftMinScore());
     bodyLiftMinScoreInput.addEventListener('change', () => {
-      this.worldInfoBodyLiftMinScore = this.parseOptionalFloat(bodyLiftMinScoreInput.value, 1, 10000);
-      bodyLiftMinScoreInput.value = this.worldInfoBodyLiftMinScore === null ? '' : String(this.worldInfoBodyLiftMinScore);
+      const parsed = this.parseOptionalFloat(bodyLiftMinScoreInput.value, 1, 10000);
+      const defaultValue = this.getDefaultBodyLiftMinScore();
+      this.worldInfoBodyLiftMinScore = parsed === null || Math.abs(parsed - defaultValue) < 1e-9 ? null : parsed;
+      bodyLiftMinScoreInput.value = String(this.getEffectiveBodyLiftMinScore());
       this.results = [];
     });
 
     const bodyLiftHopInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     bodyLiftHopInput.placeholder = 'bodyLift maxHop';
-    bodyLiftHopInput.value = this.worldInfoBodyLiftMaxHopDistance === null ? '' : String(this.worldInfoBodyLiftMaxHopDistance);
+    bodyLiftHopInput.value = String(this.getEffectiveBodyLiftMaxHopDistance());
     bodyLiftHopInput.addEventListener('change', () => {
-      this.worldInfoBodyLiftMaxHopDistance = this.parseOptionalInteger(bodyLiftHopInput.value, 0, 3);
-      bodyLiftHopInput.value = this.worldInfoBodyLiftMaxHopDistance === null ? '' : String(this.worldInfoBodyLiftMaxHopDistance);
+      const parsed = this.parseOptionalInteger(bodyLiftHopInput.value, 0, 3);
+      const defaultValue = this.getDefaultBodyLiftMaxHopDistance();
+      this.worldInfoBodyLiftMaxHopDistance = parsed === null || parsed === defaultValue ? null : parsed;
+      bodyLiftHopInput.value = String(this.getEffectiveBodyLiftMaxHopDistance());
       this.results = [];
     });
   }
@@ -590,7 +728,7 @@ export class LorebooksQuerySimulationView extends ItemView {
     await this.render();
 
     try {
-      const perScopeBudget = Math.max(64, Math.floor(this.tokenBudget / scopes.length));
+      const perScopeBudget = Math.max(64, Math.floor(this.getEffectiveTokenBudget() / scopes.length));
       const options = this.buildQueryOptions(perScopeBudget);
       const nextResults: ScopeQueryResult[] = [];
       for (const scope of scopes) {

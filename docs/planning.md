@@ -20,6 +20,22 @@ Rationale:
 - graph expansion from explicitly mentioned entities gives predictable context growth
 - users need inspectable context composition during live generation/chat, not opaque retrieval
 
+## Execution Priority Update (2026-02-27)
+
+Current execution sequence:
+
+1. finish Story Chat validation and boundary hardening
+2. implement graph-first retrieval core
+3. implement long-form story memory layers
+4. add optional fallback/tool-call retrieval extensions
+5. run broad hardening/performance tuning across the stack
+6. implement optional world_info auto-summary workflow
+
+Priority note:
+
+- legacy hardening tasks and auto-summary are still roadmap items
+- they are intentionally sequenced after graph-first core delivery so optimization targets are stable
+
 ## Scope Boundaries
 
 LoreVault core should optimize for context engineering and writing-assistant retrieval.

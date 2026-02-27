@@ -58,8 +58,8 @@ Reference design: `docs/planning.md`.
 
 ## Phase 11.5: Long-Form Story Memory
 
-- [ ] Add chapter/story frontmatter schema support (`storyId`, `chapter`, optional prev/next links).
-- [ ] Build deterministic story-thread resolver from metadata + links.
+- [x] Add chapter/story frontmatter schema support (`storyId`, `chapter`, optional prev/next links).
+- [x] Build deterministic story-thread resolver from metadata + links.
 - [ ] Add rolling chapter summary store for prior chapters/scenes.
 - [ ] Add layered context assembly: local window -> chapter memory -> graph memory -> optional fallback.
 - [ ] Add context inspector traces showing which layer contributed each injected item.

@@ -271,6 +271,16 @@ Story frontmatter scope override:
   - completion token budget is split across selected scopes
   - context budgets are trimmed iteratively if selected context exceeds input budget
 
+Long-form story metadata (new):
+
+- `storyId`: stable story thread identifier
+- `chapter`: chapter/scene index (numeric)
+- `chapterTitle`: optional chapter display title
+- `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
+- `nextChapter`: optional links/paths to following chapter notes
+
+When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
+
 ## LoreVault Manager UI
 
 Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel)

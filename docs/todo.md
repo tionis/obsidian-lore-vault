@@ -43,9 +43,9 @@ Reference design: `docs/planning.md`.
 
 ## Phase 10.5: Product Boundary Hardening
 
-- [ ] Mark human book/EPUB export as out-of-scope for LoreVault core docs and settings.
-- [ ] Define companion-plugin contract for publishing bundles (tag/page selectors + asset inclusion).
-- [ ] Ensure LoreVault exports expose stable inputs for downstream publishing tools.
+- [x] Mark human book/EPUB export as out-of-scope for LoreVault core docs and settings.
+- [x] Define companion-plugin contract for publishing bundles (tag/page selectors + asset inclusion).
+- [x] Ensure LoreVault exports expose stable inputs for downstream publishing tools.
 
 ## Phase 11: Graph-First Retrieval Engine (Primary)
 

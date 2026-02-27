@@ -614,7 +614,7 @@ export function assembleScopeContext(
   const maxRagDocuments = options.maxRagDocuments ?? 6;
   const maxGraphHops = Math.max(0, Math.min(3, Math.floor(options.maxGraphHops ?? 2)));
   const graphHopDecay = Math.max(0.2, Math.min(0.9, Number(options.graphHopDecay ?? 0.55)));
-  const ragFallbackPolicy = options.ragFallbackPolicy ?? 'always';
+  const ragFallbackPolicy = options.ragFallbackPolicy ?? 'auto';
   const ragFallbackSeedScoreThreshold = Math.max(1, Math.floor(options.ragFallbackSeedScoreThreshold ?? 120));
 
   const scoredWorldInfo = scoreWorldInfoEntries(

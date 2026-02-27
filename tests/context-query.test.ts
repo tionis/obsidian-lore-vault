@@ -102,7 +102,8 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
 
   const context = assembleScopeContext(pack, {
     queryText: 'Aurelia enters Yggdrasil',
-    tokenBudget: 1024
+    tokenBudget: 1024,
+    ragFallbackPolicy: 'always'
   });
 
   assert.equal(context.scope, 'universe');
@@ -138,7 +139,8 @@ test('assembleScopeContext enforces token budget caps', () => {
     tokenBudget: 256,
     worldInfoBudgetRatio: 0.5,
     maxWorldInfoEntries: 10,
-    maxRagDocuments: 10
+    maxRagDocuments: 10,
+    ragFallbackPolicy: 'always'
   });
 
   assert.ok(context.usedTokens <= 256);

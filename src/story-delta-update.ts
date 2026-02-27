@@ -4,6 +4,11 @@ import {
   StoryExtractionChunkResult,
   splitStoryMarkdownIntoChunks
 } from './story-extraction';
+import {
+  resolveNoteSummary,
+  stripSummarySectionFromBody,
+  upsertSummarySectionInMarkdown
+} from './summary-utils';
 
 export type StoryDeltaUpdatePolicy = 'safe_append' | 'structured_merge';
 
@@ -561,9 +566,6 @@ function renderFrontmatter(state: PageState): string {
   lines.push(...renderYamlArray('aliases', state.aliases));
   lines.push(...renderYamlArray('keywords', state.keywords));
   lines.push(...renderYamlArray('tags', state.tags));
-  if (state.summary) {
-    lines.push(`summary: ${JSON.stringify(state.summary)}`);
-  }
   lines.push('sourceType: "story_delta_update"');
   lines.push(`pageKey: ${JSON.stringify(state.pageKey)}`);
 
@@ -571,20 +573,26 @@ function renderFrontmatter(state: PageState): string {
 }
 
 function renderStateContent(state: PageState, policy: StoryDeltaUpdatePolicy): string {
-  const body = state.contentBlocks.length > 0
+  const rawBody = state.contentBlocks.length > 0
     ? state.contentBlocks.join('\n\n---\n\n').trim()
     : '(no story delta content)';
 
   const keepOriginalFrontmatter = policy === 'safe_append' && !state.created;
   if (keepOriginalFrontmatter) {
     if (state.originalFrontmatter) {
-      return [`---`, state.originalFrontmatter.trim(), `---`, '', body, ''].join('\n');
+      return [`---`, state.originalFrontmatter.trim(), `---`, '', rawBody, ''].join('\n');
     }
-    return [body, ''].join('\n');
+    return [rawBody, ''].join('\n');
   }
 
   const frontmatter = renderFrontmatter(state);
-  return ['---', frontmatter, '---', '', body, ''].join('\n');
+  const bodyWithoutSummary = stripSummarySectionFromBody(rawBody);
+  const baseBody = bodyWithoutSummary || (state.summary ? '' : '(no story delta content)');
+  const baseContent = ['---', frontmatter, '---', '', baseBody, ''].join('\n');
+  if (!state.summary) {
+    return baseContent;
+  }
+  return upsertSummarySectionInMarkdown(baseContent, state.summary);
 }
 
 function splitLines(content: string): string[] {
@@ -727,6 +735,7 @@ function createPageStateFromInput(input: StoryDeltaExistingPageInput): PageState
   const normalizedPath = normalizeVaultPath(input.path);
   const split = splitFrontmatter(input.content);
   const parsed = parseManagedFrontmatter(split.frontmatter);
+  const resolvedSummary = resolveNoteSummary(split.body, parsed.summary);
   const inferredTitle = parsed.title || normalizedPath.split('/').pop()?.replace(/\.md$/i, '') || 'entry';
   const resolvedKey = normalizePageKey(parsed.pageKey || inferredTitle) || normalizePageKey(inferredTitle) || 'entry';
 
@@ -734,7 +743,7 @@ function createPageStateFromInput(input: StoryDeltaExistingPageInput): PageState
     path: normalizedPath,
     pageKey: resolvedKey,
     title: parsed.title || inferredTitle,
-    summary: parsed.summary,
+    summary: resolvedSummary?.text ?? '',
     keywords: parsed.keywords,
     aliases: parsed.aliases,
     tags: parsed.tags,

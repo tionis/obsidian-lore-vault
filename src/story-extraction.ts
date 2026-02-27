@@ -1,4 +1,5 @@
 import { normalizeVaultPath } from './vault-path-utils';
+import { upsertSummarySectionInMarkdown } from './summary-utils';
 
 export interface StoryExtractionChunk {
   index: number;
@@ -455,9 +456,6 @@ function buildPageContent(
     }
   }
   const summary = mergeSummary('', page.summary, maxSummaryChars);
-  if (summary) {
-    lines.push(`summary: ${JSON.stringify(summary)}`);
-  }
   lines.push(`sourceType: "story_extraction"`);
   lines.push(`pageKey: ${JSON.stringify(page.pageKey)}`);
   lines.push('---');
@@ -466,7 +464,11 @@ function buildPageContent(
     ? page.contentBlocks.join('\n\n---\n\n')
     : '(no extracted content)';
 
-  return [...lines, '', body.trim(), ''].join('\n');
+  const baseContent = [...lines, '', body.trim(), ''].join('\n');
+  if (!summary) {
+    return baseContent;
+  }
+  return upsertSummarySectionInMarkdown(baseContent, summary);
 }
 
 function resolveUniquePath(

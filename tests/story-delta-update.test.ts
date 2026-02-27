@@ -158,6 +158,8 @@ test('buildStoryDeltaPlan enforces low-confidence gating and deterministic creat
   assert.equal(result.pages.length, 1);
   assert.equal(result.pages[0].action, 'create');
   assert.equal(result.pages[0].path, 'wiki/location-old-tower.md');
+  assert.equal(/^summary:/m.test(result.pages[0].content), false);
+  assert.match(result.pages[0].content, /## Summary\n\nMain fortified location\./);
   assert.equal(result.skippedLowConfidence, 1);
   assert.match(result.pages[0].content, /lorebook\/story\/main/);
   assert.equal(result.pages[0].diff.removedLines, 0);
@@ -203,4 +205,109 @@ test('safe_append does not inject frontmatter into existing notes without frontm
   assert.equal(result.pages[0].path, 'wiki/shrine.md');
   assert.equal(result.pages[0].content.startsWith('---\n'), false);
   assert.match(result.pages[0].content, /new warding sigil/);
+});
+
+test('structured_merge migrates legacy frontmatter summary to summary section', async () => {
+  const result = await buildStoryDeltaPlan({
+    storyMarkdown: '# Chapter\nAlice documents the hidden routes near the tower.',
+    targetFolder: 'wiki',
+    defaultTagsRaw: 'wiki',
+    lorebookName: 'story/main',
+    tagPrefix: 'lorebook',
+    updatePolicy: 'structured_merge',
+    maxChunkChars: 500,
+    maxSummaryChars: 220,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    lowConfidenceThreshold: 0.5,
+    existingPages: [
+      {
+        path: 'wiki/alice.md',
+        content: [
+          '---',
+          'title: "Alice"',
+          'summary: "Legacy summary from frontmatter."',
+          'pageKey: "character/alice"',
+          '---',
+          '',
+          'Alice is already known to the guild.',
+          ''
+        ].join('\n')
+      }
+    ],
+    callModel: async () => JSON.stringify({
+      operations: [
+        {
+          pageKey: 'character/alice',
+          title: 'Alice',
+          summary: '',
+          keywords: ['Alice'],
+          aliases: [],
+          content: 'She records hidden routes near the tower.',
+          confidence: 0.92,
+          rationale: 'Durable new investigation detail.'
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.pages.length, 1);
+  assert.equal(result.pages[0].path, 'wiki/alice.md');
+  assert.equal(/^summary:/m.test(result.pages[0].content), false);
+  assert.match(result.pages[0].content, /## Summary\n\nLegacy summary from frontmatter\./);
+  assert.match(result.pages[0].content, /records hidden routes near the tower/);
+});
+
+test('structured_merge prefers existing summary section over frontmatter fallback', async () => {
+  const result = await buildStoryDeltaPlan({
+    storyMarkdown: '# Chapter\nThe watch confirms another patrol update.',
+    targetFolder: 'wiki',
+    defaultTagsRaw: 'wiki',
+    lorebookName: 'story/main',
+    tagPrefix: 'lorebook',
+    updatePolicy: 'structured_merge',
+    maxChunkChars: 500,
+    maxSummaryChars: 220,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    lowConfidenceThreshold: 0.5,
+    existingPages: [
+      {
+        path: 'wiki/tower.md',
+        content: [
+          '---',
+          'title: "Old Tower"',
+          'summary: "Legacy fallback summary."',
+          'pageKey: "location/old-tower"',
+          '---',
+          '',
+          '## Summary',
+          '',
+          'Section summary takes precedence.',
+          '',
+          'Current tower details.',
+          ''
+        ].join('\n')
+      }
+    ],
+    callModel: async () => JSON.stringify({
+      operations: [
+        {
+          pageKey: 'location/old-tower',
+          title: 'Old Tower',
+          summary: '',
+          keywords: ['tower'],
+          aliases: [],
+          content: 'Patrol routes were updated again.',
+          confidence: 0.9,
+          rationale: 'Explicit operational change.'
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.pages.length, 1);
+  assert.equal(/^summary:/m.test(result.pages[0].content), false);
+  assert.match(result.pages[0].content, /## Summary\n\nSection summary takes precedence\./);
+  assert.equal(result.pages[0].content.includes('Legacy fallback summary.'), false);
 });

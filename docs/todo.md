@@ -86,7 +86,7 @@ Reference design: `docs/planning.md`.
 - [x] Add tests for manual `summary` precedence over fallback body content.
 - [x] Add optional automatic chapter summary generation for long-form story notes.
 - [x] Integrate chapter summary generation into chapter-memory store via persisted note summaries.
-- [x] Add review/approval workflow before writing chapter frontmatter `summary` updates.
+- [x] Add review/approval workflow before writing chapter `## Summary` section updates.
 - [x] Invalidate rolling chapter-summary memory cache on note create/modify/delete/rename events.
 - [x] Add tests for chapter summary precedence (`## Summary` section > `frontmatter summary` fallback > deterministic excerpt fallback).
 
@@ -108,7 +108,7 @@ Reference design: `docs/planning.md`.
   - default tags
   - lorebook name converted into a lorebook tag
 - [x] Implement lorebook JSON paste-import flow with validation and deterministic page generation.
-- [x] Map lorebook entries to frontmatter/body format (`summary`, `keywords`/`key`, tags, aliases/comment where available).
+- [x] Map lorebook entries to frontmatter/body format (`## Summary` section, `keywords`/`key`, tags, aliases/comment where available).
 - [x] Implement story markdown extraction pipeline:
   - deterministic chunking
   - per-chunk LLM extraction

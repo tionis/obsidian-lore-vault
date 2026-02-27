@@ -187,7 +187,7 @@ Current constraints:
 Chapter-memory specific behavior:
 
 - generation should be hash-aware and re-run only when chapter content materially changes
-- summary writes should target frontmatter `summary` with explicit user approval
+- summary writes should target note `## Summary` sections with explicit user approval
 - chapter-memory layer must keep deterministic fallback (`## Summary` section -> `frontmatter summary` fallback -> excerpt)
 
 ## Future: Cost Management and Usage Tracking
@@ -228,7 +228,7 @@ Workflow:
 
 - user pastes SillyTavern lorebook JSON into a text field
 - parser validates and normalizes entries
-- importer generates/updates wiki pages with frontmatter fields (`summary`, `keywords`/`key`, tags, optional aliases/comments)
+- importer generates/updates wiki pages with deterministic metadata (`keywords`/`key`, tags, optional aliases/comments) and writes compact summaries to note `## Summary` sections
 - importer writes deterministic page names and update order
 
 ### Story Extraction Panel

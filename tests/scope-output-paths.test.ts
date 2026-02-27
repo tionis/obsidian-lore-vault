@@ -11,7 +11,6 @@ test('resolveScopeOutputPaths keeps deterministic extensions', () => {
   assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.json');
   assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.rag.md');
   assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
-  assert.equal(resolved.manifestPath, 'lorebooks/universe-yggdrasil.manifest.json');
 });
 
 test('resolveScopeOutputPaths appends slug regardless of build mode', () => {
@@ -20,7 +19,6 @@ test('resolveScopeOutputPaths appends slug regardless of build mode', () => {
   assert.equal(singleScope.worldInfoPath, multiScope.worldInfoPath);
   assert.equal(singleScope.ragPath, multiScope.ragPath);
   assert.equal(singleScope.sqlitePath, multiScope.sqlitePath);
-  assert.equal(singleScope.manifestPath, multiScope.manifestPath);
 });
 
 test('resolveScopeOutputPaths supports {scope} token', () => {
@@ -28,7 +26,6 @@ test('resolveScopeOutputPaths supports {scope} token', () => {
   assert.equal(resolved.worldInfoPath, 'lorebooks/universe-rc/pack.json');
   assert.equal(resolved.ragPath, 'lorebooks/universe-rc/pack.rag.md');
   assert.equal(resolved.sqlitePath, 'lorebooks/universe-rc.db');
-  assert.equal(resolved.manifestPath, 'lorebooks/universe-rc.manifest.json');
 });
 
 test('resolveScopeOutputPaths supports custom sqlite base path', () => {
@@ -41,7 +38,6 @@ test('resolveScopeOutputPaths supports custom sqlite base path', () => {
   assert.equal(resolved.worldInfoPath, 'packs/universe-yggdrasil/sillytavern/pack-universe-yggdrasil.json');
   assert.equal(resolved.ragPath, 'packs/universe-yggdrasil/sillytavern/pack-universe-yggdrasil.rag.md');
   assert.equal(resolved.sqlitePath, 'packs/universe-yggdrasil/canon.db');
-  assert.equal(resolved.manifestPath, 'packs/universe-yggdrasil/canon.manifest.json');
 });
 
 test('resolveScopeOutputPaths normalizes backslash separators to vault-style paths', () => {
@@ -54,7 +50,6 @@ test('resolveScopeOutputPaths normalizes backslash separators to vault-style pat
   assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault-characters-minor.json');
   assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault-characters-minor.rag.md');
   assert.equal(resolved.sqlitePath, 'lorebooks/characters-minor.db');
-  assert.equal(resolved.manifestPath, 'lorebooks/characters-minor.manifest.json');
 });
 
 test('assertUniqueOutputPaths throws on collisions', () => {
@@ -77,7 +72,7 @@ test('assertUniqueOutputPaths can ignore sqlite collisions when disabled', () =>
   assert.doesNotThrow(() => assertUniqueOutputPaths([
     { scope: 'World A', paths: first },
     { scope: 'world-a', paths: second }
-  ], { includeSqlite: false, includeManifest: false }));
+  ], { includeSqlite: false }));
 });
 
 test('slugifyScope maps empty scope to root', () => {

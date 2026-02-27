@@ -174,7 +174,6 @@ Fixture coverage includes:
 Given configured `Downstream Export Path Pattern` + SQLite output directory:
 
 - SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebooks/<scope-slug>.db`)
-- scope manifest file: `<sqliteOutputDir>/<scope-slug>.manifest.json`
 - world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/lorevault.json`)
 - rag file: `<sqliteOutputDir>/<downstreamSubpath>.rag.md`
 
@@ -209,8 +208,18 @@ For downstream publishing tools/plugins:
   - `rag_chunks`: `path ASC, chunk_index ASC`
 - Stable downstream export roots:
   - canonical scope `.db` under configured SQLite output path
-  - per-scope stable manifest (`.manifest.json`) next to canonical `.db`
   - ST-style outputs under a subpath of the SQLite root (`sillytavern/...` by default)
+
+SQLite pack metadata:
+
+- counts and generation metadata are stored in `meta` table:
+  - `schema_version`
+  - `scope`
+  - `generated_at`
+  - `world_info_entries_count`
+  - `rag_documents_count`
+  - `rag_chunks_count`
+  - `rag_chunk_embeddings_count`
 
 This contract lets a companion publishing plugin select tags/pages/assets independently without changing LoreVault core behavior.
 
@@ -459,4 +468,4 @@ Turn context assembly:
 
 ## Technical Deep-Dive
 
-For implementation-level details (module boundaries, manifest schema, retrieval internals, story-thread resolution), see `docs/technical-reference.md`.
+For implementation-level details (module boundaries, SQLite metadata schema, retrieval internals, story-thread resolution), see `docs/technical-reference.md`.

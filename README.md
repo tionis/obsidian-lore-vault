@@ -7,7 +7,6 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
 - Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
 - Canonical SQLite pack export per scope (`.db`)
-- Stable per-scope manifest export (`.manifest.json`) for downstream tooling contracts
 - Dual exports per scope: `world_info` JSON and `rag` markdown
 - Optional embedding-based semantic RAG with hash-cache
 - Graph-first retrieval with configurable RAG fallback policy (`off|auto|always`)
@@ -136,7 +135,6 @@ Details:
 For each built scope, LoreVault writes:
 
 - `<sqliteOutputDir>/<scope-slug>.db` -> canonical SQLite pack (default dir: `lorebooks/`)
-- `<sqliteOutputDir>/<scope-slug>.manifest.json` -> deterministic scope manifest for downstream tooling
 - `<sqliteOutputDir>/<downstreamSubpath>.json` -> `world_info` (default subpath: `sillytavern/lorevault.json`)
 - `<sqliteOutputDir>/<downstreamSubpath>.rag.md` -> `rag`
 
@@ -156,6 +154,7 @@ SQLite pack includes:
 - `rag` documents
 - chunked `rag` text segments
 - optional chunk embeddings
+- build metadata in `meta` table (schema/scope/timestamp/counts)
 
 Embedding backends:
 

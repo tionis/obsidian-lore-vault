@@ -79,6 +79,10 @@ export class SqlitePackExporter {
       metaStmt.run(['schema_version', String(pack.schemaVersion)]);
       metaStmt.run(['scope', pack.scope]);
       metaStmt.run(['generated_at', String(pack.generatedAt)]);
+      metaStmt.run(['world_info_entries_count', String(pack.worldInfoEntries.length)]);
+      metaStmt.run(['rag_documents_count', String(pack.ragDocuments.length)]);
+      metaStmt.run(['rag_chunks_count', String(pack.ragChunks.length)]);
+      metaStmt.run(['rag_chunk_embeddings_count', String(pack.ragChunkEmbeddings.length)]);
       metaStmt.free();
 
       const worldInfoStmt = db.prepare(`

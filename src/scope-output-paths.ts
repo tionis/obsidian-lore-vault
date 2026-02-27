@@ -5,7 +5,6 @@ export interface ScopeOutputPaths {
   worldInfoPath: string;
   ragPath: string;
   sqlitePath: string;
-  manifestPath: string;
 }
 
 export interface ScopeOutputAssignment {
@@ -57,14 +56,6 @@ function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): 
   return normalizeVaultPathSeparators(path.join(path.dirname(sqlitePath), relativeSubpath));
 }
 
-function resolveManifestPath(sqlitePath: string): string {
-  const ext = path.extname(sqlitePath);
-  if (ext.toLowerCase() === '.db') {
-    return normalizeVaultPathSeparators(`${sqlitePath.slice(0, -ext.length)}.manifest.json`);
-  }
-  return normalizeVaultPathSeparators(`${sqlitePath}.manifest.json`);
-}
-
 export function resolveScopeOutputPaths(
   baseOutputPath: string,
   scope: string,
@@ -90,8 +81,7 @@ export function resolveScopeOutputPaths(
   return {
     worldInfoPath: normalizeVaultPathSeparators(`${stemWithScope}.json`),
     ragPath: normalizeVaultPathSeparators(`${stemWithScope}.rag.md`),
-    sqlitePath: normalizeVaultPathSeparators(sqlitePath),
-    manifestPath: resolveManifestPath(sqlitePath)
+    sqlitePath: normalizeVaultPathSeparators(sqlitePath)
   };
 }
 
@@ -102,10 +92,9 @@ function toCollisionKey(outputPath: string): string {
 
 export function assertUniqueOutputPaths(
   assignments: ScopeOutputAssignment[],
-  options?: { includeSqlite?: boolean; includeManifest?: boolean }
+  options?: { includeSqlite?: boolean }
 ): void {
   const includeSqlite = options?.includeSqlite ?? true;
-  const includeManifest = options?.includeManifest ?? true;
   const seenByPath = new Map<string, string>();
   const collisions = new Set<string>();
 
@@ -116,9 +105,6 @@ export function assertUniqueOutputPaths(
     ];
     if (includeSqlite) {
       targets.push(['sqlite', assignment.paths.sqlitePath]);
-    }
-    if (includeManifest) {
-      targets.push(['manifest', assignment.paths.manifestPath]);
     }
 
     for (const [kind, outputPath] of targets) {

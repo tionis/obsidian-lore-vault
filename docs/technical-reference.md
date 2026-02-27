@@ -37,8 +37,6 @@ This document is the implementation-level reference for core architecture and ru
 - `src/story-thread-resolver.ts`
   - story/chapter metadata parsing
   - deterministic thread ordering (metadata + prev/next links)
-- `src/export-manifest.ts`
-  - deterministic per-scope manifest contract for downstream tools
 
 ## Export Pipeline Contract
 
@@ -47,33 +45,23 @@ Per scope, LoreVault writes:
 - canonical SQLite pack: `<scope>.db`
 - downstream world info JSON
 - downstream rag markdown
-- scope manifest: `<scope>.manifest.json`
 
 Canonicality:
 
 - SQLite is the source of truth for downstream tooling.
 - Downstream exporters should consume SQLite artifacts rather than vault markdown.
 
-### Manifest Schema (v1)
+### SQLite Meta Keys
 
-`src/export-manifest.ts` emits:
+`meta` table records deterministic build metadata:
 
-- `schemaVersion`
-- `generatedAt`
+- `schema_version`
 - `scope`
-- `scopeSlug`
-- `canonicalArtifact` (`sqlite`)
-- `artifacts`:
-  - `sqlite`
-  - `worldInfo`
-  - `rag`
-- `stats`:
-  - `worldInfoEntries`
-  - `ragDocuments`
-  - `ragChunks`
-  - `ragChunkEmbeddings`
-
-Serialization is deterministic (`JSON.stringify(..., null, 2)` + trailing newline).
+- `generated_at`
+- `world_info_entries_count`
+- `rag_documents_count`
+- `rag_chunks_count`
+- `rag_chunk_embeddings_count`
 
 ## Retrieval Engine
 
@@ -214,7 +202,6 @@ Critical deterministic areas:
 - output path resolution and collision checks
 - graph ranking tie-breaks
 - retrieval ranking/tie-breaks
-- manifest serialization
 - story-thread ordering
 
 Any behavior change in these areas must be accompanied by:

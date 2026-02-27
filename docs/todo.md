@@ -83,12 +83,12 @@ Reference design: `docs/planning.md`.
 - [x] Add optional automatic summary generation for `world_info` entries.
 - [x] Add review/approval workflow before summary replacement.
 - [x] Preserve deterministic export after summary acceptance.
-- [x] Add tests for manual `summary` precedence over generated summaries.
+- [x] Add tests for manual `summary` precedence over fallback body content.
 - [x] Add optional automatic chapter summary generation for long-form story notes.
-- [x] Integrate generated chapter summaries into chapter-memory store (same acceptance/traceability model as world_info summaries).
+- [x] Integrate chapter summary generation into chapter-memory store via frontmatter summary updates.
 - [x] Add review/approval workflow before writing chapter frontmatter `summary` updates.
-- [x] Add deterministic cache invalidation by chapter content hash/model signature.
-- [x] Add tests for chapter summary precedence (`frontmatter summary` > generated summary > deterministic excerpt fallback).
+- [x] Invalidate rolling chapter-summary memory cache on note create/modify/delete/rename events.
+- [x] Add tests for chapter summary precedence (`frontmatter summary` > deterministic excerpt fallback).
 
 ## Phase 13: Cost Estimation and Tracking
 

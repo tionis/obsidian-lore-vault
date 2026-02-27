@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import { GeneratedSummaryMode } from './summary-utils';
 
 export interface SummaryReviewResult {
-  action: 'cancel' | 'cache' | 'frontmatter';
+  action: 'cancel' | 'frontmatter';
   summaryText: string;
 }
 
@@ -65,15 +65,6 @@ export class SummaryReviewModal extends Modal {
 
     actions.createEl('button', { text: 'Cancel' }).addEventListener('click', () => {
       this.finish({ action: 'cancel', summaryText: this.summaryText.trim() });
-    });
-
-    actions.createEl('button', { text: 'Approve Cache' }).addEventListener('click', () => {
-      const normalized = this.summaryText.trim();
-      if (!normalized) {
-        new Notice('Summary is empty.');
-        return;
-      }
-      this.finish({ action: 'cache', summaryText: normalized });
     });
 
     actions.createEl('button', { text: 'Write Frontmatter Summary' }).addEventListener('click', () => {

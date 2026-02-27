@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_SETTINGS } from '../src/models';
 import { resolveWorldInfoContent } from '../src/summary-utils';
 import { ChapterSummaryStore } from '../src/chapter-summary-store';
 import { FrontmatterData } from '../src/frontmatter-utils';
@@ -22,23 +21,19 @@ function createMockApp(contentByPath: {[key: string]: string}): any {
   };
 }
 
-test('resolveWorldInfoContent precedence is manual summary > generated summary > note body', () => {
+test('resolveWorldInfoContent precedence is manual summary > note body', () => {
   const body = 'Body fallback';
   assert.equal(
-    resolveWorldInfoContent(body, 'Manual summary', 'Generated summary'),
+    resolveWorldInfoContent(body, 'Manual summary'),
     'Manual summary'
   );
   assert.equal(
-    resolveWorldInfoContent(body, '', 'Generated summary'),
-    'Generated summary'
-  );
-  assert.equal(
-    resolveWorldInfoContent(body, undefined, ''),
+    resolveWorldInfoContent(body, ''),
     body
   );
 });
 
-test('ChapterSummaryStore precedence is frontmatter > generated > excerpt', async () => {
+test('ChapterSummaryStore precedence is frontmatter > excerpt', async () => {
   const file = createMockFile('story/ch01.md');
   const app = createMockApp({
     'story/ch01.md': [
@@ -46,32 +41,10 @@ test('ChapterSummaryStore precedence is frontmatter > generated > excerpt', asyn
       'title: Chapter 1',
       '---',
       'This chapter body is used for generated or excerpt fallback.'
-    ].join('\n'),
-    'story/ch02.md': [
-      '---',
-      'title: Chapter 2',
-      '---',
-      'This chapter body should resolve to generated summary.'
     ].join('\n')
   });
 
-  const generatedStore = {
-    getAcceptedSummary: async (_path: string, _mode: string, _signature: string) => 'Generated chapter summary'
-  } as any;
-
-  const store = new ChapterSummaryStore(
-    app,
-    () => ({
-      ...DEFAULT_SETTINGS,
-      summaries: {
-        ...DEFAULT_SETTINGS.summaries,
-        chapter: {
-          useGeneratedSummary: true
-        }
-      }
-    }),
-    generatedStore
-  );
+  const store = new ChapterSummaryStore(app);
 
   const frontmatterWithSummary: FrontmatterData = {
     summary: 'Manual chapter summary'
@@ -85,41 +58,10 @@ test('ChapterSummaryStore precedence is frontmatter > generated > excerpt', asyn
   assert.equal(withFrontmatter?.text, 'Manual chapter summary');
 
   const withoutFrontmatter = await store.resolveSummary(
-    { ...file, path: 'story/ch02.md', stat: { mtime: 2000 } } as any,
+    { ...file, stat: { mtime: 2000 } } as any,
     {},
     body => body.slice(0, 30)
   );
-  assert.equal(withoutFrontmatter?.source, 'generated');
-  assert.equal(withoutFrontmatter?.text, 'Generated chapter summary');
-
-  const excerptOnlyStore = new ChapterSummaryStore(
-    createMockApp({
-      'story/ch03.md': [
-        '---',
-        'title: Chapter 3',
-        '---',
-        'Excerpt fallback should be used here.'
-      ].join('\n')
-    }),
-    () => ({
-      ...DEFAULT_SETTINGS,
-      summaries: {
-        ...DEFAULT_SETTINGS.summaries,
-        chapter: {
-          useGeneratedSummary: true
-        }
-      }
-    }),
-    {
-      getAcceptedSummary: async () => null
-    } as any
-  );
-
-  const excerptResult = await excerptOnlyStore.resolveSummary(
-    { path: 'story/ch03.md', stat: { mtime: 3000 } } as any,
-    {},
-    body => body.slice(0, 18)
-  );
-  assert.equal(excerptResult?.source, 'excerpt');
-  assert.equal(excerptResult?.text, 'Excerpt fallback s');
+  assert.equal(withoutFrontmatter?.source, 'excerpt');
+  assert.equal(withoutFrontmatter?.text, 'This chapter body is used for');
 });

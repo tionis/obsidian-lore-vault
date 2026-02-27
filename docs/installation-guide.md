@@ -100,7 +100,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Retrieval tuning (`RAG Fallback Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
-   - Optional: configure Auto Summaries (`world_info/chapter generated-summary usage`, summary input/output character caps)
+   - Optional: configure Auto Summaries (summary input/output character caps)
    - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, set report output directory, and optional daily/session budget warnings
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
@@ -142,11 +142,10 @@ If you prefer to build the plugin from source:
      - `Generate World Info Summaries (Active Scope)`
      - `Generate Chapter Summaries (Current Story)`
    - In the review modal:
-     - `Approve Cache` stores generated summary in cache only
-     - `Write Frontmatter Summary` stores cache + writes frontmatter `summary`
+     - `Write Frontmatter Summary` writes frontmatter `summary`
    - LoreVault uses precedence:
-     - world_info: `frontmatter` -> `generated` -> body
-     - chapter memory: `frontmatter` -> `generated` -> excerpt
+     - world_info: `frontmatter` -> body
+     - chapter memory: `frontmatter` -> excerpt
 
 7. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"

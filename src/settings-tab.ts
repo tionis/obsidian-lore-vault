@@ -1030,26 +1030,6 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     containerEl.createEl('h3', { text: 'Auto Summaries' });
 
     new Setting(containerEl)
-      .setName('Use Generated World Info Summaries')
-      .setDesc('When frontmatter summary is missing, use approved generated summary cache for world_info export.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.summaries.worldInfo.useGeneratedSummary)
-        .onChange(async (value) => {
-          this.plugin.settings.summaries.worldInfo.useGeneratedSummary = value;
-          await this.plugin.saveData(this.plugin.settings);
-        }));
-
-    new Setting(containerEl)
-      .setName('Use Generated Chapter Summaries')
-      .setDesc('When frontmatter summary is missing, use approved generated summary cache before excerpt fallback.')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.summaries.chapter.useGeneratedSummary)
-        .onChange(async (value) => {
-          this.plugin.settings.summaries.chapter.useGeneratedSummary = value;
-          await this.plugin.saveData(this.plugin.settings);
-        }));
-
-    new Setting(containerEl)
       .setName('Summary Max Input Chars')
       .setDesc('Maximum note body characters included when generating summaries.')
       .addText(text => text

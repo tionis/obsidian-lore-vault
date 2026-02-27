@@ -79,8 +79,36 @@ Reference design: `docs/planning.md`.
 - [ ] Preserve deterministic export after summary acceptance.
 - [ ] Add tests for manual `summary` precedence over generated summaries.
 
+## Phase 10: Story Chat Panel (Next)
+
+- [ ] Add a persistent Story Chat view in Obsidian workspace (non-modal).
+- [ ] Add per-chat lorebook selection controls (multi-select scopes).
+- [ ] Add "manual context only" mode (no automatic lorebook retrieval).
+- [ ] Show live context inspector for each turn (what was added and why).
+- [ ] Add send/stop/regenerate controls with streaming output.
+- [ ] Add tests for chat state persistence and deterministic context assembly.
+
+## Phase 11: Graph-First Retrieval Engine (Primary)
+
+- [ ] Replace primary retrieval path with seed-match + graph expansion over `world_info`.
+- [ ] Implement deterministic seed detection from keywords/aliases/titles.
+- [ ] Implement bounded hop expansion with score decay and stable tie-breaks.
+- [ ] Add budget-aware summary tier selection (`short` -> `medium` -> `full`).
+- [ ] Add retrieval explainability artifacts (seed reason, path, score factors, budget cutoff).
+- [ ] Add fixture-backed tests for multi-hop inclusion behavior and determinism.
+
+## Phase 12: Optional Retrieval Extensions (Fallback/Advanced)
+
+- [ ] Keep embedding-based retrieval as optional fallback when seed confidence is low.
+- [ ] Add policy setting for fallback activation (`off|auto|always`).
+- [ ] Add tool-call retrieval hooks for model-driven context fetch (`search_entries`, `expand_neighbors`, `get_entry`).
+- [ ] Add hard limits for tool-call count/tokens/time per generation turn.
+- [ ] Add tests for fallback determinism and tool-call safety constraints.
+
 ## Open Questions
 
-- [ ] Should parent scopes always include child-scope `rag` docs in `cascade` mode, or be independently filtered?
-- [ ] Should `world_info` and `rag` have independent per-scope token budgets?
+- [ ] Should embedding fallback be global or per-lorebook configurable?
+- [ ] What minimum seed-confidence threshold should trigger fallback retrieval?
+- [ ] Should graph expansion use only wikilinks first, or also explicit relation fields in frontmatter?
+- [ ] For chat mode, should lorebook selection persist per-note, per-workspace, or per-chat thread?
 - [ ] Should lorebook scope tags in note body be supported, or frontmatter tags only?

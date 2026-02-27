@@ -1,5 +1,25 @@
 # LoreVault Planning
 
+## Roadmap Pivot (2026-02-27)
+
+LoreVault will pivot to a graph-first writing assistant model.
+
+Approved direction:
+
+- add an in-editor story chat panel where users can:
+  - enable/disable lorebooks as context sources
+  - run with no lorebooks and manual context only
+  - inspect exactly which context was injected and why
+- make graph + `world_info` retrieval the primary context strategy
+- treat embedding-based `rag` as optional fallback, not the default retrieval path
+- preserve deterministic ranking and explainability for every retrieval decision
+
+Rationale:
+
+- narrative writing benefits more from controllable entity/lore retrieval than broad chunk recall
+- graph expansion from explicitly mentioned entities gives predictable context growth
+- users need inspectable context composition during live generation/chat, not opaque retrieval
+
 ## Rename Direction
 
 Current name: **LoreVault** (renamed from Lorebook Converter).
@@ -141,9 +161,43 @@ Goal: turn LoreVault into an LLM writing assistant inside Obsidian.
 Needed capabilities:
 
 - near-live index updates as notes change
-- query-time context assembly from `world_info` + `rag`
+- query-time context assembly from graph-expanded `world_info`
 - token budgeting and deterministic context ordering
 - story-focused prompts and insert-at-cursor workflows
+- chat workflow for interactive story discussion with selectable lorebooks/manual context
+
+## Graph-First Retrieval Strategy
+
+Primary retrieval loop:
+
+1. detect seed entities via `keywords`, aliases, and title matches in recent story text
+2. score direct matches as first-order context candidates
+3. expand one or two graph hops from matched entries (wikilinks/relations)
+4. apply score decay per hop and deterministic tie-breaks
+5. assemble within token budget using summary tiers (`short` -> `medium` -> `full`)
+
+Scoring inputs (planned):
+
+- direct keyword/alias match strength
+- graph distance from seed entities
+- explicit priority/order fields
+- scope membership strength
+- optional recency boost from active document context
+
+Debug output must explain:
+
+- seed match reasons
+- expansion path (`A -> B -> C`)
+- score contribution per factor
+- final inclusion/exclusion due to token budget
+
+## Optional Retrieval Extensions
+
+Non-primary, opt-in layers:
+
+- embedding fallback retrieval when graph/entity confidence is low
+- tool-call retrieval during generation/chat (`search_entries`, `expand_neighbors`, `get_entry`)
+- intermediary summary generation for oversized contexts with explicit traceability
 
 ## Constraints
 

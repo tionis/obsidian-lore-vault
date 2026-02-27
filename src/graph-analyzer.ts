@@ -234,7 +234,7 @@ export class GraphAnalyzer {
       valueCounts[order].push(uid);
     }
     
-    for (const [val, nodes] of Object.entries(valueCounts)) {
+    for (const [_value, nodes] of Object.entries(valueCounts)) {
       if (nodes.length > 1) {
         nodes.sort((a, b) => a - b);
 

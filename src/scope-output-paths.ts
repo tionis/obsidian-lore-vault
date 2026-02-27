@@ -22,7 +22,7 @@ function normalizeVaultPathSeparators(value: string): string {
 export function slugifyScope(scope: string): string {
   const normalized = normalizeScope(scope);
   const slug = normalized
-    .replace(/[\/\\]+/g, '-')
+    .replace(/[/\\]+/g, '-')
     .replace(/[^a-z0-9._-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
@@ -52,7 +52,7 @@ function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): 
   const configured = normalizeVaultPathSeparators((baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH);
   const relativeSubpath = path.isAbsolute(configured)
     ? (path.basename(configured) || path.basename(DEFAULT_DOWNSTREAM_SUBPATH))
-    : configured.replace(/^[\/\\]+/, '');
+    : configured.replace(/^[/\\]+/, '');
   return normalizeVaultPathSeparators(path.join(path.dirname(sqlitePath), relativeSubpath));
 }
 

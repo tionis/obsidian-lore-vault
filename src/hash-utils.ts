@@ -12,7 +12,7 @@ export function slugifyIdentifier(value: string): string {
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[\/\\]+/g, '-')
+    .replace(/[/\\]+/g, '-')
     .replace(/[^a-z0-9._-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');

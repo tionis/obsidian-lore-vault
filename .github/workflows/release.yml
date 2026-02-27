@@ -35,14 +35,14 @@ jobs:
             exit 1
           fi
 
-          if [ -f versions.json ]; then
-            node --input-type=module -e "import fs from 'node:fs'; const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8')); const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8')); if (!(manifest.version in versions)) { console.error('versions.json is missing key for version ' + manifest.version); process.exit(1); }"
-          else
-            echo "::warning::versions.json not found; skipping versions.json validation."
+          if [ ! -f versions.json ]; then
+            echo "::error::versions.json is required for release validation."
+            exit 1
           fi
+          node --input-type=module -e "import fs from 'node:fs'; const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8')); const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8')); if (!(manifest.version in versions)) { console.error('versions.json is missing key for version ' + manifest.version); process.exit(1); }"
 
       - name: Lint
-        run: npm run lint --if-present
+        run: npm run lint
 
       - name: Build
         run: npm run build

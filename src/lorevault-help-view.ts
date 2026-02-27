@@ -128,6 +128,16 @@ export class LorevaultHelpView extends ItemView {
       ].join('\n')
     });
 
+    this.renderSection(contentEl, 'Auto Summaries', {
+      bullets: [
+        'Generate world_info or chapter summaries with command-palette actions.',
+        'Review modal allows edit + approval before storing/writing summaries.',
+        'Approve Cache stores generated summary only in cache.',
+        'Write Frontmatter Summary stores cache and updates frontmatter summary field.',
+        'Precedence: frontmatter summary -> generated summary -> body/excerpt fallback.'
+      ]
+    });
+
     this.renderSection(contentEl, 'Generation and Chat', {
       bullets: [
         'Continue Story with Context streams generated text into the active editor at the cursor.',

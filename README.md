@@ -12,6 +12,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Graph-first retrieval with configurable RAG fallback policy (`off|auto|always`)
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
+- Optional LLM summary workflows (world_info + chapter) with review/approval and generated-summary cache
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
 - Dedicated routing debug panel for inclusion/routing diagnostics
@@ -78,7 +79,8 @@ root: true
 ```
 
 Entry content defaults to the markdown body (frontmatter block removed).  
-If `summary` is present, it overrides entry content.
+If `summary` is present, it overrides entry content.  
+If `summary` is missing and generated world_info summaries are enabled, LoreVault uses approved generated summary cache before body fallback.
 
 ## Retrieval Routing
 
@@ -230,6 +232,27 @@ Behavior:
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
 
+## Auto Summary Commands (Phase 9)
+
+Commands:
+
+- `Generate World Info Summary (Active Note)`
+- `Generate Chapter Summary (Active Note)`
+- `Generate World Info Summaries (Active Scope)`
+- `Generate Chapter Summaries (Current Story)`
+
+Behavior:
+
+- uses configured completion provider/model to propose a compact summary
+- opens review modal before acceptance
+- review actions:
+  - `Approve Cache`: save summary to generated-summary cache only
+  - `Write Frontmatter Summary`: save to cache and write `summary` frontmatter
+- generated summaries are keyed by deterministic signature (content hash + model/settings signature)
+- precedence:
+  - world_info content: `frontmatter summary` -> `generated summary` -> note body
+  - chapter memory: `frontmatter summary` -> `generated summary` -> deterministic excerpt
+
 Story-level scope override (frontmatter):
 
 ```yaml
@@ -273,6 +296,7 @@ Current capabilities:
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
 - regenerate appends a new assistant message version; users can switch active versions
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
+- chapter memory shown in layer trace indicates summary source (`frontmatter`, `generated`, or `excerpt`)
 
 Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.
 

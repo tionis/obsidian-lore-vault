@@ -50,6 +50,10 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Open Story Chat" (opens right sidebar panel)
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
+     - "Generate World Info Summary (Active Note)"
+     - "Generate Chapter Summary (Active Note)"
+     - "Generate World Info Summaries (Active Scope)"
+     - "Generate Chapter Summaries (Current Story)"
      - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
@@ -92,6 +96,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Retrieval tuning (`RAG Fallback Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
+   - Optional: configure Auto Summaries (`world_info/chapter generated-summary usage`, summary input/output character caps)
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
 
@@ -120,11 +125,25 @@ If you prefer to build the plugin from source:
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
-6. **Open embedded help**
+5. **Open embedded help**
    - Run command `Open LoreVault Help`
    - Use it as the in-plugin quick reference for setup, retrieval behavior, and export artifacts
 
-5. **Use Story Chat (Phase 10 foundation)**
+6. **Optional: Generate and approve summaries**
+   - Open a note and run:
+     - `Generate World Info Summary (Active Note)` for lore entry summary candidate
+     - `Generate Chapter Summary (Active Note)` for chapter memory summary candidate
+   - For batch workflows:
+     - `Generate World Info Summaries (Active Scope)`
+     - `Generate Chapter Summaries (Current Story)`
+   - In the review modal:
+     - `Approve Cache` stores generated summary in cache only
+     - `Write Frontmatter Summary` stores cache + writes frontmatter `summary`
+   - LoreVault uses precedence:
+     - world_info: `frontmatter` -> `generated` -> body
+     - chapter memory: `frontmatter` -> `generated` -> excerpt
+
+7. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
    - Use the conversation dropdown at the top to switch chats; use `New Chat` to create one
    - Optional: set the conversation note folder in Settings -> LoreVault -> `Story Chat Conversation Folder`

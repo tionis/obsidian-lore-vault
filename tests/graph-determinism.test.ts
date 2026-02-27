@@ -116,6 +116,17 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
         maxPlanningTimeMs: 8000
       }
     },
+    summaries: {
+      promptVersion: 1,
+      maxInputChars: 12000,
+      maxSummaryChars: 320,
+      worldInfo: {
+        useGeneratedSummary: true
+      },
+      chapter: {
+        useGeneratedSummary: true
+      }
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',

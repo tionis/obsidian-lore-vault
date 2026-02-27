@@ -1,14 +1,17 @@
-import { App, TFile } from 'obsidian';
+import type { App, TFile } from 'obsidian';
+import { ConverterSettings } from './models';
 import {
   FrontmatterData,
   asString,
   getFrontmatterValue,
   stripFrontmatter
 } from './frontmatter-utils';
+import { GeneratedSummaryStore } from './generated-summary-store';
+import { buildGeneratedSummarySignature } from './summary-utils';
 
 export interface ChapterSummarySnapshot {
   text: string;
-  source: 'frontmatter' | 'excerpt';
+  source: 'frontmatter' | 'generated' | 'excerpt';
 }
 
 interface ChapterSummaryCacheEntry {
@@ -18,10 +21,18 @@ interface ChapterSummaryCacheEntry {
 
 export class ChapterSummaryStore {
   private readonly app: App;
+  private readonly getSettings: () => ConverterSettings;
+  private readonly generatedSummaryStore: GeneratedSummaryStore;
   private readonly cache = new Map<string, ChapterSummaryCacheEntry>();
 
-  constructor(app: App) {
+  constructor(
+    app: App,
+    getSettings: () => ConverterSettings,
+    generatedSummaryStore: GeneratedSummaryStore
+  ) {
     this.app = app;
+    this.getSettings = getSettings;
+    this.generatedSummaryStore = generatedSummaryStore;
   }
 
   invalidatePath(path: string): void {
@@ -58,6 +69,24 @@ export class ChapterSummaryStore {
     if (!body) {
       this.cache.delete(file.path);
       return null;
+    }
+
+    const settings = this.getSettings();
+    if (settings.summaries.chapter.useGeneratedSummary) {
+      const signature = buildGeneratedSummarySignature('chapter', body, settings);
+      const generatedSummary = await this.generatedSummaryStore.getAcceptedSummary(
+        file.path,
+        'chapter',
+        signature
+      );
+      if (generatedSummary) {
+        const summary: ChapterSummarySnapshot = {
+          text: generatedSummary,
+          source: 'generated'
+        };
+        this.cache.set(file.path, { mtime, summary });
+        return summary;
+      }
     }
 
     const excerpt = excerptBuilder(body).trim();

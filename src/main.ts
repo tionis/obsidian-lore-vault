@@ -27,8 +27,13 @@ import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
 import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
+import { GeneratedSummaryStore } from './generated-summary-store';
 import { EmbeddingService } from './embedding-service';
-import { createCompletionRetrievalToolPlanner, requestStoryContinuationStream } from './completion-provider';
+import {
+  createCompletionRetrievalToolPlanner,
+  requestStoryContinuation,
+  requestStoryContinuationStream
+} from './completion-provider';
 import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
@@ -47,11 +52,21 @@ import {
 } from './story-thread-resolver';
 import * as path from 'path';
 import {
+  asString,
   FrontmatterData,
+  getFrontmatterValue,
   normalizeFrontmatter,
   stripFrontmatter
 } from './frontmatter-utils';
 import { normalizeLinkTarget } from './link-target-index';
+import {
+  buildGeneratedSummarySignature,
+  GeneratedSummaryMode,
+  normalizeGeneratedSummaryText
+} from './summary-utils';
+import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
+import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
+import { buildScopeSummaries } from './lorebooks-manager-data';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -96,6 +111,7 @@ export interface StoryChatTurnResult {
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
+  private generatedSummaryStore!: GeneratedSummaryStore;
   private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
   private generationInFlight = false;
@@ -761,6 +777,313 @@ export default class LoreBookConverterPlugin extends Plugin {
     };
   }
 
+  private async resolveGeneratedSummary(
+    filePath: string,
+    mode: GeneratedSummaryMode,
+    bodyText: string
+  ): Promise<string | null> {
+    const signature = buildGeneratedSummarySignature(mode, bodyText, this.settings);
+    return this.generatedSummaryStore.getAcceptedSummary(filePath, mode, signature);
+  }
+
+  private buildSummaryPrompt(mode: GeneratedSummaryMode, title: string, bodyText: string): {
+    systemPrompt: string;
+    userPrompt: string;
+  } {
+    const maxChars = this.settings.summaries.maxInputChars;
+    const truncated = bodyText.length > maxChars ? bodyText.slice(0, maxChars) : bodyText;
+    const modeInstruction = mode === 'chapter'
+      ? 'Summarize this chapter for long-form continuity memory.'
+      : 'Summarize this lore entry for compact world_info retrieval.';
+
+    const systemPrompt = [
+      'You write concise canonical summaries for a fiction writing assistant.',
+      'Output one plain-text paragraph only.',
+      `Keep summary under ${this.settings.summaries.maxSummaryChars} characters.`,
+      'Focus on durable facts, names, states, and consequences.',
+      'Do not include headings, markdown, or bullet points.',
+      modeInstruction
+    ].join('\n');
+
+    const userPrompt = [
+      `Title: ${title}`,
+      '',
+      '<source_content>',
+      truncated,
+      '</source_content>'
+    ].join('\n');
+
+    return {
+      systemPrompt,
+      userPrompt
+    };
+  }
+
+  private async generateSummaryCandidate(
+    file: TFile,
+    mode: GeneratedSummaryMode
+  ): Promise<{
+    normalizedSummary: string;
+    signature: string;
+    bodyText: string;
+    existingFrontmatterSummary: string;
+  }> {
+    if (!this.settings.completion.enabled) {
+      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
+    }
+    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+      throw new Error('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
+    }
+
+    const raw = await this.app.vault.cachedRead(file);
+    const bodyText = stripFrontmatter(raw).trim();
+    if (!bodyText) {
+      throw new Error('Note body is empty.');
+    }
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const existingFrontmatterSummary = String(
+      getFrontmatterValue(frontmatter, 'summary') ?? ''
+    ).trim();
+
+    const prompt = this.buildSummaryPrompt(mode, file.basename, bodyText);
+    const rawSummary = await requestStoryContinuation(this.settings.completion, {
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: prompt.userPrompt
+    });
+
+    const normalizedSummary = normalizeGeneratedSummaryText(
+      rawSummary,
+      this.settings.summaries.maxSummaryChars
+    );
+    if (!normalizedSummary) {
+      throw new Error('Summary model returned empty text.');
+    }
+
+    const signature = buildGeneratedSummarySignature(mode, bodyText, this.settings);
+    return {
+      normalizedSummary,
+      signature,
+      bodyText,
+      existingFrontmatterSummary
+    };
+  }
+
+  private async reviewSummary(
+    mode: GeneratedSummaryMode,
+    file: TFile,
+    proposedSummary: string,
+    existingFrontmatterSummary: string
+  ): Promise<SummaryReviewResult> {
+    return new Promise(resolve => {
+      const modal = new SummaryReviewModal(
+        this.app,
+        mode,
+        file.path,
+        proposedSummary,
+        existingFrontmatterSummary,
+        result => resolve(result)
+      );
+      modal.open();
+    });
+  }
+
+  private upsertSummaryFrontmatter(rawContent: string, summary: string): string {
+    const escapedSummary = summary
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+    const summaryLine = `summary: "${escapedSummary}"`;
+    const lines = rawContent.split(/\r?\n/);
+
+    if (lines.length > 0 && lines[0].trim() === '---') {
+      let endIndex = -1;
+      for (let index = 1; index < lines.length; index += 1) {
+        if (lines[index].trim() === '---') {
+          endIndex = index;
+          break;
+        }
+      }
+      if (endIndex > 0) {
+        let replaced = false;
+        for (let index = 1; index < endIndex; index += 1) {
+          if (/^\s*summary\s*:/.test(lines[index])) {
+            lines[index] = summaryLine;
+            replaced = true;
+            break;
+          }
+        }
+        if (!replaced) {
+          lines.splice(endIndex, 0, summaryLine);
+        }
+        return lines.join('\n');
+      }
+    }
+
+    const body = rawContent.trimStart();
+    return [
+      '---',
+      summaryLine,
+      '---',
+      body
+    ].join('\n');
+  }
+
+  private async applySummaryToNoteFrontmatter(file: TFile, summary: string): Promise<void> {
+    const raw = await this.app.vault.cachedRead(file);
+    const next = this.upsertSummaryFrontmatter(raw, summary);
+    await this.app.vault.modify(file, next);
+  }
+
+  private async generateSummaryForFile(
+    file: TFile,
+    mode: GeneratedSummaryMode
+  ): Promise<'saved' | 'cancelled'> {
+    const candidate = await this.generateSummaryCandidate(file, mode);
+    const review = await this.reviewSummary(
+      mode,
+      file,
+      candidate.normalizedSummary,
+      candidate.existingFrontmatterSummary
+    );
+    if (review.action === 'cancel') {
+      return 'cancelled';
+    }
+
+    await this.generatedSummaryStore.setAcceptedSummary(
+      file.path,
+      mode,
+      candidate.signature,
+      review.summaryText,
+      this.settings.completion.provider,
+      this.settings.completion.model
+    );
+
+    if (review.action === 'frontmatter') {
+      await this.applySummaryToNoteFrontmatter(file, review.summaryText);
+    }
+
+    this.liveContextIndex.requestFullRefresh();
+    this.chapterSummaryStore.invalidatePath(file.path);
+    this.refreshManagerViews();
+    this.refreshRoutingDebugViews();
+    this.refreshQuerySimulationViews();
+    this.refreshStoryChatViews();
+
+    return 'saved';
+  }
+
+  private async generateSummaryForActiveNote(mode: GeneratedSummaryMode): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('No active markdown note.');
+      return;
+    }
+
+    try {
+      const result = await this.generateSummaryForFile(activeFile, mode);
+      if (result !== 'saved') {
+        return;
+      }
+      const label = mode === 'chapter' ? 'chapter' : 'world_info';
+      new Notice(`Saved ${label} summary for ${activeFile.basename}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Summary generation failed:', error);
+      new Notice(`Summary generation failed: ${message}`);
+    }
+  }
+
+  private hasFrontmatterSummary(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return Boolean(asString(getFrontmatterValue(frontmatter, 'summary'))?.trim());
+  }
+
+  private async generateWorldInfoSummariesForActiveScope(): Promise<void> {
+    const scope = this.resolveBuildScopeFromContext();
+    if (!scope) {
+      new Notice('No active scope found for world_info summary generation.');
+      return;
+    }
+
+    const notes = collectLorebookNoteMetadata(this.app, this.settings);
+    const summaries = buildScopeSummaries(notes, this.settings, scope);
+    const summary = summaries[0];
+    if (!summary) {
+      new Notice('No scope summary available.');
+      return;
+    }
+
+    const targets = summary.notes
+      .filter(note => note.reason === 'included' && note.includeWorldInfo)
+      .map(note => this.app.vault.getAbstractFileByPath(note.path))
+      .filter((file): file is TFile => file instanceof TFile)
+      .filter(file => !this.hasFrontmatterSummary(file))
+      .sort((left, right) => left.path.localeCompare(right.path));
+
+    if (targets.length === 0) {
+      new Notice('No world_info notes without summary found in the active scope.');
+      return;
+    }
+
+    let savedCount = 0;
+    for (const file of targets) {
+      try {
+        const result = await this.generateSummaryForFile(file, 'world_info');
+        if (result === 'cancelled') {
+          break;
+        }
+        savedCount += 1;
+      } catch (error) {
+        console.error(`World info summary generation failed for ${file.path}:`, error);
+      }
+    }
+
+    new Notice(`World_info summary run complete: saved ${savedCount}/${targets.length}.`);
+  }
+
+  private async generateChapterSummariesForCurrentStory(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('No active markdown note.');
+      return;
+    }
+
+    const nodes = this.collectStoryThreadNodes();
+    const resolution = resolveStoryThread(nodes, activeFile.path);
+    if (!resolution) {
+      new Notice('Active note is not in a resolvable story thread.');
+      return;
+    }
+
+    const targets = resolution.orderedPaths
+      .map(pathValue => this.app.vault.getAbstractFileByPath(pathValue))
+      .filter((file): file is TFile => file instanceof TFile)
+      .filter(file => !this.hasFrontmatterSummary(file))
+      .sort((left, right) => left.path.localeCompare(right.path));
+
+    if (targets.length === 0) {
+      new Notice('No chapter notes without summary found for this story thread.');
+      return;
+    }
+
+    let savedCount = 0;
+    for (const file of targets) {
+      try {
+        const result = await this.generateSummaryForFile(file, 'chapter');
+        if (result === 'cancelled') {
+          break;
+        }
+        savedCount += 1;
+      } catch (error) {
+        console.error(`Chapter summary generation failed for ${file.path}:`, error);
+      }
+    }
+
+    new Notice(`Chapter summary run complete: saved ${savedCount}/${targets.length}.`);
+  }
+
   public async runStoryChatTurn(request: StoryChatTurnRequest): Promise<StoryChatTurnResult> {
     if (this.generationInFlight) {
       throw new Error('LoreVault generation is already running.');
@@ -1102,6 +1425,18 @@ export default class LoreBookConverterPlugin extends Plugin {
           ...(data?.retrieval?.toolCalls ?? {})
         }
       },
+      summaries: {
+        ...DEFAULT_SETTINGS.summaries,
+        ...(data?.summaries ?? {}),
+        worldInfo: {
+          ...DEFAULT_SETTINGS.summaries.worldInfo,
+          ...(data?.summaries?.worldInfo ?? {})
+        },
+        chapter: {
+          ...DEFAULT_SETTINGS.summaries.chapter,
+          ...(data?.summaries?.chapter ?? {})
+        }
+      },
       completion: {
         ...DEFAULT_SETTINGS.completion,
         ...(data?.completion ?? {})
@@ -1194,6 +1529,18 @@ export default class LoreBookConverterPlugin extends Plugin {
       500,
       Math.min(120000, Math.floor(Number(merged.retrieval.toolCalls.maxPlanningTimeMs)))
     );
+
+    merged.summaries.promptVersion = Math.max(1, Math.floor(Number(merged.summaries.promptVersion)));
+    merged.summaries.maxInputChars = Math.max(
+      500,
+      Math.min(60000, Math.floor(Number(merged.summaries.maxInputChars)))
+    );
+    merged.summaries.maxSummaryChars = Math.max(
+      80,
+      Math.min(2000, Math.floor(Number(merged.summaries.maxSummaryChars)))
+    );
+    merged.summaries.worldInfo.useGeneratedSummary = Boolean(merged.summaries.worldInfo.useGeneratedSummary);
+    merged.summaries.chapter.useGeneratedSummary = Boolean(merged.summaries.chapter.useGeneratedSummary);
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (
@@ -1397,8 +1744,17 @@ export default class LoreBookConverterPlugin extends Plugin {
   async onload() {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
-    this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
-    this.chapterSummaryStore = new ChapterSummaryStore(this.app);
+    this.generatedSummaryStore = new GeneratedSummaryStore(this.app);
+    this.liveContextIndex = new LiveContextIndex(
+      this.app,
+      () => this.settings,
+      (filePath, mode, bodyText) => this.resolveGeneratedSummary(filePath, mode, bodyText)
+    );
+    this.chapterSummaryStore = new ChapterSummaryStore(
+      this.app,
+      () => this.settings,
+      this.generatedSummaryStore
+    );
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
@@ -1503,6 +1859,38 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: 'generate-world-info-summary-active-note',
+      name: 'Generate World Info Summary (Active Note)',
+      callback: () => {
+        void this.generateSummaryForActiveNote('world_info');
+      }
+    });
+
+    this.addCommand({
+      id: 'generate-chapter-summary-active-note',
+      name: 'Generate Chapter Summary (Active Note)',
+      callback: () => {
+        void this.generateSummaryForActiveNote('chapter');
+      }
+    });
+
+    this.addCommand({
+      id: 'generate-world-info-summaries-active-scope',
+      name: 'Generate World Info Summaries (Active Scope)',
+      callback: () => {
+        void this.generateWorldInfoSummariesForActiveScope();
+      }
+    });
+
+    this.addCommand({
+      id: 'generate-chapter-summaries-current-story',
+      name: 'Generate Chapter Summaries (Current Story)',
+      callback: () => {
+        void this.generateChapterSummariesForCurrentStory();
+      }
+    });
+
     this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, _editor: Editor, _info: MarkdownView | MarkdownFileInfo) => {
       menu.addSeparator();
       menu.addItem(item => {
@@ -1569,6 +1957,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      void this.generatedSummaryStore.invalidatePath(file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -1579,11 +1968,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.chapterSummaryStore.invalidatePath(oldPath);
       this.chapterSummaryStore.invalidatePath(file.path);
+      void this.generatedSummaryStore.invalidatePath(oldPath);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     }));
+
+    void this.generatedSummaryStore.initialize().catch(error => {
+      console.error('Failed to initialize generated summary store:', error);
+    });
 
     void this.liveContextIndex.initialize().catch(error => {
       console.error('Failed to initialize live context index:', error);
@@ -2163,7 +2557,8 @@ export default class LoreBookConverterPlugin extends Plugin {
           files,
           buildAllScopes,
           embeddingService,
-          progress
+          progress,
+          (filePath, mode, bodyText) => this.resolveGeneratedSummary(filePath, mode, bodyText)
         );
 
         const scopedSettings = scopePackResult.scopedSettings;

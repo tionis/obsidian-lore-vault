@@ -15,6 +15,7 @@ import {
 } from './frontmatter-utils';
 import { extractLorebookScopesFromTags, shouldIncludeInScope } from './lorebook-scoping';
 import { parseRetrievalMode, resolveRetrievalTargets } from './retrieval-routing';
+import { GeneratedSummaryMode, resolveWorldInfoContent } from './summary-utils';
 
 const SELECTIVE_LOGIC_MAP: {[key: string]: number} = {
   'or': 0,
@@ -58,15 +59,29 @@ function parseTriggerMethod(frontmatter: FrontmatterData): 'constant' | 'vectori
 export class FileProcessor {
   private app: App;
   private settings: ConverterSettings;
+  private resolveGeneratedSummary?: (
+    filePath: string,
+    mode: GeneratedSummaryMode,
+    bodyText: string
+  ) => Promise<string | null>;
   private linkTargetIndex: LinkTargetIndex = new LinkTargetIndex();
   private entries: {[key: number]: LoreBookEntry} = {};
   private ragDocuments: RagDocument[] = [];
   private nextUid: number = 0;
   private rootUid: number | null = null;
 
-  constructor(app: App, settings: ConverterSettings) {
+  constructor(
+    app: App,
+    settings: ConverterSettings,
+    resolveGeneratedSummary?: (
+      filePath: string,
+      mode: GeneratedSummaryMode,
+      bodyText: string
+    ) => Promise<string | null>
+  ) {
     this.app = app;
     this.settings = settings;
+    this.resolveGeneratedSummary = resolveGeneratedSummary;
   }
 
   generateUid(): number {
@@ -121,7 +136,11 @@ export class FileProcessor {
 
       const noteBody = stripFrontmatter(rawContent).trim();
       const summaryOverride = asString(getFrontmatterValue(frontmatter, 'summary'));
-      const content = summaryOverride ?? noteBody;
+      let generatedSummary = '';
+      if (!summaryOverride && this.settings.summaries.worldInfo.useGeneratedSummary && this.resolveGeneratedSummary) {
+        generatedSummary = (await this.resolveGeneratedSummary(file.path, 'world_info', noteBody)) ?? '';
+      }
+      const content = resolveWorldInfoContent(noteBody, summaryOverride, generatedSummary);
 
       const aliases = asStringArray(getFrontmatterValue(frontmatter, 'aliases'));
       const frontmatterKeywords = asStringArray(getFrontmatterValue(frontmatter, 'key', 'keywords'));

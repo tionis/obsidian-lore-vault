@@ -29,10 +29,9 @@ Current execution sequence:
 3. implement long-form story memory layers
 4. add optional fallback/tool-call retrieval extensions
 5. run broad hardening/performance tuning across the stack
-6. implement optional world_info auto-summary workflow
-7. add cost estimation/tracking workflow (far-future; provider integration dependent)
-8. add inbound import/extraction workflow for ST lorebooks and stories (far-future)
-9. add story-driven wiki update workflow for maintaining existing pages after writing (far-future)
+6. add cost estimation/tracking workflow (far-future; provider integration dependent)
+7. add inbound import/extraction workflow for ST lorebooks and stories (far-future)
+8. add story-driven wiki update workflow for maintaining existing pages after writing (far-future)
 
 Priority note:
 
@@ -171,21 +170,21 @@ Chunking:
   - `note`
   - `section`
 
-## Future: Auto-Summary Workflows (`world_info` + chapter memory)
+## Auto-Summary Workflows (`world_info` + chapter memory) - Implemented
 
-Add automatic summary generation as a future phase for both:
+LoreVault now supports optional generated-summary workflows for both:
 
 - `world_info` entries (compact trigger content)
 - chapter notes used by long-form chapter-memory injection
 
-Constraints:
+Current constraints:
 
 - opt-in and review-first
 - deterministic output once accepted
 - preserve manual `summary` override precedence
 - explicit traceability for generated-vs-manual summary source
 
-Chapter-memory specific constraints:
+Chapter-memory specific behavior:
 
 - generation should be hash-aware and re-run only when chapter content materially changes
 - summary writes should target frontmatter `summary` (or parallel generated-summary cache) with explicit user approval

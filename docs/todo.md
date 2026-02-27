@@ -4,19 +4,18 @@ Reference design: `docs/planning.md`.
 
 ## Status Snapshot (2026-02-27)
 
-- Completed foundations: Phases 0-7 and 11/11.5.
+- Completed foundations: Phases 0-12 (including 8/9 hardening + auto-summary).
 - Story Chat foundation is implemented (Phase 10 core UX done).
 - Optional retrieval extensions (Phase 12) are complete.
 - Phase 8 hardening is complete.
-- Current priority is implementing optional auto-summary workflows (Phase 9) for `world_info` and chapter memory.
-- Hardening/perf pass (Phase 8), auto-summary work (Phase 9), cost tracking work (Phase 13), and import/extraction work (Phase 14) are deferred until the graph-first core is stable.
+- Phase 9 auto-summary workflows are complete.
+- Current priority shifts to deferred future phases: cost tracking (13), import/extraction (14), and story-delta updates (15).
 
 ## Active Execution Order
 
-1. Implement optional auto-summary workflows (Phase 9) for `world_info` and chapter memory.
-2. Implement cost estimation/tracking workflow (Phase 13, far future).
-3. Implement inbound wiki import/extraction workflow (Phase 14, far future).
-4. Implement story-driven wiki update workflow (Phase 15, far future).
+1. Implement cost estimation/tracking workflow (Phase 13, far future).
+2. Implement inbound wiki import/extraction workflow (Phase 14, far future).
+3. Implement story-driven wiki update workflow (Phase 15, far future).
 
 ## Completed Foundations (Historical)
 
@@ -78,17 +77,17 @@ Reference design: `docs/planning.md`.
 - [x] Add compatibility tests for non-English and edge-case metadata.
 - [x] Tune default ranking weights using representative fixtures.
 
-## Phase 9: Auto-Summary Workflows (Deferred Future Work)
+## Phase 9: Auto-Summary Workflows
 
-- [ ] Add optional automatic summary generation for `world_info` entries.
-- [ ] Add review/approval workflow before summary replacement.
-- [ ] Preserve deterministic export after summary acceptance.
-- [ ] Add tests for manual `summary` precedence over generated summaries.
-- [ ] Add optional automatic chapter summary generation for long-form story notes.
-- [ ] Integrate generated chapter summaries into chapter-memory store (same acceptance/traceability model as world_info summaries).
-- [ ] Add review/approval workflow before writing chapter frontmatter `summary` updates.
-- [ ] Add deterministic cache invalidation by chapter content hash/model signature.
-- [ ] Add tests for chapter summary precedence (`frontmatter summary` > generated summary > deterministic excerpt fallback).
+- [x] Add optional automatic summary generation for `world_info` entries.
+- [x] Add review/approval workflow before summary replacement.
+- [x] Preserve deterministic export after summary acceptance.
+- [x] Add tests for manual `summary` precedence over generated summaries.
+- [x] Add optional automatic chapter summary generation for long-form story notes.
+- [x] Integrate generated chapter summaries into chapter-memory store (same acceptance/traceability model as world_info summaries).
+- [x] Add review/approval workflow before writing chapter frontmatter `summary` updates.
+- [x] Add deterministic cache invalidation by chapter content hash/model signature.
+- [x] Add tests for chapter summary precedence (`frontmatter summary` > generated summary > deterministic excerpt fallback).
 
 ## Phase 13: Cost Estimation and Tracking (Deferred Far Future Work)
 
@@ -158,5 +157,5 @@ These are the current implementation defaults unless explicitly changed later.
 
 ## Remaining Strategic Questions
 
-- [ ] Should per-lorebook retrieval/fallback policy overrides be added before or after Phase 9?
+- [x] Should per-lorebook retrieval/fallback policy overrides be added before or after Phase 9? -> after Phase 9.
 - [ ] For structured merge conflicts, should the long-term default be conflict markers or a dedicated interactive merge UI?

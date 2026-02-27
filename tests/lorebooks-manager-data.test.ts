@@ -80,6 +80,18 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       },
       ...(overrides.retrieval ?? {})
     },
+    summaries: {
+      promptVersion: 1,
+      maxInputChars: 12000,
+      maxSummaryChars: 320,
+      worldInfo: {
+        useGeneratedSummary: true
+      },
+      chapter: {
+        useGeneratedSummary: true
+      },
+      ...(overrides.summaries ?? {})
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',

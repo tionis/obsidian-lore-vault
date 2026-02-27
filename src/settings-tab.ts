@@ -344,6 +344,122 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.plugin.saveData(this.plugin.settings);
         }));
 
+    containerEl.createEl('h3', { text: 'Writing Completion' });
+    containerEl.createEl('p', {
+      text: 'Configure LLM generation for "Continue Story with Context".'
+    });
+
+    new Setting(containerEl)
+      .setName('Enable Writing Completion')
+      .setDesc('Generate continuation text instead of inserting a placeholder.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.completion.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.completion.enabled = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Completion Provider')
+      .setDesc('Inference backend for story continuation.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          'openrouter': 'OpenRouter',
+          'ollama': 'Ollama',
+          'openai_compatible': 'OpenAI-Compatible'
+        })
+        .setValue(this.plugin.settings.completion.provider)
+        .onChange(async (value) => {
+          if (value === 'ollama' || value === 'openai_compatible') {
+            this.plugin.settings.completion.provider = value;
+          } else {
+            this.plugin.settings.completion.provider = 'openrouter';
+          }
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Completion Endpoint')
+      .setDesc('Base endpoint URL (for example https://openrouter.ai/api/v1 or http://localhost:11434).')
+      .addText(text => text
+        .setPlaceholder('https://openrouter.ai/api/v1')
+        .setValue(this.plugin.settings.completion.endpoint)
+        .onChange(async (value) => {
+          this.plugin.settings.completion.endpoint = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Completion API Key')
+      .setDesc('API key for provider auth (not required for local Ollama).')
+      .addText(text => text
+        .setPlaceholder('sk-...')
+        .setValue(this.plugin.settings.completion.apiKey)
+        .onChange(async (value) => {
+          this.plugin.settings.completion.apiKey = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Completion Model')
+      .setDesc('Model identifier used for continuation generation.')
+      .addText(text => text
+        .setPlaceholder('openai/gpt-4o-mini')
+        .setValue(this.plugin.settings.completion.model)
+        .onChange(async (value) => {
+          this.plugin.settings.completion.model = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('System Prompt')
+      .setDesc('Instruction that controls writing style and behavior.')
+      .addTextArea(text => text
+        .setValue(this.plugin.settings.completion.systemPrompt)
+        .onChange(async (value) => {
+          this.plugin.settings.completion.systemPrompt = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Completion Temperature')
+      .setDesc('Creativity level (0.0-2.0).')
+      .addText(text => text
+        .setValue(this.plugin.settings.completion.temperature.toString())
+        .onChange(async (value) => {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue >= 0 && numValue <= 2) {
+            this.plugin.settings.completion.temperature = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Max Output Tokens')
+      .setDesc('Upper bound for generated continuation length.')
+      .addText(text => text
+        .setValue(this.plugin.settings.completion.maxOutputTokens.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 64) {
+            this.plugin.settings.completion.maxOutputTokens = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Completion Timeout (ms)')
+      .setDesc('Request timeout for completion API calls.')
+      .addText(text => text
+        .setValue(this.plugin.settings.completion.timeoutMs.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 1000) {
+            this.plugin.settings.completion.timeoutMs = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
 
     new Setting(containerEl)

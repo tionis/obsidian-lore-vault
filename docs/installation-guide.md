@@ -82,6 +82,7 @@ If you prefer to build the plugin from source:
    - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook)
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
+   - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt) for LLM continuation
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
 
@@ -102,7 +103,7 @@ If you prefer to build the plugin from source:
    - Open a story note in editor view
    - Place cursor where you want to continue
    - Run command "Continue Story with Context"
-   - LoreVault inserts a token-budgeted context block (`world_info` + `rag`) plus a continuation draft heading
+   - LoreVault queries token-budgeted context (`world_info` + `rag`) and inserts generated continuation text
 
 ## Troubleshooting
 

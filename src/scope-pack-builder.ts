@@ -14,7 +14,8 @@ function cloneSettings(settings: ConverterSettings): ConverterSettings {
     defaultLoreBook: { ...settings.defaultLoreBook },
     defaultEntry: { ...settings.defaultEntry },
     sqlite: { ...settings.sqlite },
-    embeddings: { ...settings.embeddings }
+    embeddings: { ...settings.embeddings },
+    completion: { ...settings.completion }
   };
 }
 

@@ -208,6 +208,25 @@ Live query combines:
 - lexical scoring
 - optional semantic boost from chunk embeddings
 
+## Writing Completion
+
+Command: `Continue Story with Context`
+
+Provider options:
+
+- OpenRouter
+- Ollama
+- OpenAI-compatible endpoints
+
+Settings:
+
+- enable/disable completion
+- provider, endpoint, api key, model
+- system prompt
+- temperature
+- max output tokens
+- timeout
+
 ## LoreVault Manager UI
 
 Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel)
@@ -251,6 +270,10 @@ Query behavior:
 - scoring:
   - `world_info`: keyword matches + constant/priority boosts
   - `rag`: term overlap in title/path/content
+- completion:
+  - builds a prompt from scope context + recent story window
+  - calls configured completion provider
+  - inserts generated continuation text at cursor
 - deterministic tie-breakers:
   - `world_info`: score desc, order desc, uid asc
   - `rag`: score desc, path asc, title asc, uid asc
@@ -260,4 +283,4 @@ Token budgeting:
 - uses lorebook token budget (`defaultLoreBook.tokenBudget`)
 - splits budget between sections (`world_info` 60%, `rag` 40%)
 - skips entries/documents that would exceed section budget
-- emits deterministic markdown context block
+- context block is used for generation input and is not inserted into the note

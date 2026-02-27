@@ -176,6 +176,17 @@ If you prefer to build the plugin from source:
    - Inspect planned pages and chunk diagnostics
    - Click `Apply Preview` to write generated/updated wiki pages
 
+10. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
+   - Run command `Apply Story Delta to Existing Wiki`
+   - Provide story markdown directly or set `Source Story Note Path` and click `Use Active Note`
+   - Set target wiki folder and optional scope tag filter
+   - Choose update policy:
+     - `safe_append` (default): preserve existing metadata on existing pages
+     - `structured_merge`: merge summary/keywords/aliases where confidence is high
+   - Set low-confidence threshold (operations below threshold are skipped in preview)
+   - Click `Preview Story Delta` to inspect planned create/update writes
+   - Click `Apply Preview` to write all planned changes
+
 ## Troubleshooting
 
 - **Plugin doesn't appear in settings**: Make sure all files are in the correct location and properly named

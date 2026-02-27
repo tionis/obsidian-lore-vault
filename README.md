@@ -287,6 +287,7 @@ Commands:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
+- `Apply Story Delta to Existing Wiki`
 
 Current behavior:
 
@@ -310,6 +311,17 @@ Story extraction behavior:
 - iterative context injection of already-extracted page state between chunks
 - deterministic safe-merge policy (`summary` merge + keyword/alias union + unique content block append)
 - preview first, then explicit apply to write pages
+
+Story delta behavior (Phase 15 foundation):
+
+- updates existing notes in a target folder (optional tag filter)
+- accepts story markdown directly or from a selected story note path
+- low-confidence operation gating (preview warnings + skipped operation count)
+- deterministic matching to existing pages by `pageKey` then title fallback
+- policy modes:
+  - `safe_append` (default): preserve existing metadata and append unique durable updates
+  - `structured_merge`: also merge summary/keywords/aliases deterministically
+- preview and apply workflow (global apply; per-change approval UI is a future step)
 
 ## Story Chat (Phase 10 Foundation)
 

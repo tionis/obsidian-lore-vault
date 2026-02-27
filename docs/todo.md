@@ -11,11 +11,13 @@ Reference design: `docs/planning.md`.
 - Phase 9 auto-summary workflows are complete.
 - Phase 13 cost tracking is complete (usage hooks + ledger + manager UI + JSON/CSV export + aggregation tests).
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
-- Current priority is story-delta updates (15).
+- Phase 15 foundation is in progress (story-delta panel + deterministic planning/apply baseline implemented).
+- Current priority is finishing Phase 15 per-change approval UX.
 
 ## Active Execution Order
 
-1. Implement story-driven wiki update workflow (Phase 15, far future).
+1. Add per-change approval workflow to the Phase 15 story-delta panel.
+2. Refine structured-merge conflict UX.
 
 ## Completed Foundations (Historical)
 
@@ -119,23 +121,23 @@ Reference design: `docs/planning.md`.
 - [x] Add import/extraction dry-run preview and error reporting before writes.
 - [x] Add fixtures/tests for deterministic import output and multi-chunk merge behavior.
 
-## Phase 15: Story-Driven Wiki Updates (Deferred Far Future Work)
+## Phase 15: Story-Driven Wiki Updates (In Progress)
 
-- [ ] Add command + panel: `Apply Story Delta to Existing Wiki`.
-- [ ] Add panel inputs:
+- [x] Add command + panel: `Apply Story Delta to Existing Wiki`.
+- [x] Add panel inputs:
   - source story markdown/story note selection
   - target wiki folder/tag scope
   - update policy (safe append vs structured merge)
   - default tags/lorebook tag mapping for newly created pages
-- [ ] Reuse deterministic chunking + schema-constrained extraction pipeline from story extraction work.
-- [ ] Add LLM output schema for update operations:
+- [x] Reuse deterministic chunking + schema-constrained extraction pipeline from story extraction work.
+- [x] Add LLM output schema for update operations:
   - target page key/path
   - proposed summary/keyword/content updates
   - rationale/confidence per change
-- [ ] Resolve operations against existing wiki pages with deterministic matching and conflict handling.
+- [x] Resolve operations against existing wiki pages with deterministic matching and conflict handling.
 - [ ] Add dry-run diff preview and per-change approval before writes.
-- [ ] Add idempotence checks so rerunning the same story update does not duplicate content.
-- [ ] Add fixtures/tests for deterministic merge/update behavior on existing pages.
+- [x] Add idempotence checks so rerunning the same story update does not duplicate content.
+- [x] Add fixtures/tests for deterministic merge/update behavior on existing pages.
 
 ## Default Decisions (2026-02-27)
 

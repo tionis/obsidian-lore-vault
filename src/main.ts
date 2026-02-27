@@ -434,6 +434,37 @@ export default class LoreBookConverterPlugin extends Plugin {
     return null;
   }
 
+  public previewNoteContextRefs(refs: string[]): {
+    resolvedPaths: string[];
+    unresolvedRefs: string[];
+  } {
+    const normalizedRefs = refs
+      .map(ref => this.normalizeNoteContextRef(ref))
+      .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
+
+    const resolvedPaths: string[] = [];
+    const unresolvedRefs: string[] = [];
+    const seenPaths = new Set<string>();
+
+    for (const ref of normalizedRefs) {
+      const file = this.resolveNoteContextFile(ref);
+      if (!file) {
+        unresolvedRefs.push(ref);
+        continue;
+      }
+
+      if (!seenPaths.has(file.path)) {
+        seenPaths.add(file.path);
+        resolvedPaths.push(file.path);
+      }
+    }
+
+    return {
+      resolvedPaths,
+      unresolvedRefs
+    };
+  }
+
   private async buildSpecificNotesContext(
     refs: string[],
     tokenBudget: number

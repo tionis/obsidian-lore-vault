@@ -268,7 +268,44 @@ export class StoryChatView extends ItemView {
     notesInput.addEventListener('input', () => {
       this.noteContextRefs = parseNoteContextRefs(notesInput.value);
       this.schedulePersist(false);
+      this.render();
     });
+
+    const preview = this.plugin.previewNoteContextRefs(this.noteContextRefs);
+    const previewSection = notesSection.createDiv({ cls: 'lorevault-chat-note-preview' });
+    previewSection.createEl('p', {
+      text: `Resolved notes: ${preview.resolvedPaths.length}`
+    });
+
+    if (preview.resolvedPaths.length > 0) {
+      const resolvedList = previewSection.createEl('ul');
+      for (const item of preview.resolvedPaths.slice(0, 8)) {
+        resolvedList.createEl('li', { text: item });
+      }
+      if (preview.resolvedPaths.length > 8) {
+        previewSection.createEl('p', {
+          text: `+${preview.resolvedPaths.length - 8} more`
+        });
+      }
+    }
+
+    if (preview.unresolvedRefs.length > 0) {
+      const unresolvedTitle = previewSection.createEl('p', {
+        text: `Unresolved references: ${preview.unresolvedRefs.length}`
+      });
+      unresolvedTitle.addClass('lorevault-manager-warning-item');
+
+      const unresolvedList = previewSection.createEl('ul');
+      for (const ref of preview.unresolvedRefs.slice(0, 8)) {
+        const li = unresolvedList.createEl('li', { text: ref });
+        li.addClass('lorevault-manager-warning-item');
+      }
+      if (preview.unresolvedRefs.length > 8) {
+        previewSection.createEl('p', {
+          text: `+${preview.unresolvedRefs.length - 8} more unresolved`
+        });
+      }
+    }
   }
 
   private renderMessages(container: HTMLElement): void {
@@ -415,6 +452,13 @@ export class StoryChatView extends ItemView {
 
     this.stopRequested = false;
     this.isSending = true;
+
+    const preview = this.plugin.previewNoteContextRefs(this.noteContextRefs);
+    if (this.noteContextRefs.length > 0 && preview.resolvedPaths.length === 0) {
+      new Notice('No specific notes could be resolved from current references.');
+    } else if (preview.unresolvedRefs.length > 0) {
+      new Notice(`Some specific note references were unresolved (${preview.unresolvedRefs.length}).`);
+    }
 
     if (appendUser) {
       this.messages.push({

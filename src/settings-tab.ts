@@ -1027,6 +1027,54 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    containerEl.createEl('h3', { text: 'Auto Summaries' });
+
+    new Setting(containerEl)
+      .setName('Use Generated World Info Summaries')
+      .setDesc('When frontmatter summary is missing, use approved generated summary cache for world_info export.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.summaries.worldInfo.useGeneratedSummary)
+        .onChange(async (value) => {
+          this.plugin.settings.summaries.worldInfo.useGeneratedSummary = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Use Generated Chapter Summaries')
+      .setDesc('When frontmatter summary is missing, use approved generated summary cache before excerpt fallback.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.summaries.chapter.useGeneratedSummary)
+        .onChange(async (value) => {
+          this.plugin.settings.summaries.chapter.useGeneratedSummary = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Summary Max Input Chars')
+      .setDesc('Maximum note body characters included when generating summaries.')
+      .addText(text => text
+        .setValue(this.plugin.settings.summaries.maxInputChars.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 500) {
+            this.plugin.settings.summaries.maxInputChars = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Summary Max Output Chars')
+      .setDesc('Hard cap for normalized generated summary text.')
+      .addText(text => text
+        .setValue(this.plugin.settings.summaries.maxSummaryChars.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 80) {
+            this.plugin.settings.summaries.maxSummaryChars = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
 
     new Setting(containerEl)

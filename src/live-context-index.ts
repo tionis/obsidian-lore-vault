@@ -5,6 +5,7 @@ import { ScopeContextPack, AssembledContext, ContextQueryOptions, assembleScopeC
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopePack } from './scope-pack-builder';
 import { EmbeddingService } from './embedding-service';
+import { GeneratedSummaryMode } from './summary-utils';
 
 interface RefreshTask {
   changedPaths: Set<string>;
@@ -21,10 +22,24 @@ export class LiveContextIndex {
   private version = 0;
   private embeddingService: EmbeddingService | null = null;
   private embeddingSignature = '';
+  private resolveGeneratedSummary?: (
+    filePath: string,
+    mode: GeneratedSummaryMode,
+    bodyText: string
+  ) => Promise<string | null>;
 
-  constructor(app: App, getSettings: () => ConverterSettings) {
+  constructor(
+    app: App,
+    getSettings: () => ConverterSettings,
+    resolveGeneratedSummary?: (
+      filePath: string,
+      mode: GeneratedSummaryMode,
+      bodyText: string
+    ) => Promise<string | null>
+  ) {
     this.app = app;
     this.getSettings = getSettings;
+    this.resolveGeneratedSummary = resolveGeneratedSummary;
   }
 
   async initialize(): Promise<void> {
@@ -178,7 +193,9 @@ export class LiveContextIndex {
       scope,
       files,
       buildAllScopes,
-      embeddingService
+      embeddingService,
+      undefined,
+      this.resolveGeneratedSummary
     );
 
     return {

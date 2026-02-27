@@ -208,8 +208,9 @@ Query simulation features:
 
 - multi-scope selection (simulate across multiple lorebooks at once)
 - token budget split across selected scopes
-- optional override controls (`maxGraphHops`, `graphHopDecay`, RAG fallback policy/threshold, world_info/rag limits)
-- selected `world_info` diagnostics (score breakdown, path/reasons, included content tier)
+- optional override controls (`maxGraphHops`, `graphHopDecay`, RAG fallback policy/threshold, world_info/rag limits, body-lift knobs)
+- selected `world_info` diagnostics (score breakdown, path/reasons, tier counts, included content tier)
+- body-lift decision trace (applied/skipped reason per entry with score/hop/tier transition)
 - selected `rag` diagnostics (scores and matched terms)
 
 ## Writing Assistant Commands (MVP)

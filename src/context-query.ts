@@ -17,6 +17,11 @@ export interface ContextQueryOptions {
   maxWorldInfoEntries?: number;
   maxRagDocuments?: number;
   worldInfoBudgetRatio?: number;
+  worldInfoBodyLiftEnabled?: boolean;
+  worldInfoBodyLiftMaxEntries?: number;
+  worldInfoBodyLiftTokenCapPerEntry?: number;
+  worldInfoBodyLiftMinScore?: number;
+  worldInfoBodyLiftMaxHopDistance?: number;
   ragSemanticBoostByDocUid?: {[key: number]: number};
   maxGraphHops?: number;
   graphHopDecay?: number;
@@ -25,6 +30,30 @@ export interface ContextQueryOptions {
 }
 
 export type WorldInfoContentTier = 'short' | 'medium' | 'full' | 'full_body';
+export type WorldInfoBodyLiftDecisionStatus =
+  | 'applied'
+  | 'skipped_disabled'
+  | 'skipped_limit'
+  | 'skipped_budget'
+  | 'skipped_hop_distance'
+  | 'skipped_score'
+  | 'skipped_no_body'
+  | 'skipped_body_matches_summary'
+  | 'skipped_body_too_similar'
+  | 'skipped_excerpt_empty';
+
+export interface WorldInfoBodyLiftDecision {
+  uid: number;
+  comment: string;
+  score: number;
+  hopDistance: number;
+  fromTier: WorldInfoContentTier;
+  toTier: WorldInfoContentTier;
+  status: WorldInfoBodyLiftDecisionStatus;
+  reason: string;
+  excerptTokens: number;
+  deltaTokens: number;
+}
 
 export interface WorldInfoScoreBreakdown {
   seed: number;
@@ -78,6 +107,19 @@ export interface AssembledContext {
       bodyLiftedUids: number[];
       bodyLiftMaxEntries: number;
       bodyLiftTokenCapPerEntry: number;
+      bodyLift: {
+        enabled: boolean;
+        maxEntries: number;
+        tokenCapPerEntry: number;
+        minScore: number;
+        maxHopDistance: number;
+        allocatedBudget: number;
+        borrowedRagBudget: number;
+        usedBudget: number;
+        remainingBudget: number;
+        appliedUids: number[];
+        decisions: WorldInfoBodyLiftDecision[];
+      };
     };
     rag: {
       policy: 'off' | 'auto' | 'always';
@@ -179,6 +221,10 @@ const TITLE_STOPWORDS = new Set([
 
 function formatScore(score: number): string {
   return score.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function computeContentTierContent(content: string, tier: WorldInfoContentTier): string {
@@ -828,34 +874,162 @@ export function assembleScopeContext(
   // For high-confidence core entries, upgrade compact summary context with focused body excerpts.
   const worldInfoBodyByUid = pack.worldInfoBodyByUid ?? {};
   const bodyLiftedUids: number[] = [];
-  const bodyLiftMaxEntries = Math.max(1, Math.min(4, Math.floor(tokenBudget / 2500) + 1));
-  const bodyLiftTokenCapPerEntry = Math.max(180, Math.min(1200, Math.floor(tokenBudget * 0.12)));
-  const bodyLiftMinScore = Math.max(90, seedConfidence * 0.45);
-  let bodyLiftBudget = Math.max(0, worldInfoBudget - usedWorldInfoTokens);
-  if (!ragEnabled) {
-    bodyLiftBudget += Math.floor(ragBudget * 0.45);
-  }
+  const bodyLiftDecisions: WorldInfoBodyLiftDecision[] = [];
+  const bodyLiftEnabled = options.worldInfoBodyLiftEnabled ?? true;
+  const scaledMaxEntries = Math.max(1, Math.min(4, Math.floor(tokenBudget / 2500) + 1));
+  const bodyLiftMaxEntries = Math.max(
+    1,
+    Math.min(8, Math.floor(options.worldInfoBodyLiftMaxEntries ?? scaledMaxEntries))
+  );
+  const scaledTokenCapPerEntry = Math.max(180, Math.min(1200, Math.floor(tokenBudget * 0.12)));
+  const bodyLiftTokenCapPerEntry = Math.max(
+    80,
+    Math.min(2400, Math.floor(options.worldInfoBodyLiftTokenCapPerEntry ?? scaledTokenCapPerEntry))
+  );
+  const defaultBodyLiftMinScore = Math.max(90, seedConfidence * 0.45);
+  const bodyLiftMinScore = Math.max(
+    1,
+    finiteOr(Number(options.worldInfoBodyLiftMinScore ?? defaultBodyLiftMinScore), defaultBodyLiftMinScore)
+  );
+  const bodyLiftMaxHopDistance = Math.max(
+    0,
+    Math.min(3, Math.floor(options.worldInfoBodyLiftMaxHopDistance ?? 1))
+  );
+  const baseBodyLiftBudget = Math.max(0, worldInfoBudget - usedWorldInfoTokens);
+  const borrowedRagBudget = !ragEnabled ? Math.floor(ragBudget * 0.45) : 0;
+  const allocatedBodyLiftBudget = baseBodyLiftBudget + borrowedRagBudget;
+  let bodyLiftBudget = allocatedBodyLiftBudget;
 
   for (let index = 0; index < selectedWorldInfo.length; index += 1) {
-    if (bodyLiftedUids.length >= bodyLiftMaxEntries || bodyLiftBudget <= 0) {
-      break;
+    const candidate = selectedWorldInfo[index];
+    const fromTier = candidate.contentTier;
+
+    if (!bodyLiftEnabled) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_disabled',
+        reason: 'Body lift is disabled.',
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
+      continue;
     }
 
-    const candidate = selectedWorldInfo[index];
-    if (candidate.hopDistance > 1 || candidate.score < bodyLiftMinScore) {
+    if (bodyLiftedUids.length >= bodyLiftMaxEntries) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_limit',
+        reason: `Reached max lifted entries (${bodyLiftMaxEntries}).`,
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
+      continue;
+    }
+
+    if (bodyLiftBudget <= 0) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_budget',
+        reason: 'No body-lift budget remaining.',
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
+      continue;
+    }
+
+    if (candidate.hopDistance > bodyLiftMaxHopDistance) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_hop_distance',
+        reason: `hopDistance ${candidate.hopDistance} > max ${bodyLiftMaxHopDistance}.`,
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
+      continue;
+    }
+
+    if (candidate.score < bodyLiftMinScore) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_score',
+        reason: `score ${formatScore(candidate.score)} < min ${formatScore(bodyLiftMinScore)}.`,
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
       continue;
     }
 
     const bodyText = (worldInfoBodyByUid[candidate.entry.uid] ?? '').trim();
     if (!bodyText) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_no_body',
+        reason: 'No note body available for this entry.',
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
       continue;
     }
 
     const summaryText = candidate.entry.content.trim();
     if (summaryText && bodyText === summaryText) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_body_matches_summary',
+        reason: 'Body text matches summary content.',
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
       continue;
     }
     if (summaryText && bodyText.length <= summaryText.length + 48) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_body_too_similar',
+        reason: 'Body is too similar/short compared with summary content.',
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
       continue;
     }
 
@@ -867,6 +1041,18 @@ export function assembleScopeContext(
       bodyCharsCap
     );
     if (!bodyExcerpt || bodyExcerpt === candidate.includedContent) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_excerpt_empty',
+        reason: 'Could not extract additional body context beyond current tier.',
+        excerptTokens: 0,
+        deltaTokens: 0
+      });
       continue;
     }
 
@@ -884,6 +1070,18 @@ export function assembleScopeContext(
     );
     const delta = estimateTokens(upgradedSection) - estimateTokens(currentSection);
     if (delta > bodyLiftBudget) {
+      bodyLiftDecisions.push({
+        uid: candidate.entry.uid,
+        comment: candidate.entry.comment,
+        score: candidate.score,
+        hopDistance: candidate.hopDistance,
+        fromTier,
+        toTier: fromTier,
+        status: 'skipped_budget',
+        reason: `Upgrade requires ${delta} tokens; remaining body-lift budget is ${bodyLiftBudget}.`,
+        excerptTokens: estimateTokens(bodyExcerpt),
+        deltaTokens: delta
+      });
       continue;
     }
 
@@ -900,6 +1098,18 @@ export function assembleScopeContext(
     const appliedDelta = Math.max(0, delta);
     usedWorldInfoTokens += appliedDelta;
     bodyLiftBudget -= appliedDelta;
+    bodyLiftDecisions.push({
+      uid: candidate.entry.uid,
+      comment: candidate.entry.comment,
+      score: candidate.score,
+      hopDistance: candidate.hopDistance,
+      fromTier,
+      toTier: 'full_body',
+      status: 'applied',
+      reason: `Applied body excerpt (~${estimateTokens(bodyExcerpt)} tokens).`,
+      excerptTokens: estimateTokens(bodyExcerpt),
+      deltaTokens: appliedDelta
+    });
   }
 
   const selectedRag: SelectedRagDocument[] = [];
@@ -963,7 +1173,20 @@ export function assembleScopeContext(
         droppedUids: [...droppedByBudget, ...droppedByLimit],
         bodyLiftedUids,
         bodyLiftMaxEntries,
-        bodyLiftTokenCapPerEntry
+        bodyLiftTokenCapPerEntry,
+        bodyLift: {
+          enabled: bodyLiftEnabled,
+          maxEntries: bodyLiftMaxEntries,
+          tokenCapPerEntry: bodyLiftTokenCapPerEntry,
+          minScore: bodyLiftMinScore,
+          maxHopDistance: bodyLiftMaxHopDistance,
+          allocatedBudget: allocatedBodyLiftBudget,
+          borrowedRagBudget,
+          usedBudget: allocatedBodyLiftBudget - bodyLiftBudget,
+          remainingBudget: bodyLiftBudget,
+          appliedUids: bodyLiftedUids,
+          decisions: bodyLiftDecisions
+        }
       },
       rag: {
         policy: ragFallbackPolicy,

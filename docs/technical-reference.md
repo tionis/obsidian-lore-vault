@@ -190,6 +190,7 @@ World info tiering:
 - opportunistic upgrade to `full`
 - high-score entries can receive query-focused `full_body` lifts (body excerpts) when budget allows
 - upgrades only occur when budget permits
+- body-lift explainability records per-entry decision status (`applied` / specific skip reason)
 
 Budget diagnostics:
 

@@ -50,6 +50,11 @@ export class LorebooksQuerySimulationView extends ItemView {
   private maxWorldInfoEntries: number | null = null;
   private maxRagDocuments: number | null = null;
   private worldInfoBudgetRatio: number | null = null;
+  private worldInfoBodyLiftEnabled: boolean | null = null;
+  private worldInfoBodyLiftMaxEntries: number | null = null;
+  private worldInfoBodyLiftTokenCapPerEntry: number | null = null;
+  private worldInfoBodyLiftMinScore: number | null = null;
+  private worldInfoBodyLiftMaxHopDistance: number | null = null;
   private running = false;
   private results: ScopeQueryResult[] = [];
   private renderVersion = 0;
@@ -144,6 +149,11 @@ export class LorebooksQuerySimulationView extends ItemView {
     maxWorldInfoEntries?: number;
     maxRagDocuments?: number;
     worldInfoBudgetRatio?: number;
+    worldInfoBodyLiftEnabled?: boolean;
+    worldInfoBodyLiftMaxEntries?: number;
+    worldInfoBodyLiftTokenCapPerEntry?: number;
+    worldInfoBodyLiftMinScore?: number;
+    worldInfoBodyLiftMaxHopDistance?: number;
   } {
     const options: {
       queryText: string;
@@ -155,6 +165,11 @@ export class LorebooksQuerySimulationView extends ItemView {
       maxWorldInfoEntries?: number;
       maxRagDocuments?: number;
       worldInfoBudgetRatio?: number;
+      worldInfoBodyLiftEnabled?: boolean;
+      worldInfoBodyLiftMaxEntries?: number;
+      worldInfoBodyLiftTokenCapPerEntry?: number;
+      worldInfoBodyLiftMinScore?: number;
+      worldInfoBodyLiftMaxHopDistance?: number;
     } = {
       queryText: this.queryText,
       tokenBudget: perScopeBudget
@@ -180,6 +195,21 @@ export class LorebooksQuerySimulationView extends ItemView {
     }
     if (this.worldInfoBudgetRatio !== null) {
       options.worldInfoBudgetRatio = this.worldInfoBudgetRatio;
+    }
+    if (this.worldInfoBodyLiftEnabled !== null) {
+      options.worldInfoBodyLiftEnabled = this.worldInfoBodyLiftEnabled;
+    }
+    if (this.worldInfoBodyLiftMaxEntries !== null) {
+      options.worldInfoBodyLiftMaxEntries = this.worldInfoBodyLiftMaxEntries;
+    }
+    if (this.worldInfoBodyLiftTokenCapPerEntry !== null) {
+      options.worldInfoBodyLiftTokenCapPerEntry = this.worldInfoBodyLiftTokenCapPerEntry;
+    }
+    if (this.worldInfoBodyLiftMinScore !== null) {
+      options.worldInfoBodyLiftMinScore = this.worldInfoBodyLiftMinScore;
+    }
+    if (this.worldInfoBodyLiftMaxHopDistance !== null) {
+      options.worldInfoBodyLiftMaxHopDistance = this.worldInfoBodyLiftMaxHopDistance;
     }
 
     return options;
@@ -349,6 +379,61 @@ export class LorebooksQuerySimulationView extends ItemView {
       ratioInput.value = this.worldInfoBudgetRatio === null ? '' : String(this.worldInfoBudgetRatio);
       this.results = [];
     });
+
+    const bodyLiftEnabledSelect = overrides.createEl('select', { cls: 'dropdown' });
+    bodyLiftEnabledSelect.createEl('option', { value: '', text: 'bodyLift (default)' });
+    bodyLiftEnabledSelect.createEl('option', { value: 'true', text: 'bodyLift on' });
+    bodyLiftEnabledSelect.createEl('option', { value: 'false', text: 'bodyLift off' });
+    bodyLiftEnabledSelect.value = this.worldInfoBodyLiftEnabled === null
+      ? ''
+      : (this.worldInfoBodyLiftEnabled ? 'true' : 'false');
+    bodyLiftEnabledSelect.addEventListener('change', () => {
+      if (bodyLiftEnabledSelect.value === 'true') {
+        this.worldInfoBodyLiftEnabled = true;
+      } else if (bodyLiftEnabledSelect.value === 'false') {
+        this.worldInfoBodyLiftEnabled = false;
+      } else {
+        this.worldInfoBodyLiftEnabled = null;
+      }
+      this.results = [];
+    });
+
+    const bodyLiftEntriesInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftEntriesInput.placeholder = 'bodyLift maxEntries';
+    bodyLiftEntriesInput.value = this.worldInfoBodyLiftMaxEntries === null ? '' : String(this.worldInfoBodyLiftMaxEntries);
+    bodyLiftEntriesInput.addEventListener('change', () => {
+      this.worldInfoBodyLiftMaxEntries = this.parseOptionalInteger(bodyLiftEntriesInput.value, 1, 8);
+      bodyLiftEntriesInput.value = this.worldInfoBodyLiftMaxEntries === null ? '' : String(this.worldInfoBodyLiftMaxEntries);
+      this.results = [];
+    });
+
+    const bodyLiftCapInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftCapInput.placeholder = 'bodyLift tokens/entry';
+    bodyLiftCapInput.value = this.worldInfoBodyLiftTokenCapPerEntry === null ? '' : String(this.worldInfoBodyLiftTokenCapPerEntry);
+    bodyLiftCapInput.addEventListener('change', () => {
+      this.worldInfoBodyLiftTokenCapPerEntry = this.parseOptionalInteger(bodyLiftCapInput.value, 80, 2400);
+      bodyLiftCapInput.value = this.worldInfoBodyLiftTokenCapPerEntry === null ? '' : String(this.worldInfoBodyLiftTokenCapPerEntry);
+      this.results = [];
+    });
+
+    const bodyLiftMinScoreInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftMinScoreInput.placeholder = 'bodyLift minScore';
+    bodyLiftMinScoreInput.step = '0.1';
+    bodyLiftMinScoreInput.value = this.worldInfoBodyLiftMinScore === null ? '' : String(this.worldInfoBodyLiftMinScore);
+    bodyLiftMinScoreInput.addEventListener('change', () => {
+      this.worldInfoBodyLiftMinScore = this.parseOptionalFloat(bodyLiftMinScoreInput.value, 1, 10000);
+      bodyLiftMinScoreInput.value = this.worldInfoBodyLiftMinScore === null ? '' : String(this.worldInfoBodyLiftMinScore);
+      this.results = [];
+    });
+
+    const bodyLiftHopInput = overrides.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
+    bodyLiftHopInput.placeholder = 'bodyLift maxHop';
+    bodyLiftHopInput.value = this.worldInfoBodyLiftMaxHopDistance === null ? '' : String(this.worldInfoBodyLiftMaxHopDistance);
+    bodyLiftHopInput.addEventListener('change', () => {
+      this.worldInfoBodyLiftMaxHopDistance = this.parseOptionalInteger(bodyLiftHopInput.value, 0, 3);
+      bodyLiftHopInput.value = this.worldInfoBodyLiftMaxHopDistance === null ? '' : String(this.worldInfoBodyLiftMaxHopDistance);
+      this.results = [];
+    });
   }
 
   private renderResults(container: HTMLElement): void {
@@ -392,6 +477,14 @@ export class LorebooksQuerySimulationView extends ItemView {
       details.createEl('p', {
         text: `Used ${result.usedTokens}/${result.tokenBudget} tokens | world_info ${result.worldInfo.length} | rag ${result.rag.length}`
       });
+      const tierCounts = result.worldInfo.reduce((counts, item) => {
+        counts[item.contentTier] = (counts[item.contentTier] ?? 0) + 1;
+        return counts;
+      }, {} as Record<string, number>);
+      details.createEl('p', {
+        cls: 'lorevault-routing-subtle',
+        text: `world_info tiers: short ${tierCounts.short ?? 0}, medium ${tierCounts.medium ?? 0}, full ${tierCounts.full ?? 0}, full_body ${tierCounts.full_body ?? 0}`
+      });
       details.createEl('p', {
         cls: 'lorevault-routing-subtle',
         text: `RAG policy ${result.explainability.rag.policy} | enabled ${result.explainability.rag.enabled ? 'yes' : 'no'} | seed confidence ${result.explainability.rag.seedConfidence.toFixed(2)} (threshold ${result.explainability.rag.threshold})`
@@ -407,6 +500,25 @@ export class LorebooksQuerySimulationView extends ItemView {
           cls: 'lorevault-routing-subtle',
           text: `world_info body lift: ${result.explainability.worldInfoBudget.bodyLiftedUids.length}/${result.explainability.worldInfoBudget.bodyLiftMaxEntries} entries (cap ${result.explainability.worldInfoBudget.bodyLiftTokenCapPerEntry} tokens each)`
         });
+      }
+      const bodyLift = result.explainability.worldInfoBudget.bodyLift;
+      details.createEl('p', {
+        cls: 'lorevault-routing-subtle',
+        text: `body lift config: ${bodyLift.enabled ? 'enabled' : 'disabled'} | min score ${bodyLift.minScore.toFixed(2)} | max hop ${bodyLift.maxHopDistance} | budget ${bodyLift.usedBudget}/${bodyLift.allocatedBudget} (borrowed ${bodyLift.borrowedRagBudget})`
+      });
+      const bodyLiftDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
+      bodyLiftDetails.createEl('summary', {
+        text: `Body Lift Decisions (${bodyLift.decisions.length})`
+      });
+      if (bodyLift.decisions.length === 0) {
+        bodyLiftDetails.createEl('p', { text: 'No body-lift decisions recorded.' });
+      } else {
+        const bodyLiftList = bodyLiftDetails.createEl('ul');
+        for (const decision of bodyLift.decisions) {
+          bodyLiftList.createEl('li', {
+            text: `${decision.comment} [uid ${decision.uid}] | ${decision.status} | score ${decision.score.toFixed(2)} | hop ${decision.hopDistance} | tier ${decision.fromTier} -> ${decision.toTier} | ${decision.reason}`
+          });
+        }
       }
 
       const worldInfoDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });

@@ -362,6 +362,18 @@ Non-primary, opt-in layers:
 - Keep Obsidian-native workflows first (tags/frontmatter/links).
 - Support downstream SillyTavern first; keep other RAG destinations compatible.
 
+## Working Defaults (Decision Log)
+
+Unless overridden in a later roadmap decision:
+
+- embedding fallback policy is configured globally (not per-lorebook yet)
+- auto fallback seed threshold remains `120`
+- graph expansion is wikilinks-first
+- chat scope/context selection persists per conversation thread
+- chapter ordering prefers explicit `chapter` index before link/path tie-breaks
+- chapter memory summaries are chapter-level by default
+- low-confidence story-driven wiki updates are queued for manual review
+
 ## Implementation Principles
 
 - Build iteratively with migration safety.

@@ -28,7 +28,7 @@ import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-vi
 import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
 import { EmbeddingService } from './embedding-service';
-import { requestStoryContinuationStream } from './completion-provider';
+import { createCompletionRetrievalToolPlanner, requestStoryContinuationStream } from './completion-provider';
 import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
@@ -39,6 +39,7 @@ import { buildScopePack } from './scope-pack-builder';
 import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
 import { AssembledContext, ScopeContextPack } from './context-query';
+import { createRetrievalToolCatalog, runModelDrivenRetrievalHooks } from './retrieval-tool-hooks';
 import {
   StoryThreadNode,
   parseStoryThreadNodeFromFrontmatter,
@@ -694,6 +695,72 @@ export default class LoreBookConverterPlugin extends Plugin {
     };
   }
 
+  private async buildToolHooksContext(
+    queryText: string,
+    scopes: string[],
+    tokenBudget: number,
+    abortSignal?: AbortSignal
+  ): Promise<{
+    markdown: string;
+    usedTokens: number;
+    selectedItems: string[];
+    layerTrace: string[];
+  }> {
+    if (!this.settings.retrieval.toolCalls.enabled || tokenBudget <= 0) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        selectedItems: [],
+        layerTrace: []
+      };
+    }
+
+    const planner = createCompletionRetrievalToolPlanner(this.settings.completion);
+    if (!planner) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        selectedItems: [],
+        layerTrace: ['tool_hooks: provider does not support tool calls']
+      };
+    }
+
+    const requestedScopes = scopes.length > 0
+      ? scopes.map(scope => normalizeScope(scope)).filter((scope, index, array) => Boolean(scope) && array.indexOf(scope) === index)
+      : [''];
+    const catalogInputs: Array<{ scope: string; entries: LoreBookEntry[] }> = [];
+    for (const requestedScope of requestedScopes) {
+      const pack = await this.liveContextIndex.getScopePack(requestedScope);
+      catalogInputs.push({
+        scope: pack.scope,
+        entries: pack.worldInfoEntries
+      });
+    }
+
+    const catalog = createRetrievalToolCatalog(catalogInputs);
+    const result = await runModelDrivenRetrievalHooks({
+      queryText,
+      selectedScopes: requestedScopes,
+      contextTokenBudget: tokenBudget,
+      catalog,
+      planner,
+      limits: {
+        maxCalls: this.settings.retrieval.toolCalls.maxCallsPerTurn,
+        maxResultTokens: this.settings.retrieval.toolCalls.maxResultTokensPerTurn,
+        maxPlanningTimeMs: this.settings.retrieval.toolCalls.maxPlanningTimeMs,
+        maxInjectedEntries: 8
+      },
+      abortSignal
+    });
+
+    return {
+      markdown: result.markdown,
+      usedTokens: result.usedTokens,
+      selectedItems: result.selectedItems,
+      layerTrace: result.trace
+    };
+  }
+
   public async runStoryChatTurn(request: StoryChatTurnRequest): Promise<StoryChatTurnResult> {
     if (this.generationInFlight) {
       throw new Error('LoreVault generation is already running.');
@@ -799,6 +866,28 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const contextMarkdown = contexts.map(context => context.markdown).join('\n\n---\n\n');
+    let toolContextMarkdown = '';
+    let toolContextTokens = 0;
+    let toolContextItems: string[] = [];
+    let toolContextLayerTrace: string[] = [];
+    if (useLorebookContext) {
+      const remainingAfterLorebook = Math.max(0, availableForLorebookContext - usedContextTokens);
+      if (remainingAfterLorebook > 96) {
+        const toolContextBudget = Math.min(700, Math.max(96, Math.floor(remainingAfterLorebook * 0.5)));
+        const toolContext = await this.buildToolHooksContext(
+          querySeed || request.userMessage,
+          selectedScopes,
+          toolContextBudget
+        );
+        toolContextMarkdown = toolContext.markdown;
+        toolContextTokens = toolContext.usedTokens;
+        toolContextItems = toolContext.selectedItems;
+        toolContextLayerTrace = toolContext.layerTrace;
+      }
+    }
+    const combinedLoreContextMarkdown = [contextMarkdown, toolContextMarkdown]
+      .filter(section => section.trim().length > 0)
+      .join('\n\n---\n\n');
     const worldInfoItems = contexts
       .flatMap(context => context.worldInfo.slice(0, 6).map(item => item.entry.comment))
       .slice(0, 12);
@@ -824,6 +913,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (useLorebookContext) {
       layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${usedContextTokens} tokens`);
       layerTrace.push(`fallback_rag: ${totalRagCount} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} scopes enabled)`);
+      if (toolContextTokens > 0 || toolContextLayerTrace.length > 0) {
+        layerTrace.push(`tool_hooks: ${toolContextItems.length} entries, ~${toolContextTokens} tokens`);
+        layerTrace.push(...toolContextLayerTrace);
+      }
     }
     const contextMeta: StoryChatContextMeta = {
       usedLorebookContext: useLorebookContext,
@@ -835,7 +928,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       unresolvedNoteRefs,
       chapterMemoryItems,
       layerTrace,
-      contextTokens: usedContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
+      contextTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
       worldInfoCount: totalWorldInfoCount,
       ragCount: totalRagCount,
       worldInfoItems,
@@ -867,8 +960,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       scopeLabels.join(', '),
       '</lorevault_scopes>',
       '',
+      '<tool_retrieval_context>',
+      toolContextMarkdown || '[No tool-retrieved context.]',
+      '</tool_retrieval_context>',
+      '',
       '<lorevault_context>',
-      contextMarkdown || '[No lorebook context selected.]',
+      combinedLoreContextMarkdown || '[No lorebook context selected.]',
       '</lorevault_context>',
       '',
       '<user_message>',
@@ -889,8 +986,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextWindowTokens: completion.contextWindowTokens,
       maxInputTokens,
       promptReserveTokens: completion.promptReserveTokens,
-      contextUsedTokens: usedContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
-      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - manualContextTokens - specificNotesTokens - chapterMemoryTokens),
+      contextUsedTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - toolContextTokens - manualContextTokens - specificNotesTokens - chapterMemoryTokens),
       maxOutputTokens: completion.maxOutputTokens,
       worldInfoCount: contextMeta.worldInfoCount,
       ragCount: contextMeta.ragCount,
@@ -999,7 +1096,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       },
       retrieval: {
         ...DEFAULT_SETTINGS.retrieval,
-        ...(data?.retrieval ?? {})
+        ...(data?.retrieval ?? {}),
+        toolCalls: {
+          ...DEFAULT_SETTINGS.retrieval.toolCalls,
+          ...(data?.retrieval?.toolCalls ?? {})
+        }
       },
       completion: {
         ...DEFAULT_SETTINGS.completion,
@@ -1079,6 +1180,19 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.retrieval.ragFallbackSeedScoreThreshold = Math.max(
       1,
       Math.floor(Number(merged.retrieval.ragFallbackSeedScoreThreshold))
+    );
+    merged.retrieval.toolCalls.enabled = Boolean(merged.retrieval.toolCalls.enabled);
+    merged.retrieval.toolCalls.maxCallsPerTurn = Math.max(
+      1,
+      Math.min(16, Math.floor(Number(merged.retrieval.toolCalls.maxCallsPerTurn)))
+    );
+    merged.retrieval.toolCalls.maxResultTokensPerTurn = Math.max(
+      128,
+      Math.min(12000, Math.floor(Number(merged.retrieval.toolCalls.maxResultTokensPerTurn)))
+    );
+    merged.retrieval.toolCalls.maxPlanningTimeMs = Math.max(
+      500,
+      Math.min(120000, Math.floor(Number(merged.retrieval.toolCalls.maxPlanningTimeMs)))
     );
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
@@ -1815,8 +1929,29 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       const selectedScopeLabels = contexts.map(item => item.scope || '(all)');
-      const combinedContextMarkdown = contexts
+      const graphContextMarkdown = contexts
         .map(item => item.markdown)
+        .join('\n\n---\n\n');
+      let toolContextMarkdown = '';
+      let toolContextTokens = 0;
+      let toolContextItems: string[] = [];
+      let toolContextLayerTrace: string[] = [];
+      if (remainingInputTokens > 96) {
+        const toolContextBudget = Math.min(900, Math.max(96, Math.floor(remainingInputTokens * 0.55)));
+        const toolContext = await this.buildToolHooksContext(
+          scopedQuery,
+          targetScopes,
+          toolContextBudget,
+          this.generationAbortController.signal
+        );
+        toolContextMarkdown = toolContext.markdown;
+        toolContextTokens = toolContext.usedTokens;
+        toolContextItems = toolContext.selectedItems;
+        toolContextLayerTrace = toolContext.layerTrace;
+        remainingInputTokens -= toolContextTokens;
+      }
+      const combinedContextMarkdown = [graphContextMarkdown, toolContextMarkdown]
+        .filter(section => section.trim().length > 0)
         .join('\n\n---\n\n');
       const totalWorldInfo = contexts.reduce((sum, item) => sum + item.worldInfo.length, 0);
       const totalRag = contexts.reduce((sum, item) => sum + item.rag.length, 0);
@@ -1833,7 +1968,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryTokens} tokens`,
         ...chapterMemoryLayerTrace,
         `graph_memory(world_info): ${totalWorldInfo} entries, ~${usedContextTokens} tokens`,
-        `fallback_rag: ${totalRag} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`
+        `fallback_rag: ${totalRag} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
+        `tool_hooks: ${toolContextItems.length} entries, ~${toolContextTokens} tokens`,
+        ...toolContextLayerTrace
       ];
       const scopeLabel = this.renderScopeListLabel(selectedScopeLabels);
       this.updateGenerationTelemetry({
@@ -1842,7 +1979,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         scopes: selectedScopeLabels,
         estimatedInstructionTokens: instructionOverhead,
         storyTokens,
-        contextUsedTokens: usedContextTokens + chapterMemoryTokens,
+        contextUsedTokens: usedContextTokens + chapterMemoryTokens + toolContextTokens,
         contextRemainingTokens: Math.max(0, remainingInputTokens),
         worldInfoCount: totalWorldInfo,
         ragCount: totalRag,
@@ -1865,6 +2002,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
           `rag: ${ragDetails.join(', ') || '(none)'}`,
+          `tool_hooks: ${toolContextItems.join(', ') || '(none)'}`,
           `layers: ${contextLayerTrace.join(' | ')}`
         ].join('\n')
       );
@@ -1879,8 +2017,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         '',
         `<lorevault_scopes>${selectedScopeLabels.join(', ')}</lorevault_scopes>`,
         '',
+        '<tool_retrieval_context>',
+        toolContextMarkdown || '[No tool-retrieved context.]',
+        '</tool_retrieval_context>',
+        '',
         '<lorevault_context>',
-        combinedContextMarkdown,
+        combinedContextMarkdown || '[No lorebook context selected.]',
         '</lorevault_context>',
         '',
         '<story_so_far>',
@@ -1937,7 +2079,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         state: 'idle',
         statusText: 'idle',
         scopes: selectedScopeLabels,
-        contextUsedTokens: usedContextTokens + chapterMemoryTokens,
+        contextUsedTokens: usedContextTokens + chapterMemoryTokens + toolContextTokens,
         contextRemainingTokens: Math.max(0, remainingInputTokens),
         generatedTokens,
         worldInfoCount: totalWorldInfo,

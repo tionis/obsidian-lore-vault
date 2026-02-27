@@ -301,6 +301,7 @@ Long-form story metadata (new):
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 Chapter memory uses a rolling summary store (frontmatter `summary` preferred, deterministic excerpt fallback) so repeated generations avoid unnecessary re-parsing.
+When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 
 ## LoreVault Manager UI
 
@@ -400,6 +401,7 @@ Query behavior:
     - configurable fallback policy: `off|auto|always`
 - completion:
   - builds a prompt from scope context + recent story window
+  - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
   - calls configured completion provider with streaming enabled
   - inserts streamed generated continuation text at cursor
 - deterministic tie-breakers:
@@ -428,6 +430,10 @@ Retrieval tuning settings (applies immediately to live query and generation):
 - `RAG Auto Fallback Seed Threshold`
 - `Max Graph Hops`
 - `Graph Hop Decay`
+- `Enable Tool Retrieval Hooks`
+- `Tool Calls Per Turn`
+- `Tool Result Token Cap`
+- `Tool Planning Time Cap (ms)`
 
 ## Story Chat Panel
 
@@ -457,6 +463,7 @@ Current behavior:
 Turn context assembly:
 
 - optional lorebook retrieval for selected scopes
+- optional tool-retrieved context layer (when enabled and budget allows)
 - optional manual context block
 - optional specific-note context blocks resolved from note references
 - recent chat history window
@@ -465,7 +472,7 @@ Turn context assembly:
   - resolved specific note paths
   - unresolved note references
   - chapter memory summaries used for the turn
-  - per-layer context trace (`local_window`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_rag`)
+  - per-layer context trace (`local_window`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_rag`, `tool_hooks`)
   - context token estimate
   - selected `world_info` and `rag` item labels
 

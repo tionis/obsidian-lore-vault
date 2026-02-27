@@ -89,6 +89,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - Optional: create model presets and select an active completion preset for quick A/B comparison
    - Optional: configure Retrieval tuning (`RAG Fallback Policy`, seed threshold, max graph hops, graph hop decay)
+   - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
@@ -114,6 +115,7 @@ If you prefer to build the plugin from source:
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
    - LoreVault queries token-budgeted context (`world_info` + `rag`) and streams generated continuation text
+   - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
@@ -132,7 +134,7 @@ If you prefer to build the plugin from source:
    - Use message actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
    - Use message version selectors to switch between regenerated assistant variants
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
-   - Expand per-turn context inspector blocks to see selected scopes, resolved notes, and pulled items
+   - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, and tool-hook layer traces
 
 ## Troubleshooting
 

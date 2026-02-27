@@ -978,6 +978,55 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    new Setting(containerEl)
+      .setName('Enable Tool Retrieval Hooks')
+      .setDesc('Allow model-driven retrieval calls (`search_entries`, `expand_neighbors`, `get_entry`) during generation.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.retrieval.toolCalls.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.retrieval.toolCalls.enabled = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Tool Calls Per Turn')
+      .setDesc('Hard cap on retrieval tool calls per generation/chat turn (1-16).')
+      .addText(text => text
+        .setValue(this.plugin.settings.retrieval.toolCalls.maxCallsPerTurn.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 1 && numValue <= 16) {
+            this.plugin.settings.retrieval.toolCalls.maxCallsPerTurn = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Tool Result Token Cap')
+      .setDesc('Hard cap for accumulated tool result payload tokens per turn.')
+      .addText(text => text
+        .setValue(this.plugin.settings.retrieval.toolCalls.maxResultTokensPerTurn.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 128) {
+            this.plugin.settings.retrieval.toolCalls.maxResultTokensPerTurn = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Tool Planning Time Cap (ms)')
+      .setDesc('Maximum planner loop time budget per turn.')
+      .addText(text => text
+        .setValue(this.plugin.settings.retrieval.toolCalls.maxPlanningTimeMs.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 500) {
+            this.plugin.settings.retrieval.toolCalls.maxPlanningTimeMs = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
 
     new Setting(containerEl)

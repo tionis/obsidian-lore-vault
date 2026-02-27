@@ -204,3 +204,46 @@ test('assembleScopeContext applies deterministic graph expansion and explainabil
     }
   }
 });
+
+test('assembleScopeContext keeps auto fallback deterministic when seed confidence is low', () => {
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(1, ['Aurelia'], 'Aurelia details.', 100),
+      createWorldInfoEntry(2, ['Yggdrasil'], 'Yggdrasil details.', 90)
+    ],
+    ragDocuments: [
+      createRagDocument(11, 'Chronicle Primer', 'notes/primer.md', 'Arcstone and moonfall are central mystery terms.'),
+      createRagDocument(12, 'Moonfall Incident', 'notes/moonfall.md', 'Moonfall event timeline and witness logs.'),
+      createRagDocument(13, 'Arcstone Ledger', 'notes/arcstone.md', 'Arcstone transport records.')
+    ],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const query = 'arcstone moonfall witness';
+  const first = assembleScopeContext(pack, {
+    queryText: query,
+    tokenBudget: 900,
+    ragFallbackPolicy: 'auto',
+    ragFallbackSeedScoreThreshold: 120
+  });
+  const second = assembleScopeContext(pack, {
+    queryText: query,
+    tokenBudget: 900,
+    ragFallbackPolicy: 'auto',
+    ragFallbackSeedScoreThreshold: 120
+  });
+
+  assert.equal(first.explainability.rag.enabled, true);
+  assert.equal(second.explainability.rag.enabled, true);
+  assert.deepEqual(
+    first.rag.map(item => item.document.uid),
+    second.rag.map(item => item.document.uid)
+  );
+  assert.deepEqual(
+    first.rag.map(item => item.score),
+    second.rag.map(item => item.score)
+  );
+});

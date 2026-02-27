@@ -166,7 +166,7 @@ export class FileProcessor {
 
       const entry: LoreBookEntry = {
         uid,
-        key: key.length > 0 ? key : [name],
+        key,
         keysecondary,
         comment,
         content,

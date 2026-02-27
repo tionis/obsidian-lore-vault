@@ -12,7 +12,7 @@
       "expected": {
         "reason": "included",
         "includeWorldInfo": true,
-        "includeRag": false
+        "includeRag": true
       }
     },
     {
@@ -21,7 +21,7 @@
       "frontmatter": {},
       "expected": {
         "reason": "included",
-        "includeWorldInfo": false,
+        "includeWorldInfo": true,
         "includeRag": true
       }
     },
@@ -82,7 +82,7 @@
       "expected": {
         "reason": "included",
         "includeWorldInfo": true,
-        "includeRag": false
+        "includeRag": true
       }
     },
     {
@@ -91,7 +91,7 @@
       "frontmatter": { "retrieval": "rag", "keywords": ["Iron"] },
       "expected": {
         "reason": "included",
-        "includeWorldInfo": false,
+        "includeWorldInfo": true,
         "includeRag": true
       }
     }
@@ -99,7 +99,8 @@
   "expectedSummary": {
     "scope": "universe/yggdrasil",
     "includedNotes": 5,
-    "worldInfoEntries": 3,
-    "ragDocuments": 3
+    "worldInfoEntries": 5,
+    "ragDocuments": 5,
+    "keywordlessEntries": 3
   }
 }

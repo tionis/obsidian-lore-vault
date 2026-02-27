@@ -1,15 +1,16 @@
 # LoreVault
 
-Obsidian plugin that compiles Obsidian notes into scoped context exports for SillyTavern and RAG workflows.
+Obsidian plugin that compiles Obsidian notes into scoped context exports for writing workflows.
 
 ## Current Status
 
 - Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
 - Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
 - Canonical SQLite pack export per scope (`.db`)
-- Dual exports per scope: `world_info` JSON and `rag` markdown
-- Optional embedding-based semantic RAG with hash-cache
-- Graph-first retrieval with configurable RAG fallback policy (`off|auto|always`)
+- Unified lore-entry model per scope (single canonical entry set)
+- Downstream exports per scope: `world_info` JSON and fallback markdown projection
+- Optional embedding-based fallback retrieval with hash-cache
+- Graph-first retrieval with configurable fallback policy (`off|auto|always`)
 - Optional backlink-aware graph expansion toggle for retrieval hops
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
@@ -21,7 +22,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Dedicated routing debug panel for inclusion/routing diagnostics
 - Dedicated query simulation panel for multi-scope retrieval simulation
 - Embedded user help panel (`Open LoreVault Help`)
-- Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
+- Frontmatter retrieval mode (`auto|world_info|rag|both|none`, with `none` as hard exclusion)
 - Deterministic processing, ordering, and tie-breaking
 - Unicode-aware retrieval tokenization for non-English keywords/titles
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
@@ -89,8 +90,8 @@ If section summary is missing, LoreVault falls back to frontmatter `summary`, th
 
 Default routing (`retrieval: auto`):
 
-- `keywords` or `key` present -> `world_info`
-- no `keywords`/`key` -> `rag`
+- note is included as a canonical lore entry (`world_info` + fallback projection)
+- `retrieval: none` is the only hard exclusion mode
 
 Per-note override:
 
@@ -104,7 +105,7 @@ Routing behavior:
 
 - `world_info` uses compact entry content (`## Summary` section when present, else frontmatter `summary`, else note body)
 - live retrieval can upgrade high-score entries to full note body when budget allows (falls back to lexical/semantic excerpt lift when needed)
-- `rag` uses the full note body (frontmatter removed)
+- embedding/lexical fallback retrieval pulls additional entries from the same canonical entry set when seed confidence is weak
 
 ## Root Handling
 
@@ -181,7 +182,7 @@ Use command `Open LoreVault Manager` to open the persistent right-sidebar panel 
 
 Manager features:
 
-- per-scope counts (included notes, `world_info`, `rag`)
+- per-scope counts (included notes, entries, missing-keyword entries)
 - scope warnings when sections are empty
 - generation monitor (running state, active scopes, token budget, selected context items, output progress)
 - usage and cost monitor (session/day/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
@@ -198,8 +199,8 @@ Routing debug features:
 - scope selector
 - lorebook contents panel for `world_info` entries (keywords, trigger params, collapsible content)
 - note-level inclusion/exclusion reasons
-- retrieval mode and keyword presence
-- resolved route (`world_info`, `rag`, both, or none)
+- retrieval mode and explicit keyword count
+- keyword coverage list for entries missing explicit frontmatter keywords
 - detected scope tags per note
 
 ## Query Simulation
@@ -210,10 +211,10 @@ Query simulation features:
 
 - multi-scope selection (simulate across multiple lorebooks at once)
 - token budget split across selected scopes
-- optional override controls (`maxGraphHops`, `graphHopDecay`, backlink expansion, RAG fallback policy/threshold, world_info/rag limits, body-lift knobs)
+- optional override controls (`maxGraphHops`, `graphHopDecay`, backlink expansion, fallback policy/threshold, world_info/fallback limits, body-lift knobs)
 - selected `world_info` diagnostics (score breakdown, path/reasons, tier counts, included content tier)
 - body-lift decision trace (applied/skipped reason per entry with score/hop/tier transition)
-- selected `rag` diagnostics (scores and matched terms)
+- selected fallback diagnostics (scores and matched terms)
 
 ## Writing Assistant Commands (MVP)
 
@@ -226,13 +227,13 @@ Behavior:
 - resolves optional chapter-memory context from prior chapters using story frontmatter (`storyId`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`)
 - queries retrieval layers from current editor context:
   - `world_info` by graph-first seed + expansion relevance
-  - `rag` by fallback policy (`off|auto|always`) and relevance
+  - fallback entries by policy (`off|auto|always`) and relevance
   - optional tool-retrieved layer for targeted entry fetches within call/token/time caps
 - applies token-budgeted context assembly
 - sends context + story window to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
-- reports active scopes and pulled `world_info`/`rag` items at generation start
+- reports active scopes and pulled `world_info`/fallback items at generation start
 - adds right-click editor context-menu actions:
   - `LoreVault: Continue Story with Context`
   - `LoreVault: Run Text Command on Selection` (only when editor selection is non-empty)

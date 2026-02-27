@@ -33,6 +33,7 @@ export interface ScopeDebugNote {
   reason: ScopeDecisionReason;
   retrievalMode: RetrievalMode;
   hasKeywords: boolean;
+  keywordCount: number;
   includeWorldInfo: boolean;
   includeRag: boolean;
 }
@@ -42,6 +43,7 @@ export interface ScopeSummary {
   includedNotes: number;
   worldInfoEntries: number;
   ragDocuments: number;
+  keywordlessEntries: number;
   warnings: string[];
   notes: ScopeDebugNote[];
 }
@@ -91,11 +93,13 @@ export function buildScopeSummaries(
     let includedNotes = 0;
     let worldInfoEntries = 0;
     let ragDocuments = 0;
+    let keywordlessEntries = 0;
 
     for (const note of sortedNotes) {
       const isExcluded = asBoolean(getFrontmatterValue(note.frontmatter, 'exclude')) === true;
       const rawKeywords = asStringArray(getFrontmatterValue(note.frontmatter, 'key', 'keywords'));
       const hasKeywords = rawKeywords.length > 0;
+      const keywordCount = rawKeywords.length;
       const retrievalMode = parseRetrievalMode(getFrontmatterValue(note.frontmatter, 'retrieval')) ?? 'auto';
 
       if (isExcluded) {
@@ -107,6 +111,7 @@ export function buildScopeSummaries(
           reason: 'excluded_by_frontmatter',
           retrievalMode,
           hasKeywords,
+          keywordCount,
           includeWorldInfo: false,
           includeRag: false
         });
@@ -129,6 +134,7 @@ export function buildScopeSummaries(
           reason: reasonForExclusion(note.scopes, includeUntagged),
           retrievalMode,
           hasKeywords,
+          keywordCount,
           includeWorldInfo: false,
           includeRag: false
         });
@@ -149,6 +155,9 @@ export function buildScopeSummaries(
       if (includeRag) {
         ragDocuments += 1;
       }
+      if (included && !hasKeywords) {
+        keywordlessEntries += 1;
+      }
 
       debugNotes.push({
         path: note.path,
@@ -158,6 +167,7 @@ export function buildScopeSummaries(
         reason: included ? 'included' : 'retrieval_disabled',
         retrievalMode,
         hasKeywords,
+        keywordCount,
         includeWorldInfo,
         includeRag
       });
@@ -168,10 +178,10 @@ export function buildScopeSummaries(
       warnings.push('No notes are included in this scope.');
     }
     if (worldInfoEntries === 0) {
-      warnings.push('No world_info entries in this scope.');
+      warnings.push('No lore entries in this scope.');
     }
-    if (ragDocuments === 0) {
-      warnings.push('No rag documents in this scope.');
+    if (keywordlessEntries > 0) {
+      warnings.push(`${keywordlessEntries} entries are missing explicit keywords.`);
     }
 
     return {
@@ -179,6 +189,7 @@ export function buildScopeSummaries(
       includedNotes,
       worldInfoEntries,
       ragDocuments,
+      keywordlessEntries,
       warnings,
       notes: debugNotes
     };

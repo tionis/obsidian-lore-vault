@@ -419,7 +419,7 @@ export class LorebooksQuerySimulationView extends ItemView {
     section.createEl('h3', { text: 'Query Controls' });
 
     const input = section.createEl('textarea', { cls: 'lorevault-routing-query-input' });
-    input.placeholder = 'Type text to simulate which world_info/rag items would be selected.';
+    input.placeholder = 'Type text to simulate which lore entries would be selected (graph + fallback retrieval).';
     input.value = this.queryText;
     input.addEventListener('input', () => {
       this.queryText = input.value;
@@ -476,7 +476,7 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ragPolicyField = this.createOverrideField(overrides, 'RAG Fallback Policy', this.getDefaultRagFallbackPolicy());
+    const ragPolicyField = this.createOverrideField(overrides, 'Fallback Retrieval Policy', this.getDefaultRagFallbackPolicy());
     const ragPolicySelect = ragPolicyField.createEl('select', { cls: 'dropdown' });
     ragPolicySelect.createEl('option', { value: '', text: `Reset (default ${this.getDefaultRagFallbackPolicy()})` });
     ragPolicySelect.createEl('option', { value: 'off', text: 'off' });
@@ -492,7 +492,7 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ragThresholdField = this.createOverrideField(overrides, 'RAG Seed Threshold', String(this.getDefaultRagSeedThreshold()));
+    const ragThresholdField = this.createOverrideField(overrides, 'Fallback Seed Threshold', String(this.getDefaultRagSeedThreshold()));
     const ragThresholdInput = ragThresholdField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     ragThresholdInput.placeholder = '>= 1';
     ragThresholdInput.value = String(this.getEffectiveRagSeedThreshold());
@@ -542,7 +542,7 @@ export class LorebooksQuerySimulationView extends ItemView {
       this.results = [];
     });
 
-    const ragLimitField = this.createOverrideField(overrides, 'Max RAG Documents', String(this.getDefaultMaxRagDocuments()));
+    const ragLimitField = this.createOverrideField(overrides, 'Max Fallback Entries', String(this.getDefaultMaxRagDocuments()));
     const ragLimitInput = ragLimitField.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
     ragLimitInput.placeholder = '>= 1';
     ragLimitInput.value = String(this.getEffectiveMaxRagDocuments());
@@ -676,7 +676,7 @@ export class LorebooksQuerySimulationView extends ItemView {
     const totalWorldInfo = successful.reduce((sum, item) => sum + (item.result?.worldInfo.length ?? 0), 0);
     const totalRag = successful.reduce((sum, item) => sum + (item.result?.rag.length ?? 0), 0);
     section.createEl('p', {
-      text: `Scopes: ${this.results.length} | used tokens: ${totalUsed} | world_info ${totalWorldInfo} | rag ${totalRag}`
+      text: `Scopes: ${this.results.length} | used tokens: ${totalUsed} | world_info ${totalWorldInfo} | fallback ${totalRag}`
     });
 
     for (const scopeResult of this.results) {
@@ -698,7 +698,7 @@ export class LorebooksQuerySimulationView extends ItemView {
       }
 
       details.createEl('p', {
-        text: `Used ${result.usedTokens}/${result.tokenBudget} tokens | world_info ${result.worldInfo.length} | rag ${result.rag.length}`
+        text: `Used ${result.usedTokens}/${result.tokenBudget} tokens | world_info ${result.worldInfo.length} | fallback ${result.rag.length}`
       });
       const tierCounts = result.worldInfo.reduce((counts, item) => {
         counts[item.contentTier] = (counts[item.contentTier] ?? 0) + 1;
@@ -714,7 +714,7 @@ export class LorebooksQuerySimulationView extends ItemView {
       });
       details.createEl('p', {
         cls: 'lorevault-routing-subtle',
-        text: `RAG policy ${result.explainability.rag.policy} | enabled ${result.explainability.rag.enabled ? 'yes' : 'no'} | seed confidence ${result.explainability.rag.seedConfidence.toFixed(2)} (threshold ${result.explainability.rag.threshold})`
+        text: `fallback policy ${result.explainability.rag.policy} | enabled ${result.explainability.rag.enabled ? 'yes' : 'no'} | seed confidence ${result.explainability.rag.seedConfidence.toFixed(2)} (threshold ${result.explainability.rag.threshold})`
       });
       if (result.explainability.worldInfoBudget.droppedUids.length > 0) {
         details.createEl('p', {
@@ -784,10 +784,10 @@ export class LorebooksQuerySimulationView extends ItemView {
 
       const ragDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
       ragDetails.createEl('summary', {
-        text: `RAG documents (${result.rag.length})`
+        text: `Fallback Entries (${result.rag.length})`
       });
       if (result.rag.length === 0) {
-        ragDetails.createEl('p', { text: 'No rag documents selected.' });
+        ragDetails.createEl('p', { text: 'No fallback entries selected.' });
       } else {
         const ragList = ragDetails.createEl('ul');
         for (const item of result.rag) {

@@ -16,7 +16,7 @@ This document is the implementation-level reference for core architecture and ru
   - per-query context assembly dispatch
 - `src/context-query.ts`
   - graph-first `world_info` retrieval
-  - optional/fallback `rag` retrieval
+  - optional/fallback entry retrieval over the same canonical lore-entry set
   - token budgeting and tiering
   - explainability artifacts
 - `src/retrieval-tool-hooks.ts`
@@ -26,7 +26,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/scope-pack-builder.ts`
   - deterministic note processing
   - graph ranking
-  - RAG chunk generation
+  - fallback chunk generation
   - optional embeddings
 - `src/story-chat-view.ts` + `src/story-chat-document.ts`
   - persistent chat UI
@@ -80,7 +80,7 @@ Per scope, LoreVault writes:
 
 - canonical SQLite pack: `<scope>.db`
 - downstream world info JSON
-- downstream rag markdown
+- downstream fallback markdown projection
 
 Canonicality:
 
@@ -141,9 +141,9 @@ Explainability includes:
 - per-entry score breakdown
 - budget cutoff diagnostics
 
-### Rag (Secondary / Fallback)
+### Fallback Retrieval (Secondary)
 
-RAG remains available and configurable.
+Fallback retrieval remains available and configurable.
 
 Fallback policy (`settings.retrieval.ragFallbackPolicy`):
 
@@ -153,16 +153,16 @@ Fallback policy (`settings.retrieval.ragFallbackPolicy`):
 
 `auto` uses `ragFallbackSeedScoreThreshold` and no/weak seed selection heuristics.
 
-RAG ranking:
+Fallback ranking:
 
-- lexical score over title/path/content
+- lexical score over entry title/path/content projections
 - optional semantic boost from embeddings cache/chunk vectors
 - optional semantic paragraph reranking for world_info body excerpt fallback
 - deterministic tie-breaks: `score DESC`, then `path/title/uid`
 
 ### Tool Retrieval Hooks (Optional Advanced Layer)
 
-Tool-driven retrieval is opt-in (`settings.retrieval.toolCalls.enabled`) and executed after graph/rag assembly with remaining budget.
+Tool-driven retrieval is opt-in (`settings.retrieval.toolCalls.enabled`) and executed after graph/fallback assembly with remaining budget.
 
 Available hooks:
 
@@ -187,7 +187,7 @@ If a limit is reached, tool loop stops deterministically and trace output record
 
 ## Budgeting and Content Tiering
 
-`world_info` and `rag` budgets are split from the per-query token budget.
+`world_info` and fallback budgets are split from the per-query token budget.
 
 World info tiering:
 

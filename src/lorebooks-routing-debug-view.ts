@@ -12,14 +12,8 @@ function formatScopeLabel(scope: string): string {
 }
 
 function formatRouteBadge(includeWorldInfo: boolean, includeRag: boolean): string {
-  if (includeWorldInfo && includeRag) {
-    return 'world_info + rag';
-  }
   if (includeWorldInfo) {
-    return 'world_info';
-  }
-  if (includeRag) {
-    return 'rag';
+    return includeRag ? 'entry (+projection)' : 'entry';
   }
   return '-';
 }
@@ -186,7 +180,7 @@ export class LorebooksRoutingDebugView extends ItemView {
   private renderSummaryHeader(container: HTMLElement, summary: ScopeSummary): void {
     const section = container.createDiv({ cls: 'lorevault-routing-summary' });
     section.createEl('p', {
-      text: `Scope ${formatScopeLabel(summary.scope)} | included ${summary.includedNotes} | world_info ${summary.worldInfoEntries} | rag ${summary.ragDocuments}`
+      text: `Scope ${formatScopeLabel(summary.scope)} | included ${summary.includedNotes} | entries ${summary.worldInfoEntries} | missing keywords ${summary.keywordlessEntries}`
     });
 
     const included = summary.notes.filter(note => note.included).length;
@@ -206,7 +200,7 @@ export class LorebooksRoutingDebugView extends ItemView {
 
   private renderLorebookContents(container: HTMLElement, pack: ScopeContextPack): void {
     const section = container.createDiv({ cls: 'lorevault-routing-section' });
-    section.createEl('h3', { text: 'Lorebook Contents (world_info)' });
+    section.createEl('h3', { text: 'Lorebook Contents' });
 
     const entries = [...pack.worldInfoEntries].sort((a, b) => b.order - a.order || a.uid - b.uid);
     section.createEl('p', {
@@ -311,7 +305,7 @@ export class LorebooksRoutingDebugView extends ItemView {
     headRow.createEl('th', { text: 'Decision' });
     headRow.createEl('th', { text: 'Route' });
     headRow.createEl('th', { text: 'Retrieval' });
-    headRow.createEl('th', { text: 'Keywords' });
+    headRow.createEl('th', { text: 'Keyword Count' });
     headRow.createEl('th', { text: 'Scopes' });
 
     const tbody = table.createEl('tbody');
@@ -321,8 +315,37 @@ export class LorebooksRoutingDebugView extends ItemView {
       row.createEl('td', { text: formatReason(note.reason) });
       row.createEl('td', { text: formatRouteBadge(note.includeWorldInfo, note.includeRag) });
       row.createEl('td', { text: note.retrievalMode });
-      row.createEl('td', { text: note.hasKeywords ? 'yes' : 'no' });
+      row.createEl('td', { text: note.hasKeywords ? `${note.keywordCount}` : '0' });
       row.createEl('td', { text: note.scopes.join(', ') || '-' });
+    }
+  }
+
+  private renderKeywordCoverage(container: HTMLElement, summary: ScopeSummary): void {
+    const section = container.createDiv({ cls: 'lorevault-routing-section' });
+    section.createEl('h3', { text: 'Keyword Coverage' });
+
+    const missing = summary.notes
+      .filter(note => note.included && note.keywordCount === 0)
+      .sort((a, b) => a.path.localeCompare(b.path));
+
+    section.createEl('p', {
+      cls: 'lorevault-routing-subtle',
+      text: `Included entries: ${summary.includedNotes} | with explicit keywords: ${summary.includedNotes - missing.length} | missing: ${missing.length}`
+    });
+
+    if (missing.length === 0) {
+      section.createEl('p', { text: 'All included entries have explicit keywords.' });
+      return;
+    }
+
+    section.createEl('p', {
+      cls: 'lorevault-routing-subtle',
+      text: 'These entries rely on title/graph/fallback retrieval only. Add frontmatter `keywords` to improve precision.'
+    });
+
+    const list = section.createEl('ul');
+    for (const note of missing) {
+      list.createEl('li', { text: note.path });
     }
   }
 
@@ -351,6 +374,7 @@ export class LorebooksRoutingDebugView extends ItemView {
     }
 
     this.renderSummaryHeader(contentEl, selectedSummary);
+    this.renderKeywordCoverage(contentEl, selectedSummary);
 
     let pack: ScopeContextPack | null = null;
     try {

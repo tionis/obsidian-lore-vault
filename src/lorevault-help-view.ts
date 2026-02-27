@@ -96,8 +96,8 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Quick Start', {
       bullets: [
         'Tag notes with #lorebook/... to assign scope membership.',
-        'Add frontmatter keywords/key for world_info routing.',
-        'Use frontmatter retrieval override when needed: auto | world_info | rag | both | none.',
+        'Add frontmatter keywords/key for stronger retrieval precision.',
+        'Notes are included as unified lore entries by default; use `retrieval: none` to exclude.',
         'Run Build Active Lorebook Scope from command palette or ribbon.'
       ],
       actions: [
@@ -188,13 +188,13 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Retrieval and Budget Controls', {
       bullets: [
         'Primary retrieval is graph-first world_info (seed matches + bounded graph expansion).',
-        'RAG fallback policy is configurable in settings: off | auto | always.',
+        'Fallback retrieval policy is configurable in settings: off | auto | always.',
         'Graph controls: max hops, hop decay, backlink expansion toggle, and seed threshold for auto fallback.',
         'Optional tool retrieval hooks can fetch targeted entries via search_entries / expand_neighbors / get_entry.',
         'Tool hooks enforce hard limits per turn (call count, tool result tokens, planning time).',
         'Token budgets are enforced; world_info content is tiered short -> medium -> full, with high-score body lift using full note body when budget permits.',
         'When full body does not fit, excerpt lift uses lexical scoring and (if embeddings are enabled) semantic paragraph reranking as a fallback.',
-        'Use Query Simulation for multi-scope retrieval testing with override knobs and body-lift decision traces.'
+        'Use Query Simulation for multi-scope retrieval testing, fallback diagnostics, and body-lift decision traces.'
       ]
     });
 

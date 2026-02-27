@@ -8,7 +8,7 @@ Current runtime export targets per scope:
 
 - canonical LoreVault SQLite pack (`.db`)
 - SillyTavern-style `world_info` JSON
-- `rag` markdown pack
+- fallback markdown projection pack
 
 Core scope boundary:
 
@@ -39,11 +39,11 @@ When you run **Build Active Lorebook Scope** or **Build/Export Scope**:
 1. Collect all markdown files
 2. Resolve lorebook scopes from hierarchical tags
 3. Parse frontmatter + markdown body
-4. Route notes into `world_info`, `rag`, or both
+4. Include notes as canonical lore entries (unless `retrieval: none`)
 5. Build wikilink graph for `world_info` entries
 6. Compute deterministic `order`
-7. Build canonical SQLite pack (`world_info`, `rag`, chunks, embeddings)
-8. Export scoped `world_info` JSON + scoped `rag` markdown
+7. Build canonical SQLite pack (`world_info`, fallback docs/chunks/embeddings)
+8. Export scoped `world_info` JSON + scoped fallback markdown
 
 ## Tag Scoping
 
@@ -103,8 +103,8 @@ Content:
 
 Default (`retrieval: auto`):
 
-- note has `keywords`/`key` -> `world_info`
-- note has no `keywords`/`key` -> `rag`
+- note is included as a canonical lore entry
+- `retrieval: none` is the hard exclusion mode
 
 Overrides:
 
@@ -112,6 +112,8 @@ Overrides:
 - `retrieval: rag`
 - `retrieval: both`
 - `retrieval: none`
+
+Current behavior: `world_info|rag|both|auto` all include canonical lore entries; `none` excludes the note from retrieval/export.
 
 ## Root Behavior
 

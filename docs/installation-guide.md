@@ -93,18 +93,18 @@ If you prefer to build the plugin from source:
 
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
-   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + `rag` markdown; default `sillytavern/lorevault.json`)
+   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + fallback markdown projection; default `sillytavern/lorevault.json`)
    - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook; folder picker available)
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - Optional: create model presets and select an active completion preset for quick A/B comparison
-   - Optional: configure Retrieval tuning (`RAG Fallback Policy`, seed threshold, max graph hops, graph hop decay)
+   - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: configure Auto Summaries (summary input/output character caps)
    - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, set report output directory, and optional daily/session budget warnings
-   - Optional: configure embeddings backend/cache/chunking for semantic RAG
+   - Optional: configure embeddings backend/cache/chunking for semantic fallback retrieval
    - Adjust priority weights if needed
 
 2. **Try creating a template**
@@ -114,8 +114,8 @@ If you prefer to build the plugin from source:
 
 3. **Build your vault export**
    - Ensure your notes use hierarchical lorebook tags like `#lorebook/universe/...`
-   - Notes with `keywords`/`key` are routed to `world_info`; notes without keywords are routed to `rag` by default
-   - Use frontmatter `retrieval: auto|world_info|rag|both|none` to override per note
+   - Notes are included as canonical lore entries by default
+   - Use frontmatter `retrieval: none` to exclude a note from retrieval/export
    - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
    - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
    - Use "Open LoreVault Routing Debug" for full note-level inclusion/routing diagnostics
@@ -127,7 +127,7 @@ If you prefer to build the plugin from source:
    - Optional: define story scopes in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
-   - LoreVault queries token-budgeted context (`world_info` + `rag`) and streams generated continuation text
+   - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry

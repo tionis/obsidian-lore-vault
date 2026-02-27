@@ -7,7 +7,7 @@ Reference design: `docs/planning.md`.
 - Completed foundations: Phases 0-7.
 - Story Chat foundation is implemented (Phase 10 core UX done).
 - Current priority is the graph-first writing assistant track.
-- Hardening/perf pass (Phase 8) and auto-summary work (Phase 9) are deferred until the graph-first core is stable.
+- Hardening/perf pass (Phase 8), auto-summary work (Phase 9), and cost tracking work (Phase 13) are deferred until the graph-first core is stable.
 
 ## Active Execution Order
 
@@ -18,6 +18,7 @@ Reference design: `docs/planning.md`.
 5. Add optional fallback/tool-call extensions (Phase 12).
 6. Return to broad hardening/performance tuning (Phase 8).
 7. Implement optional world_info auto-summary workflow (Phase 9).
+8. Implement cost estimation/tracking workflow (Phase 13, far future).
 
 ## Completed Foundations (Historical)
 
@@ -86,6 +87,15 @@ Reference design: `docs/planning.md`.
 - [ ] Preserve deterministic export after summary acceptance.
 - [ ] Add tests for manual `summary` precedence over generated summaries.
 
+## Phase 13: Cost Estimation and Tracking (Deferred Far Future Work)
+
+- [ ] Add OpenRouter usage capture hooks (input/output tokens and provider response metadata).
+- [ ] Add cost estimation model that maps usage to estimated USD cost per request/turn/export.
+- [ ] Add persistent usage ledger with deterministic records (timestamp, model, scope/chat operation, usage, cost estimate).
+- [ ] Add optional UI surface for session/day/project cost totals and budget warnings.
+- [ ] Add export/report format for external analysis (CSV/JSON).
+- [ ] Add tests for deterministic aggregation and fallback behavior when pricing metadata is missing.
+
 ## Open Questions
 
 - [ ] Should embedding fallback be global or per-lorebook configurable?
@@ -95,3 +105,5 @@ Reference design: `docs/planning.md`.
 - [ ] Should chapter order prefer explicit `chapter` numeric field over graph/topological order when both exist?
 - [ ] What chapter summary granularity should be default (scene-level, chapter-level, or adaptive)?
 - [ ] Should lorebook scope tags in note body be supported, or frontmatter tags only?
+- [ ] Should cost tracking be vault-global only, or also segmented per lorebook/chat conversation?
+- [ ] What should be the fallback strategy when OpenRouter pricing metadata is absent or stale?

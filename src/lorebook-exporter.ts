@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LoreBookEntry, LoreBook, ConverterSettings } from './models';
+import { ensureParentVaultFolderForFile, normalizeVaultPath } from './vault-path-utils';
 
 export class LoreBookExporter {
   private app: App;
@@ -15,7 +16,7 @@ export class LoreBookExporter {
     outputPath: string,
     settings: ConverterSettings
   ): Promise<void> {
-    const normalizedOutputPath = outputPath.replace(/\\/g, '/');
+    const normalizedOutputPath = normalizeVaultPath(outputPath);
 
     // Create entries dictionary with string keys and remove wikilinks
     const entriesDict: {[key: string]: Omit<LoreBookEntry, 'wikilinks'>} = {};
@@ -82,6 +83,7 @@ export class LoreBookExporter {
       
       if (!isAbsolutePath) {
         // Path is relative to vault - use Obsidian's API
+        await ensureParentVaultFolderForFile(this.app, normalizedOutputPath);
         await this.app.vault.adapter.write(
           normalizedOutputPath,
           JSON.stringify(lorebook, null, 2)

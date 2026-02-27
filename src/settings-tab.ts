@@ -1,6 +1,7 @@
 import {
   App,
   FuzzySuggestModal,
+  Modal,
   Notice,
   PluginSettingTab,
   Setting,
@@ -38,6 +39,144 @@ class FolderSuggestModal extends FuzzySuggestModal<string> {
   }
 }
 
+class TextValueModal extends Modal {
+  private readonly titleText: string;
+  private readonly fieldLabel: string;
+  private readonly placeholder: string;
+  private readonly initialValue: string;
+  private readonly submitLabel: string;
+  private resolveResult: ((value: string | null) => void) | null = null;
+  private finished = false;
+  private input: TextComponent | null = null;
+
+  constructor(
+    app: App,
+    titleText: string,
+    fieldLabel: string,
+    placeholder: string,
+    initialValue: string,
+    submitLabel: string
+  ) {
+    super(app);
+    this.titleText = titleText;
+    this.fieldLabel = fieldLabel;
+    this.placeholder = placeholder;
+    this.initialValue = initialValue;
+    this.submitLabel = submitLabel;
+  }
+
+  waitForResult(): Promise<string | null> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  onOpen(): void {
+    this.setTitle(this.titleText);
+    this.contentEl.empty();
+
+    new Setting(this.contentEl)
+      .setName(this.fieldLabel)
+      .addText(text => {
+        this.input = text;
+        text
+          .setPlaceholder(this.placeholder)
+          .setValue(this.initialValue);
+        text.inputEl.addEventListener('keydown', event => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            this.submit();
+          }
+        });
+      });
+
+    const actions = this.contentEl.createDiv({ cls: 'lorevault-modal-actions' });
+    const cancelButton = actions.createEl('button', { text: 'Cancel' });
+    cancelButton.addEventListener('click', () => this.close());
+
+    const submitButton = actions.createEl('button', { text: this.submitLabel });
+    submitButton.addClass('mod-cta');
+    submitButton.addEventListener('click', () => this.submit());
+
+    window.setTimeout(() => {
+      this.input?.inputEl.focus();
+      this.input?.inputEl.select();
+    }, 0);
+  }
+
+  onClose(): void {
+    this.finish(null);
+  }
+
+  private submit(): void {
+    const value = this.input?.getValue().trim() ?? '';
+    if (!value) {
+      new Notice('Name cannot be empty.');
+      return;
+    }
+    this.finish(value);
+    this.close();
+  }
+
+  private finish(value: string | null): void {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+    this.resolveResult?.(value);
+  }
+}
+
+class ConfirmActionModal extends Modal {
+  private readonly titleText: string;
+  private readonly message: string;
+  private readonly confirmLabel: string;
+  private resolveResult: ((confirmed: boolean) => void) | null = null;
+  private finished = false;
+
+  constructor(app: App, titleText: string, message: string, confirmLabel: string) {
+    super(app);
+    this.titleText = titleText;
+    this.message = message;
+    this.confirmLabel = confirmLabel;
+  }
+
+  waitForResult(): Promise<boolean> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  onOpen(): void {
+    this.setTitle(this.titleText);
+    this.contentEl.empty();
+    this.contentEl.createEl('p', { text: this.message });
+
+    const actions = this.contentEl.createDiv({ cls: 'lorevault-modal-actions' });
+    const cancelButton = actions.createEl('button', { text: 'Cancel' });
+    cancelButton.addEventListener('click', () => this.close());
+
+    const confirmButton = actions.createEl('button', { text: this.confirmLabel });
+    confirmButton.addClass('mod-warning');
+    confirmButton.addEventListener('click', () => {
+      this.finish(true);
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    this.finish(false);
+  }
+
+  private finish(confirmed: boolean): void {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+    this.resolveResult?.(confirmed);
+  }
+}
+
 export class LoreBookConverterSettingTab extends PluginSettingTab {
   plugin: LoreBookConverterPlugin;
 
@@ -60,6 +199,35 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
   private openFolderPicker(onPick: (path: string) => void): void {
     new FolderSuggestModal(this.app, onPick).open();
+  }
+
+  private async requestPresetName(
+    titleText: string,
+    initialValue: string,
+    submitLabel: string
+  ): Promise<string | null> {
+    const modal = new TextValueModal(
+      this.app,
+      titleText,
+      'Preset Name',
+      'My preset',
+      initialValue,
+      submitLabel
+    );
+    const result = modal.waitForResult();
+    modal.open();
+    return result;
+  }
+
+  private async requestConfirmation(
+    titleText: string,
+    message: string,
+    confirmLabel: string
+  ): Promise<boolean> {
+    const modal = new ConfirmActionModal(this.app, titleText, message, confirmLabel);
+    const result = modal.waitForResult();
+    modal.open();
+    return result;
   }
 
   private createPresetId(name: string): string {
@@ -122,13 +290,13 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Downstream Export Subpath/Pattern')
-      .setDesc('Used for downstream exports under each SQLite pack directory. Produces <pattern>-<scope>.json and <pattern>-<scope>.rag.md files.')
+      .setName('Downstream Export Path Pattern')
+      .setDesc('Relative path under each lorebook output folder (SQLite Output Directory). Example: sillytavern/lorevault.json -> sillytavern/lorevault-<scope>.json and .rag.md. Use {scope} to place scope explicitly.')
       .addText(text => text
-        .setPlaceholder('sillytavern/lorevault.json or sillytavern/{scope}/pack')
+        .setPlaceholder('sillytavern/lorevault.json')
         .setValue(this.plugin.settings.outputPath)
         .onChange(async (value) => {
-          this.plugin.settings.outputPath = value.trim();
+          this.plugin.settings.outputPath = this.normalizePathInput(value);
           await this.persistSettings();
         }));
 
@@ -535,9 +703,9 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     presetActions.addButton(button => button
       .setButtonText('Save As New')
-      .onClick(() => {
+      .onClick(async () => {
         const defaultName = `${this.plugin.settings.completion.provider} · ${this.plugin.settings.completion.model}`;
-        const name = window.prompt('New preset name', defaultName)?.trim();
+        const name = await this.requestPresetName('Save Completion Preset', defaultName, 'Save');
         if (!name) {
           return;
         }
@@ -548,15 +716,14 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           preset
         ];
         this.plugin.settings.completion.activePresetId = preset.id;
-        void this.persistSettings().then(() => {
-          new Notice(`Saved preset: ${name}`);
-          this.display();
-        });
+        await this.persistSettings();
+        new Notice(`Saved preset: ${name}`);
+        this.display();
       }));
 
     presetActions.addButton(button => button
       .setButtonText('Update Active')
-      .onClick(() => {
+      .onClick(async () => {
         const activePresetId = this.plugin.settings.completion.activePresetId;
         if (!activePresetId) {
           new Notice('No active preset selected.');
@@ -570,22 +737,21 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }
 
         const existing = this.plugin.settings.completion.presets[index];
-        const name = window.prompt('Preset name', existing.name)?.trim();
+        const name = await this.requestPresetName('Update Completion Preset', existing.name, 'Update');
         if (!name) {
           return;
         }
 
         this.plugin.settings.completion.presets[index] = this.snapshotCurrentCompletion(name, existing.id);
         this.plugin.settings.completion.activePresetId = existing.id;
-        void this.persistSettings().then(() => {
-          new Notice(`Updated preset: ${name}`);
-          this.display();
-        });
+        await this.persistSettings();
+        new Notice(`Updated preset: ${name}`);
+        this.display();
       }));
 
     presetActions.addButton(button => button
       .setButtonText('Delete Active')
-      .onClick(() => {
+      .onClick(async () => {
         const activePresetId = this.plugin.settings.completion.activePresetId;
         if (!activePresetId) {
           new Notice('No active preset selected.');
@@ -598,7 +764,11 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           return;
         }
 
-        const confirmed = window.confirm(`Delete completion preset "${existing.name}"?`);
+        const confirmed = await this.requestConfirmation(
+          'Delete Completion Preset',
+          `Delete completion preset "${existing.name}"?`,
+          'Delete'
+        );
         if (!confirmed) {
           return;
         }
@@ -606,10 +776,9 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         this.plugin.settings.completion.presets = this.plugin.settings.completion.presets
           .filter(item => item.id !== activePresetId);
         this.plugin.settings.completion.activePresetId = '';
-        void this.persistSettings().then(() => {
-          new Notice(`Deleted preset: ${existing.name}`);
-          this.display();
-        });
+        await this.persistSettings();
+        new Notice(`Deleted preset: ${existing.name}`);
+        this.display();
       }));
 
     new Setting(containerEl)

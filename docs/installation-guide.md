@@ -82,7 +82,7 @@ If you prefer to build the plugin from source:
 
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
-   - Set downstream output subpath/pattern for exports (`world_info` JSON + `rag` markdown; default `sillytavern/lorevault.json`)
+   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + `rag` markdown; default `sillytavern/lorevault.json`)
    - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook; folder picker available)
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)

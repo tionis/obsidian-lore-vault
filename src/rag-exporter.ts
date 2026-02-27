@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RagDocument } from './models';
+import { ensureParentVaultFolderForFile, normalizeVaultPath } from './vault-path-utils';
 
 function compareRagDocs(a: RagDocument, b: RagDocument): number {
   return (
@@ -23,7 +24,7 @@ export class RagExporter {
     outputPath: string,
     scopeLabel: string
   ): Promise<void> {
-    const normalizedOutputPath = outputPath.replace(/\\/g, '/');
+    const normalizedOutputPath = normalizeVaultPath(outputPath);
     const sortedDocuments = [...documents].sort(compareRagDocs);
     const normalizedScopeLabel = scopeLabel || '(all)';
 
@@ -44,6 +45,7 @@ export class RagExporter {
       const isAbsolutePath = path.isAbsolute(outputPath);
 
       if (!isAbsolutePath) {
+        await ensureParentVaultFolderForFile(this.app, normalizedOutputPath);
         await this.app.vault.adapter.write(normalizedOutputPath, markdown);
       } else {
         const dirPath = path.dirname(outputPath);

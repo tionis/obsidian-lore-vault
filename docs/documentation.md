@@ -171,7 +171,7 @@ Fixture coverage includes:
 
 ## Output Naming Rules
 
-Given configured downstream output subpath + SQLite output directory:
+Given configured `Downstream Export Path Pattern` + SQLite output directory:
 
 - SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebooks/<scope-slug>.db`)
 - scope manifest file: `<sqliteOutputDir>/<scope-slug>.manifest.json`

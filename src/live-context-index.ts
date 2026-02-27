@@ -1,13 +1,29 @@
 import { App, TAbstractFile, TFile, getAllTags } from 'obsidian';
-import { ConverterSettings } from './models';
+import { ConverterSettings, RagChunk } from './models';
 import { extractLorebookScopesFromTags, normalizeScope, shouldIncludeInScope } from './lorebook-scoping';
-import { ScopeContextPack, AssembledContext, ContextQueryOptions, assembleScopeContext } from './context-query';
+import { ScopeContextPack, AssembledContext, ContextQueryOptions, SelectedWorldInfoEntry, assembleScopeContext } from './context-query';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopePack } from './scope-pack-builder';
 import { EmbeddingService } from './embedding-service';
+import { sha256Hex } from './hash-utils';
 
 interface RefreshTask {
   changedPaths: Set<string>;
+}
+
+const MAX_WORLDINFO_PARAGRAPHS_PER_ENTRY = 24;
+const MIN_WORLDINFO_PARAGRAPH_CHARS = 36;
+
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function splitParagraphs(bodyText: string): string[] {
+  return bodyText
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean);
 }
 
 export class LiveContextIndex {
@@ -320,6 +336,95 @@ export class LiveContextIndex {
     return this.version;
   }
 
+  private async computeWorldInfoSemanticParagraphBoosts(
+    pack: ScopeContextPack,
+    selectedWorldInfo: SelectedWorldInfoEntry[],
+    queryEmbedding: number[],
+    embeddingService: EmbeddingService
+  ): Promise<{[key: number]: {[paragraphIndex: number]: number}}> {
+    const bodyByUid = pack.worldInfoBodyByUid ?? {};
+    const chunkToParagraph = new Map<string, {uid: number; paragraphIndex: number}>();
+    const chunks: RagChunk[] = [];
+
+    for (const selected of selectedWorldInfo) {
+      const uid = selected.entry.uid;
+      const bodyText = (bodyByUid[uid] ?? '').trim();
+      if (!bodyText) {
+        continue;
+      }
+
+      const summaryText = selected.entry.content.trim();
+      if (summaryText && bodyText === summaryText) {
+        continue;
+      }
+
+      const paragraphs = splitParagraphs(bodyText);
+      if (paragraphs.length === 0) {
+        continue;
+      }
+
+      let added = 0;
+      for (let index = 0; index < paragraphs.length; index += 1) {
+        if (added >= MAX_WORLDINFO_PARAGRAPHS_PER_ENTRY) {
+          break;
+        }
+
+        const paragraph = paragraphs[index];
+        if (!paragraph) {
+          continue;
+        }
+        if (index !== 0 && paragraph.length < MIN_WORLDINFO_PARAGRAPH_CHARS) {
+          continue;
+        }
+
+        const textHash = sha256Hex(paragraph);
+        const chunkId = `worldinfo:${uid}:p:${index}:${textHash.slice(0, 12)}`;
+        chunks.push({
+          chunkId,
+          docUid: uid,
+          scope: pack.scope,
+          path: `world_info/${uid}`,
+          title: selected.entry.comment,
+          chunkIndex: index,
+          heading: '',
+          text: paragraph,
+          textHash,
+          tokenEstimate: estimateTokens(paragraph),
+          startOffset: 0,
+          endOffset: paragraph.length
+        });
+        chunkToParagraph.set(chunkId, { uid, paragraphIndex: index });
+        added += 1;
+      }
+    }
+
+    if (chunks.length === 0) {
+      return {};
+    }
+
+    const embeddings = await embeddingService.embedChunks(chunks);
+    const scores = embeddingService.scoreChunks(queryEmbedding, chunks, embeddings);
+    const boostsByUid: {[key: number]: {[paragraphIndex: number]: number}} = {};
+
+    for (const scored of scores) {
+      if (scored.score <= 0.01) {
+        continue;
+      }
+      const paragraphRef = chunkToParagraph.get(scored.chunkId);
+      if (!paragraphRef) {
+        continue;
+      }
+      const byParagraph = boostsByUid[paragraphRef.uid] ?? {};
+      const current = byParagraph[paragraphRef.paragraphIndex] ?? 0;
+      if (scored.score > current) {
+        byParagraph[paragraphRef.paragraphIndex] = scored.score;
+      }
+      boostsByUid[paragraphRef.uid] = byParagraph;
+    }
+
+    return boostsByUid;
+  }
+
   async query(
     options: ContextQueryOptions,
     scopeOverride?: string
@@ -329,9 +434,23 @@ export class LiveContextIndex {
     const semanticBoostByDocUid: {[key: number]: number} = {};
     const settings = this.getSettings();
     const embeddingService = this.getEmbeddingService(settings);
+    const worldInfoBodyLiftEnabled = options.worldInfoBodyLiftEnabled ?? true;
+    let queryEmbedding: number[] | null = null;
 
-    if (embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
-      const queryEmbedding = await embeddingService.embedQuery(options.queryText);
+    const shouldComputeQueryEmbedding = Boolean(
+      embeddingService &&
+      options.queryText.trim().length > 0 &&
+      (
+        (pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) ||
+        (worldInfoBodyLiftEnabled && Object.keys(pack.worldInfoBodyByUid ?? {}).length > 0)
+      )
+    );
+
+    if (embeddingService && shouldComputeQueryEmbedding) {
+      queryEmbedding = await embeddingService.embedQuery(options.queryText);
+    }
+
+    if (queryEmbedding && embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
       const chunkScores = embeddingService.scoreChunks(queryEmbedding, pack.ragChunks, pack.ragChunkEmbeddings);
 
       for (const chunkScore of chunkScores) {
@@ -344,7 +463,7 @@ export class LiveContextIndex {
       }
     }
 
-    return assembleScopeContext(pack, {
+    const resolvedOptions: ContextQueryOptions = {
       ...options,
       maxGraphHops: options.maxGraphHops ?? settings.retrieval.maxGraphHops,
       graphHopDecay: options.graphHopDecay ?? settings.retrieval.graphHopDecay,
@@ -352,7 +471,31 @@ export class LiveContextIndex {
       ragFallbackPolicy: options.ragFallbackPolicy ?? settings.retrieval.ragFallbackPolicy,
       ragFallbackSeedScoreThreshold: options.ragFallbackSeedScoreThreshold ?? settings.retrieval.ragFallbackSeedScoreThreshold,
       ragSemanticBoostByDocUid: semanticBoostByDocUid
-    });
+    };
+
+    const firstPass = assembleScopeContext(pack, resolvedOptions);
+    if (!queryEmbedding || !embeddingService || !worldInfoBodyLiftEnabled || firstPass.worldInfo.length === 0) {
+      return firstPass;
+    }
+
+    try {
+      const semanticParagraphBoostByUid = await this.computeWorldInfoSemanticParagraphBoosts(
+        pack,
+        firstPass.worldInfo,
+        queryEmbedding,
+        embeddingService
+      );
+      if (Object.keys(semanticParagraphBoostByUid).length === 0) {
+        return firstPass;
+      }
+      return assembleScopeContext(pack, {
+        ...resolvedOptions,
+        worldInfoBodySemanticBoostByUid: semanticParagraphBoostByUid
+      });
+    } catch (error) {
+      console.warn('World-info semantic excerpt rerank failed; falling back to lexical excerpting.', error);
+      return firstPass;
+    }
   }
 
   async getScopePack(scopeOverride?: string): Promise<ScopeContextPack> {

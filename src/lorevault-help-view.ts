@@ -161,12 +161,17 @@ export class LorevaultHelpView extends ItemView {
 
     this.renderSection(contentEl, 'Inbound Wiki Panels', {
       bullets: [
-        'Import SillyTavern Lorebook opens a panel with target folder, default tags, and lorebook-name tag mapping.',
-        'Paste lorebook JSON, run Preview, then Import to create/update wiki pages deterministically.',
-        'Imported/extracted/updated wiki summaries are written to note `## Summary` sections (frontmatter `summary` is fallback input only).',
-        'Extract Wiki Pages from Story runs deterministic chunked extraction with per-chunk validation and preview/apply workflow.',
-        'Apply Story Delta to Existing Wiki updates notes in a target folder using safe_append or structured_merge policies with low-confidence gating.',
-        'Story Delta preview now shows dry-run diffs and per-change approval checkboxes before Apply Selected writes.'
+        'Import SillyTavern Lorebook: paste ST lorebook JSON, preview generated notes, then import into your target folder.',
+        'Extract Wiki Pages from Story: paste story markdown and run chunked extraction to create/extend wiki notes with preview before apply.',
+        'Apply Story Delta to Existing Wiki (lorebook update panel): compare new story text against existing notes and apply reviewed updates.',
+        'All three panels support target folder + lorebook tagging so outputs stay scoped.',
+        'Imported/extracted/updated summaries are written to note `## Summary` sections (frontmatter `summary` is fallback input only).',
+        'Story Delta includes low-confidence gating and per-change approval checkboxes before writing.'
+      ],
+      actions: [
+        { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
+        { label: 'Open Story Extraction', onClick: () => void this.plugin.openStoryExtractionView() },
+        { label: 'Open Lorebook Update', onClick: () => void this.plugin.openStoryDeltaView() }
       ]
     });
 
@@ -192,13 +197,5 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
-    this.renderSection(contentEl, 'Documentation', {
-      bullets: [
-        'README.md: concise behavior summary and commands.',
-        'docs/documentation.md: detailed feature behavior and settings.',
-        'docs/technical-reference.md: implementation-level architecture/contracts.',
-        'docs/planning.md + docs/todo.md: roadmap and implementation status.'
-      ]
-    });
   }
 }

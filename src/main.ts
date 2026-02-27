@@ -879,6 +879,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         ...DEFAULT_SETTINGS.embeddings,
         ...(data?.embeddings ?? {})
       },
+      retrieval: {
+        ...DEFAULT_SETTINGS.retrieval,
+        ...(data?.retrieval ?? {})
+      },
       completion: {
         ...DEFAULT_SETTINGS.completion,
         ...(data?.completion ?? {})
@@ -947,6 +951,17 @@ export default class LoreBookConverterPlugin extends Plugin {
       Math.floor(merged.embeddings.maxChunkChars)
     );
     merged.embeddings.overlapChars = Math.max(0, Math.floor(merged.embeddings.overlapChars));
+
+    merged.retrieval.maxGraphHops = Math.max(0, Math.min(3, Math.floor(merged.retrieval.maxGraphHops)));
+    merged.retrieval.graphHopDecay = Math.max(0.2, Math.min(0.9, Number(merged.retrieval.graphHopDecay)));
+    merged.retrieval.ragFallbackPolicy = (
+      merged.retrieval.ragFallbackPolicy === 'off' ||
+      merged.retrieval.ragFallbackPolicy === 'always'
+    ) ? merged.retrieval.ragFallbackPolicy : 'auto';
+    merged.retrieval.ragFallbackSeedScoreThreshold = Math.max(
+      1,
+      Math.floor(Number(merged.retrieval.ragFallbackSeedScoreThreshold))
+    );
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (

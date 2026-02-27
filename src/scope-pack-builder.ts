@@ -15,6 +15,7 @@ function cloneSettings(settings: ConverterSettings): ConverterSettings {
     defaultEntry: { ...settings.defaultEntry },
     sqlite: { ...settings.sqlite },
     embeddings: { ...settings.embeddings },
+    retrieval: { ...settings.retrieval },
     completion: { ...settings.completion }
   };
 }

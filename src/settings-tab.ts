@@ -499,6 +499,66 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    containerEl.createEl('h3', { text: 'Retrieval (Graph + RAG Fallback)' });
+
+    new Setting(containerEl)
+      .setName('RAG Fallback Policy')
+      .setDesc('Control when RAG docs are included alongside graph-selected world_info.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          'off': 'Off (world_info only)',
+          'auto': 'Auto (fallback on weak/no seed)',
+          'always': 'Always (include when matched)'
+        })
+        .setValue(this.plugin.settings.retrieval.ragFallbackPolicy)
+        .onChange(async (value) => {
+          if (value === 'off' || value === 'always') {
+            this.plugin.settings.retrieval.ragFallbackPolicy = value;
+          } else {
+            this.plugin.settings.retrieval.ragFallbackPolicy = 'auto';
+          }
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('RAG Auto Fallback Seed Threshold')
+      .setDesc('In auto mode, fallback to RAG when top seed score is below this threshold.')
+      .addText(text => text
+        .setValue(this.plugin.settings.retrieval.ragFallbackSeedScoreThreshold.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 1) {
+            this.plugin.settings.retrieval.ragFallbackSeedScoreThreshold = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Max Graph Hops')
+      .setDesc('Maximum expansion depth from direct seed matches (0-3).')
+      .addText(text => text
+        .setValue(this.plugin.settings.retrieval.maxGraphHops.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 0 && numValue <= 3) {
+            this.plugin.settings.retrieval.maxGraphHops = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Graph Hop Decay')
+      .setDesc('Score decay applied per graph hop (0.2-0.9).')
+      .addText(text => text
+        .setValue(this.plugin.settings.retrieval.graphHopDecay.toString())
+        .onChange(async (value) => {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue >= 0.2 && numValue <= 0.9) {
+            this.plugin.settings.retrieval.graphHopDecay = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
 
     new Setting(containerEl)

@@ -104,6 +104,12 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       maxChunkChars: 1800,
       overlapChars: 200
     },
+    retrieval: {
+      maxGraphHops: 2,
+      graphHopDecay: 0.55,
+      ragFallbackPolicy: 'auto',
+      ragFallbackSeedScoreThreshold: 120
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',

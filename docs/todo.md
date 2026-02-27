@@ -67,8 +67,8 @@ Reference design: `docs/planning.md`.
 
 ## Phase 12: Optional Retrieval Extensions (Fallback/Advanced)
 
-- [ ] Keep embedding-based retrieval as optional fallback when seed confidence is low.
-- [ ] Add policy setting for fallback activation (`off|auto|always`).
+- [x] Keep embedding-based retrieval as optional fallback when seed confidence is low.
+- [x] Add policy setting for fallback activation (`off|auto|always`).
 - [ ] Add tool-call retrieval hooks for model-driven context fetch (`search_entries`, `expand_neighbors`, `get_entry`).
 - [ ] Add hard limits for tool-call count/tokens/time per generation turn.
 - [ ] Add tests for fallback determinism and tool-call safety constraints.

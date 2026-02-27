@@ -12,39 +12,17 @@ import {
   StoryChatContextMeta,
   StoryChatMessage
 } from './models';
+import {
+  CHAT_SCHEMA_VERSION,
+  ChatMessageVersion,
+  ConversationDocument,
+  ConversationMessage,
+  cloneStoryChatContextMeta,
+  parseConversationMarkdown,
+  serializeConversationMarkdown
+} from './story-chat-document';
 
 export const LOREVAULT_STORY_CHAT_VIEW_TYPE = 'lorevault-story-chat-view';
-
-const CHAT_SCHEMA_VERSION = 1;
-const CHAT_CODE_BLOCK_LANGUAGE = 'lorevault-chat';
-
-interface ChatMessageVersion {
-  id: string;
-  content: string;
-  createdAt: number;
-  contextMeta?: StoryChatContextMeta;
-}
-
-interface ConversationMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  createdAt: number;
-  versions: ChatMessageVersion[];
-  activeVersionId: string;
-}
-
-interface ConversationDocument {
-  schemaVersion: number;
-  id: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  selectedScopes: string[];
-  useLorebookContext: boolean;
-  manualContext: string;
-  noteContextRefs: string[];
-  messages: ConversationMessage[];
-}
 
 interface ConversationSummary {
   id: string;
@@ -84,10 +62,6 @@ function slugifyTitle(value: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'chat';
-}
-
-function dedupeStrings(values: string[]): string[] {
-  return values.filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
 }
 
 class NotePickerModal extends FuzzySuggestModal<TFile> {
@@ -238,18 +212,7 @@ export class StoryChatView extends ItemView {
   }
 
   private cloneContextMeta(meta: StoryChatContextMeta | undefined): StoryChatContextMeta | undefined {
-    if (!meta) {
-      return undefined;
-    }
-
-    return {
-      ...meta,
-      scopes: [...meta.scopes],
-      specificNotePaths: [...meta.specificNotePaths],
-      unresolvedNoteRefs: [...meta.unresolvedNoteRefs],
-      worldInfoItems: [...meta.worldInfoItems],
-      ragItems: [...meta.ragItems]
-    };
+    return cloneStoryChatContextMeta(meta);
   }
 
   private cloneVersion(version: ChatMessageVersion): ChatMessageVersion {
@@ -268,162 +231,6 @@ export class StoryChatView extends ItemView {
 
   private getSelectedVersion(message: ConversationMessage): ChatMessageVersion {
     return message.versions.find(version => version.id === message.activeVersionId) ?? message.versions[0];
-  }
-
-  private normalizeConversationDocument(raw: unknown, fallbackTitle: string): ConversationDocument {
-    const payload = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
-    const now = Date.now();
-    const normalizedMessages = Array.isArray(payload.messages) ? payload.messages : [];
-    const messages: ConversationMessage[] = normalizedMessages
-      .map((item): ConversationMessage | null => {
-        if (!item || typeof item !== 'object') {
-          return null;
-        }
-        const candidate = item as Record<string, unknown>;
-        const role = candidate.role === 'assistant' ? 'assistant' : (candidate.role === 'user' ? 'user' : null);
-        if (!role) {
-          return null;
-        }
-
-        const rawVersions = Array.isArray(candidate.versions) ? candidate.versions : [];
-        const versions: ChatMessageVersion[] = rawVersions
-          .map((version): ChatMessageVersion | null => {
-            if (!version || typeof version !== 'object') {
-              return null;
-            }
-            const candidateVersion = version as Record<string, unknown>;
-            const id = typeof candidateVersion.id === 'string' && candidateVersion.id.trim()
-              ? candidateVersion.id
-              : this.createId('ver');
-            const content = typeof candidateVersion.content === 'string'
-              ? candidateVersion.content
-              : String(candidateVersion.content ?? '');
-            const createdAt = Number.isFinite(candidateVersion.createdAt)
-              ? Math.floor(Number(candidateVersion.createdAt))
-              : now;
-
-            const contextMetaRaw = candidateVersion.contextMeta;
-            let contextMeta: StoryChatContextMeta | undefined;
-            if (contextMetaRaw && typeof contextMetaRaw === 'object') {
-              const meta = contextMetaRaw as Record<string, unknown>;
-              contextMeta = {
-                usedLorebookContext: Boolean(meta.usedLorebookContext),
-                usedManualContext: Boolean(meta.usedManualContext),
-                usedSpecificNotesContext: Boolean(meta.usedSpecificNotesContext),
-                scopes: Array.isArray(meta.scopes)
-                  ? meta.scopes.map(value => String(value ?? ''))
-                  : [],
-                specificNotePaths: Array.isArray(meta.specificNotePaths)
-                  ? meta.specificNotePaths.map(value => String(value ?? ''))
-                  : [],
-                unresolvedNoteRefs: Array.isArray(meta.unresolvedNoteRefs)
-                  ? meta.unresolvedNoteRefs.map(value => String(value ?? ''))
-                  : [],
-                contextTokens: Math.max(0, Math.floor(Number(meta.contextTokens ?? 0))),
-                worldInfoCount: Math.max(0, Math.floor(Number(meta.worldInfoCount ?? 0))),
-                ragCount: Math.max(0, Math.floor(Number(meta.ragCount ?? 0))),
-                worldInfoItems: Array.isArray(meta.worldInfoItems)
-                  ? meta.worldInfoItems.map(value => String(value ?? ''))
-                  : [],
-                ragItems: Array.isArray(meta.ragItems)
-                  ? meta.ragItems.map(value => String(value ?? ''))
-                  : []
-              };
-            }
-
-            return {
-              id,
-              content,
-              createdAt,
-              contextMeta
-            };
-          })
-          .filter((version): version is ChatMessageVersion => Boolean(version));
-
-        if (versions.length === 0) {
-          const fallbackContent = typeof candidate.content === 'string'
-            ? candidate.content
-            : String(candidate.content ?? '');
-          versions.push({
-            id: this.createId('ver'),
-            content: fallbackContent,
-            createdAt: Number.isFinite(candidate.createdAt) ? Math.floor(Number(candidate.createdAt)) : now
-          });
-        }
-
-        const activeVersionIdRaw = typeof candidate.activeVersionId === 'string'
-          ? candidate.activeVersionId
-          : '';
-        const activeVersionId = versions.some(version => version.id === activeVersionIdRaw)
-          ? activeVersionIdRaw
-          : versions[0].id;
-
-        return {
-          id: typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id : this.createId(role),
-          role,
-          createdAt: Number.isFinite(candidate.createdAt) ? Math.floor(Number(candidate.createdAt)) : versions[0].createdAt,
-          versions,
-          activeVersionId
-        };
-      })
-      .filter((message): message is ConversationMessage => Boolean(message));
-
-    const selectedScopes = Array.isArray(payload.selectedScopes)
-      ? dedupeStrings(payload.selectedScopes.map(value => String(value ?? '').trim()))
-      : [];
-    const noteContextRefs = Array.isArray(payload.noteContextRefs)
-      ? dedupeStrings(payload.noteContextRefs.map(value => String(value ?? '').trim()))
-      : [];
-
-    return {
-      schemaVersion: Number.isFinite(payload.schemaVersion) ? Math.floor(Number(payload.schemaVersion)) : CHAT_SCHEMA_VERSION,
-      id: typeof payload.id === 'string' && payload.id.trim() ? payload.id : this.createId('conv'),
-      title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : fallbackTitle,
-      createdAt: Number.isFinite(payload.createdAt) ? Math.floor(Number(payload.createdAt)) : now,
-      updatedAt: Number.isFinite(payload.updatedAt) ? Math.floor(Number(payload.updatedAt)) : now,
-      selectedScopes,
-      useLorebookContext: Boolean(payload.useLorebookContext ?? true),
-      manualContext: typeof payload.manualContext === 'string' ? payload.manualContext : '',
-      noteContextRefs,
-      messages
-    };
-  }
-
-  private parseConversationMarkdown(markdown: string, fallbackTitle: string): ConversationDocument | null {
-    const match = markdown.match(/```lorevault-chat\s*([\s\S]*?)```/i);
-    if (!match) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(match[1].trim()) as unknown;
-      return this.normalizeConversationDocument(parsed, fallbackTitle);
-    } catch (error) {
-      console.error('Failed to parse LoreVault chat payload:', error);
-      return null;
-    }
-  }
-
-  private serializeConversationMarkdown(document: ConversationDocument): string {
-    const payload = {
-      ...document,
-      messages: document.messages.map(message => ({
-        ...message,
-        versions: message.versions.map(version => ({
-          ...version,
-          contextMeta: this.cloneContextMeta(version.contextMeta)
-        }))
-      }))
-    };
-
-    return [
-      `# ${document.title}`,
-      '',
-      `\`\`\`${CHAT_CODE_BLOCK_LANGUAGE}`,
-      JSON.stringify(payload, null, 2),
-      '```',
-      ''
-    ].join('\n');
   }
 
   private async ensureFolderExists(folderPath: string): Promise<void> {
@@ -504,7 +311,11 @@ export class StoryChatView extends ItemView {
     for (const file of files) {
       try {
         const content = await this.app.vault.cachedRead(file);
-        const parsed = this.parseConversationMarkdown(content, file.basename);
+        const parsed = parseConversationMarkdown(
+          content,
+          file.basename,
+          prefix => this.createId(prefix)
+        );
         if (!parsed) {
           continue;
         }
@@ -537,7 +348,11 @@ export class StoryChatView extends ItemView {
     }
 
     const markdown = await this.app.vault.cachedRead(file);
-    const parsed = this.parseConversationMarkdown(markdown, file.basename);
+    const parsed = parseConversationMarkdown(
+      markdown,
+      file.basename,
+      prefix => this.createId(prefix)
+    );
     if (!parsed) {
       return false;
     }
@@ -585,7 +400,7 @@ export class StoryChatView extends ItemView {
     };
 
     const path = await this.getUniqueConversationPath(document.title);
-    await this.app.vault.create(path, this.serializeConversationMarkdown(document));
+    await this.app.vault.create(path, serializeConversationMarkdown(document));
     this.applyConversationDocument(document, path);
     await this.persistSettingsState();
     await this.loadConversationSummaries();
@@ -598,7 +413,7 @@ export class StoryChatView extends ItemView {
 
     const updatedAt = Date.now();
     const document = this.buildCurrentConversationDocument(updatedAt);
-    const markdown = this.serializeConversationMarkdown(document);
+    const markdown = serializeConversationMarkdown(document);
     const existing = this.app.vault.getAbstractFileByPath(this.activeConversationPath);
     this.ignoreRefreshUntil = Date.now() + 800;
 

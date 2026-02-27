@@ -209,7 +209,7 @@ Add reverse-direction workflows to create Obsidian wiki pages from existing exte
 Current progress:
 
 - SillyTavern lorebook import command/panel is implemented with deterministic preview + note generation.
-- Story extraction command/panel scaffold exists; extraction pipeline remains pending.
+- Story extraction command/panel and deterministic chunked extraction pipeline are implemented (preview/apply flow).
 
 Two command-driven panels:
 

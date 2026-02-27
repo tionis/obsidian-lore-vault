@@ -161,12 +161,20 @@ If you prefer to build the plugin from source:
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
    - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, and tool-hook layer traces
 
-8. **Import Existing Lorebook JSON (Phase 14 in progress)**
-   - Run command `Import SillyTavern Lorebook`
-   - Set target folder, default tags, and lorebook name
-   - Paste lorebook JSON in the panel text field
-   - Click `Preview` to inspect planned file paths
-   - Click `Import` to create/update generated wiki notes deterministically
+8. **Import Existing Lorebook JSON (Phase 14)**
+  - Run command `Import SillyTavern Lorebook`
+  - Set target folder, default tags, and lorebook name
+  - Paste lorebook JSON in the panel text field
+  - Click `Preview` to inspect planned file paths
+  - Click `Import` to create/update generated wiki notes deterministically
+
+9. **Extract Wiki Pages from Story (Phase 14)**
+   - Run command `Extract Wiki Pages from Story`
+   - Set target folder, default tags, lorebook name, and chunk/extraction limits
+   - Paste story markdown
+   - Click `Preview Extraction` to run chunked LLM extraction with deterministic merge preview
+   - Inspect planned pages and chunk diagnostics
+   - Click `Apply Preview` to write generated/updated wiki pages
 
 ## Troubleshooting
 

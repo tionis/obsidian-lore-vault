@@ -281,7 +281,7 @@ Provides an in-plugin overview of:
 - story completion/chat workflow
 - links to repository docs and roadmap files
 
-## Inbound Wiki Panels (Phase 14 In Progress)
+## Inbound Wiki Panels (Phase 14)
 
 Commands:
 
@@ -302,7 +302,14 @@ Current behavior:
   - `title/comment` when present
   - derived `summary`
   - default + lorebook tags
-- `Extract Wiki Pages from Story` panel is scaffolded with shared inputs; chunked LLM extraction pipeline is pending.
+
+Story extraction behavior:
+
+- deterministic story chunking (heading-aware + size constrained)
+- per-chunk LLM extraction with strict JSON response validation
+- iterative context injection of already-extracted page state between chunks
+- deterministic safe-merge policy (`summary` merge + keyword/alias union + unique content block append)
+- preview first, then explicit apply to write pages
 
 ## Story Chat (Phase 10 Foundation)
 

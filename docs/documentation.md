@@ -431,7 +431,7 @@ Capabilities:
   - budget warnings from configured daily/session limits
 - top breakdown lists by operation and model
 
-## Inbound Wiki Import and Story Extraction (Phase 14, In Progress)
+## Inbound Wiki Import and Story Extraction (Phase 14)
 
 Commands:
 
@@ -450,6 +450,13 @@ Implemented now:
 - deterministic parse and entry normalization
 - preview mode (entry count + planned file paths)
 - deterministic wiki page generation + create/update writes
+- story markdown extraction pipeline:
+  - deterministic chunking
+  - per-chunk LLM extraction
+  - strict JSON response validation
+  - iterative existing-page state injection between chunks
+  - deterministic safe-merge policy
+  - preview before apply writes
 
 Current mapping for imported notes:
 
@@ -460,9 +467,11 @@ Current mapping for imported notes:
 - tags from defaults + lorebook tag
 - note body from ST `content`
 
-Pending:
+Current merge policy (default):
 
-- story markdown extraction pipeline (chunking + schema-constrained LLM extraction + merge/diff workflow)
+- summary: merge into compact combined summary
+- keywords/aliases: deterministic union with case-insensitive dedupe
+- content: append unique blocks only (normalized-text dedupe)
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope

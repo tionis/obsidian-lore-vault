@@ -1,5 +1,8 @@
 import { ItemView, Notice, Setting, WorkspaceLeaf } from 'obsidian';
 import LoreBookConverterPlugin from './main';
+import { requestStoryContinuation } from './completion-provider';
+import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
+import { extractWikiPagesFromStory, StoryExtractionResult } from './story-extraction';
 
 export const LOREVAULT_STORY_EXTRACT_VIEW_TYPE = 'lorevault-story-extract-view';
 
@@ -9,6 +12,11 @@ export class LorevaultStoryExtractView extends ItemView {
   private defaultTags = '';
   private lorebookName = '';
   private storyMarkdown = '';
+  private maxChunkChars = 5000;
+  private maxOperationsPerChunk = 12;
+  private maxExistingPagesInPrompt = 80;
+  private running = false;
+  private lastPreview: StoryExtractionResult | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -37,6 +45,118 @@ export class LorevaultStoryExtractView extends ItemView {
 
   refresh(): void {
     this.render();
+  }
+
+  private canUseCompletion(): boolean {
+    const completion = this.plugin.settings.completion;
+    if (!completion.enabled) {
+      new Notice('Writing completion is disabled. Enable it in settings first.');
+      return false;
+    }
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
+      new Notice('Missing completion API key. Configure it in settings first.');
+      return false;
+    }
+    return true;
+  }
+
+  private async runPreview(outputEl: HTMLElement): Promise<void> {
+    if (this.running) {
+      return;
+    }
+    if (!this.storyMarkdown.trim()) {
+      new Notice('Paste story markdown before running extraction.');
+      return;
+    }
+    if (!this.canUseCompletion()) {
+      return;
+    }
+
+    this.running = true;
+    outputEl.empty();
+    outputEl.createEl('p', { text: 'Running extraction preview...' });
+    this.render();
+
+    try {
+      const completion = this.plugin.settings.completion;
+      const result = await extractWikiPagesFromStory({
+        storyMarkdown: this.storyMarkdown,
+        targetFolder: this.targetFolder,
+        defaultTagsRaw: this.defaultTags,
+        lorebookName: this.lorebookName,
+        tagPrefix: this.plugin.settings.tagScoping.tagPrefix,
+        maxChunkChars: this.maxChunkChars,
+        maxSummaryChars: this.plugin.settings.summaries.maxSummaryChars,
+        maxOperationsPerChunk: this.maxOperationsPerChunk,
+        maxExistingPagesInPrompt: this.maxExistingPagesInPrompt,
+        callModel: (systemPrompt, userPrompt) => requestStoryContinuation(completion, {
+          systemPrompt,
+          userPrompt
+        })
+      });
+      this.lastPreview = result;
+
+      outputEl.empty();
+      outputEl.createEl('p', {
+        text: `Preview complete: ${result.pages.length} page(s), ${result.chunks.length} chunk(s).`
+      });
+      const chunkList = outputEl.createEl('ul');
+      for (const chunk of result.chunks) {
+        const warningSuffix = chunk.warnings.length > 0 ? ` | warnings: ${chunk.warnings.join('; ')}` : '';
+        chunkList.createEl('li', {
+          text: `Chunk ${chunk.chunkIndex}: ${chunk.operationCount} operation(s)${warningSuffix}`
+        });
+      }
+      if (result.warnings.length > 0) {
+        const warningList = outputEl.createEl('ul');
+        for (const warning of result.warnings) {
+          warningList.createEl('li', { text: warning });
+        }
+      }
+      const details = outputEl.createEl('details');
+      details.createEl('summary', { text: 'Planned File Paths' });
+      const list = details.createEl('ul');
+      for (const page of result.pages.slice(0, 80)) {
+        list.createEl('li', { text: page.path });
+      }
+      if (result.pages.length > 80) {
+        details.createEl('p', { text: `... ${result.pages.length - 80} more` });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Story extraction preview failed:', error);
+      outputEl.empty();
+      outputEl.createEl('p', { text: `Preview failed: ${message}` });
+      new Notice(`Story extraction preview failed: ${message}`);
+    } finally {
+      this.running = false;
+      this.render();
+    }
+  }
+
+  private async applyPreview(outputEl: HTMLElement): Promise<void> {
+    if (!this.lastPreview) {
+      new Notice('Run preview before applying extracted pages.');
+      return;
+    }
+    const wikiPages: ImportedWikiPage[] = this.lastPreview.pages.map((page, index) => ({
+      path: page.path,
+      content: page.content,
+      uid: index
+    }));
+
+    try {
+      const applied = await applyImportedWikiPages(this.app, wikiPages);
+      outputEl.createEl('p', {
+        text: `Applied: ${applied.created} created, ${applied.updated} updated.`
+      });
+      new Notice(`Story extraction applied: ${applied.created} created, ${applied.updated} updated.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Story extraction apply failed:', error);
+      outputEl.createEl('p', { text: `Apply failed: ${message}` });
+      new Notice(`Story extraction apply failed: ${message}`);
+    }
   }
 
   private render(): void {
@@ -91,16 +211,68 @@ export class LorevaultStoryExtractView extends ItemView {
           });
       });
 
+    new Setting(contentEl)
+      .setName('Max Chunk Chars')
+      .setDesc('Deterministic chunk size target for story extraction.')
+      .addText(text => text
+        .setValue(this.maxChunkChars.toString())
+        .onChange(value => {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed >= 200) {
+            this.maxChunkChars = parsed;
+          }
+        }));
+
+    new Setting(contentEl)
+      .setName('Max Operations Per Chunk')
+      .setDesc('Upper bound on extracted page operations from each chunk.')
+      .addText(text => text
+        .setValue(this.maxOperationsPerChunk.toString())
+        .onChange(value => {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed >= 1) {
+            this.maxOperationsPerChunk = parsed;
+          }
+        }));
+
+    new Setting(contentEl)
+      .setName('Max Existing Pages In Prompt')
+      .setDesc('Cap on existing extracted page state included per chunk prompt.')
+      .addText(text => text
+        .setValue(this.maxExistingPagesInPrompt.toString())
+        .onChange(value => {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed >= 1) {
+            this.maxExistingPagesInPrompt = parsed;
+          }
+        }));
+
     const actions = contentEl.createDiv({ cls: 'lorevault-import-actions' });
-    const note = contentEl.createDiv({ cls: 'lorevault-import-output' });
-    note.createEl('p', {
-      text: 'Extraction pipeline is planned next (deterministic chunking + schema-constrained LLM extraction + preview/diff before writes).'
+    const output = contentEl.createDiv({ cls: 'lorevault-import-output' });
+    if (!this.lastPreview) {
+      output.createEl('p', {
+        text: 'Run preview to inspect extracted page plan before applying writes.'
+      });
+    }
+
+    const previewButton = actions.createEl('button', { text: this.running ? 'Preview Running...' : 'Preview Extraction' });
+    previewButton.addClass('mod-cta');
+    previewButton.disabled = this.running;
+    previewButton.addEventListener('click', () => {
+      void this.runPreview(output);
     });
 
-    const runButton = actions.createEl('button', { text: 'Start Extraction' });
-    runButton.addClass('mod-cta');
-    runButton.addEventListener('click', () => {
-      new Notice('Story extraction pipeline is not implemented yet.');
+    const applyButton = actions.createEl('button', { text: 'Apply Preview' });
+    applyButton.disabled = this.running || !this.lastPreview;
+    applyButton.addEventListener('click', () => {
+      void this.applyPreview(output);
+    });
+
+    const clearButton = actions.createEl('button', { text: 'Clear Preview' });
+    clearButton.disabled = this.running || !this.lastPreview;
+    clearButton.addEventListener('click', () => {
+      this.lastPreview = null;
+      this.render();
     });
   }
 }

@@ -14,6 +14,7 @@ Reference design: `docs/planning.md`.
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
 - Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).
+- Phase 18 quality audit foundation is complete (risk scoring + missing-keyword actions + LLM keyword generation).
 - Current priority is refining structured-merge conflict UX.
 
 ## Active Execution Order
@@ -159,6 +160,14 @@ Reference design: `docs/planning.md`.
 - [x] Add keyword-coverage diagnostics (missing explicit keyword counts/list) to routing debug and manager views.
 - [x] Update query simulation and generation UI labels from `rag` to `fallback` where relevant.
 - [x] Add/refresh tests covering unified routing and fallback-to-world_info merge behavior.
+
+## Phase 18: Quality Audit and Keyword Assist
+
+- [x] Add deterministic quality-audit scoring (missing keywords, thin content, duplicate-like embedding similarity).
+- [x] Add quality-audit table in Routing Debug with actionable reasons and similarity hints.
+- [x] Add per-entry `Generate Keywords` action for missing-keyword notes in the audit table.
+- [x] Add command/context-menu entry: `Generate Keywords (Active Note)`.
+- [x] Add deterministic keyword parsing/frontmatter upsert helpers with regression tests.
 
 ## Default Decisions (2026-02-27)
 

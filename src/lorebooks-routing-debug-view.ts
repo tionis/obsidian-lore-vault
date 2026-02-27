@@ -1,9 +1,10 @@
-import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { ScopeContextPack } from './context-query';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, ScopeSummary } from './lorebooks-manager-data';
 import { normalizeScope } from './lorebook-scoping';
+import { buildQualityAuditRows } from './quality-audit';
 
 export const LOREVAULT_ROUTING_DEBUG_VIEW_TYPE = 'lorevault-routing-debug-view';
 
@@ -88,6 +89,7 @@ function computeBodyLiftCandidateContent(bodyText: string): string {
 export class LorebooksRoutingDebugView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedScope: string | null = null;
+  private keywordGenerationPaths = new Set<string>();
   private renderVersion = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
@@ -320,32 +322,97 @@ export class LorebooksRoutingDebugView extends ItemView {
     }
   }
 
-  private renderKeywordCoverage(container: HTMLElement, summary: ScopeSummary): void {
-    const section = container.createDiv({ cls: 'lorevault-routing-section' });
-    section.createEl('h3', { text: 'Keyword Coverage' });
+  private async handleGenerateKeywords(path: string): Promise<void> {
+    if (!path || this.keywordGenerationPaths.has(path)) {
+      return;
+    }
 
-    const missing = summary.notes
-      .filter(note => note.included && note.keywordCount === 0)
-      .sort((a, b) => a.path.localeCompare(b.path));
+    this.keywordGenerationPaths.add(path);
+    try {
+      await this.plugin.generateKeywordsForNotePath(path);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Keyword generation from routing debug failed:', error);
+      new Notice(`Keyword generation failed: ${message}`);
+    } finally {
+      this.keywordGenerationPaths.delete(path);
+      void this.render();
+    }
+  }
+
+  private renderQualityAudit(container: HTMLElement, summary: ScopeSummary, pack: ScopeContextPack): void {
+    const section = container.createDiv({ cls: 'lorevault-routing-section' });
+    section.createEl('h3', { text: 'Quality Audit' });
+
+    const rows = buildQualityAuditRows({
+      entries: pack.worldInfoEntries,
+      ragDocuments: pack.ragDocuments,
+      ragChunks: pack.ragChunks,
+      ragChunkEmbeddings: pack.ragChunkEmbeddings,
+      worldInfoBodyByUid: pack.worldInfoBodyByUid
+    });
+    const missing = rows.filter(row => row.canGenerateKeywords);
+    const high = rows.filter(row => row.riskLevel === 'high').length;
+    const medium = rows.filter(row => row.riskLevel === 'medium').length;
+    const low = rows.filter(row => row.riskLevel === 'low').length;
 
     section.createEl('p', {
       cls: 'lorevault-routing-subtle',
-      text: `Included entries: ${summary.includedNotes} | with explicit keywords: ${summary.includedNotes - missing.length} | missing: ${missing.length}`
+      text: `Entries: ${summary.includedNotes} | high risk ${high} | medium ${medium} | low ${low} | missing keywords ${missing.length}`
     });
 
-    if (missing.length === 0) {
-      section.createEl('p', { text: 'All included entries have explicit keywords.' });
+    if (rows.length === 0) {
+      section.createEl('p', { text: 'No entries available for quality audit.' });
       return;
     }
 
     section.createEl('p', {
       cls: 'lorevault-routing-subtle',
-      text: 'These entries rely on title/graph/fallback retrieval only. Add frontmatter `keywords` to improve precision.'
+      text: 'Use this to spot missing keywords, duplicate-like notes, and thin content. Generate keyword suggestions directly for missing-keyword entries.'
     });
 
-    const list = section.createEl('ul');
-    for (const note of missing) {
-      list.createEl('li', { text: note.path });
+    const tableWrap = section.createDiv({ cls: 'lorevault-manager-table-wrap' });
+    const table = tableWrap.createEl('table', { cls: 'lorevault-manager-table' });
+    const headRow = table.createEl('thead').createEl('tr');
+    headRow.createEl('th', { text: 'Entry' });
+    headRow.createEl('th', { text: 'Risk' });
+    headRow.createEl('th', { text: 'Keywords' });
+    headRow.createEl('th', { text: 'Similarity' });
+    headRow.createEl('th', { text: 'Reasons' });
+    headRow.createEl('th', { text: 'Actions' });
+
+    const tbody = table.createEl('tbody');
+    const visibleRows = rows.slice(0, 150);
+    for (const row of visibleRows) {
+      const tr = tbody.createEl('tr');
+      tr.createEl('td', { text: row.path ? `${row.title} (${row.path})` : row.title });
+      tr.createEl('td', { text: `${row.riskLevel} (${row.riskScore})` });
+      tr.createEl('td', { text: `${row.keywordCount}` });
+      tr.createEl('td', {
+        text: row.bestSimilarUid !== null
+          ? `UID ${row.bestSimilarUid} (${row.bestSimilarScore.toFixed(3)})`
+          : '-'
+      });
+      tr.createEl('td', { text: row.reasons.join(' | ') || '(none)' });
+
+      const actionsCell = tr.createEl('td');
+      if (row.path) {
+        const openButton = actionsCell.createEl('button', { text: 'Open' });
+        openButton.addEventListener('click', () => {
+          void this.app.workspace.openLinkText(row.path, '', true);
+        });
+      }
+
+      if (row.canGenerateKeywords) {
+        const running = this.keywordGenerationPaths.has(row.path);
+        const generateButton = actionsCell.createEl('button', {
+          text: running ? 'Generating…' : 'Generate Keywords'
+        });
+        generateButton.disabled = running;
+        generateButton.addEventListener('click', () => {
+          void this.handleGenerateKeywords(row.path);
+        });
+      }
     }
   }
 
@@ -374,7 +441,6 @@ export class LorebooksRoutingDebugView extends ItemView {
     }
 
     this.renderSummaryHeader(contentEl, selectedSummary);
-    this.renderKeywordCoverage(contentEl, selectedSummary);
 
     let pack: ScopeContextPack | null = null;
     try {
@@ -392,6 +458,7 @@ export class LorebooksRoutingDebugView extends ItemView {
     }
 
     if (pack) {
+      this.renderQualityAudit(contentEl, selectedSummary, pack);
       this.renderLorebookContents(contentEl, pack);
     }
     this.renderRoutingTable(contentEl, selectedSummary);

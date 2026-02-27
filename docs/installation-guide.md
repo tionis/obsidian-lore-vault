@@ -51,6 +51,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
      - "Run Text Command on Selection"
+     - "Generate Keywords (Active Note)"
      - "Generate World Info Summary (Active Note)"
      - "Generate Chapter Summary (Active Note)"
      - "Generate World Info Summaries (Active Scope)"
@@ -119,6 +120,7 @@ If you prefer to build the plugin from source:
    - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
    - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
    - Use "Open LoreVault Routing Debug" for full note-level inclusion/routing diagnostics
+   - In Routing Debug, use Quality Audit to detect missing keywords and trigger per-note `Generate Keywords`
    - Use "Open LoreVault Query Simulation" to simulate retrieval across one or multiple scopes with override knobs
    - Monitor the progress bar as your vault is converted
 

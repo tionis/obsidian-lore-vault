@@ -64,10 +64,12 @@ import {
 import * as path from 'path';
 import {
   asString,
+  asStringArray,
   FrontmatterData,
   getFrontmatterValue,
   normalizeFrontmatter,
-  stripFrontmatter
+  stripFrontmatter,
+  uniqueStrings
 } from './frontmatter-utils';
 import { normalizeLinkTarget } from './link-target-index';
 import {
@@ -89,6 +91,7 @@ import {
   serializeUsageLedgerEntriesCsv,
   UsageLedgerReportSnapshot
 } from './usage-ledger-report';
+import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -971,6 +974,158 @@ export default class LoreBookConverterPlugin extends Plugin {
       selectedItems: result.selectedItems,
       layerTrace: result.trace
     };
+  }
+
+  private buildKeywordGenerationPrompt(
+    title: string,
+    existingKeywords: string[],
+    summaryText: string,
+    bodyText: string
+  ): {
+    systemPrompt: string;
+    userPrompt: string;
+  } {
+    const bodyLimit = Math.max(1200, Math.min(12000, this.settings.summaries.maxInputChars));
+    const bodyExcerpt = bodyText.length > bodyLimit ? bodyText.slice(0, bodyLimit) : bodyText;
+    return {
+      systemPrompt: [
+        'You generate retrieval keywords for lore wiki notes.',
+        'Return JSON only: {"keywords":["..."]}.',
+        'Generate 6-12 concise keywords or short phrases.',
+        'Prioritize character names, places, factions, artifacts, events, and unique terminology.',
+        'Avoid generic words.',
+        'Do not include explanations or markdown.'
+      ].join('\n'),
+      userPrompt: [
+        `<title>${title}</title>`,
+        `<existing_keywords>${existingKeywords.join(', ') || '(none)'}</existing_keywords>`,
+        '<summary>',
+        summaryText || '(none)',
+        '</summary>',
+        '<body_excerpt>',
+        bodyExcerpt,
+        '</body_excerpt>'
+      ].join('\n')
+    };
+  }
+
+  private async generateKeywordCandidatesForFile(file: TFile): Promise<{
+    keywords: string[];
+    existingKeywords: string[];
+  }> {
+    if (!this.settings.completion.enabled) {
+      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
+    }
+    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+      throw new Error('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
+    }
+
+    const raw = await this.app.vault.cachedRead(file);
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const existingKeywords = uniqueStrings(
+      asStringArray(getFrontmatterValue(frontmatter, 'keywords', 'key'))
+    );
+    const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary')) ?? '';
+    const bodyWithSummary = stripFrontmatter(raw).trim();
+    const resolvedSummary = resolveNoteSummary(bodyWithSummary, frontmatterSummary)?.text ?? '';
+    const bodyText = stripSummarySectionFromBody(bodyWithSummary).trim();
+    if (!bodyText) {
+      throw new Error('Note body is empty.');
+    }
+
+    const prompt = this.buildKeywordGenerationPrompt(
+      file.basename,
+      existingKeywords,
+      resolvedSummary,
+      bodyText
+    );
+    let usageReport: CompletionUsageReport | null = null;
+    const responseText = await requestStoryContinuation(this.settings.completion, {
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: prompt.userPrompt,
+      onUsage: usage => {
+        usageReport = usage;
+      }
+    });
+
+    if (usageReport) {
+      await this.recordCompletionUsage('keywords_generate', usageReport, {
+        notePath: file.path
+      });
+    }
+
+    const suggested = parseGeneratedKeywords(responseText);
+    const merged = uniqueStrings([...existingKeywords, ...suggested]);
+    if (merged.length === 0) {
+      throw new Error('Keyword generation returned no usable values.');
+    }
+
+    return {
+      keywords: merged,
+      existingKeywords
+    };
+  }
+
+  private async applyKeywordsToNoteFrontmatter(file: TFile, keywords: string[]): Promise<void> {
+    const raw = await this.app.vault.cachedRead(file);
+    const next = upsertKeywordsFrontmatter(raw, keywords);
+    if (next === raw) {
+      return;
+    }
+    await this.app.vault.modify(file, next);
+  }
+
+  public async generateKeywordsForNotePath(notePath: string): Promise<void> {
+    const abstract = this.app.vault.getAbstractFileByPath(notePath);
+    if (!(abstract instanceof TFile)) {
+      throw new Error(`Note not found: ${notePath}`);
+    }
+    await this.generateKeywordsForNote(abstract);
+  }
+
+  private async generateKeywordsForNote(file: TFile): Promise<void> {
+    if (this.generationInFlight) {
+      throw new Error('Generation is already running. Wait for the current run to finish.');
+    }
+
+    try {
+      this.generationInFlight = true;
+      this.generationAbortController = new AbortController();
+      this.setGenerationStatus('generating keywords', 'busy');
+
+      const result = await this.generateKeywordCandidatesForFile(file);
+      await this.applyKeywordsToNoteFrontmatter(file, result.keywords);
+
+      this.liveContextIndex.requestFullRefresh();
+      this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
+      this.refreshStoryChatViews();
+
+      const addedCount = Math.max(0, result.keywords.length - result.existingKeywords.length);
+      new Notice(`Updated keywords for ${file.basename} (${result.keywords.length} total, +${addedCount} added).`);
+    } finally {
+      this.generationInFlight = false;
+      this.generationAbortController = null;
+      this.setGenerationStatus('idle', 'idle');
+    }
+  }
+
+  private async generateKeywordsForActiveNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('No active markdown note.');
+      return;
+    }
+
+    try {
+      await this.generateKeywordsForNote(activeFile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Keyword generation failed:', error);
+      new Notice(`Keyword generation failed: ${message}`);
+    }
   }
 
   private buildSummaryPrompt(mode: GeneratedSummaryMode, title: string, bodyText: string): {
@@ -2123,6 +2278,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'generate-keywords-active-note',
+      name: 'Generate Keywords (Active Note)',
+      callback: () => {
+        void this.generateKeywordsForActiveNote();
+      }
+    });
+
+    this.addCommand({
       id: 'generate-chapter-summary-active-note',
       name: 'Generate Chapter Summary (Active Note)',
       callback: () => {
@@ -2177,6 +2340,15 @@ export default class LoreBookConverterPlugin extends Plugin {
             .setIcon('file-text')
             .onClick(() => {
               void this.generateSummaryForNote(targetFile, 'world_info');
+            });
+        });
+
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Generate Keywords')
+            .setIcon('tags')
+            .onClick(() => {
+              void this.generateKeywordsForNote(targetFile);
             });
         });
       }

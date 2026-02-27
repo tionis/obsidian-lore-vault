@@ -46,6 +46,9 @@ Reference design: `docs/planning.md`.
 - [x] Add first "Continue Story with Context" command.
 - [x] Wire "Continue Story with Context" to provider-backed completion generation.
 - [x] Add story-note frontmatter scope selection for completion context.
+- [x] Stream completion output directly into editor while generation is running.
+- [x] Add generation status telemetry (state, scopes, token usage, selected context items) in manager view.
+- [x] Add completion context-window controls (`contextWindowTokens`, `promptReserveTokens`) and active budget trimming.
 
 ## Phase 6: Canonical SQLite Pack Pipeline
 

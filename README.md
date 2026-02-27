@@ -167,6 +167,7 @@ Manager features:
 
 - per-scope counts (included notes, `world_info`, `rag`)
 - scope warnings when sections are empty
+- generation monitor (running state, active scopes, token budget, selected context items, output progress)
 - `Build/Export Scope` action
 - `Open Output Folder` action (opens SQLite output root)
 - debug drill-down table showing why each note is included/excluded and how it is routed
@@ -184,9 +185,12 @@ Behavior:
   - `rag` by term-overlap relevance
 - applies token-budgeted context assembly
 - sends context + story window to configured completion provider
-- inserts generated continuation text at cursor (no raw context dump)
+- streams generated continuation text into the editor at cursor (no raw context dump)
+- updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
+- reports active scopes and pulled `world_info`/`rag` items at generation start
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
+Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
 
 Story-level scope override (frontmatter):
 

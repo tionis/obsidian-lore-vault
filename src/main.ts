@@ -9,7 +9,7 @@ import { RagExporter } from './rag-exporter';
 import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
 import { LiveContextIndex } from './live-context-index';
 import { EmbeddingService } from './embedding-service';
-import { requestStoryContinuation } from './completion-provider';
+import { requestStoryContinuationStream } from './completion-provider';
 import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
@@ -19,15 +19,148 @@ import {
 import { buildScopePack } from './scope-pack-builder';
 import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
+import { AssembledContext } from './context-query';
 import * as path from 'path';
 import { FrontmatterData, normalizeFrontmatter } from './frontmatter-utils';
+
+export interface GenerationTelemetry {
+  state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
+  statusText: string;
+  startedAt: number;
+  updatedAt: number;
+  provider: string;
+  model: string;
+  scopes: string[];
+  contextWindowTokens: number;
+  maxInputTokens: number;
+  promptReserveTokens: number;
+  estimatedInstructionTokens: number;
+  storyTokens: number;
+  contextUsedTokens: number;
+  contextRemainingTokens: number;
+  maxOutputTokens: number;
+  generatedTokens: number;
+  worldInfoCount: number;
+  ragCount: number;
+  worldInfoItems: string[];
+  ragItems: string[];
+  lastError: string;
+}
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
+  private generationStatusEl: HTMLElement | null = null;
+  private generationInFlight = false;
+  private generationStatusLevel: 'idle' | 'busy' | 'error' = 'idle';
+  private generationTelemetry: GenerationTelemetry = this.createDefaultGenerationTelemetry();
+  private managerRefreshTimer: number | null = null;
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.max(1, Math.ceil(text.length / 4));
+  }
+
+  private trimTextToTokenBudget(text: string, tokenBudget: number): string {
+    if (!text.trim()) {
+      return '';
+    }
+
+    const maxChars = Math.max(256, tokenBudget * 4);
+    if (text.length <= maxChars) {
+      return text;
+    }
+    return text.slice(text.length - maxChars).trimStart();
+  }
+
+  private renderScopeListLabel(scopes: string[]): string {
+    if (scopes.length === 0) {
+      return '(all)';
+    }
+    if (scopes.length <= 3) {
+      return scopes.join(', ');
+    }
+    return `${scopes.slice(0, 3).join(', ')} +${scopes.length - 3}`;
+  }
+
+  private createDefaultGenerationTelemetry(): GenerationTelemetry {
+    const now = Date.now();
+    return {
+      state: 'idle',
+      statusText: 'idle',
+      startedAt: 0,
+      updatedAt: now,
+      provider: '',
+      model: '',
+      scopes: [],
+      contextWindowTokens: 0,
+      maxInputTokens: 0,
+      promptReserveTokens: 0,
+      estimatedInstructionTokens: 0,
+      storyTokens: 0,
+      contextUsedTokens: 0,
+      contextRemainingTokens: 0,
+      maxOutputTokens: 0,
+      generatedTokens: 0,
+      worldInfoCount: 0,
+      ragCount: 0,
+      worldInfoItems: [],
+      ragItems: [],
+      lastError: ''
+    };
+  }
+
+  getGenerationTelemetry(): GenerationTelemetry {
+    return {
+      ...this.generationTelemetry,
+      scopes: [...this.generationTelemetry.scopes],
+      worldInfoItems: [...this.generationTelemetry.worldInfoItems],
+      ragItems: [...this.generationTelemetry.ragItems]
+    };
+  }
+
+  private scheduleManagerRefresh(): void {
+    if (this.managerRefreshTimer !== null) {
+      return;
+    }
+
+    this.managerRefreshTimer = window.setTimeout(() => {
+      this.managerRefreshTimer = null;
+      this.refreshManagerViews();
+    }, 150);
+  }
+
+  private updateGenerationTelemetry(update: Partial<GenerationTelemetry>): void {
+    const next: GenerationTelemetry = {
+      ...this.generationTelemetry,
+      ...update,
+      updatedAt: Date.now()
+    };
+    if (update.scopes) {
+      next.scopes = [...update.scopes];
+    }
+    if (update.worldInfoItems) {
+      next.worldInfoItems = [...update.worldInfoItems];
+    }
+    if (update.ragItems) {
+      next.ragItems = [...update.ragItems];
+    }
+    this.generationTelemetry = next;
+    this.scheduleManagerRefresh();
+  }
+
+  private setGenerationStatus(
+    message: string,
+    level: 'idle' | 'busy' | 'error' = 'busy'
+  ): void {
+    this.generationStatusLevel = level;
+    if (!this.generationStatusEl) {
+      return;
+    }
+    this.generationStatusEl.setText(`LoreVault ${message}`);
   }
 
   private getSQLiteOutputRootPath(): string {
@@ -200,6 +333,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.completion.systemPrompt = merged.completion.systemPrompt.trim() || DEFAULT_SETTINGS.completion.systemPrompt;
     merged.completion.temperature = Math.max(0, Math.min(2, Number(merged.completion.temperature)));
     merged.completion.maxOutputTokens = Math.max(64, Math.floor(merged.completion.maxOutputTokens));
+    merged.completion.contextWindowTokens = Math.max(
+      merged.completion.maxOutputTokens + 512,
+      Math.floor(merged.completion.contextWindowTokens)
+    );
+    merged.completion.promptReserveTokens = Math.max(0, Math.floor(merged.completion.promptReserveTokens));
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
 
     return merged;
@@ -228,6 +366,8 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     // Add settings tab
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
+    this.generationStatusEl = this.addStatusBarItem();
+    this.setGenerationStatus('idle', 'idle');
 
     // Add ribbon icon
     this.addRibbonIcon('lorevault-build', 'Build Active Lorebook Scope', () => {
@@ -317,6 +457,11 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async onunload() {
     this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
+    if (this.managerRefreshTimer !== null) {
+      window.clearTimeout(this.managerRefreshTimer);
+      this.managerRefreshTimer = null;
+    }
+    this.generationStatusEl = null;
   }
 
   async saveData(settings: any) {
@@ -399,19 +544,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized.slice(normalized.length - maxChars);
   }
 
-  private prepareInsertText(cursorCh: number, continuation: string): string {
-    const body = continuation.trim();
-    if (!body) {
-      return '';
-    }
-
-    if (cursorCh === 0) {
-      return `${body}\n`;
-    }
-    return `\n${body}\n`;
-  }
-
   async continueStoryWithContext(): Promise<void> {
+    if (this.generationInFlight) {
+      new Notice('LoreVault generation is already running.');
+      return;
+    }
+
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!markdownView) {
       new Notice('No active markdown editor found.');
@@ -423,7 +561,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     const cursor = editor.getCursor();
     const textBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
     const queryText = this.extractQueryWindow(textBeforeCursor);
-    const storyWindow = this.extractStoryWindow(textBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
     const scopedQuery = queryText || fallbackQuery;
     const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
@@ -431,8 +568,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     const scopesToQuery = frontmatterScopes.length > 0
       ? frontmatterScopes
       : (fallbackScope ? [fallbackScope] : []);
+    const targetScopes = scopesToQuery.length > 0 ? scopesToQuery : [''];
+    const targetScopeLabels = targetScopes.map(scope => scope || '(all)');
+    const initialScopeLabel = this.renderScopeListLabel(targetScopeLabels);
 
     try {
+      this.generationInFlight = true;
       if (!this.settings.completion.enabled) {
         new Notice('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
         return;
@@ -442,24 +583,90 @@ export default class LoreBookConverterPlugin extends Plugin {
         return;
       }
 
-      const perScopeBudget = Math.max(
-        128,
-        Math.floor(this.settings.defaultLoreBook.tokenBudget / Math.max(1, scopesToQuery.length || 1))
-      );
-      const contexts = [];
+      const completion = this.settings.completion;
+      const startedAt = Date.now();
+      this.updateGenerationTelemetry({
+        ...this.createDefaultGenerationTelemetry(),
+        state: 'preparing',
+        statusText: 'preparing',
+        startedAt,
+        updatedAt: startedAt,
+        provider: completion.provider,
+        model: completion.model,
+        scopes: targetScopeLabels,
+        contextWindowTokens: completion.contextWindowTokens,
+        maxInputTokens: Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens),
+        promptReserveTokens: completion.promptReserveTokens,
+        maxOutputTokens: completion.maxOutputTokens
+      });
+      this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
-      if (scopesToQuery.length === 0) {
-        contexts.push(await this.liveContextIndex.query({
-          queryText: scopedQuery,
-          tokenBudget: perScopeBudget
-        }));
-      } else {
-        for (const scope of scopesToQuery) {
+      const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+      const initialStoryWindow = this.extractStoryWindow(textBeforeCursor);
+      const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
+      const baselineStoryTarget = Math.max(256, Math.floor(maxInputTokens * 0.45));
+      const maxStoryTokensForContext = Math.max(
+        64,
+        maxInputTokens - completion.promptReserveTokens - instructionOverhead - 128
+      );
+      const storyTokenTarget = Math.max(64, Math.min(baselineStoryTarget, maxStoryTokensForContext));
+      let storyWindow = this.trimTextToTokenBudget(initialStoryWindow, storyTokenTarget);
+      let storyTokens = this.estimateTokens(storyWindow);
+      let availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
+
+      if (availableForContext < 128 && initialStoryWindow.trim().length > 0) {
+        const reducedStoryBudget = Math.max(
+          64,
+          maxInputTokens - completion.promptReserveTokens - instructionOverhead - 96
+        );
+        storyWindow = this.trimTextToTokenBudget(initialStoryWindow, reducedStoryBudget);
+        storyTokens = this.estimateTokens(storyWindow);
+        availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
+      }
+
+      let contextBudget = Math.min(
+        this.settings.defaultLoreBook.tokenBudget,
+        Math.max(64, availableForContext)
+      );
+      this.updateGenerationTelemetry({
+        state: 'retrieving',
+        statusText: 'retrieving',
+        scopes: targetScopeLabels,
+        maxInputTokens,
+        promptReserveTokens: completion.promptReserveTokens,
+        estimatedInstructionTokens: instructionOverhead,
+        storyTokens,
+        contextRemainingTokens: Math.max(0, availableForContext)
+      });
+      this.setGenerationStatus(
+        `retrieving | scopes ${initialScopeLabel} | ctx ${Math.max(0, availableForContext)} left`,
+        'busy'
+      );
+
+      let contexts: AssembledContext[] = [];
+      let remainingInputTokens = 0;
+      let usedContextTokens = 0;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const perScopeBudget = Math.max(64, Math.floor(contextBudget / Math.max(1, targetScopes.length)));
+        contexts = [];
+        for (const scope of targetScopes) {
           contexts.push(await this.liveContextIndex.query({
             queryText: scopedQuery,
             tokenBudget: perScopeBudget
           }, scope));
         }
+
+        usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
+        remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens - usedContextTokens;
+        if (remainingInputTokens >= 0 || contextBudget <= 64) {
+          break;
+        }
+
+        const nextBudget = Math.max(64, contextBudget + remainingInputTokens - 48);
+        if (nextBudget === contextBudget) {
+          break;
+        }
+        contextBudget = nextBudget;
       }
 
       const selectedScopeLabels = contexts.map(item => item.scope || '(all)');
@@ -468,8 +675,42 @@ export default class LoreBookConverterPlugin extends Plugin {
         .join('\n\n---\n\n');
       const totalWorldInfo = contexts.reduce((sum, item) => sum + item.worldInfo.length, 0);
       const totalRag = contexts.reduce((sum, item) => sum + item.rag.length, 0);
+      const worldInfoDetails = contexts
+        .flatMap(item => item.worldInfo.slice(0, 6).map(entry => entry.entry.comment))
+        .slice(0, 8);
+      const ragDetails = contexts
+        .flatMap(item => item.rag.slice(0, 6).map(entry => entry.document.title))
+        .slice(0, 8);
+      const scopeLabel = this.renderScopeListLabel(selectedScopeLabels);
+      this.updateGenerationTelemetry({
+        state: 'generating',
+        statusText: 'generating',
+        scopes: selectedScopeLabels,
+        estimatedInstructionTokens: instructionOverhead,
+        storyTokens,
+        contextUsedTokens: usedContextTokens,
+        contextRemainingTokens: Math.max(0, remainingInputTokens),
+        worldInfoCount: totalWorldInfo,
+        ragCount: totalRag,
+        worldInfoItems: worldInfoDetails,
+        ragItems: ragDetails,
+        generatedTokens: 0,
+        lastError: ''
+      });
 
-      new Notice(`Generating continuation for ${selectedScopeLabels.length} scope(s)...`);
+      this.setGenerationStatus(
+        `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~0/${completion.maxOutputTokens}`,
+        'busy'
+      );
+      new Notice(
+        [
+          `LoreVault generating for scopes: ${scopeLabel}`,
+          `Provider: ${completion.provider} (${completion.model})`,
+          `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
+          `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
+          `rag: ${ragDetails.join(', ') || '(none)'}`
+        ].join('\n')
+      );
       const userPrompt = [
         'Continue the story from where it currently ends.',
         'Respect the lore context as canon constraints.',
@@ -486,23 +727,86 @@ export default class LoreBookConverterPlugin extends Plugin {
         '</story_so_far>'
       ].join('\n');
 
-      const completion = await requestStoryContinuation(this.settings.completion, {
-        systemPrompt: this.settings.completion.systemPrompt,
-        userPrompt
-      });
-      const insertText = this.prepareInsertText(cursor.ch, completion);
-      if (!insertText.trim()) {
-        throw new Error('Completion provider returned empty output.');
+      let insertPos = cursor;
+      if (cursor.ch !== 0) {
+        editor.replaceRange('\n', insertPos);
+        const offset = editor.posToOffset(insertPos) + 1;
+        insertPos = editor.offsetToPos(offset);
       }
 
-      editor.replaceRange(insertText, cursor);
+      let generatedText = '';
+      let lastStatusUpdate = 0;
+
+      await requestStoryContinuationStream(completion, {
+        systemPrompt: completion.systemPrompt,
+        userPrompt,
+        onDelta: (delta: string) => {
+          if (!delta) {
+            return;
+          }
+
+          editor.replaceRange(delta, insertPos);
+          const nextOffset = editor.posToOffset(insertPos) + delta.length;
+          insertPos = editor.offsetToPos(nextOffset);
+          generatedText += delta;
+
+          const now = Date.now();
+          if (now - lastStatusUpdate >= 250) {
+            lastStatusUpdate = now;
+            const outTokens = this.estimateTokens(generatedText);
+            this.updateGenerationTelemetry({
+              generatedTokens: outTokens,
+              statusText: 'generating'
+            });
+            this.setGenerationStatus(
+              `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
+              'busy'
+            );
+          }
+        }
+      });
+
+      if (!generatedText.trim()) {
+        throw new Error('Completion provider returned empty output.');
+      }
+      editor.replaceRange('\n', insertPos);
+      const generatedTokens = this.estimateTokens(generatedText);
+      this.updateGenerationTelemetry({
+        state: 'idle',
+        statusText: 'idle',
+        scopes: selectedScopeLabels,
+        contextUsedTokens: usedContextTokens,
+        contextRemainingTokens: Math.max(0, remainingInputTokens),
+        generatedTokens,
+        worldInfoCount: totalWorldInfo,
+        ragCount: totalRag,
+        worldInfoItems: worldInfoDetails,
+        ragItems: ragDetails,
+        lastError: ''
+      });
       new Notice(
-        `Inserted continuation for ${selectedScopeLabels.length} scope(s) (${totalWorldInfo} world_info, ${totalRag} rag).`
+        `Inserted continuation for ${selectedScopeLabels.length} scope(s) (${totalWorldInfo} world_info, ${totalRag} rag, ~${generatedTokens} output tokens).`
       );
+      this.setGenerationStatus('idle', 'idle');
     } catch (error) {
-      console.error('Continue Story with Context failed:', error);
       const message = error instanceof Error ? error.message : String(error);
+      this.updateGenerationTelemetry({
+        state: 'error',
+        statusText: 'error',
+        lastError: message
+      });
+      this.setGenerationStatus('error', 'error');
+      console.error('Continue Story with Context failed:', error);
       new Notice(`Continue Story with Context failed: ${message}`);
+    } finally {
+      this.generationInFlight = false;
+      if (this.generationStatusLevel === 'error') {
+        window.setTimeout(() => {
+          if (!this.generationInFlight && this.generationStatusLevel === 'error') {
+            this.setGenerationStatus('idle', 'idle');
+          }
+        }, 2500);
+      }
     }
   }
 

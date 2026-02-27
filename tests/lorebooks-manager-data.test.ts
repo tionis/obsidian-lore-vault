@@ -74,6 +74,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       systemPrompt: 'Continue the story.',
       temperature: 0.7,
       maxOutputTokens: 700,
+      contextWindowTokens: 8192,
+      promptReserveTokens: 400,
       timeoutMs: 60000,
       ...(overrides.completion ?? {})
     },

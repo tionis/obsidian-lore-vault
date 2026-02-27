@@ -188,6 +188,7 @@ Behavior:
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
 - reports active scopes and pulled `world_info`/`rag` items at generation start
+- adds a right-click editor context-menu action: `LoreVault: Continue Story with Context`
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.

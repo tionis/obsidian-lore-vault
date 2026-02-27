@@ -1,4 +1,4 @@
-import { App, MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags } from 'obsidian';
+import { App, MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
 import { ConverterSettings, DEFAULT_SETTINGS, LoreBookEntry } from './models';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
@@ -405,6 +405,24 @@ export default class LoreBookConverterPlugin extends Plugin {
         await this.continueStoryWithContext();
       }
     });
+
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, _editor: Editor, _info: MarkdownView | MarkdownFileInfo) => {
+      menu.addSeparator();
+      menu.addItem(item => {
+        if (this.generationInFlight) {
+          item.setTitle('LoreVault: Generation Running');
+          item.setDisabled(true);
+          return;
+        }
+
+        item
+          .setTitle('LoreVault: Continue Story with Context')
+          .setIcon('book-open-text')
+          .onClick(() => {
+            void this.continueStoryWithContext();
+          });
+      });
+    }));
     
     // Add template creation command
     this.addCommand({

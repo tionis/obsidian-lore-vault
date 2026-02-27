@@ -104,7 +104,7 @@ If you prefer to build the plugin from source:
    - Open a story note in editor view
    - Optional: define story scopes in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
    - Place cursor where you want to continue
-   - Run command "Continue Story with Context"
+   - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
    - LoreVault queries token-budgeted context (`world_info` + `rag`) and streams generated continuation text
    - Open "Open LoreVault Manager" to watch generation state, active scopes, token usage, and selected context items live
 

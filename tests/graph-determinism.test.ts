@@ -108,7 +108,13 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       maxGraphHops: 2,
       graphHopDecay: 0.55,
       ragFallbackPolicy: 'auto',
-      ragFallbackSeedScoreThreshold: 120
+      ragFallbackSeedScoreThreshold: 120,
+      toolCalls: {
+        enabled: false,
+        maxCallsPerTurn: 4,
+        maxResultTokensPerTurn: 1200,
+        maxPlanningTimeMs: 8000
+      }
     },
     completion: {
       enabled: false,

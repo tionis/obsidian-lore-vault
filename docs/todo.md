@@ -6,16 +6,16 @@ Reference design: `docs/planning.md`.
 
 - Completed foundations: Phases 0-7 and 11/11.5.
 - Story Chat foundation is implemented (Phase 10 core UX done).
-- Current priority is completing optional retrieval extensions and hardening passes on top of the graph-first writing assistant track.
+- Optional retrieval extensions (Phase 12) are complete.
+- Current priority is broad hardening/performance and quality passes on top of the graph-first writing assistant track.
 - Hardening/perf pass (Phase 8), auto-summary work (Phase 9), cost tracking work (Phase 13), and import/extraction work (Phase 14) are deferred until the graph-first core is stable.
 
 ## Active Execution Order
 
-1. Add optional fallback/tool-call extensions (Phase 12).
-2. Return to broad hardening/performance tuning (Phase 8).
-3. Implement optional world_info auto-summary workflow (Phase 9).
-4. Implement cost estimation/tracking workflow (Phase 13, far future).
-5. Implement inbound wiki import/extraction workflow (Phase 14, far future).
+1. Return to broad hardening/performance tuning (Phase 8).
+2. Implement optional world_info auto-summary workflow (Phase 9).
+3. Implement cost estimation/tracking workflow (Phase 13, far future).
+4. Implement inbound wiki import/extraction workflow (Phase 14, far future).
 
 ## Completed Foundations (Historical)
 
@@ -65,9 +65,9 @@ Reference design: `docs/planning.md`.
 
 - [x] Keep embedding-based retrieval as optional fallback when seed confidence is low.
 - [x] Add policy setting for fallback activation (`off|auto|always`).
-- [ ] Add tool-call retrieval hooks for model-driven context fetch (`search_entries`, `expand_neighbors`, `get_entry`).
-- [ ] Add hard limits for tool-call count/tokens/time per generation turn.
-- [ ] Add tests for fallback determinism and tool-call safety constraints.
+- [x] Add tool-call retrieval hooks for model-driven context fetch (`search_entries`, `expand_neighbors`, `get_entry`).
+- [x] Add hard limits for tool-call count/tokens/time per generation turn.
+- [x] Add tests for fallback determinism and tool-call safety constraints.
 
 ## Phase 8: Hardening and Quality (Deferred Until Phase 11/11.5 Stabilize)
 

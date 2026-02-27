@@ -114,7 +114,7 @@ export class LorevaultHelpView extends ItemView {
         'Optionally set previousChapter/nextChapter links to enforce explicit sequence edges.',
         'Add summary in chapter frontmatter for higher-quality chapter memory injection.'
       ],
-      note: 'Current behavior: chapter memory injection is used by Continue Story with Context. Story Chat currently uses lorebook/manual/specific-note context but not chapter memory.',
+      note: 'Current behavior: both Continue Story and Story Chat inject bounded chapter memory before lorebook retrieval.',
       codeSample: [
         '---',
         'storyId: chronicles-main',
@@ -147,6 +147,8 @@ export class LorevaultHelpView extends ItemView {
         'Primary retrieval is graph-first world_info (seed matches + bounded graph expansion).',
         'RAG fallback policy is configurable in settings: off | auto | always.',
         'Graph controls: max hops, hop decay, and seed threshold for auto fallback.',
+        'Optional tool retrieval hooks can fetch targeted entries via search_entries / expand_neighbors / get_entry.',
+        'Tool hooks enforce hard limits per turn (call count, tool result tokens, planning time).',
         'Token budgets are enforced; world_info content is tiered short -> medium -> full when budget allows.',
         'Use Query Simulation for multi-scope retrieval testing with override knobs.'
       ]

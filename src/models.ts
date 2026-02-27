@@ -199,6 +199,12 @@ export interface ConverterSettings {
     graphHopDecay: number;
     ragFallbackPolicy: 'off' | 'auto' | 'always';
     ragFallbackSeedScoreThreshold: number;
+    toolCalls: {
+      enabled: boolean;
+      maxCallsPerTurn: number;
+      maxResultTokensPerTurn: number;
+      maxPlanningTimeMs: number;
+    };
   };
   completion: {
     enabled: boolean;
@@ -284,7 +290,13 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     maxGraphHops: 2,
     graphHopDecay: 0.55,
     ragFallbackPolicy: 'auto',
-    ragFallbackSeedScoreThreshold: 120
+    ragFallbackSeedScoreThreshold: 120,
+    toolCalls: {
+      enabled: false,
+      maxCallsPerTurn: 4,
+      maxResultTokensPerTurn: 1200,
+      maxPlanningTimeMs: 8000
+    }
   },
   completion: {
     enabled: false,

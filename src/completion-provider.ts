@@ -1,4 +1,10 @@
 import { ConverterSettings } from './models';
+import {
+  RetrievalToolPlanner,
+  RetrievalToolPlannerMessage,
+  RetrievalToolPlannerRequest,
+  RetrievalToolPlannerResponse
+} from './retrieval-tool-hooks';
 
 export interface StoryCompletionRequest {
   systemPrompt: string;
@@ -117,6 +123,70 @@ function safeParseJson(value: string): any | null {
   } catch (_error) {
     return null;
   }
+}
+
+function convertPlannerMessages(messages: RetrievalToolPlannerMessage[]): any[] {
+  return messages.map((message) => {
+    if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
+      return {
+        role: 'assistant',
+        content: message.content || '',
+        tool_calls: message.toolCalls.map(call => ({
+          id: call.id,
+          type: 'function',
+          function: {
+            name: call.name,
+            arguments: call.argumentsJson
+          }
+        }))
+      };
+    }
+
+    if (message.role === 'tool') {
+      return {
+        role: 'tool',
+        tool_call_id: message.toolCallId || '',
+        name: message.toolName || '',
+        content: message.content
+      };
+    }
+
+    return {
+      role: message.role,
+      content: message.content
+    };
+  });
+}
+
+function parsePlannerResponse(payload: any): RetrievalToolPlannerResponse {
+  const choice = payload?.choices?.[0] ?? {};
+  const message = choice?.message ?? {};
+  const finishReason = String(choice?.finish_reason ?? '');
+  const assistantText = normalizeContentValue(message?.content);
+  const toolCallsRaw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+
+  const toolCalls = toolCallsRaw
+    .map((call: any, index: number) => {
+      const name = typeof call?.function?.name === 'string' ? call.function.name.trim() : '';
+      const rawArgs = call?.function?.arguments;
+      const argumentsJson = typeof rawArgs === 'string'
+        ? rawArgs
+        : JSON.stringify(rawArgs ?? {});
+      return {
+        id: typeof call?.id === 'string' && call.id.trim().length > 0
+          ? call.id.trim()
+          : `tool-call-${index + 1}`,
+        name,
+        argumentsJson
+      };
+    })
+    .filter((call: { id: string; name: string; argumentsJson: string }) => call.name.length > 0);
+
+  return {
+    assistantText,
+    toolCalls: toolCalls as RetrievalToolPlannerResponse['toolCalls'],
+    finishReason
+  };
 }
 
 async function consumeOpenAiSseStream(
@@ -434,4 +504,67 @@ export async function requestStoryContinuationStream(
     request.abortSignal?.removeEventListener('abort', abortHandler);
     window.clearTimeout(timer);
   }
+}
+
+export function createCompletionRetrievalToolPlanner(
+  config: ConverterSettings['completion']
+): RetrievalToolPlanner | null {
+  if (config.provider === 'ollama') {
+    return null;
+  }
+
+  return async (request: RetrievalToolPlannerRequest): Promise<RetrievalToolPlannerResponse> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (config.apiKey) {
+      headers.Authorization = `Bearer ${config.apiKey}`;
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = Math.max(500, Math.min(config.timeoutMs, request.timeoutMs));
+    let timedOut = false;
+    const timer = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const abortHandler = () => controller.abort();
+    request.abortSignal?.addEventListener('abort', abortHandler);
+
+    try {
+      const response = await fetch(resolveOpenAiCompletionsUrl(config.endpoint), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: config.model,
+          messages: convertPlannerMessages(request.messages),
+          tools: request.toolDefinitions,
+          tool_choice: 'auto',
+          temperature: 0,
+          max_tokens: 240,
+          stream: false
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Retrieval tool planner request failed (${response.status}): ${text}`);
+      }
+
+      const payload = await response.json();
+      return parsePlannerResponse(payload);
+    } catch (error) {
+      if (timedOut) {
+        throw new Error(`Retrieval tool planner request timed out after ${timeoutMs}ms.`);
+      }
+      if (request.abortSignal?.aborted) {
+        throw new Error('Retrieval tool planner request was aborted.');
+      }
+      throw normalizeRequestError(error, timeoutMs);
+    } finally {
+      request.abortSignal?.removeEventListener('abort', abortHandler);
+      window.clearTimeout(timer);
+    }
+  };
 }

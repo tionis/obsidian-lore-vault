@@ -19,6 +19,10 @@ This document is the implementation-level reference for core architecture and ru
   - optional/fallback `rag` retrieval
   - token budgeting and tiering
   - explainability artifacts
+- `src/retrieval-tool-hooks.ts`
+  - model-driven retrieval tool loop (`search_entries`, `expand_neighbors`, `get_entry`)
+  - deterministic local tool execution and context rendering
+  - per-turn safety limits (calls/tokens/time)
 - `src/scope-pack-builder.ts`
   - deterministic note processing
   - graph ranking
@@ -118,6 +122,31 @@ RAG ranking:
 - optional semantic boost from embeddings cache/chunk vectors
 - deterministic tie-breaks: `score DESC`, then `path/title/uid`
 
+### Tool Retrieval Hooks (Optional Advanced Layer)
+
+Tool-driven retrieval is opt-in (`settings.retrieval.toolCalls.enabled`) and executed after graph/rag assembly with remaining budget.
+
+Available hooks:
+
+- `search_entries`: lexical lookup over `world_info` titles/keywords/content
+- `expand_neighbors`: bounded wikilink-neighbor expansion from a seed entry
+- `get_entry`: targeted fetch by `uid` (+ optional scope)
+
+Execution model:
+
+- completion provider is used as planner (`tool_choice=auto`) for OpenAI-compatible providers
+- planner emits tool calls
+- LoreVault executes calls locally over deterministic scope catalogs
+- selected entries are rendered into a bounded `Tool Retrieval Context` block
+
+Hard limits per turn:
+
+- `maxCallsPerTurn`
+- `maxResultTokensPerTurn`
+- `maxPlanningTimeMs`
+
+If a limit is reached, tool loop stops deterministically and trace output records stop reason.
+
 ## Budgeting and Content Tiering
 
 `world_info` and `rag` budgets are split from the per-query token budget.
@@ -162,14 +191,14 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 
 ### Chapter Memory Injection
 
-`src/main.ts` (`continueStoryWithContext`):
+`src/main.ts` (`continueStoryWithContext`, `runStoryChatTurn`):
 
 - resolves current note thread
 - selects bounded prior chapters
 - resolves snippets through rolling chapter summary cache/store
   - prefers frontmatter `summary`
   - falls back to deterministic body-head excerpt
-- injects `<story_chapter_memory>` block before lorebook context
+- injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 
 This provides a dedicated chapter-memory layer before graph retrieval.
 

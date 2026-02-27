@@ -10,6 +10,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Dual exports per scope: `world_info` JSON and `rag` markdown
 - Optional embedding-based semantic RAG with hash-cache
 - Graph-first retrieval with configurable RAG fallback policy (`off|auto|always`)
+- Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
@@ -216,6 +217,7 @@ Behavior:
 - queries retrieval layers from current editor context:
   - `world_info` by graph-first seed + expansion relevance
   - `rag` by fallback policy (`off|auto|always`) and relevance
+  - optional tool-retrieved layer for targeted entry fetches within call/token/time caps
 - applies token-budgeted context assembly
 - sends context + story window to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)

@@ -31,12 +31,14 @@ Current execution sequence:
 5. run broad hardening/performance tuning across the stack
 6. implement optional world_info auto-summary workflow
 7. add cost estimation/tracking workflow (far-future; provider integration dependent)
+8. add inbound import/extraction workflow for ST lorebooks and stories (far-future)
 
 Priority note:
 
 - legacy hardening tasks and auto-summary are still roadmap items
 - they are intentionally sequenced after graph-first core delivery so optimization targets are stable
 - cost management is intentionally far-future and requires tighter OpenRouter usage/pricing integration
+- story-to-wiki extraction is intentionally far-future and depends on robust schema-constrained LLM orchestration
 
 ## Scope Boundaries
 
@@ -188,6 +190,47 @@ Constraints:
 - prioritize OpenRouter integration first for usage + pricing metadata
 - keep behavior deterministic for stored usage/cost records
 - expose clear estimated vs actual cost labels when full provider pricing data is unavailable
+
+## Future: Inbound Wiki Import and Story Extraction
+
+Add reverse-direction workflows to create Obsidian wiki pages from existing external context assets.
+
+Two command-driven panels:
+
+- `Import SillyTavern Lorebook`
+- `Extract Wiki Pages from Story`
+
+Shared panel inputs:
+
+- target folder where generated wiki pages will be created
+- default tags to apply to all generated pages
+- lorebook name, also converted into a lorebook tag
+
+### Lorebook JSON Import Panel
+
+Workflow:
+
+- user pastes SillyTavern lorebook JSON into a text field
+- parser validates and normalizes entries
+- importer generates/updates wiki pages with frontmatter fields (`summary`, `keywords`/`key`, tags, optional aliases/comments)
+- importer writes deterministic page names and update order
+
+### Story Extraction Panel
+
+Workflow:
+
+- user pastes story markdown into a text field
+- pipeline chunks story text deterministically
+- LLM processes chunks sequentially with schema-constrained JSON output
+- extraction prompt enforces wiki page structure (title, summary, keywords, content blocks, merge intent)
+- after each chunk, pipeline injects already-generated page state (or uses tool calls) so later chunks can extend existing pages
+- final merge writes/updates wiki pages deterministically in target folder
+
+Constraints:
+
+- deterministic output ordering and merge behavior
+- explicit conflict strategy (append/merge/overwrite policy)
+- strict schema validation with recoverable error handling per chunk
 
 ## Obsidian UX Direction
 

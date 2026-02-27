@@ -7,7 +7,7 @@ Reference design: `docs/planning.md`.
 - Completed foundations: Phases 0-7.
 - Story Chat foundation is implemented (Phase 10 core UX done).
 - Current priority is the graph-first writing assistant track.
-- Hardening/perf pass (Phase 8), auto-summary work (Phase 9), and cost tracking work (Phase 13) are deferred until the graph-first core is stable.
+- Hardening/perf pass (Phase 8), auto-summary work (Phase 9), cost tracking work (Phase 13), and import/extraction work (Phase 14) are deferred until the graph-first core is stable.
 
 ## Active Execution Order
 
@@ -19,6 +19,7 @@ Reference design: `docs/planning.md`.
 6. Return to broad hardening/performance tuning (Phase 8).
 7. Implement optional world_info auto-summary workflow (Phase 9).
 8. Implement cost estimation/tracking workflow (Phase 13, far future).
+9. Implement inbound wiki import/extraction workflow (Phase 14, far future).
 
 ## Completed Foundations (Historical)
 
@@ -96,6 +97,27 @@ Reference design: `docs/planning.md`.
 - [ ] Add export/report format for external analysis (CSV/JSON).
 - [ ] Add tests for deterministic aggregation and fallback behavior when pricing metadata is missing.
 
+## Phase 14: Inbound Wiki Import and Story Extraction (Deferred Far Future Work)
+
+- [ ] Add command + panel: `Import SillyTavern Lorebook`.
+- [ ] Add command + panel: `Extract Wiki Pages from Story`.
+- [ ] Add shared panel inputs:
+  - target folder for generated wiki pages
+  - default tags
+  - lorebook name converted into a lorebook tag
+- [ ] Implement lorebook JSON paste-import flow with validation and deterministic page generation.
+- [ ] Map lorebook entries to frontmatter/body format (`summary`, `keywords`/`key`, tags, aliases/comment where available).
+- [ ] Implement story markdown extraction pipeline:
+  - deterministic chunking
+  - per-chunk LLM extraction
+  - strict JSON-schema constrained output validation
+- [ ] Add iterative merge context between chunks:
+  - inject already-generated page state per chunk, or
+  - use explicit retrieval/tool-call mechanism for existing page data
+- [ ] Define deterministic merge/conflict policy (append vs merge vs overwrite).
+- [ ] Add import/extraction dry-run preview and error reporting before writes.
+- [ ] Add fixtures/tests for deterministic import output and multi-chunk merge behavior.
+
 ## Open Questions
 
 - [ ] Should embedding fallback be global or per-lorebook configurable?
@@ -107,3 +129,6 @@ Reference design: `docs/planning.md`.
 - [ ] Should lorebook scope tags in note body be supported, or frontmatter tags only?
 - [ ] Should cost tracking be vault-global only, or also segmented per lorebook/chat conversation?
 - [ ] What should be the fallback strategy when OpenRouter pricing metadata is absent or stale?
+- [ ] For story extraction, should we prefer context injection of generated pages, tool-calls, or hybrid?
+- [ ] How should conflicting updates to the same extracted wiki page be resolved by default?
+- [ ] Should imported lorebook entries always create one-note-per-entry, or support grouped page layouts?

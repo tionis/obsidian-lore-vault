@@ -310,7 +310,7 @@ Current behavior:
   - `keywords` from `key`
   - `aliases` from `keysecondary`
   - `title/comment` when present
-  - derived `summary`
+  - derived `## Summary` section (frontmatter `summary` is legacy fallback input only)
   - default + lorebook tags
 
 Story extraction behavior:
@@ -319,6 +319,7 @@ Story extraction behavior:
 - per-chunk LLM extraction with strict JSON response validation
 - iterative context injection of already-extracted page state between chunks
 - deterministic safe-merge policy (`summary` merge + keyword/alias union + unique content block append)
+- generated/updated page summaries are written into note `## Summary` sections
 - preview first, then explicit apply to write pages
 
 Story delta behavior (Phase 15 foundation):

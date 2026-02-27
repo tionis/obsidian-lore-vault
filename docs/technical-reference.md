@@ -329,12 +329,13 @@ Implemented:
 - inbound SillyTavern lorebook JSON import command/view
 - deterministic entry normalization and sorting
 - deterministic file naming/path allocation
-- deterministic frontmatter/body mapping for generated wiki pages
+- deterministic frontmatter/body mapping for generated wiki pages (summary persisted in `## Summary` section)
 - preview and apply import flows
 - story extraction command/view with preview/apply workflow
 - deterministic chunking and per-chunk schema-constrained extraction
 - iterative existing-page state injection between chunks
 - deterministic merge behavior (summary merge, set unions, unique content append)
+- merged story summaries are written to note `## Summary` sections (legacy frontmatter summary treated as fallback input)
 
 ## Phase 15 Story Delta Updates (Current Progress)
 

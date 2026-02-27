@@ -165,6 +165,7 @@ If you prefer to build the plugin from source:
   - Set target folder, default tags, and lorebook name
   - Paste lorebook JSON in the panel text field
   - Click `Preview` to inspect planned file paths
+  - Imported summaries are written to note `## Summary` sections
   - Click `Import` to create/update generated wiki notes deterministically
 
 9. **Extract Wiki Pages from Story (Phase 14)**
@@ -173,6 +174,7 @@ If you prefer to build the plugin from source:
    - Paste story markdown
    - Click `Preview Extraction` to run chunked LLM extraction with deterministic merge preview
    - Inspect planned pages and chunk diagnostics
+   - Extracted summaries are written to note `## Summary` sections
    - Click `Apply Preview` to write generated/updated wiki pages
 
 10. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
@@ -181,7 +183,7 @@ If you prefer to build the plugin from source:
    - Set target wiki folder and optional scope tag filter
    - Choose update policy:
      - `safe_append` (default): preserve existing metadata on existing pages
-     - `structured_merge`: merge summary/keywords/aliases where confidence is high
+     - `structured_merge`: merge summary-section/keywords/aliases where confidence is high
    - Set low-confidence threshold (operations below threshold are skipped in preview)
    - Click `Preview Story Delta` to inspect planned create/update writes
    - Review per-change dry-run diff previews

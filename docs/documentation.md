@@ -467,13 +467,13 @@ Current mapping for imported notes:
 - title/comment from ST `comment` when present
 - `keywords` from ST `key`
 - `aliases` from ST `keysecondary`
-- `summary` derived deterministically from entry content
+- summary derived deterministically from entry content and written to `## Summary` section
 - tags from defaults + lorebook tag
 - note body from ST `content`
 
 Current merge policy (default):
 
-- summary: merge into compact combined summary
+- summary: merge into compact combined summary, persisted in `## Summary` section
 - keywords/aliases: deterministic union with case-insensitive dedupe
 - content: append unique blocks only (normalized-text dedupe)
 - story delta update policy:

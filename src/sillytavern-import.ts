@@ -1,5 +1,6 @@
 import type { App } from 'obsidian';
 import { ensureParentVaultFolderForFile, normalizeVaultPath } from './vault-path-utils';
+import { upsertSummarySectionInMarkdown } from './summary-utils';
 
 export interface ImportedLorebookEntry {
   uid: number;
@@ -240,8 +241,7 @@ function yamlArrayBlock(key: string, values: string[]): string[] {
 
 function buildNoteFrontmatter(
   entry: ImportedLorebookEntry,
-  tags: string[],
-  maxSummaryChars: number
+  tags: string[]
 ): string[] {
   const lines: string[] = ['---'];
   if (entry.comment) {
@@ -250,11 +250,6 @@ function buildNoteFrontmatter(
   lines.push(...yamlArrayBlock('aliases', entry.keysecondary));
   lines.push(...yamlArrayBlock('keywords', entry.key));
   lines.push(...yamlArrayBlock('tags', tags));
-
-  const summary = buildSummary(entry.content, maxSummaryChars);
-  if (summary) {
-    lines.push(`summary: ${yamlQuote(summary)}`);
-  }
   lines.push(`sourceUid: ${entry.uid}`);
   lines.push(`sourceType: "sillytavern_lorebook_import"`);
   lines.push('---');
@@ -315,9 +310,13 @@ export function buildImportedWikiPages(
     const stemSource = entry.comment || entry.key[0] || `entry-${entry.uid}`;
     const stem = toSafeFileStem(stemSource);
     const filePath = resolveUniqueFilePath(targetFolder, entry.uid, stem, usedPaths);
-    const frontmatter = buildNoteFrontmatter(entry, tags, maxSummaryChars);
+    const frontmatter = buildNoteFrontmatter(entry, tags);
     const body = buildNoteBody(entry);
-    const content = [...frontmatter, '', body.trim(), ''].join('\n');
+    const summary = buildSummary(entry.content, maxSummaryChars);
+    const baseContent = [...frontmatter, '', body.trim(), ''].join('\n');
+    const content = summary
+      ? upsertSummarySectionInMarkdown(baseContent, summary)
+      : baseContent;
     pages.push({
       path: filePath,
       content,

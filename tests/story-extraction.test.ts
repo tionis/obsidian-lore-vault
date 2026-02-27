@@ -135,6 +135,8 @@ test('extractWikiPagesFromStory merges repeated page updates across chunks deter
   assert.ok(alice);
   assert.equal(alice?.path, 'wiki/extracted/character-alice.md');
   assert.match(alice?.content ?? '', /keywords:\n {2}- "Alice"\n {2}- "Rowan"/);
+  assert.equal(/^summary:/m.test(alice?.content ?? ''), false);
+  assert.match(alice?.content ?? '', /## Summary\n\nYoung scholar entering the city\./);
   assert.match(alice?.content ?? '', /Alice arrives in the city seeking clues\./);
   assert.match(alice?.content ?? '', /works with Rowan\./);
 

@@ -57,6 +57,8 @@ test('buildImportedWikiPages maps tags/keywords/aliases/content deterministicall
   assert.match(pages[0].content, /keywords:\n {2}- "Captain Sol"\n {2}- "Sol"/);
   assert.match(pages[0].content, /aliases:\n {2}- "The Captain"/);
   assert.match(pages[0].content, /tags:\n {2}- "wiki"\n {2}- "imported"\n {2}- "lorebook\/characters\/major"/);
+  assert.equal(/^summary:/m.test(pages[0].content), false);
+  assert.match(pages[0].content, /## Summary\n\nCaptain Sol leads the Third Fleet\./);
   assert.match(pages[0].content, /Captain Sol leads the Third Fleet\./);
 });
 

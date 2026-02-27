@@ -33,8 +33,19 @@ import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
 import { AssembledContext, ScopeContextPack } from './context-query';
 import { buildScopeExportManifest, writeScopeExportManifest } from './export-manifest';
+import {
+  StoryThreadNode,
+  parseStoryThreadNodeFromFrontmatter,
+  resolveStoryThread
+} from './story-thread-resolver';
 import * as path from 'path';
-import { FrontmatterData, normalizeFrontmatter, stripFrontmatter } from './frontmatter-utils';
+import {
+  FrontmatterData,
+  asString,
+  getFrontmatterValue,
+  normalizeFrontmatter,
+  stripFrontmatter
+} from './frontmatter-utils';
 import { normalizeLinkTarget } from './link-target-index';
 
 export interface GenerationTelemetry {
@@ -1319,6 +1330,96 @@ export default class LoreBookConverterPlugin extends Plugin {
     return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
   }
 
+  private collectStoryThreadNodes(): StoryThreadNode[] {
+    const nodes: StoryThreadNode[] = [];
+    const files = [...this.app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+      const node = parseStoryThreadNodeFromFrontmatter(file.path, file.basename, frontmatter);
+      if (node) {
+        nodes.push(node);
+      }
+    }
+    return nodes;
+  }
+
+  private async buildChapterMemoryContext(
+    activeFile: TFile | null,
+    tokenBudget: number
+  ): Promise<{
+    markdown: string;
+    usedTokens: number;
+    items: string[];
+  }> {
+    if (!activeFile || tokenBudget <= 0) {
+      return { markdown: '', usedTokens: 0, items: [] };
+    }
+
+    const nodes = this.collectStoryThreadNodes();
+    const resolution = resolveStoryThread(nodes, activeFile.path);
+    if (!resolution || resolution.currentIndex <= 0) {
+      return { markdown: '', usedTokens: 0, items: [] };
+    }
+
+    const nodeByPath = new Map(nodes.map(node => [node.path, node]));
+    const priorPaths = resolution.orderedPaths
+      .slice(0, resolution.currentIndex)
+      .slice(-4);
+
+    const sections: string[] = [];
+    const items: string[] = [];
+    let usedTokens = 0;
+
+    for (const priorPath of priorPaths) {
+      if (usedTokens >= tokenBudget) {
+        break;
+      }
+
+      const file = this.app.vault.getAbstractFileByPath(priorPath);
+      if (!(file instanceof TFile)) {
+        continue;
+      }
+
+      const cache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+      const summary = asString(getFrontmatterValue(frontmatter, 'summary'));
+      const raw = await this.app.vault.cachedRead(file);
+      const body = stripFrontmatter(raw).trim();
+      const memoryText = summary ?? this.trimTextHeadToTokenBudget(body, 180);
+      if (!memoryText.trim()) {
+        continue;
+      }
+
+      const node = nodeByPath.get(priorPath);
+      const chapterPrefix = typeof node?.chapter === 'number'
+        ? `Chapter ${node.chapter}`
+        : 'Chapter';
+      const chapterTitle = node?.chapterTitle || node?.title || file.basename;
+      const section = [
+        `### ${chapterPrefix}: ${chapterTitle}`,
+        `Source: \`${priorPath}\``,
+        '',
+        memoryText
+      ].join('\n');
+
+      const sectionTokens = this.estimateTokens(section);
+      if (usedTokens + sectionTokens > tokenBudget) {
+        continue;
+      }
+
+      usedTokens += sectionTokens;
+      sections.push(section);
+      items.push(chapterTitle);
+    }
+
+    return {
+      markdown: sections.join('\n\n---\n\n'),
+      usedTokens,
+      items
+    };
+  }
+
   private resolveBuildScopeFromContext(): string | null {
     const fromActiveFile = this.resolveScopeFromActiveFile(this.app.workspace.getActiveFile());
     if (fromActiveFile) {
@@ -1445,6 +1546,22 @@ export default class LoreBookConverterPlugin extends Plugin {
         availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
       }
 
+      let chapterMemoryMarkdown = '';
+      let chapterMemoryTokens = 0;
+      let chapterMemoryItems: string[] = [];
+      if (availableForContext > 96 && activeFile) {
+        const chapterMemoryBudget = Math.min(
+          900,
+          Math.max(96, Math.floor(Math.max(0, availableForContext) * 0.3))
+        );
+        const chapterMemory = await this.buildChapterMemoryContext(activeFile, chapterMemoryBudget);
+        chapterMemoryMarkdown = chapterMemory.markdown;
+        chapterMemoryTokens = chapterMemory.usedTokens;
+        chapterMemoryItems = chapterMemory.items;
+        availableForContext -= chapterMemoryTokens;
+      }
+      availableForContext = Math.max(64, availableForContext);
+
       let contextBudget = Math.min(
         this.settings.defaultLoreBook.tokenBudget,
         Math.max(64, availableForContext)
@@ -1457,7 +1574,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         promptReserveTokens: completion.promptReserveTokens,
         estimatedInstructionTokens: instructionOverhead,
         storyTokens,
-        contextRemainingTokens: Math.max(0, availableForContext)
+        contextRemainingTokens: Math.max(0, availableForContext),
+        contextUsedTokens: chapterMemoryTokens
       });
       this.setGenerationStatus(
         `retrieving | scopes ${initialScopeLabel} | ctx ${Math.max(0, availableForContext)} left`,
@@ -1509,7 +1627,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         scopes: selectedScopeLabels,
         estimatedInstructionTokens: instructionOverhead,
         storyTokens,
-        contextUsedTokens: usedContextTokens,
+        contextUsedTokens: usedContextTokens + chapterMemoryTokens,
         contextRemainingTokens: Math.max(0, remainingInputTokens),
         worldInfoCount: totalWorldInfo,
         ragCount: totalRag,
@@ -1528,6 +1646,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `LoreVault generating for scopes: ${scopeLabel}`,
           `Provider: ${completion.provider} (${completion.model})`,
           `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
+          `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
           `rag: ${ragDetails.join(', ') || '(none)'}`
         ].join('\n')
@@ -1536,6 +1655,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         'Continue the story from where it currently ends.',
         'Respect the lore context as canon constraints.',
         'Output only the continuation text.',
+        '',
+        '<story_chapter_memory>',
+        chapterMemoryMarkdown || '[No prior chapter memory available.]',
+        '</story_chapter_memory>',
         '',
         `<lorevault_scopes>${selectedScopeLabels.join(', ')}</lorevault_scopes>`,
         '',
@@ -1597,7 +1720,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         state: 'idle',
         statusText: 'idle',
         scopes: selectedScopeLabels,
-        contextUsedTokens: usedContextTokens,
+        contextUsedTokens: usedContextTokens + chapterMemoryTokens,
         contextRemainingTokens: Math.max(0, remainingInputTokens),
         generatedTokens,
         worldInfoCount: totalWorldInfo,

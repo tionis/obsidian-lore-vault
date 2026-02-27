@@ -718,6 +718,9 @@ export class StoryChatView extends ItemView {
     details.createEl('p', {
       text: `Tokens: ${version.contextMeta.contextTokens} | lorebook: ${version.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${version.contextMeta.usedManualContext ? 'on' : 'off'} | specific-notes: ${version.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
     });
+    details.createEl('p', {
+      text: `chapter-memory: ${version.contextMeta.usedChapterMemoryContext ? 'on' : 'off'} | chapters: ${(version.contextMeta.chapterMemoryItems ?? []).join(', ') || '(none)'}`
+    });
 
     details.createEl('p', {
       text: `specific notes: ${version.contextMeta.specificNotePaths.join(', ') || '(none)'}`
@@ -730,6 +733,9 @@ export class StoryChatView extends ItemView {
     });
     details.createEl('p', {
       text: `rag: ${version.contextMeta.ragItems.join(', ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `layer trace: ${(version.contextMeta.layerTrace ?? []).join(' | ') || '(none)'}`
     });
   }
 

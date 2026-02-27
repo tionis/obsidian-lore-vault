@@ -300,6 +300,7 @@ Long-form story metadata (new):
 - `nextChapter`: optional links/paths to following chapter notes
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
+Chapter memory uses a rolling summary store (frontmatter `summary` preferred, deterministic excerpt fallback) so repeated generations avoid unnecessary re-parsing.
 
 ## LoreVault Manager UI
 
@@ -463,6 +464,8 @@ Turn context assembly:
   - selected scopes
   - resolved specific note paths
   - unresolved note references
+  - chapter memory summaries used for the turn
+  - per-layer context trace (`local_window`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_rag`)
   - context token estimate
   - selected `world_info` and `rag` item labels
 

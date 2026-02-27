@@ -179,6 +179,17 @@ export class LorebooksManagerView extends ItemView {
         ragList.createEl('li', { text: item });
       }
     }
+
+    const layersHeading = details.createEl('h4', { text: 'context layers' });
+    layersHeading.addClass('lorevault-manager-subheading');
+    if (telemetry.contextLayerTrace.length === 0) {
+      details.createEl('p', { text: '(none)' });
+    } else {
+      const layerList = details.createEl('ul');
+      for (const item of telemetry.contextLayerTrace) {
+        layerList.createEl('li', { text: item });
+      }
+    }
   }
 
   private renderGenerationSection(container: HTMLElement): void {

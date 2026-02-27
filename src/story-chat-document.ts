@@ -52,6 +52,8 @@ export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined
     scopes: [...meta.scopes],
     specificNotePaths: [...meta.specificNotePaths],
     unresolvedNoteRefs: [...meta.unresolvedNoteRefs],
+    chapterMemoryItems: [...(meta.chapterMemoryItems ?? [])],
+    layerTrace: [...(meta.layerTrace ?? [])],
     worldInfoItems: [...meta.worldInfoItems],
     ragItems: [...meta.ragItems]
   };
@@ -67,6 +69,7 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     usedLorebookContext: Boolean(meta.usedLorebookContext),
     usedManualContext: Boolean(meta.usedManualContext),
     usedSpecificNotesContext: Boolean(meta.usedSpecificNotesContext),
+    usedChapterMemoryContext: Boolean(meta.usedChapterMemoryContext),
     scopes: Array.isArray(meta.scopes)
       ? meta.scopes.map(value => String(value ?? ''))
       : [],
@@ -75,6 +78,12 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
       : [],
     unresolvedNoteRefs: Array.isArray(meta.unresolvedNoteRefs)
       ? meta.unresolvedNoteRefs.map(value => String(value ?? ''))
+      : [],
+    chapterMemoryItems: Array.isArray(meta.chapterMemoryItems)
+      ? meta.chapterMemoryItems.map(value => String(value ?? ''))
+      : [],
+    layerTrace: Array.isArray(meta.layerTrace)
+      ? meta.layerTrace.map(value => String(value ?? ''))
       : [],
     contextTokens: Math.max(0, Math.floor(Number(meta.contextTokens ?? 0))),
     worldInfoCount: Math.max(0, Math.floor(Number(meta.worldInfoCount ?? 0))),

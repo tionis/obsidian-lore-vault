@@ -4,22 +4,18 @@ Reference design: `docs/planning.md`.
 
 ## Status Snapshot (2026-02-27)
 
-- Completed foundations: Phases 0-7.
+- Completed foundations: Phases 0-7 and 11/11.5.
 - Story Chat foundation is implemented (Phase 10 core UX done).
-- Current priority is the graph-first writing assistant track.
+- Current priority is completing optional retrieval extensions and hardening passes on top of the graph-first writing assistant track.
 - Hardening/perf pass (Phase 8), auto-summary work (Phase 9), cost tracking work (Phase 13), and import/extraction work (Phase 14) are deferred until the graph-first core is stable.
 
 ## Active Execution Order
 
-1. Finish remaining Story Chat validation work (Phase 10 remainder).
-2. Finalize product boundary hardening for companion publishing path (Phase 10.5).
-3. Implement graph-first retrieval core (Phase 11).
-4. Implement long-form story memory layer (Phase 11.5).
-5. Add optional fallback/tool-call extensions (Phase 12).
-6. Return to broad hardening/performance tuning (Phase 8).
-7. Implement optional world_info auto-summary workflow (Phase 9).
-8. Implement cost estimation/tracking workflow (Phase 13, far future).
-9. Implement inbound wiki import/extraction workflow (Phase 14, far future).
+1. Add optional fallback/tool-call extensions (Phase 12).
+2. Return to broad hardening/performance tuning (Phase 8).
+3. Implement optional world_info auto-summary workflow (Phase 9).
+4. Implement cost estimation/tracking workflow (Phase 13, far future).
+5. Implement inbound wiki import/extraction workflow (Phase 14, far future).
 
 ## Completed Foundations (Historical)
 
@@ -60,10 +56,10 @@ Reference design: `docs/planning.md`.
 
 - [x] Add chapter/story frontmatter schema support (`storyId`, `chapter`, optional prev/next links).
 - [x] Build deterministic story-thread resolver from metadata + links.
-- [ ] Add rolling chapter summary store for prior chapters/scenes.
-- [ ] Add layered context assembly: local window -> chapter memory -> graph memory -> optional fallback.
-- [ ] Add context inspector traces showing which layer contributed each injected item.
-- [ ] Add fixtures for multi-chapter coherence and deterministic chapter-order resolution.
+- [x] Add rolling chapter summary store for prior chapters/scenes.
+- [x] Add layered context assembly: local window -> chapter memory -> graph memory -> optional fallback.
+- [x] Add context inspector traces showing which layer contributed each injected item.
+- [x] Add fixtures for multi-chapter coherence and deterministic chapter-order resolution.
 
 ## Phase 12: Optional Retrieval Extensions (Fallback/Advanced)
 

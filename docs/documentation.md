@@ -10,6 +10,11 @@ Current runtime export targets per scope:
 - SillyTavern-style `world_info` JSON
 - `rag` markdown pack
 
+Core scope boundary:
+
+- LoreVault does not provide human book/EPUB/PDF publishing output.
+- Human-oriented publishing should be implemented as a companion plugin consuming LoreVault exports.
+
 ## Compatibility
 
 - Plugin id: `lore-vault`
@@ -176,6 +181,27 @@ SQLite path behavior:
 
 Output build fails fast if path collisions are detected.
 
+## Companion Publishing Contract (Phase 10.5)
+
+For downstream publishing tools/plugins:
+
+- Treat SQLite scope packs as canonical inputs.
+- Do not re-parse vault markdown when a SQLite scope pack is available.
+- Stable core tables for downstream consumption:
+  - `world_info_entries`
+  - `rag_documents`
+  - `rag_chunks`
+  - `rag_chunk_embeddings`
+- Deterministic order guarantees:
+  - `world_info_entries`: `order_value DESC, uid ASC`
+  - `rag_documents`: `path ASC, title ASC, uid ASC`
+  - `rag_chunks`: `path ASC, chunk_index ASC`
+- Stable downstream export roots:
+  - canonical scope `.db` under configured SQLite output path
+  - ST-style outputs under a subpath of the SQLite root (`sillytavern/...` by default)
+
+This contract lets a companion publishing plugin select tags/pages/assets independently without changing LoreVault core behavior.
+
 ## Embeddings and Semantic RAG
 
 Configurable embedding providers:
@@ -307,24 +333,36 @@ Query behavior:
   - otherwise configured `activeScope`
   - otherwise first discovered scope
 - scoring:
-  - `world_info`: keyword matches + constant/priority boosts
-  - `rag`: term overlap in title/path/content
+  - `world_info` (primary):
+    - deterministic seed detection from keywords/aliases/titles
+    - bounded graph expansion over wikilink-derived relations
+    - hop-decayed graph scoring with deterministic tie-breaks
+    - score factors: seed + graph + constant + order
+  - `rag` (secondary/fallback-capable):
+    - term overlap in title/path/content
+    - optional semantic boost from embeddings
 - completion:
   - builds a prompt from scope context + recent story window
   - calls configured completion provider with streaming enabled
   - inserts streamed generated continuation text at cursor
 - deterministic tie-breakers:
-  - `world_info`: score desc, order desc, uid asc
+  - `world_info`: score desc, hop asc, order desc, uid asc
   - `rag`: score desc, path asc, title asc, uid asc
+- explainability metadata per query:
+  - seed reasons
+  - selected graph path per entry
+  - score breakdown factors
+  - budget cutoff diagnostics
 
 Token budgeting:
 
 - uses completion context budget (`contextWindowTokens - maxOutputTokens`) and lorebook token budget cap (`defaultLoreBook.tokenBudget`)
 - reserves headroom via `promptReserveTokens`
 - trims story window to keep minimum context capacity
-- splits budget between sections (`world_info` 60%, `rag` 40%)
+- splits budget between sections (`world_info` 70%, `rag` 30% by default)
 - iteratively shrinks per-scope context budget if total selected context exceeds input budget
-- skips entries/documents that would exceed section budget
+- `world_info` starts at `short` tier, then upgrades to `medium`/`full` if budget remains
+- skips entries/documents that would exceed section budget and reports cutoff diagnostics
 - context block is used for generation input and is not inserted into the note
 
 ## Story Chat Panel

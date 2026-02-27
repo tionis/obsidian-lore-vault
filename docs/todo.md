@@ -39,7 +39,7 @@ Reference design: `docs/planning.md`.
 - [x] Add "manual context only" mode (no automatic lorebook retrieval).
 - [x] Show live context inspector for each turn (what was added and why).
 - [x] Add send/stop/regenerate controls with streaming output.
-- [ ] Add tests for chat state persistence and deterministic context assembly.
+- [x] Add tests for chat state persistence and deterministic context assembly.
 
 ## Phase 10.5: Product Boundary Hardening
 
@@ -49,12 +49,12 @@ Reference design: `docs/planning.md`.
 
 ## Phase 11: Graph-First Retrieval Engine (Primary)
 
-- [ ] Replace primary retrieval path with seed-match + graph expansion over `world_info`.
-- [ ] Implement deterministic seed detection from keywords/aliases/titles.
-- [ ] Implement bounded hop expansion with score decay and stable tie-breaks.
-- [ ] Add budget-aware summary tier selection (`short` -> `medium` -> `full`).
-- [ ] Add retrieval explainability artifacts (seed reason, path, score factors, budget cutoff).
-- [ ] Add fixture-backed tests for multi-hop inclusion behavior and determinism.
+- [x] Replace primary retrieval path with seed-match + graph expansion over `world_info`.
+- [x] Implement deterministic seed detection from keywords/aliases/titles.
+- [x] Implement bounded hop expansion with score decay and stable tie-breaks.
+- [x] Add budget-aware summary tier selection (`short` -> `medium` -> `full`).
+- [x] Add retrieval explainability artifacts (seed reason, path, score factors, budget cutoff).
+- [x] Add fixture-backed tests for multi-hop inclusion behavior and determinism.
 
 ## Phase 11.5: Long-Form Story Memory
 

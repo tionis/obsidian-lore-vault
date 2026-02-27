@@ -366,7 +366,7 @@ Settings (LoreVault -> Auto Summaries):
 - `Summary Max Input Chars`
 - `Summary Max Output Chars`
 
-## Cost Tracking (Experimental, Phase 13 groundwork)
+## Cost Tracking (Experimental, Phase 13)
 
 Current implemented scope:
 
@@ -383,6 +383,9 @@ Settings:
 - `Usage Ledger Path`
 - `Default Input Cost / 1M Tokens (USD)`
 - `Default Output Cost / 1M Tokens (USD)`
+- `Usage Report Output Directory`
+- `Daily Budget Warning (USD)`
+- `Session Budget Warning (USD)`
 
 Ledger default path:
 
@@ -396,6 +399,14 @@ Each record contains deterministic fields:
 - prompt/completion/total tokens
 - reported/estimated cost and cost source
 - operation metadata
+
+Report exports:
+
+- `Export Usage Report (JSON)`
+- `Export Usage Report (CSV)`
+
+JSON export includes snapshot totals + full ledger entries.
+CSV export includes deterministic row order and metadata JSON column.
 
 ## LoreVault Manager UI
 
@@ -415,6 +426,10 @@ Capabilities:
   - provider/model
   - context window and token usage
   - selected `world_info` and `rag` items used for the active/last run
+- usage/cost monitor details:
+  - session/day/project totals (requests/tokens/known cost/unknown cost count)
+  - budget warnings from configured daily/session limits
+  - top breakdown lists by operation and model
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope

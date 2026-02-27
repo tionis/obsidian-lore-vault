@@ -97,6 +97,9 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       ledgerPath: '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
       defaultInputCostPerMillionUsd: 0,
       defaultOutputCostPerMillionUsd: 0,
+      reportOutputDir: '.obsidian/plugins/lore-vault/reports',
+      dailyBudgetUsd: 0,
+      sessionBudgetUsd: 0,
       ...(overrides.costTracking ?? {})
     },
     completion: {

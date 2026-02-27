@@ -70,6 +70,11 @@ import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries } from './lorebooks-manager-data';
 import { UsageLedgerStore } from './usage-ledger-store';
 import { estimateUsageCostUsd } from './cost-utils';
+import {
+  buildUsageLedgerReportSnapshot,
+  serializeUsageLedgerEntriesCsv,
+  UsageLedgerReportSnapshot
+} from './usage-ledger-report';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -116,6 +121,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   liveContextIndex: LiveContextIndex;
   private generatedSummaryStore!: GeneratedSummaryStore;
   private usageLedgerStore!: UsageLedgerStore;
+  private readonly sessionStartedAt = Date.now();
   private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
   private generationInFlight = false;
@@ -242,6 +248,81 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
     } catch (error) {
       console.error('Failed to record usage entry:', error);
+    }
+  }
+
+  private normalizeVaultPath(value: string, fallback: string): string {
+    const normalized = (value ?? '').toString().trim().replace(/\\/g, '/');
+    return normalized || fallback;
+  }
+
+  private resolveUsageReportOutputDir(): string {
+    return this.normalizeVaultPath(
+      this.settings.costTracking.reportOutputDir,
+      DEFAULT_SETTINGS.costTracking.reportOutputDir
+    );
+  }
+
+  private formatReportTimestamp(timestamp: number): string {
+    return new Date(timestamp).toISOString().replace(/[:.]/g, '-');
+  }
+
+  private async ensureVaultDirectory(pathValue: string): Promise<void> {
+    const normalizedParts = pathValue
+      .split('/')
+      .map(part => part.trim())
+      .filter(Boolean);
+    if (normalizedParts.length === 0) {
+      return;
+    }
+
+    let current = '';
+    for (const part of normalizedParts) {
+      current = current ? `${current}/${part}` : part;
+      const exists = await this.app.vault.adapter.exists(current);
+      if (!exists) {
+        await this.app.vault.adapter.mkdir(current);
+      }
+    }
+  }
+
+  public async getUsageReportSnapshot(): Promise<UsageLedgerReportSnapshot> {
+    const entries = await this.usageLedgerStore.listEntries();
+    const nowMs = Date.now();
+    return buildUsageLedgerReportSnapshot(entries, {
+      nowMs,
+      sessionStartAt: this.sessionStartedAt,
+      dailyBudgetUsd: this.settings.costTracking.dailyBudgetUsd,
+      sessionBudgetUsd: this.settings.costTracking.sessionBudgetUsd
+    });
+  }
+
+  private async exportUsageReport(format: 'json' | 'csv'): Promise<void> {
+    try {
+      const entries = await this.usageLedgerStore.listEntries();
+      const snapshot = await this.getUsageReportSnapshot();
+      const outputDir = this.resolveUsageReportOutputDir();
+      await this.ensureVaultDirectory(outputDir);
+
+      const stamp = this.formatReportTimestamp(Date.now());
+      const filePath = `${outputDir}/usage-report-${stamp}.${format === 'json' ? 'json' : 'csv'}`;
+      if (format === 'json') {
+        const payload = {
+          schemaVersion: 1,
+          snapshot,
+          entries
+        };
+        await this.app.vault.adapter.write(filePath, JSON.stringify(payload, null, 2));
+      } else {
+        const csv = serializeUsageLedgerEntriesCsv(entries);
+        await this.app.vault.adapter.write(filePath, csv);
+      }
+
+      new Notice(`Usage report exported: ${filePath}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Usage report export failed:', error);
+      new Notice(`Usage report export failed: ${message}`);
     }
   }
 
@@ -1636,6 +1717,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (!merged.costTracking.ledgerPath) {
       merged.costTracking.ledgerPath = DEFAULT_SETTINGS.costTracking.ledgerPath;
     }
+    merged.costTracking.reportOutputDir = (merged.costTracking.reportOutputDir ?? '')
+      .toString()
+      .trim()
+      .replace(/\\/g, '/');
+    if (!merged.costTracking.reportOutputDir) {
+      merged.costTracking.reportOutputDir = DEFAULT_SETTINGS.costTracking.reportOutputDir;
+    }
     const inputRate = Number(merged.costTracking.defaultInputCostPerMillionUsd);
     const outputRate = Number(merged.costTracking.defaultOutputCostPerMillionUsd);
     merged.costTracking.defaultInputCostPerMillionUsd = Number.isFinite(inputRate) && inputRate >= 0
@@ -1644,6 +1732,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.costTracking.defaultOutputCostPerMillionUsd = Number.isFinite(outputRate) && outputRate >= 0
       ? outputRate
       : DEFAULT_SETTINGS.costTracking.defaultOutputCostPerMillionUsd;
+    const dailyBudget = Number(merged.costTracking.dailyBudgetUsd);
+    const sessionBudget = Number(merged.costTracking.sessionBudgetUsd);
+    merged.costTracking.dailyBudgetUsd = Number.isFinite(dailyBudget) && dailyBudget >= 0
+      ? dailyBudget
+      : DEFAULT_SETTINGS.costTracking.dailyBudgetUsd;
+    merged.costTracking.sessionBudgetUsd = Number.isFinite(sessionBudget) && sessionBudget >= 0
+      ? sessionBudget
+      : DEFAULT_SETTINGS.costTracking.sessionBudgetUsd;
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (
@@ -1992,6 +2088,22 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Generate Chapter Summaries (Current Story)',
       callback: () => {
         void this.generateChapterSummariesForCurrentStory();
+      }
+    });
+
+    this.addCommand({
+      id: 'export-usage-report-json',
+      name: 'Export Usage Report (JSON)',
+      callback: () => {
+        void this.exportUsageReport('json');
+      }
+    });
+
+    this.addCommand({
+      id: 'export-usage-report-csv',
+      name: 'Export Usage Report (CSV)',
+      callback: () => {
+        void this.exportUsageReport('csv');
       }
     });
 

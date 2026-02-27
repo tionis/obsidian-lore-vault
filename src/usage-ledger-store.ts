@@ -235,6 +235,14 @@ export class UsageLedgerStore {
     await this.persist();
   }
 
+  async listEntries(): Promise<UsageLedgerEntry[]> {
+    await this.ensureLoaded();
+    return this.entries.map(entry => ({
+      ...entry,
+      metadata: { ...entry.metadata }
+    }));
+  }
+
   private async persist(): Promise<void> {
     const payload: UsageLedgerPayload = {
       schemaVersion: 1,

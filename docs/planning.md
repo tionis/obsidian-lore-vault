@@ -37,7 +37,7 @@ Priority note:
 
 - legacy hardening tasks and auto-summary are still roadmap items
 - they are intentionally sequenced after graph-first core delivery so optimization targets are stable
-- cost management is intentionally far-future and requires tighter OpenRouter usage/pricing integration
+- advanced cost management (provider pricing sync and richer budgeting UX) is far-future and requires tighter OpenRouter usage/pricing integration
 - story-to-wiki extraction is intentionally far-future and depends on robust schema-constrained LLM orchestration
 
 ## Scope Boundaries
@@ -196,8 +196,8 @@ Add optional cost estimation/tracking to make API spend easier to plan and audit
 
 Constraints:
 
-- groundwork is now implemented (usage hooks + ledger + fallback estimation)
-- remaining UI/reporting work remains far-future (after core retrieval/memory architecture stabilizes)
+- implemented scope includes usage hooks, deterministic ledger, manager rollups/warnings, and JSON/CSV report export
+- remaining advanced work is far-future (after core retrieval/memory architecture stabilizes)
 - prioritize OpenRouter integration first for usage + pricing metadata
 - keep behavior deterministic for stored usage/cost records
 - expose clear estimated vs actual cost labels when full provider pricing data is unavailable

@@ -1,4 +1,9 @@
 export type GeneratedSummaryMode = 'world_info' | 'chapter';
+export type NoteSummarySource = 'section' | 'frontmatter';
+
+const SUMMARY_SECTION_HEADING_PATTERN = /^\s{0,3}##\s+summary\s*$/i;
+const MAJOR_HEADING_PATTERN = /^\s{0,3}#{1,2}\s+\S/;
+const H1_HEADING_PATTERN = /^\s{0,3}#\s+\S/;
 
 export function normalizeGeneratedSummaryText(text: string, maxChars: number): string {
   const sanitized = sanitizeSummaryModelOutput(text);
@@ -110,14 +115,193 @@ export function sanitizeSummaryModelOutput(text: string): string {
   return stripReasoningPreamble(withoutLabels).trim();
 }
 
-export function resolveWorldInfoContent(
-  noteBody: string,
-  summaryOverride: string | undefined
-): string {
-  const manualSummary = summaryOverride?.trim() ?? '';
-  if (manualSummary) {
-    return manualSummary;
+interface SummarySectionRange {
+  startLine: number;
+  endLineExclusive: number;
+}
+
+function normalizeMarkdownNewlines(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
+function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
+  const normalized = normalizeMarkdownNewlines(bodyText);
+  const lines = normalized.split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!SUMMARY_SECTION_HEADING_PATTERN.test(lines[index].trim())) {
+      continue;
+    }
+
+    let cursor = index + 1;
+    while (cursor < lines.length && lines[cursor].trim().length === 0) {
+      cursor += 1;
+    }
+
+    while (cursor < lines.length) {
+      if (MAJOR_HEADING_PATTERN.test(lines[cursor])) {
+        break;
+      }
+      if (lines[cursor].trim().length === 0) {
+        break;
+      }
+      cursor += 1;
+    }
+
+    let endLineExclusive = cursor;
+    if (
+      endLineExclusive < lines.length &&
+      lines[endLineExclusive].trim().length === 0 &&
+      !MAJOR_HEADING_PATTERN.test(lines[endLineExclusive])
+    ) {
+      endLineExclusive += 1;
+    }
+
+    return {
+      startLine: index,
+      endLineExclusive
+    };
   }
 
-  return noteBody;
+  return null;
+}
+
+function splitFrontmatterAndBody(rawContent: string): { frontmatterBlock: string; bodyText: string } {
+  const normalized = normalizeMarkdownNewlines(rawContent);
+  const match = normalized.match(/^(---\s*\n[\s\S]*?\n---)(?:\n([\s\S]*))?$/);
+  if (!match) {
+    return {
+      frontmatterBlock: '',
+      bodyText: normalized
+    };
+  }
+
+  return {
+    frontmatterBlock: `${match[1]}\n`,
+    bodyText: match[2] ?? ''
+  };
+}
+
+export function extractSummarySectionFromBody(bodyText: string): string {
+  const normalized = normalizeMarkdownNewlines(bodyText);
+  const range = findSummarySectionRange(normalized);
+  if (!range) {
+    return '';
+  }
+
+  const lines = normalized.split('\n');
+  return lines
+    .slice(range.startLine + 1, range.endLineExclusive)
+    .join('\n')
+    .trim();
+}
+
+export function stripSummarySectionFromBody(bodyText: string): string {
+  const normalized = normalizeMarkdownNewlines(bodyText);
+  const range = findSummarySectionRange(normalized);
+  if (!range) {
+    return normalized.trim();
+  }
+
+  const lines = normalized.split('\n');
+  const nextLines = [
+    ...lines.slice(0, range.startLine),
+    ...lines.slice(range.endLineExclusive)
+  ];
+
+  return nextLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function resolveNoteSummary(
+  bodyText: string,
+  frontmatterSummary: string | undefined
+): { text: string; source: NoteSummarySource } | null {
+  const sectionSummary = extractSummarySectionFromBody(bodyText);
+  if (sectionSummary) {
+    return {
+      text: sectionSummary,
+      source: 'section'
+    };
+  }
+
+  const fallbackFrontmatterSummary = frontmatterSummary?.trim() ?? '';
+  if (fallbackFrontmatterSummary) {
+    return {
+      text: fallbackFrontmatterSummary,
+      source: 'frontmatter'
+    };
+  }
+
+  return null;
+}
+
+export function upsertSummarySectionInMarkdown(rawContent: string, summaryText: string): string {
+  const summary = summaryText.trim();
+  const { frontmatterBlock, bodyText } = splitFrontmatterAndBody(rawContent);
+  const bodyNormalized = normalizeMarkdownNewlines(bodyText);
+  const lines = bodyNormalized.length > 0 ? bodyNormalized.split('\n') : [];
+  const existingRange = findSummarySectionRange(bodyNormalized);
+
+  const linesWithoutSummary = existingRange
+    ? [
+      ...lines.slice(0, existingRange.startLine),
+      ...lines.slice(existingRange.endLineExclusive)
+    ]
+    : lines;
+
+  const firstH1Index = linesWithoutSummary.findIndex(line => H1_HEADING_PATTERN.test(line));
+  let insertionIndex = firstH1Index >= 0 ? firstH1Index + 1 : 0;
+  while (
+    insertionIndex < linesWithoutSummary.length &&
+    linesWithoutSummary[insertionIndex].trim().length === 0
+  ) {
+    insertionIndex += 1;
+  }
+
+  const summaryLines = [
+    '## Summary',
+    '',
+    ...summary.split('\n').map(line => line.trimEnd()),
+    ''
+  ];
+  if (
+    insertionIndex > 0 &&
+    linesWithoutSummary[insertionIndex - 1].trim().length > 0
+  ) {
+    summaryLines.unshift('');
+  }
+
+  const nextLines = [
+    ...linesWithoutSummary.slice(0, insertionIndex),
+    ...summaryLines,
+    ...linesWithoutSummary.slice(insertionIndex)
+  ];
+
+  const nextBody = nextLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (!frontmatterBlock) {
+    return nextBody;
+  }
+  if (!nextBody) {
+    return frontmatterBlock.trimEnd();
+  }
+
+  return `${frontmatterBlock}${nextBody}`;
+}
+
+export function resolveWorldInfoContent(
+  noteBody: string,
+  frontmatterSummary: string | undefined
+): string {
+  const noteSummary = resolveNoteSummary(noteBody, frontmatterSummary);
+  if (noteSummary) {
+    return noteSummary.text;
+  }
+
+  return stripSummarySectionFromBody(noteBody);
 }

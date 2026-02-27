@@ -112,7 +112,7 @@ export class LorevaultHelpView extends ItemView {
         'Create one note per chapter/scene and keep a stable storyId for the same story thread.',
         'Set chapter numbers where possible so thread order is explicit and deterministic.',
         'Optionally set previousChapter/nextChapter links to enforce explicit sequence edges.',
-        'Add summary in chapter frontmatter for higher-quality chapter memory injection.'
+        'Add a `## Summary` section near the top of chapter notes for higher-quality chapter memory injection.'
       ],
       note: 'Current behavior: both Continue Story and Story Chat inject bounded chapter memory before lorebook retrieval.',
       codeSample: [
@@ -123,8 +123,12 @@ export class LorevaultHelpView extends ItemView {
         'previousChapter: [[story/ch06-the-fallout]]',
         'nextChapter: [[story/ch08-the-reckoning]]',
         'lorebooks: [universe/core, universe/yggdrasil]',
-        'summary: "Short chapter recap for memory injection."',
-        '---'
+        '---',
+        '# Crossing the Spine',
+        '',
+        '## Summary',
+        '',
+        'Short chapter recap for memory injection.'
       ].join('\n')
     });
 
@@ -132,9 +136,9 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Generate world_info or chapter summaries from command palette or the editor context menu.',
         'Context menu shows world_info summary only for lorebook-tagged notes, and chapter summary only for story/chapter frontmatter notes.',
-        'Review modal allows editing before writing to note frontmatter.',
-        'Accepted summaries are written to the note `summary` field.',
-        'Precedence: frontmatter summary -> body/excerpt fallback.'
+        'Review modal allows editing before writing summary updates.',
+        'Accepted summaries are written to a `## Summary` section in the note body.',
+        'Precedence: `## Summary` section -> `frontmatter summary` fallback -> body/excerpt fallback.'
       ]
     });
 

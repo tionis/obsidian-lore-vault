@@ -142,10 +142,10 @@ If you prefer to build the plugin from source:
      - `Generate World Info Summaries (Active Scope)`
      - `Generate Chapter Summaries (Current Story)`
    - In the review modal:
-     - `Write Frontmatter Summary` writes frontmatter `summary`
+     - `Write Summary Section` writes/updates the `## Summary` section in the note body
    - LoreVault uses precedence:
-     - world_info: `frontmatter` -> body
-     - chapter memory: `frontmatter` -> excerpt
+     - world_info: `## Summary` -> `frontmatter summary` (fallback) -> body
+     - chapter memory: `## Summary` -> `frontmatter summary` (fallback) -> excerpt
 
 7. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"

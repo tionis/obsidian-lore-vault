@@ -95,8 +95,9 @@ Key fields:
 Content:
 
 - markdown body (frontmatter stripped)
-- overridden by `summary` when present
-- if `summary` is missing, LoreVault uses the note body
+- overridden by `## Summary` section when present
+- if summary section is missing, LoreVault falls back to frontmatter `summary`
+- if both are missing, LoreVault uses the note body
 
 ## Retrieval Routing
 
@@ -183,7 +184,7 @@ Fixture coverage includes:
 - rag markdown export ordering
 - rag chunking determinism
 - non-English retrieval/metadata compatibility
-- summary precedence behavior (`frontmatter` > fallback body/excerpt)
+- summary precedence behavior (`## Summary` section > `frontmatter` fallback > body/excerpt fallback)
 
 Large-vault profiling command (`npm run profile:large-vault`) provides deterministic synthetic timing baselines for graph build/ranking/query behavior.
 
@@ -322,7 +323,7 @@ Long-form story metadata (new):
 - `nextChapter`: optional links/paths to following chapter notes
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
-Chapter memory uses a rolling summary store (`frontmatter summary` preferred, deterministic excerpt fallback) so repeated generations avoid unnecessary re-parsing.
+Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 
 ## Auto Summary Workflows (Phase 9)
@@ -344,21 +345,23 @@ Review/acceptance flow:
 1. LoreVault reads note body and builds a constrained summary prompt.
 2. Completion provider returns candidate summary.
 3. Review modal lets user edit and choose:
-  - `Write Frontmatter Summary` (frontmatter write)
+  - `Write Summary Section` (writes/updates `## Summary` section)
   - `Cancel`
 
 Storage and determinism:
 
-- accepted summaries are written into note frontmatter (`summary`)
+- accepted summaries are written into note body (`## Summary` section)
 - deterministic output comes from explicit source notes plus deterministic processing/ranking/export order
 
 Precedence:
 
 - world_info export content:
-  - frontmatter `summary`
+  - `## Summary` section
+  - frontmatter `summary` (fallback)
   - note body
 - chapter memory:
-  - frontmatter `summary`
+  - `## Summary` section
+  - frontmatter `summary` (fallback)
   - deterministic excerpt fallback
 
 Settings (LoreVault -> Auto Summaries):

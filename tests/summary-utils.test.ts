@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  extractSummarySectionFromBody,
   normalizeGeneratedSummaryText,
-  sanitizeSummaryModelOutput
+  sanitizeSummaryModelOutput,
+  stripSummarySectionFromBody,
+  upsertSummarySectionInMarkdown
 } from '../src/summary-utils';
 
 test('normalizeGeneratedSummaryText flattens whitespace and enforces max chars', () => {
@@ -34,4 +37,49 @@ test('sanitizeSummaryModelOutput removes reasoning preambles and think blocks', 
     sanitizedThink,
     'Rowan is a veteran captain who fortifies the old tower and coordinates city defense.'
   );
+});
+
+test('summary section helpers extract and strip deterministic summary blocks', () => {
+  const body = [
+    '# Character',
+    '',
+    '## Summary',
+    '',
+    'Baalthasar is a dark elven archmage.',
+    '',
+    '## Details',
+    '',
+    'Full details body.'
+  ].join('\n');
+
+  assert.equal(
+    extractSummarySectionFromBody(body),
+    'Baalthasar is a dark elven archmage.'
+  );
+  assert.equal(
+    stripSummarySectionFromBody(body),
+    ['# Character', '', '## Details', '', 'Full details body.'].join('\n')
+  );
+});
+
+test('upsertSummarySectionInMarkdown places summary after first h1 and replaces existing summary section', () => {
+  const withH1 = [
+    '---',
+    'title: Character',
+    '---',
+    '# Baalthasar',
+    '',
+    'Intro paragraph.',
+    '',
+    '## History',
+    '',
+    'Old history.'
+  ].join('\n');
+
+  const inserted = upsertSummarySectionInMarkdown(withH1, 'Canonical compact summary.');
+  assert.ok(inserted.includes('# Baalthasar\n\n## Summary\n\nCanonical compact summary.\n\nIntro paragraph.'));
+
+  const replaced = upsertSummarySectionInMarkdown(inserted, 'Updated summary text.');
+  assert.ok(!replaced.includes('Canonical compact summary.'));
+  assert.ok(replaced.includes('## Summary\n\nUpdated summary text.'));
 });

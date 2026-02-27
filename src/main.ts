@@ -70,7 +70,10 @@ import {
 import { normalizeLinkTarget } from './link-target-index';
 import {
   GeneratedSummaryMode,
-  normalizeGeneratedSummaryText
+  normalizeGeneratedSummaryText,
+  resolveNoteSummary,
+  stripSummarySectionFromBody,
+  upsertSummarySectionInMarkdown
 } from './summary-utils';
 import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
@@ -1012,7 +1015,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     mode: GeneratedSummaryMode
   ): Promise<{
     normalizedSummary: string;
-    existingFrontmatterSummary: string;
+    existingSummary: string;
   }> {
     if (!this.settings.completion.enabled) {
       throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
@@ -1022,16 +1025,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const raw = await this.app.vault.cachedRead(file);
-    const bodyText = stripFrontmatter(raw).trim();
+    const bodyWithSummary = stripFrontmatter(raw).trim();
+    const bodyText = stripSummarySectionFromBody(bodyWithSummary);
     if (!bodyText) {
       throw new Error('Note body is empty.');
     }
 
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-    const existingFrontmatterSummary = String(
-      getFrontmatterValue(frontmatter, 'summary') ?? ''
-    ).trim();
+    const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary')) ?? '';
+    const existingSummary = resolveNoteSummary(bodyWithSummary, frontmatterSummary);
 
     const prompt = this.buildSummaryPrompt(mode, file.basename, bodyText);
     let usageReport: CompletionUsageReport | null = null;
@@ -1062,7 +1065,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     return {
       normalizedSummary,
-      existingFrontmatterSummary
+      existingSummary: existingSummary?.text ?? ''
     };
   }
 
@@ -1070,7 +1073,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     mode: GeneratedSummaryMode,
     file: TFile,
     proposedSummary: string,
-    existingFrontmatterSummary: string
+    existingSummary: string
   ): Promise<SummaryReviewResult> {
     return new Promise(resolve => {
       const modal = new SummaryReviewModal(
@@ -1078,56 +1081,16 @@ export default class LoreBookConverterPlugin extends Plugin {
         mode,
         file.path,
         proposedSummary,
-        existingFrontmatterSummary,
+        existingSummary,
         result => resolve(result)
       );
       modal.open();
     });
   }
 
-  private upsertSummaryFrontmatter(rawContent: string, summary: string): string {
-    const escapedSummary = summary
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"');
-    const summaryLine = `summary: "${escapedSummary}"`;
-    const lines = rawContent.split(/\r?\n/);
-
-    if (lines.length > 0 && lines[0].trim() === '---') {
-      let endIndex = -1;
-      for (let index = 1; index < lines.length; index += 1) {
-        if (lines[index].trim() === '---') {
-          endIndex = index;
-          break;
-        }
-      }
-      if (endIndex > 0) {
-        let replaced = false;
-        for (let index = 1; index < endIndex; index += 1) {
-          if (/^\s*summary\s*:/.test(lines[index])) {
-            lines[index] = summaryLine;
-            replaced = true;
-            break;
-          }
-        }
-        if (!replaced) {
-          lines.splice(endIndex, 0, summaryLine);
-        }
-        return lines.join('\n');
-      }
-    }
-
-    const body = rawContent.trimStart();
-    return [
-      '---',
-      summaryLine,
-      '---',
-      body
-    ].join('\n');
-  }
-
-  private async applySummaryToNoteFrontmatter(file: TFile, summary: string): Promise<void> {
+  private async applySummaryToNoteSection(file: TFile, summary: string): Promise<void> {
     const raw = await this.app.vault.cachedRead(file);
-    const next = this.upsertSummaryFrontmatter(raw, summary);
+    const next = upsertSummarySectionInMarkdown(raw, summary);
     await this.app.vault.modify(file, next);
   }
 
@@ -1140,13 +1103,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       mode,
       file,
       candidate.normalizedSummary,
-      candidate.existingFrontmatterSummary
+      candidate.existingSummary
     );
     if (review.action === 'cancel') {
       return 'cancelled';
     }
 
-    await this.applySummaryToNoteFrontmatter(file, review.summaryText);
+    await this.applySummaryToNoteSection(file, review.summaryText);
 
     this.liveContextIndex.requestFullRefresh();
     this.chapterSummaryStore.invalidatePath(file.path);
@@ -1183,10 +1146,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     await this.generateSummaryForNote(activeFile, mode);
   }
 
-  private hasFrontmatterSummary(file: TFile): boolean {
+  private async hasPersistedSummary(file: TFile): Promise<boolean> {
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-    return Boolean(asString(getFrontmatterValue(frontmatter, 'summary'))?.trim());
+    const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary'));
+    const raw = await this.app.vault.cachedRead(file);
+    const bodyWithSummary = stripFrontmatter(raw).trim();
+    return Boolean(resolveNoteSummary(bodyWithSummary, frontmatterSummary));
   }
 
   private async generateWorldInfoSummariesForActiveScope(): Promise<void> {
@@ -1204,12 +1170,19 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const targets = summary.notes
+    const candidateFiles = summary.notes
       .filter(note => note.reason === 'included' && note.includeWorldInfo)
       .map(note => this.app.vault.getAbstractFileByPath(note.path))
       .filter((file): file is TFile => file instanceof TFile)
-      .filter(file => !this.hasFrontmatterSummary(file))
       .sort((left, right) => left.path.localeCompare(right.path));
+
+    const targets: TFile[] = [];
+    for (const file of candidateFiles) {
+      const hasSummary = await this.hasPersistedSummary(file);
+      if (!hasSummary) {
+        targets.push(file);
+      }
+    }
 
     if (targets.length === 0) {
       new Notice('No world_info notes without summary found in the active scope.');
@@ -1246,11 +1219,18 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const targets = resolution.orderedPaths
+    const candidateFiles = resolution.orderedPaths
       .map(pathValue => this.app.vault.getAbstractFileByPath(pathValue))
       .filter((file): file is TFile => file instanceof TFile)
-      .filter(file => !this.hasFrontmatterSummary(file))
       .sort((left, right) => left.path.localeCompare(right.path));
+
+    const targets: TFile[] = [];
+    for (const file of candidateFiles) {
+      const hasSummary = await this.hasPersistedSummary(file);
+      if (!hasSummary) {
+        targets.push(file);
+      }
+    }
 
     if (targets.length === 0) {
       new Notice('No chapter notes without summary found for this story thread.');

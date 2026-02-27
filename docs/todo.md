@@ -13,6 +13,7 @@ Reference design: `docs/planning.md`.
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
+- Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).
 - Current priority is refining structured-merge conflict UX.
 
 ## Active Execution Order
@@ -23,7 +24,7 @@ Reference design: `docs/planning.md`.
 
 - [x] Phase 0: Rename and positioning.
 - [x] Phase 1: Tag-driven lorebook discovery.
-- [x] Phase 2: Dual section build (`world_info` + `rag`).
+- [x] Phase 2: Canonical lore-entry build with downstream projections.
 - [x] Phase 3: Deterministic export outputs.
 - [x] Phase 4: Lorebooks manager UI.
 - [x] Phase 5: Live query layer + continuation command.
@@ -148,6 +149,16 @@ Reference design: `docs/planning.md`.
 - [x] Add auto-accept setting (default off) for direct apply.
 - [x] Add settings-backed prompt collection with JSON editor + load-defaults action.
 - [x] Add tests for deterministic diff preview generation.
+
+## Phase 17: Unified Retrieval Model
+
+- [x] Remove keyword-based hard split between `world_info` and `rag` from core routing.
+- [x] Include scoped notes as unified lore entries by default (`retrieval: none` remains hard exclusion).
+- [x] Keep fallback retrieval (`off|auto|always`) as a secondary selector over the same canonical entries.
+- [x] Merge fallback-selected entries into the injected `world_info` context list.
+- [x] Add keyword-coverage diagnostics (missing explicit keyword counts/list) to routing debug and manager views.
+- [x] Update query simulation and generation UI labels from `rag` to `fallback` where relevant.
+- [x] Add/refresh tests covering unified routing and fallback-to-world_info merge behavior.
 
 ## Default Decisions (2026-02-27)
 

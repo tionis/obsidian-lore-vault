@@ -389,7 +389,7 @@ function renderWorldInfoSection(
     : 'Matched: (graph/constant/order)';
   return [
     `### ${entry.comment}`,
-    `Keys: ${entry.key.join(', ')}`,
+    `Keys: ${entry.key.join(', ') || '(none)'}`,
     `Tier: ${contentTier}`,
     keywordSuffix,
     '',
@@ -819,31 +819,13 @@ function scoreRagDocuments(
   return scored.sort(sortRagByScore);
 }
 
-function trimRagContent(content: string): string {
-  const cleaned = content.trim();
-  if (cleaned.length <= 1200) {
-    return cleaned;
-  }
-  return `${cleaned.slice(0, 1200).trimEnd()}\n...`;
-}
-
-function renderRagSection(document: SelectedRagDocument): string {
-  const matched = document.matchedTerms.length > 0
-    ? `Matched terms: ${document.matchedTerms.join(', ')}`
-    : 'Matched terms: -';
-  return [
-    `### ${document.document.title}`,
-    `Source: \`${document.document.path}\``,
-    matched,
-    '',
-    trimRagContent(document.document.content)
-  ].join('\n');
-}
-
 export function assembleScopeContext(
   pack: ScopeContextPack,
   options: ContextQueryOptions
 ): AssembledContext {
+  const worldInfoByUid = new Map<number, LoreBookEntry>(
+    pack.worldInfoEntries.map(entry => [entry.uid, entry])
+  );
   const tokenBudget = Math.max(128, Math.floor(options.tokenBudget));
   const worldInfoRatio = Math.min(0.95, Math.max(0.05, options.worldInfoBudgetRatio ?? 0.7));
   const worldInfoBudget = Math.max(0, Math.floor(tokenBudget * worldInfoRatio));
@@ -1230,19 +1212,57 @@ export function assembleScopeContext(
   const selectedRag: SelectedRagDocument[] = [];
   let usedRagTokens = 0;
   if (ragEnabled && ragBudget > 0) {
+    const selectedWorldInfoUids = new Set(selectedWorldInfo.map(item => item.entry.uid));
     for (const candidate of ragCandidates) {
       if (selectedRag.length >= maxRagDocuments) {
         break;
       }
-      const section = renderRagSection(candidate);
+      const fallbackEntry = worldInfoByUid.get(candidate.document.uid);
+      if (!fallbackEntry || selectedWorldInfoUids.has(fallbackEntry.uid)) {
+        continue;
+      }
+
+      const fallbackContent = computeContentTierContent(fallbackEntry.content, 'short');
+      const section = renderWorldInfoSection(
+        fallbackEntry,
+        [],
+        'short',
+        fallbackContent
+      );
       const sectionTokens = estimateTokens(section);
       if (usedRagTokens + sectionTokens > ragBudget) {
         continue;
       }
       selectedRag.push(candidate);
       usedRagTokens += sectionTokens;
+      selectedWorldInfoUids.add(fallbackEntry.uid);
+      const fallbackReasonSuffix = candidate.matchedTerms.length > 0
+        ? `terms: ${candidate.matchedTerms.join(', ')}`
+        : 'semantic boost';
+      selectedWorldInfo.push({
+        entry: fallbackEntry,
+        score: candidate.score,
+        matchedKeywords: [],
+        reasons: [
+          `fallback:entry retrieval (${fallbackReasonSuffix}, +${formatScore(candidate.score)})`
+        ],
+        seedUid: null,
+        pathUids: [],
+        hopDistance: Number.MAX_SAFE_INTEGER,
+        scoreBreakdown: {
+          seed: 0,
+          graph: 0,
+          constant: 0,
+          order: 0,
+          total: candidate.score
+        },
+        contentTier: 'short',
+        includedContent: fallbackContent
+      });
     }
   }
+
+  selectedWorldInfo.sort(sortWorldInfoByScore);
 
   const worldInfoSections = selectedWorldInfo.map(entry => renderWorldInfoSection(
     entry.entry,
@@ -1250,18 +1270,15 @@ export function assembleScopeContext(
     entry.contentTier,
     entry.includedContent
   ));
-  const ragSections = selectedRag.map(renderRagSection);
   const scopeLabel = normalizeScope(pack.scope) || '(all)';
   const markdown = [
     `## LoreVault Context`,
     `Scope: \`${scopeLabel}\``,
     `Query: ${options.queryText.trim() || '(empty)'}`,
+    `Fallback retrieval: ${selectedRag.length} entries (${ragFallbackPolicy}, ${ragEnabled ? 'enabled' : 'disabled'})`,
     '',
     '### world_info',
-    worldInfoSections.length > 0 ? worldInfoSections.join('\n\n---\n\n') : '_No matching world_info entries._',
-    '',
-    '### rag',
-    ragSections.length > 0 ? ragSections.join('\n\n---\n\n') : '_No matching rag documents._'
+    worldInfoSections.length > 0 ? worldInfoSections.join('\n\n---\n\n') : '_No matching world_info entries._'
   ].join('\n');
 
   return {
@@ -1275,7 +1292,7 @@ export function assembleScopeContext(
     explainability: {
       seeds: scoredWorldInfo.seeds.map(seed => ({
         uid: seed.uid,
-        comment: pack.worldInfoEntries.find(entry => entry.uid === seed.uid)?.comment ?? `UID ${seed.uid}`,
+        comment: worldInfoByUid.get(seed.uid)?.comment ?? `UID ${seed.uid}`,
         score: seed.score,
         matchedKeywords: [...seed.matchedKeywords],
         reasons: [...seed.reasons]

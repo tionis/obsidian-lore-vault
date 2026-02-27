@@ -1073,14 +1073,14 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         new Notice('Loaded default text command prompt templates.');
       }));
 
-    containerEl.createEl('h3', { text: 'Retrieval (Graph + RAG Fallback)' });
+    containerEl.createEl('h3', { text: 'Retrieval (Graph + Fallback Entries)' });
 
     new Setting(containerEl)
-      .setName('RAG Fallback Policy')
-      .setDesc('Control when RAG docs are included alongside graph-selected world_info.')
+      .setName('Fallback Retrieval Policy')
+      .setDesc('Control when embedding/lexical fallback entries are included alongside graph-selected world_info.')
       .addDropdown(dropdown => dropdown
         .addOptions({
-          'off': 'Off (world_info only)',
+          'off': 'Off (graph/keyword only)',
           'auto': 'Auto (fallback on weak/no seed)',
           'always': 'Always (include when matched)'
         })
@@ -1095,8 +1095,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('RAG Auto Fallback Seed Threshold')
-      .setDesc('In auto mode, fallback to RAG when top seed score is below this threshold.')
+      .setName('Auto Fallback Seed Threshold')
+      .setDesc('In auto mode, fallback retrieval activates when top seed score is below this threshold.')
       .addText(text => text
         .setValue(this.plugin.settings.retrieval.ragFallbackSeedScoreThreshold.toString())
         .onChange(async (value) => {

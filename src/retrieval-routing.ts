@@ -36,25 +36,17 @@ export function resolveRetrievalTargets(mode: RetrievalMode, hasKeywords: boolea
   includeWorldInfo: boolean;
   includeRag: boolean;
 } {
+  void hasKeywords;
+
   if (mode === 'none') {
     return { includeWorldInfo: false, includeRag: false };
   }
 
-  if (mode === 'world_info') {
-    return { includeWorldInfo: true, includeRag: false };
-  }
-
-  if (mode === 'rag') {
-    return { includeWorldInfo: false, includeRag: true };
-  }
-
-  if (mode === 'both') {
-    return { includeWorldInfo: true, includeRag: true };
-  }
-
-  // auto mode
+  // Unified model: canonical lore entries are always included for world_info
+  // retrieval and for downstream projection exports. `retrieval: none` remains
+  // the only hard exclusion mode.
   return {
-    includeWorldInfo: hasKeywords,
-    includeRag: !hasKeywords
+    includeWorldInfo: true,
+    includeRag: true
   };
 }

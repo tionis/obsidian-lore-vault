@@ -93,8 +93,8 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
       createWorldInfoEntry(3, ['Background'], 'Generic context.', 900, { constant: true })
     ],
     ragDocuments: [
-      createRagDocument(10, 'Aurelia Chronicle', 'notes/aurelia.md', 'Aurelia appears in chapter one.'),
-      createRagDocument(11, 'Tree Notes', 'notes/yggdrasil.md', 'Yggdrasil roots connect many realms.')
+      createRagDocument(1, 'Aurelia Chronicle', 'notes/aurelia.md', 'Aurelia appears in chapter one.'),
+      createRagDocument(2, 'Tree Notes', 'notes/yggdrasil.md', 'Yggdrasil roots connect many realms.')
     ],
     ragChunks: [],
     ragChunkEmbeddings: []
@@ -109,8 +109,7 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
   assert.equal(context.scope, 'universe');
   assert.equal(context.worldInfo[0].entry.uid, 1);
   assert.equal(context.worldInfo[1].entry.uid, 2);
-  assert.equal(context.rag[0].document.uid, 10);
-  assert.equal(context.rag[1].document.uid, 11);
+  assert.equal(context.rag.length, 0);
   assert.ok(context.worldInfo[0].reasons.length > 0);
   assert.ok(
     context.worldInfo[0].contentTier === 'short' ||
@@ -119,7 +118,7 @@ test('assembleScopeContext selects deterministic world_info and rag matches', ()
     context.worldInfo[0].contentTier === 'full_body'
   );
   assert.ok(context.markdown.includes('### world_info'));
-  assert.ok(context.markdown.includes('### rag'));
+  assert.ok(context.markdown.includes('Fallback retrieval:'));
 });
 
 test('assembleScopeContext enforces token budget caps', () => {
@@ -251,6 +250,34 @@ test('assembleScopeContext keeps auto fallback deterministic when seed confidenc
     first.rag.map(item => item.score),
     second.rag.map(item => item.score)
   );
+});
+
+test('assembleScopeContext injects fallback matches into unified world_info list when uid matches', () => {
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(1, ['Aurelia'], 'Aurelia details.', 120),
+      createWorldInfoEntry(2, [], 'Arcstone witness timeline and records.', 0, { comment: 'Archive Entry' })
+    ],
+    ragDocuments: [
+      createRagDocument(2, 'Arcstone Ledger', 'notes/arcstone.md', 'Arcstone witness timeline and records.')
+    ],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const context = assembleScopeContext(pack, {
+    queryText: 'moonfall witness logs',
+    tokenBudget: 900,
+    ragFallbackPolicy: 'always'
+  });
+
+  const selectedUids = context.worldInfo.map(item => item.entry.uid);
+  assert.ok(selectedUids.includes(2));
+  assert.ok(context.rag.some(item => item.document.uid === 2));
+  assert.ok(context.markdown.includes('### Archive Entry'));
+  assert.ok(!context.markdown.includes('### rag'));
 });
 
 test('assembleScopeContext supports non-English keyword tokenization', () => {

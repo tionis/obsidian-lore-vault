@@ -1404,7 +1404,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     if (useLorebookContext) {
       layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${usedContextTokens} tokens`);
-      layerTrace.push(`fallback_rag: ${totalRagCount} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} scopes enabled)`);
+      layerTrace.push(`fallback_entries: ${totalRagCount} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} scopes enabled)`);
       if (toolContextTokens > 0 || toolContextLayerTrace.length > 0) {
         layerTrace.push(`tool_hooks: ${toolContextItems.length} entries, ~${toolContextTokens} tokens`);
         layerTrace.push(...toolContextLayerTrace);
@@ -2778,7 +2778,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     editor.replaceRange(nextText, from, to);
     if (selection.includeLorebookContext) {
       new Notice(
-        `Applied text command (${scopeLabels.join(', ') || '(all)'} | world_info ${worldInfoCount}, rag ${ragCount}).`
+        `Applied text command (${scopeLabels.join(', ') || '(all)'} | world_info ${worldInfoCount}, fallback ${ragCount}).`
       );
     } else {
       new Notice('Applied text command edit.');
@@ -2789,7 +2789,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         [
           `text command context`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
-          `rag: ${ragDetails.join(', ') || '(none)'}`
+          `fallback: ${ragDetails.join(', ') || '(none)'}`
         ].join('\n')
       );
     }
@@ -2980,7 +2980,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryTokens} tokens`,
         ...chapterMemoryLayerTrace,
         `graph_memory(world_info): ${totalWorldInfo} entries, ~${usedContextTokens} tokens`,
-        `fallback_rag: ${totalRag} docs, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
+        `fallback_entries: ${totalRag} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
         `tool_hooks: ${toolContextItems.length} entries, ~${toolContextTokens} tokens`,
         ...toolContextLayerTrace
       ];
@@ -3013,7 +3013,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
           `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
-          `rag: ${ragDetails.join(', ') || '(none)'}`,
+          `fallback: ${ragDetails.join(', ') || '(none)'}`,
           `tool_hooks: ${toolContextItems.join(', ') || '(none)'}`,
           `layers: ${contextLayerTrace.join(' | ')}`
         ].join('\n')
@@ -3115,7 +3115,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         lastError: ''
       });
       new Notice(
-        `Inserted continuation for ${selectedScopeLabels.length} scope(s) (${totalWorldInfo} world_info, ${totalRag} rag, ~${generatedTokens} output tokens).`
+        `Inserted continuation for ${selectedScopeLabels.length} scope(s) (${totalWorldInfo} world_info, ${totalRag} fallback, ~${generatedTokens} output tokens).`
       );
       this.setGenerationStatus('idle', 'idle');
     } catch (error) {
@@ -3177,7 +3177,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       for (const assignment of scopeAssignments) {
         const { scope, paths } = assignment;
         const progress = new ProgressBar(
-          files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + rag
+          files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + fallback markdown
           `Building LoreVault scope: ${scope || '(all)'}`
         );
 
@@ -3215,12 +3215,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         );
         progress.update();
 
-        progress.setStatus(`Scope ${scope || '(all)'}: exporting RAG markdown...`);
+        progress.setStatus(`Scope ${scope || '(all)'}: exporting fallback markdown...`);
         await ragExporter.exportRagMarkdown(ragDocuments, paths.ragPath, scope || '(all)');
         progress.update();
 
         progress.success(
-          `Scope ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} rag docs.`
+          `Scope ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} fallback docs.`
         );
       }
 

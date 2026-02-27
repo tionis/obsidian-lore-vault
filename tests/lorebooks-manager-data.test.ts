@@ -171,6 +171,7 @@ interface MixedRoutingFixture {
     includedNotes: number;
     worldInfoEntries: number;
     ragDocuments: number;
+    keywordlessEntries: number;
   };
 }
 
@@ -199,22 +200,26 @@ test('buildScopeSummaries routes notes to world_info and rag with overrides', ()
   const summary = summaries[0];
   assert.equal(summary.scope, 'universe');
   assert.equal(summary.includedNotes, 4);
-  assert.equal(summary.worldInfoEntries, 3);
-  assert.equal(summary.ragDocuments, 1);
+  assert.equal(summary.worldInfoEntries, 4);
+  assert.equal(summary.ragDocuments, 4);
+  assert.equal(summary.keywordlessEntries, 2);
 
   const byPath = new Map(summary.notes.map(entry => [entry.path, entry]));
 
   assert.equal(byPath.get('a.md')?.reason, 'included');
   assert.equal(byPath.get('a.md')?.includeWorldInfo, true);
-  assert.equal(byPath.get('a.md')?.includeRag, false);
+  assert.equal(byPath.get('a.md')?.includeRag, true);
+  assert.equal(byPath.get('a.md')?.keywordCount, 1);
 
   assert.equal(byPath.get('b.md')?.reason, 'included');
-  assert.equal(byPath.get('b.md')?.includeWorldInfo, false);
+  assert.equal(byPath.get('b.md')?.includeWorldInfo, true);
   assert.equal(byPath.get('b.md')?.includeRag, true);
+  assert.equal(byPath.get('b.md')?.keywordCount, 0);
 
   assert.equal(byPath.get('d.md')?.reason, 'retrieval_disabled');
   assert.equal(byPath.get('e.md')?.reason, 'included');
   assert.equal(byPath.get('e.md')?.includeWorldInfo, true);
+  assert.equal(byPath.get('e.md')?.includeRag, true);
   assert.equal(byPath.get('f.md')?.reason, 'excluded_by_frontmatter');
 });
 
@@ -264,6 +269,7 @@ test('buildScopeSummaries follows fixture-defined mixed routing and cascade beha
   assert.equal(summary.includedNotes, fixture.expectedSummary.includedNotes);
   assert.equal(summary.worldInfoEntries, fixture.expectedSummary.worldInfoEntries);
   assert.equal(summary.ragDocuments, fixture.expectedSummary.ragDocuments);
+  assert.equal(summary.keywordlessEntries, fixture.expectedSummary.keywordlessEntries);
 
   const byPath = new Map(summary.notes.map(entry => [entry.path, entry]));
   for (const item of fixture.notes) {

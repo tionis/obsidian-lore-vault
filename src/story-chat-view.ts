@@ -488,7 +488,7 @@ export class StoryChatView extends ItemView {
       `Context window ${formatTokenValue(telemetry.contextWindowTokens)} | input ${formatTokenValue(telemetry.maxInputTokens)} | used ${formatTokenValue(telemetry.contextUsedTokens)} | remaining ${formatTokenValue(telemetry.contextRemainingTokens)}`
     );
     this.generationOutputEl.setText(
-      `Output ~${formatTokenValue(telemetry.generatedTokens)} / ${formatTokenValue(telemetry.maxOutputTokens)} (${outputPct}%) | world_info ${formatTokenValue(telemetry.worldInfoCount)} | rag ${formatTokenValue(telemetry.ragCount)}`
+      `Output ~${formatTokenValue(telemetry.generatedTokens)} / ${formatTokenValue(telemetry.maxOutputTokens)} (${outputPct}%) | world_info ${formatTokenValue(telemetry.worldInfoCount)} | fallback ${formatTokenValue(telemetry.ragCount)}`
     );
   }
 
@@ -713,7 +713,7 @@ export class StoryChatView extends ItemView {
 
     const details = container.createEl('details', { cls: 'lorevault-chat-context-meta' });
     details.createEl('summary', {
-      text: `Injected context · scopes ${version.contextMeta.scopes.join(', ') || '(none)'} · notes ${version.contextMeta.specificNotePaths.length} · world_info ${version.contextMeta.worldInfoCount} · rag ${version.contextMeta.ragCount}`
+      text: `Injected context · scopes ${version.contextMeta.scopes.join(', ') || '(none)'} · notes ${version.contextMeta.specificNotePaths.length} · world_info ${version.contextMeta.worldInfoCount} · fallback ${version.contextMeta.ragCount}`
     });
     details.createEl('p', {
       text: `Tokens: ${version.contextMeta.contextTokens} | lorebook: ${version.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${version.contextMeta.usedManualContext ? 'on' : 'off'} | specific-notes: ${version.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
@@ -732,7 +732,7 @@ export class StoryChatView extends ItemView {
       text: `world_info: ${version.contextMeta.worldInfoItems.join(', ') || '(none)'}`
     });
     details.createEl('p', {
-      text: `rag: ${version.contextMeta.ragItems.join(', ') || '(none)'}`
+      text: `fallback: ${version.contextMeta.ragItems.join(', ') || '(none)'}`
     });
     details.createEl('p', {
       text: `layer trace: ${(version.contextMeta.layerTrace ?? []).join(' | ') || '(none)'}`

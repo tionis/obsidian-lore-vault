@@ -91,7 +91,7 @@ export class LorebooksManagerView extends ItemView {
     header.createEl('h3', { text: `Scope: ${formatScopeLabel(summary.scope)}` });
 
     const stats = card.createEl('p', {
-      text: `Included Notes: ${summary.includedNotes} | world_info: ${summary.worldInfoEntries} | rag: ${summary.ragDocuments}`
+      text: `Included Notes: ${summary.includedNotes} | entries: ${summary.worldInfoEntries} | missing keywords: ${summary.keywordlessEntries}`
     });
     stats.addClass('lorevault-manager-stats');
 
@@ -158,7 +158,7 @@ export class LorebooksManagerView extends ItemView {
 
     card.createEl('p', {
       cls: 'lorevault-manager-generation-stats',
-      text: `Output: ~${formatTokenValue(telemetry.generatedTokens)} / ${formatTokenValue(telemetry.maxOutputTokens)} | world_info ${formatTokenValue(telemetry.worldInfoCount)} | rag ${formatTokenValue(telemetry.ragCount)}`
+      text: `Output: ~${formatTokenValue(telemetry.generatedTokens)} / ${formatTokenValue(telemetry.maxOutputTokens)} | world_info ${formatTokenValue(telemetry.worldInfoCount)} | fallback ${formatTokenValue(telemetry.ragCount)}`
     });
 
     if (telemetry.lastError) {
@@ -182,7 +182,7 @@ export class LorebooksManagerView extends ItemView {
       }
     }
 
-    const ragHeading = details.createEl('h4', { text: 'rag' });
+    const ragHeading = details.createEl('h4', { text: 'fallback entries' });
     ragHeading.addClass('lorevault-manager-subheading');
     if (telemetry.ragItems.length === 0) {
       details.createEl('p', { text: '(none)' });

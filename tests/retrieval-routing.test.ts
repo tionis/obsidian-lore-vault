@@ -17,10 +17,10 @@ test('parseRetrievalMode supports aliases and normalization', () => {
 test('resolveRetrievalTargets applies auto routing by keyword presence', () => {
   assert.deepEqual(resolveRetrievalTargets('auto', true), {
     includeWorldInfo: true,
-    includeRag: false
+    includeRag: true
   });
   assert.deepEqual(resolveRetrievalTargets('auto', false), {
-    includeWorldInfo: false,
+    includeWorldInfo: true,
     includeRag: true
   });
 });
@@ -28,10 +28,10 @@ test('resolveRetrievalTargets applies auto routing by keyword presence', () => {
 test('resolveRetrievalTargets respects explicit routing modes', () => {
   assert.deepEqual(resolveRetrievalTargets('world_info', false), {
     includeWorldInfo: true,
-    includeRag: false
+    includeRag: true
   });
   assert.deepEqual(resolveRetrievalTargets('rag', true), {
-    includeWorldInfo: false,
+    includeWorldInfo: true,
     includeRag: true
   });
   assert.deepEqual(resolveRetrievalTargets('both', false), {

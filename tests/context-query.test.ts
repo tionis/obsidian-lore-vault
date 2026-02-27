@@ -323,4 +323,48 @@ test('assembleScopeContext lifts high-score entries to query-focused body excerp
   assert.equal(baalthasar?.contentTier, 'full_body');
   assert.ok((baalthasar?.includedContent ?? '').includes('Siege of Ashglass'));
   assert.ok(context.explainability.worldInfoBudget.bodyLiftedUids.includes(1));
+  assert.equal(context.explainability.worldInfoBudget.bodyLift.enabled, true);
+  assert.ok(context.explainability.worldInfoBudget.bodyLift.decisions.length > 0);
+  assert.equal(
+    context.explainability.worldInfoBudget.bodyLift.decisions.find(item => item.uid === 1)?.status,
+    'applied'
+  );
+});
+
+test('assembleScopeContext supports disabling body lift via query options', () => {
+  const pack: ScopeContextPack = {
+    scope: 'universe',
+    builtAt: 1,
+    worldInfoEntries: [
+      createWorldInfoEntry(
+        1,
+        ['Baalthasar'],
+        'Baalthasar is a dark elven archmage and strategist.',
+        900,
+        { comment: 'Baalthasar' }
+      )
+    ],
+    worldInfoBodyByUid: {
+      1: 'At the Siege of Ashglass, Baalthasar shattered the imperial vanguard.'
+    },
+    ragDocuments: [],
+    ragChunks: [],
+    ragChunkEmbeddings: []
+  };
+
+  const context = assembleScopeContext(pack, {
+    queryText: 'Baalthasar and the Siege of Ashglass',
+    tokenBudget: 2200,
+    ragFallbackPolicy: 'off',
+    worldInfoBodyLiftEnabled: false
+  });
+
+  const baalthasar = context.worldInfo.find(item => item.entry.uid === 1);
+  assert.ok(baalthasar);
+  assert.notEqual(baalthasar?.contentTier, 'full_body');
+  assert.equal(context.explainability.worldInfoBudget.bodyLift.enabled, false);
+  assert.equal(
+    context.explainability.worldInfoBudget.bodyLift.decisions.find(item => item.uid === 1)?.status,
+    'skipped_disabled'
+  );
 });

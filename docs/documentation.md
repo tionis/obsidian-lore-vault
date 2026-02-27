@@ -516,11 +516,17 @@ Capabilities:
   - `maxWorldInfoEntries`
   - `maxRagDocuments`
   - `worldInfoBudgetRatio`
+  - `worldInfoBodyLiftEnabled`
+  - `worldInfoBodyLiftMaxEntries`
+  - `worldInfoBodyLiftTokenCapPerEntry`
+  - `worldInfoBodyLiftMinScore`
+  - `worldInfoBodyLiftMaxHopDistance`
 - per-scope selected `world_info` diagnostics:
   - scores
   - graph path
   - reasons
-  - content tiers
+  - content tiers (including `full_body` lifts)
+  - body-lift decision trace (applied/skipped reason per entry)
 - per-scope selected `rag` diagnostics:
   - score
   - matched terms

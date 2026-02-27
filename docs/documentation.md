@@ -341,6 +341,7 @@ Query behavior:
   - `rag` (secondary/fallback-capable):
     - term overlap in title/path/content
     - optional semantic boost from embeddings
+    - default fallback policy is `auto` (used when seed confidence is low or no `world_info` matches are selected)
 - completion:
   - builds a prompt from scope context + recent story window
   - calls configured completion provider with streaming enabled

@@ -32,6 +32,16 @@
       "expectedInclude": true
     },
     {
+      "name": "cascade mode includes parent scope",
+      "tags": [
+        "#lorebook/universe"
+      ],
+      "activeScope": "universe/yggdrasil",
+      "membershipMode": "cascade",
+      "includeUntagged": false,
+      "expectedInclude": true
+    },
+    {
       "name": "empty active scope includes any lorebook-tagged note",
       "tags": [
         "#lorebook/universe"

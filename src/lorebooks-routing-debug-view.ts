@@ -1,6 +1,6 @@
-import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
-import { AssembledContext, ScopeContextPack } from './context-query';
+import { ScopeContextPack } from './context-query';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, ScopeSummary } from './lorebooks-manager-data';
 import { normalizeScope } from './lorebook-scoping';
@@ -65,11 +65,6 @@ function estimateTokens(text: string): number {
 export class LorebooksRoutingDebugView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedScope: string | null = null;
-  private queryText = '';
-  private queryTokenBudget = 1024;
-  private queryResult: AssembledContext | null = null;
-  private queryError = '';
-  private queryInFlight = false;
   private renderVersion = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
@@ -104,8 +99,6 @@ export class LorebooksRoutingDebugView extends ItemView {
   setScope(scope: string | null): void {
     const normalized = normalizeScope(scope ?? '');
     this.selectedScope = normalized || null;
-    this.queryResult = null;
-    this.queryError = '';
     void this.render();
   }
 
@@ -144,16 +137,18 @@ export class LorebooksRoutingDebugView extends ItemView {
 
     scopeSelect.addEventListener('change', () => {
       this.selectedScope = normalizeScope(scopeSelect.value) || null;
-      this.queryResult = null;
-      this.queryError = '';
       void this.render();
     });
 
     const refreshButton = toolbar.createEl('button', { text: 'Refresh' });
     refreshButton.addEventListener('click', () => {
-      this.queryResult = null;
-      this.queryError = '';
       void this.render();
+    });
+
+    const simulationButton = toolbar.createEl('button', { text: 'Open Query Simulation' });
+    simulationButton.addEventListener('click', () => {
+      const selectedScope = this.selectedScope ? [this.selectedScope] : [];
+      void this.plugin.openQuerySimulationView(selectedScope);
     });
 
     return selectedSummary;
@@ -224,109 +219,6 @@ export class LorebooksRoutingDebugView extends ItemView {
     }
   }
 
-  private renderQuerySimulator(container: HTMLElement, scope: string): void {
-    const section = container.createDiv({ cls: 'lorevault-routing-section' });
-    section.createEl('h3', { text: 'Query Simulation' });
-
-    const input = section.createEl('textarea', { cls: 'lorevault-routing-query-input' });
-    input.placeholder = 'Type text to simulate which world_info entries would be selected and why.';
-    input.value = this.queryText;
-    input.addEventListener('input', () => {
-      this.queryText = input.value;
-    });
-
-    const controls = section.createDiv({ cls: 'lorevault-routing-query-controls' });
-    controls.createEl('label', { text: 'Token Budget' });
-    const budgetInput = controls.createEl('input', { cls: 'lorevault-routing-budget-input', type: 'number' });
-    budgetInput.min = '64';
-    budgetInput.step = '1';
-    budgetInput.value = String(this.queryTokenBudget);
-    budgetInput.addEventListener('change', () => {
-      const parsed = Number.parseInt(budgetInput.value, 10);
-      if (Number.isFinite(parsed) && parsed >= 64) {
-        this.queryTokenBudget = parsed;
-      }
-      budgetInput.value = String(this.queryTokenBudget);
-    });
-
-    const runButton = controls.createEl('button', { text: this.queryInFlight ? 'Running...' : 'Run Simulation' });
-    runButton.disabled = this.queryInFlight;
-    runButton.addEventListener('click', () => {
-      void this.runSimulation(scope);
-    });
-
-    if (this.queryError) {
-      section.createEl('p', {
-        cls: 'lorevault-manager-warning-item',
-        text: this.queryError
-      });
-    }
-
-    if (!this.queryResult) {
-      section.createEl('p', {
-        cls: 'lorevault-routing-subtle',
-        text: 'Run a simulation to inspect selected entries and match reasons.'
-      });
-      return;
-    }
-
-    const result = this.queryResult;
-    section.createEl('p', {
-      text: `Used tokens: ${result.usedTokens}/${result.tokenBudget} | world_info ${result.worldInfo.length} | rag ${result.rag.length}`
-    });
-    section.createEl('p', {
-      cls: 'lorevault-routing-subtle',
-      text: `RAG policy ${result.explainability.rag.policy} | enabled ${result.explainability.rag.enabled ? 'yes' : 'no'} | seed confidence ${result.explainability.rag.seedConfidence.toFixed(2)} (threshold ${result.explainability.rag.threshold})`
-    });
-    if (result.explainability.worldInfoBudget.droppedUids.length > 0) {
-      section.createEl('p', {
-        cls: 'lorevault-routing-subtle',
-        text: `world_info cutoff: dropped ${result.explainability.worldInfoBudget.droppedUids.length} entries (${result.explainability.worldInfoBudget.droppedByBudget} budget, ${result.explainability.worldInfoBudget.droppedByLimit} max-entry limit)`
-      });
-    }
-
-    const worldInfoList = section.createDiv({ cls: 'lorevault-routing-entry-list' });
-    for (const selected of result.worldInfo) {
-      const details = worldInfoList.createEl('details', { cls: 'lorevault-routing-entry' });
-      details.createEl('summary', {
-        text: `${selected.entry.comment} | score ${selected.score.toFixed(2)} | tier ${selected.contentTier} | matched ${selected.matchedKeywords.join(', ') || '(graph/constant/order)'}`
-      });
-      details.createEl('p', {
-        text: `UID ${selected.entry.uid} | order ${selected.entry.order} | hop ${selected.hopDistance} | seed ${selected.seedUid ?? '-'} | trigger ${formatTriggerMode(selected.entry)}`
-      });
-      details.createEl('p', {
-        text: `Score breakdown: seed ${selected.scoreBreakdown.seed.toFixed(2)} | graph ${selected.scoreBreakdown.graph.toFixed(2)} | constant ${selected.scoreBreakdown.constant.toFixed(2)} | order ${selected.scoreBreakdown.order.toFixed(2)}`
-      });
-      details.createEl('p', {
-        text: `Path: ${selected.pathUids.length > 0 ? selected.pathUids.join(' -> ') : '(none)'}`
-      });
-      details.createEl('p', {
-        text: `Reasons: ${selected.reasons.join(' | ') || '(none)'}`
-      });
-      const contentDetails = details.createEl('details', { cls: 'lorevault-routing-content-details' });
-      contentDetails.createEl('summary', { text: `Content (~${estimateTokens(selected.includedContent)} tokens)` });
-      contentDetails.createEl('pre', {
-        cls: 'lorevault-routing-content',
-        text: selected.includedContent || ''
-      });
-    }
-
-    const ragDetails = section.createEl('details', { cls: 'lorevault-routing-content-details' });
-    ragDetails.createEl('summary', {
-      text: `RAG candidates (${result.rag.length})`
-    });
-    if (result.rag.length === 0) {
-      ragDetails.createEl('p', { text: 'No rag documents selected.' });
-    } else {
-      const ragList = ragDetails.createEl('ul');
-      for (const item of result.rag) {
-        ragList.createEl('li', {
-          text: `${item.document.title} | score ${item.score.toFixed(2)} | matched ${item.matchedTerms.join(', ') || '-'}`
-        });
-      }
-    }
-  }
-
   private renderRoutingTable(container: HTMLElement, summary: ScopeSummary): void {
     const section = container.createDiv({ cls: 'lorevault-routing-section' });
     section.createEl('h3', { text: 'Scope Routing Decisions' });
@@ -350,34 +242,6 @@ export class LorebooksRoutingDebugView extends ItemView {
       row.createEl('td', { text: note.retrievalMode });
       row.createEl('td', { text: note.hasKeywords ? 'yes' : 'no' });
       row.createEl('td', { text: note.scopes.join(', ') || '-' });
-    }
-  }
-
-  private async runSimulation(scope: string): Promise<void> {
-    const query = this.queryText.trim();
-    if (!query) {
-      new Notice('Enter query text first.');
-      return;
-    }
-
-    this.queryInFlight = true;
-    this.queryError = '';
-    this.queryResult = null;
-    await this.render();
-
-    try {
-      this.queryResult = await this.plugin.liveContextIndex.query({
-        queryText: query,
-        tokenBudget: this.queryTokenBudget
-      }, scope);
-      this.queryError = '';
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.queryError = `Simulation failed: ${message}`;
-      this.queryResult = null;
-    } finally {
-      this.queryInFlight = false;
-      await this.render();
     }
   }
 
@@ -424,7 +288,6 @@ export class LorebooksRoutingDebugView extends ItemView {
 
     if (pack) {
       this.renderLorebookContents(contentEl, pack);
-      this.renderQuerySimulator(contentEl, selectedSummary.scope);
     }
     this.renderRoutingTable(contentEl, selectedSummary);
   }

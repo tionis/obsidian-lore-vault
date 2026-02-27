@@ -102,7 +102,8 @@ export class LorevaultHelpView extends ItemView {
       ],
       actions: [
         { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() },
-        { label: 'Open Routing Debug', onClick: () => void this.plugin.openRoutingDebugView() }
+        { label: 'Open Routing Debug', onClick: () => void this.plugin.openRoutingDebugView() },
+        { label: 'Open Query Simulation', onClick: () => void this.plugin.openQuerySimulationView() }
       ]
     });
 
@@ -131,6 +132,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Continue Story with Context streams generated text into the active editor at the cursor.',
         'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
+        'Writing Completion settings support reusable model presets for quick provider/model A/B testing.',
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
         'Story Chat supports per-chat scope selection, manual context, and specific-note context lists.'
       ],
@@ -144,7 +146,8 @@ export class LorevaultHelpView extends ItemView {
         'Primary retrieval is graph-first world_info (seed matches + bounded graph expansion).',
         'RAG fallback policy is configurable in settings: off | auto | always.',
         'Graph controls: max hops, hop decay, and seed threshold for auto fallback.',
-        'Token budgets are enforced; world_info content is tiered short -> medium -> full when budget allows.'
+        'Token budgets are enforced; world_info content is tiered short -> medium -> full when budget allows.',
+        'Use Query Simulation for multi-scope retrieval testing with override knobs.'
       ]
     });
 

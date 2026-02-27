@@ -121,7 +121,9 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       maxOutputTokens: 700,
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
-      timeoutMs: 60000
+      timeoutMs: 60000,
+      presets: [],
+      activePresetId: ''
     },
     storyChat: {
       chatFolder: 'LoreVault/chat',

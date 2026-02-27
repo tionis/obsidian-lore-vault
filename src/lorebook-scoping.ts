@@ -75,8 +75,12 @@ export function shouldIncludeInScope(
     return scopes.includes(activeScope);
   }
 
-  // Cascade mode: notes in child scopes are inherited by ancestor scopes.
-  return scopes.some(scope => scope === activeScope || scope.startsWith(`${activeScope}/`));
+  // Cascade mode: include notes within the same hierarchy branch (ancestors + descendants).
+  return scopes.some(scope =>
+    scope === activeScope ||
+    scope.startsWith(`${activeScope}/`) ||
+    activeScope.startsWith(`${scope}/`)
+  );
 }
 
 export function discoverScopesFromTags(tags: string[], rawTagPrefix: string): string[] {

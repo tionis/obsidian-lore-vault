@@ -28,6 +28,12 @@ This document is the implementation-level reference for core architecture and ru
   - persistent chat UI
   - note-backed conversation persistence
   - message versions/regeneration/forking
+- `src/lorebooks-routing-debug-view.ts`
+  - scope inclusion/routing diagnostics
+  - world_info content inspection
+- `src/lorebooks-query-simulator-view.ts`
+  - multi-scope retrieval simulation
+  - retrieval knob overrides for debugging/tuning
 - `src/story-thread-resolver.ts`
   - story/chapter metadata parsing
   - deterministic thread ordering (metadata + prev/next links)

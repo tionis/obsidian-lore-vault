@@ -15,6 +15,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
 - Dedicated routing debug panel for inclusion/routing diagnostics
+- Dedicated query simulation panel for multi-scope retrieval simulation
 - Embedded user help panel (`Open LoreVault Help`)
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
@@ -42,7 +43,7 @@ Settings:
 - `activeScope`: optional target scope (`universe/yggdrasil`)
 - `membershipMode`:
   - `exact`: only exact scope membership
-  - `cascade`: include descendant scopes in parent scope exports
+  - `cascade`: include ancestor and descendant scopes in the same branch
 - `includeUntagged`: include notes without lorebook tags
 
 Notes with frontmatter `exclude: true` are always skipped.
@@ -177,7 +178,7 @@ Manager features:
 - generation monitor (running state, active scopes, token budget, selected context items, output progress)
 - `Build/Export` action per scope
 - `Inspect Routing` action per scope
-- `Open Output Folder` action (opens SQLite output root)
+- toolbar shortcuts to open routing and query simulation diagnostics
 
 ## Routing Debug
 
@@ -187,11 +188,22 @@ Routing debug features:
 
 - scope selector
 - lorebook contents panel for `world_info` entries (keywords, trigger params, collapsible content)
-- query simulation panel to inspect selected entries/scores/match reasons for arbitrary text
 - note-level inclusion/exclusion reasons
 - retrieval mode and keyword presence
 - resolved route (`world_info`, `rag`, both, or none)
 - detected scope tags per note
+
+## Query Simulation
+
+Use command `Open LoreVault Query Simulation` to open a dedicated retrieval simulation view.
+
+Query simulation features:
+
+- multi-scope selection (simulate across multiple lorebooks at once)
+- token budget split across selected scopes
+- optional override controls (`maxGraphHops`, `graphHopDecay`, RAG fallback policy/threshold, world_info/rag limits)
+- selected `world_info` diagnostics (score breakdown, path/reasons, included content tier)
+- selected `rag` diagnostics (scores and matched terms)
 
 ## Writing Assistant Commands (MVP)
 

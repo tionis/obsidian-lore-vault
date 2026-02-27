@@ -1,5 +1,6 @@
 import { MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
 import {
+  CompletionPreset,
   ConverterSettings,
   DEFAULT_SETTINGS,
   LoreBookEntry,
@@ -18,6 +19,10 @@ import {
   LOREVAULT_ROUTING_DEBUG_VIEW_TYPE,
   LorebooksRoutingDebugView
 } from './lorebooks-routing-debug-view';
+import {
+  LOREVAULT_QUERY_SIMULATION_VIEW_TYPE,
+  LorebooksQuerySimulationView
+} from './lorebooks-query-simulator-view';
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
 import { LiveContextIndex } from './live-context-index';
@@ -247,19 +252,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.setGenerationStatus('idle', 'idle');
   }
 
-  private getSQLiteOutputRootPath(): string {
-    const configured = this.settings.sqlite.outputPath?.trim() || DEFAULT_SETTINGS.sqlite.outputPath;
-    const hasDbExtension = path.extname(configured).toLowerCase() === '.db';
-    let outputRoot = hasDbExtension ? path.dirname(configured) : configured;
-    outputRoot = outputRoot.trim() || '.';
-
-    if (outputRoot.includes('{scope}')) {
-      outputRoot = outputRoot.replace(/\{scope\}/g, 'root');
-    }
-
-    return outputRoot;
-  }
-
   private mapEntriesByUid(entries: LoreBookEntry[]): {[key: number]: LoreBookEntry} {
     const map: {[key: number]: LoreBookEntry} = {};
     for (const entry of entries) {
@@ -281,6 +273,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
     for (const leaf of leaves) {
       if (leaf.view instanceof LorebooksRoutingDebugView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
+  private refreshQuerySimulationViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorebooksQuerySimulationView) {
         leaf.view.refresh();
       }
     }
@@ -335,6 +336,26 @@ export default class LoreBookConverterPlugin extends Plugin {
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorebooksRoutingDebugView) {
       leaf.view.setScope(scope ?? null);
+      leaf.view.refresh();
+    }
+  }
+
+  async openQuerySimulationView(scopes?: string[]): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_QUERY_SIMULATION_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorebooksQuerySimulationView) {
+      if (scopes && scopes.length > 0) {
+        leaf.view.setScopes(scopes);
+      }
       leaf.view.refresh();
     }
   }
@@ -1018,6 +1039,48 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     merged.completion.promptReserveTokens = Math.max(0, Math.floor(merged.completion.promptReserveTokens));
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
+    const rawPresets = Array.isArray(merged.completion.presets) ? merged.completion.presets : [];
+    const normalizedPresets: CompletionPreset[] = [];
+    for (const rawPreset of rawPresets) {
+      if (!rawPreset || typeof rawPreset !== 'object') {
+        continue;
+      }
+      const candidate = rawPreset as Partial<CompletionPreset>;
+      const id = typeof candidate.id === 'string' && candidate.id.trim()
+        ? candidate.id.trim()
+        : `preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const name = typeof candidate.name === 'string' && candidate.name.trim()
+        ? candidate.name.trim()
+        : 'Preset';
+      const provider: CompletionPreset['provider'] = (
+        candidate.provider === 'ollama' ||
+        candidate.provider === 'openai_compatible'
+      ) ? candidate.provider : 'openrouter';
+      normalizedPresets.push({
+        id,
+        name,
+        provider,
+        endpoint: (candidate.endpoint ?? DEFAULT_SETTINGS.completion.endpoint).toString().trim() || DEFAULT_SETTINGS.completion.endpoint,
+        apiKey: (candidate.apiKey ?? '').toString().trim(),
+        model: (candidate.model ?? DEFAULT_SETTINGS.completion.model).toString().trim() || DEFAULT_SETTINGS.completion.model,
+        systemPrompt: (candidate.systemPrompt ?? DEFAULT_SETTINGS.completion.systemPrompt).toString().trim() || DEFAULT_SETTINGS.completion.systemPrompt,
+        temperature: Math.max(0, Math.min(2, Number(candidate.temperature ?? DEFAULT_SETTINGS.completion.temperature))),
+        maxOutputTokens: Math.max(64, Math.floor(Number(candidate.maxOutputTokens ?? DEFAULT_SETTINGS.completion.maxOutputTokens))),
+        contextWindowTokens: Math.max(
+          Math.max(64, Math.floor(Number(candidate.maxOutputTokens ?? DEFAULT_SETTINGS.completion.maxOutputTokens))) + 512,
+          Math.floor(Number(candidate.contextWindowTokens ?? DEFAULT_SETTINGS.completion.contextWindowTokens))
+        ),
+        promptReserveTokens: Math.max(0, Math.floor(Number(candidate.promptReserveTokens ?? DEFAULT_SETTINGS.completion.promptReserveTokens))),
+        timeoutMs: Math.max(1000, Math.floor(Number(candidate.timeoutMs ?? DEFAULT_SETTINGS.completion.timeoutMs)))
+      });
+    }
+    merged.completion.presets = normalizedPresets
+      .filter((preset, index, array) => array.findIndex(item => item.id === preset.id) === index)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    const activePresetId = (merged.completion.activePresetId ?? '').toString().trim();
+    merged.completion.activePresetId = merged.completion.presets.some(preset => preset.id === activePresetId)
+      ? activePresetId
+      : '';
 
     const selectedScopes = Array.isArray(merged.storyChat.selectedScopes)
       ? merged.storyChat.selectedScopes
@@ -1150,6 +1213,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
+    this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
     this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
 
@@ -1216,6 +1280,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open LoreVault Routing Debug',
       callback: () => {
         void this.openRoutingDebugView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-query-simulation',
+      name: 'Open LoreVault Query Simulation',
+      callback: () => {
+        void this.openQuerySimulationView();
       }
     });
 
@@ -1292,6 +1364,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     }));
 
@@ -1299,6 +1372,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     }));
 
@@ -1306,6 +1380,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     }));
 
@@ -1313,6 +1388,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     }));
 
@@ -1324,6 +1400,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   async onunload() {
     this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
@@ -1340,6 +1417,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.syncIdleGenerationTelemetryToSettings();
     this.refreshManagerViews();
     this.refreshRoutingDebugViews();
+    this.refreshQuerySimulationViews();
     this.refreshStoryChatViews();
     this.refreshHelpViews();
   }
@@ -1798,35 +1876,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  async openOutputFolder(): Promise<void> {
-    const outputPath = this.getSQLiteOutputRootPath();
-    const adapter = this.app.vault.adapter as any;
-    const isAbsolute = path.isAbsolute(outputPath);
-
-    let folderPath = isAbsolute ? path.dirname(outputPath) : '.';
-    if (!isAbsolute) {
-      if (typeof adapter.getBasePath === 'function') {
-        const vaultRoot = adapter.getBasePath() as string;
-        const relativeDir = path.dirname(outputPath);
-        folderPath = relativeDir === '.' ? vaultRoot : path.join(vaultRoot, relativeDir);
-      } else {
-        throw new Error('Unable to resolve vault base path for relative output folders.');
-      }
-    }
-
-    const electron = (window as any).require?.('electron');
-    if (!electron?.shell?.openPath) {
-      throw new Error('Electron shell API unavailable.');
-    }
-
-    const openResult = await electron.shell.openPath(folderPath);
-    if (openResult) {
-      throw new Error(openResult);
-    }
-
-    new Notice(`Opened output folder: ${folderPath}`);
-  }
-  
   // This is the main conversion function
   async convertToLorebook(scopeOverride?: string) {
     try {
@@ -1922,6 +1971,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.requestFullRefresh();
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
     } catch (error) {
       console.error('Conversion failed:', error);

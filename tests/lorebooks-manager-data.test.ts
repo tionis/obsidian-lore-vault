@@ -84,6 +84,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
       timeoutMs: 60000,
+      presets: [],
+      activePresetId: '',
       ...(overrides.completion ?? {})
     },
     storyChat: {

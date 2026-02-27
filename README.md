@@ -321,7 +321,8 @@ Story delta behavior (Phase 15 foundation):
 - policy modes:
   - `safe_append` (default): preserve existing metadata and append unique durable updates
   - `structured_merge`: also merge summary/keywords/aliases deterministically
-- preview and apply workflow (global apply; per-change approval UI is a future step)
+- dry-run diff previews per planned change
+- per-change approval checkboxes with `Apply Selected`
 
 ## Story Chat (Phase 10 Foundation)
 

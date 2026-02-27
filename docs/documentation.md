@@ -483,6 +483,8 @@ Current merge policy (default):
   - deterministic new-note creation in target folder
 - story delta can use inline markdown or load source markdown from a story note path
 - story delta supports optional scope-tag filter when selecting existing notes from target folder
+- story delta preview includes per-change dry-run diff snippets (`+`/`-` line summary + collapsed preview block)
+- story delta apply supports per-change approval checkboxes and `Apply Selected`
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope

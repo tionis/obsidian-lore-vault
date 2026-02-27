@@ -4,9 +4,11 @@ import { requestStoryContinuation } from './completion-provider';
 import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
 import {
   buildStoryDeltaPlan,
+  StoryDeltaExistingPageInput,
+  StoryDeltaPlannedChange,
+  StoryDeltaPlannedPage,
   StoryDeltaResult,
-  StoryDeltaUpdatePolicy,
-  StoryDeltaExistingPageInput
+  StoryDeltaUpdatePolicy
 } from './story-delta-update';
 import { normalizeVaultPath } from './vault-path-utils';
 
@@ -33,8 +35,12 @@ export class LorevaultStoryDeltaView extends ItemView {
   private maxOperationsPerChunk = 12;
   private maxExistingPagesInPrompt = 80;
   private lowConfidenceThreshold = 0.55;
+
   private running = false;
+  private previewError = '';
+  private applyStatus = '';
   private lastPreview: StoryDeltaResult | null = null;
+  private approvedPaths = new Set<string>();
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -154,7 +160,35 @@ export class LorevaultStoryDeltaView extends ItemView {
     this.render();
   }
 
-  private async runPreview(outputEl: HTMLElement): Promise<void> {
+  private getSelectedPages(): StoryDeltaPlannedPage[] {
+    if (!this.lastPreview) {
+      return [];
+    }
+    return this.lastPreview.pages.filter(page => this.approvedPaths.has(page.path));
+  }
+
+  private setAllApprovals(value: boolean): void {
+    if (!this.lastPreview) {
+      return;
+    }
+    if (value) {
+      this.approvedPaths = new Set(this.lastPreview.pages.map(page => page.path));
+    } else {
+      this.approvedPaths = new Set<string>();
+    }
+    this.render();
+  }
+
+  private toggleApproval(path: string, value: boolean): void {
+    if (value) {
+      this.approvedPaths.add(path);
+    } else {
+      this.approvedPaths.delete(path);
+    }
+    this.render();
+  }
+
+  private async runPreview(): Promise<void> {
     if (this.running) {
       return;
     }
@@ -163,8 +197,8 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
 
     this.running = true;
-    outputEl.empty();
-    outputEl.createEl('p', { text: 'Running story delta preview...' });
+    this.previewError = '';
+    this.applyStatus = '';
     this.render();
 
     try {
@@ -192,54 +226,12 @@ export class LorevaultStoryDeltaView extends ItemView {
       });
 
       this.lastPreview = result;
-      outputEl.empty();
-
-      const createCount = result.pages.filter(page => page.action === 'create').length;
-      const updateCount = result.pages.filter(page => page.action === 'update').length;
-      outputEl.createEl('p', {
-        text: `Preview complete: ${result.pages.length} write(s) (${createCount} create, ${updateCount} update), ${result.skippedLowConfidence} low-confidence skipped.`
-      });
-
-      const chunkList = outputEl.createEl('ul');
-      for (const chunk of result.chunks) {
-        const warningSuffix = chunk.warnings.length > 0 ? ` | warnings: ${chunk.warnings.join('; ')}` : '';
-        chunkList.createEl('li', {
-          text: `Chunk ${chunk.chunkIndex}: ${chunk.operationCount} operation(s)${warningSuffix}`
-        });
-      }
-
-      if (result.warnings.length > 0) {
-        const warningsHeader = outputEl.createEl('p', { text: 'Warnings:' });
-        warningsHeader.addClass('lorevault-import-output-warning');
-        const warningList = outputEl.createEl('ul');
-        for (const warning of result.warnings.slice(0, 80)) {
-          warningList.createEl('li', { text: warning });
-        }
-        if (result.warnings.length > 80) {
-          outputEl.createEl('p', { text: `... ${result.warnings.length - 80} more warnings` });
-        }
-      }
-
-      const details = outputEl.createEl('details');
-      details.createEl('summary', { text: 'Planned Changes' });
-      const list = details.createEl('ul');
-      for (const change of result.changes.slice(0, 120)) {
-        const rationaleSuffix = change.rationales.length > 0
-          ? ` | rationale: ${change.rationales[0]}`
-          : '';
-        list.createEl('li', {
-          text: `[${change.action}] ${change.path} | ops=${change.appliedOperations} | confidence=${change.confidence.toFixed(2)}${rationaleSuffix}`
-        });
-      }
-      if (result.changes.length > 120) {
-        details.createEl('p', { text: `... ${result.changes.length - 120} more` });
-      }
+      this.approvedPaths = new Set(result.pages.map(page => page.path));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Story delta preview failed:', error);
       this.lastPreview = null;
-      outputEl.empty();
-      outputEl.createEl('p', { text: `Preview failed: ${message}` });
+      this.previewError = message;
       new Notice(`Story delta preview failed: ${message}`);
     } finally {
       this.running = false;
@@ -247,28 +239,148 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
   }
 
-  private async applyPreview(outputEl: HTMLElement): Promise<void> {
+  private async applySelectedPreview(): Promise<void> {
     if (!this.lastPreview) {
       new Notice('Run preview before applying story delta updates.');
       return;
     }
 
+    const selected = this.getSelectedPages();
+    if (selected.length === 0) {
+      new Notice('Select at least one planned change before applying.');
+      return;
+    }
+
     try {
-      const pages: ImportedWikiPage[] = this.lastPreview.pages.map((page, index) => ({
+      const pages: ImportedWikiPage[] = selected.map((page, index) => ({
         path: page.path,
         content: page.content,
         uid: index
       }));
       const applied = await applyImportedWikiPages(this.app, pages);
-      outputEl.createEl('p', {
-        text: `Applied: ${applied.created} created, ${applied.updated} updated.`
-      });
+      this.applyStatus = `Applied ${selected.length} selected change(s): ${applied.created} created, ${applied.updated} updated.`;
       new Notice(`Story delta applied: ${applied.created} created, ${applied.updated} updated.`);
+      this.render();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Story delta apply failed:', error);
-      outputEl.createEl('p', { text: `Apply failed: ${message}` });
+      this.applyStatus = `Apply failed: ${message}`;
       new Notice(`Story delta apply failed: ${message}`);
+      this.render();
+    }
+  }
+
+  private clearPreview(): void {
+    this.lastPreview = null;
+    this.approvedPaths = new Set<string>();
+    this.previewError = '';
+    this.applyStatus = '';
+    this.render();
+  }
+
+  private renderChangeItem(
+    container: HTMLElement,
+    change: StoryDeltaPlannedChange,
+    page: StoryDeltaPlannedPage | undefined
+  ): void {
+    const row = container.createDiv({ cls: 'lorevault-story-delta-change' });
+    const header = row.createDiv({ cls: 'lorevault-story-delta-change-header' });
+
+    const checkbox = header.createEl('input', { type: 'checkbox' });
+    checkbox.checked = this.approvedPaths.has(change.path);
+    checkbox.addEventListener('change', () => {
+      this.toggleApproval(change.path, checkbox.checked);
+    });
+
+    const rationaleSnippet = change.rationales[0] ? ` | rationale: ${change.rationales[0]}` : '';
+    header.createEl('span', {
+      text: `[${change.action}] ${change.path} | +${change.diffAddedLines} -${change.diffRemovedLines} | ops=${change.appliedOperations} | confidence=${change.confidence.toFixed(2)}${rationaleSnippet}`
+    });
+
+    if (change.skippedLowConfidence > 0) {
+      row.createEl('p', {
+        text: `Skipped low-confidence ops for this page: ${change.skippedLowConfidence}`
+      });
+    }
+
+    if (page) {
+      const details = row.createEl('details');
+      details.createEl('summary', {
+        text: `Diff Preview${page.diff.truncated ? ' (truncated)' : ''}`
+      });
+      details.createEl('pre', {
+        text: page.diff.preview
+      });
+    }
+  }
+
+  private renderPreviewOutput(container: HTMLElement): void {
+    if (this.running) {
+      container.createEl('p', { text: 'Running story delta preview...' });
+      return;
+    }
+
+    if (this.previewError) {
+      container.createEl('p', { text: `Preview failed: ${this.previewError}` });
+      return;
+    }
+
+    if (!this.lastPreview) {
+      container.createEl('p', {
+        text: 'Run preview to inspect deterministic story-delta changes, approve specific changes, then apply selected writes.'
+      });
+      return;
+    }
+
+    const selectedCount = this.getSelectedPages().length;
+    const createCount = this.lastPreview.pages.filter(page => page.action === 'create').length;
+    const updateCount = this.lastPreview.pages.filter(page => page.action === 'update').length;
+
+    container.createEl('p', {
+      text: `Preview complete: ${this.lastPreview.pages.length} write(s) (${createCount} create, ${updateCount} update), ${this.lastPreview.skippedLowConfidence} low-confidence skipped. Selected for apply: ${selectedCount}.`
+    });
+
+    if (this.applyStatus) {
+      container.createEl('p', { text: this.applyStatus });
+    }
+
+    const selectionActions = container.createDiv({ cls: 'lorevault-import-actions' });
+    const selectAllButton = selectionActions.createEl('button', { text: 'Select All' });
+    selectAllButton.addEventListener('click', () => this.setAllApprovals(true));
+
+    const selectNoneButton = selectionActions.createEl('button', { text: 'Select None' });
+    selectNoneButton.addEventListener('click', () => this.setAllApprovals(false));
+
+    const chunkDetails = container.createEl('details');
+    chunkDetails.createEl('summary', { text: 'Chunk Diagnostics' });
+    const chunkList = chunkDetails.createEl('ul');
+    for (const chunk of this.lastPreview.chunks) {
+      const warningSuffix = chunk.warnings.length > 0 ? ` | warnings: ${chunk.warnings.join('; ')}` : '';
+      chunkList.createEl('li', {
+        text: `Chunk ${chunk.chunkIndex}: ${chunk.operationCount} operation(s)${warningSuffix}`
+      });
+    }
+
+    if (this.lastPreview.warnings.length > 0) {
+      const warningDetails = container.createEl('details');
+      warningDetails.createEl('summary', { text: `Warnings (${this.lastPreview.warnings.length})` });
+      const warningList = warningDetails.createEl('ul');
+      for (const warning of this.lastPreview.warnings.slice(0, 80)) {
+        warningList.createEl('li', { text: warning });
+      }
+      if (this.lastPreview.warnings.length > 80) {
+        warningDetails.createEl('p', { text: `... ${this.lastPreview.warnings.length - 80} more warnings` });
+      }
+    }
+
+    const pagesByPath = new Map<string, StoryDeltaPlannedPage>();
+    for (const page of this.lastPreview.pages) {
+      pagesByPath.set(page.path, page);
+    }
+
+    const changeContainer = container.createDiv({ cls: 'lorevault-story-delta-change-list' });
+    for (const change of this.lastPreview.changes) {
+      this.renderChangeItem(changeContainer, change, pagesByPath.get(change.path));
     }
   }
 
@@ -411,32 +523,29 @@ export class LorevaultStoryDeltaView extends ItemView {
           }
         }));
 
+    const selectedCount = this.getSelectedPages().length;
     const actions = contentEl.createDiv({ cls: 'lorevault-import-actions' });
     const output = contentEl.createDiv({ cls: 'lorevault-import-output' });
-    if (!this.lastPreview) {
-      output.createEl('p', {
-        text: 'Run preview to inspect deterministic story-delta changes before applying writes.'
-      });
-    }
 
     const previewButton = actions.createEl('button', { text: this.running ? 'Preview Running...' : 'Preview Story Delta' });
     previewButton.addClass('mod-cta');
     previewButton.disabled = this.running;
     previewButton.addEventListener('click', () => {
-      void this.runPreview(output);
+      void this.runPreview();
     });
 
-    const applyButton = actions.createEl('button', { text: 'Apply Preview' });
-    applyButton.disabled = this.running || !this.lastPreview;
+    const applyButton = actions.createEl('button', { text: 'Apply Selected' });
+    applyButton.disabled = this.running || !this.lastPreview || selectedCount === 0;
     applyButton.addEventListener('click', () => {
-      void this.applyPreview(output);
+      void this.applySelectedPreview();
     });
 
     const clearButton = actions.createEl('button', { text: 'Clear Preview' });
     clearButton.disabled = this.running || !this.lastPreview;
     clearButton.addEventListener('click', () => {
-      this.lastPreview = null;
-      this.render();
+      this.clearPreview();
     });
+
+    this.renderPreviewOutput(output);
   }
 }

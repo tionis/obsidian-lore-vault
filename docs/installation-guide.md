@@ -185,7 +185,8 @@ If you prefer to build the plugin from source:
      - `structured_merge`: merge summary/keywords/aliases where confidence is high
    - Set low-confidence threshold (operations below threshold are skipped in preview)
    - Click `Preview Story Delta` to inspect planned create/update writes
-   - Click `Apply Preview` to write all planned changes
+   - Review per-change dry-run diff previews
+   - Select approved changes and click `Apply Selected`
 
 ## Troubleshooting
 

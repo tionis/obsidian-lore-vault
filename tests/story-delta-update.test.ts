@@ -86,6 +86,9 @@ test('buildStoryDeltaPlan supports idempotent safe_append updates', async () => 
   assert.equal(first.pages.length, 1);
   assert.equal(first.pages[0].action, 'update');
   assert.match(first.pages[0].content, /sealed map\./);
+  assert.equal(first.pages[0].diff.addedLines > 0, true);
+  assert.equal(first.pages[0].diff.removedLines >= 0, true);
+  assert.equal(first.changes[0].diffAddedLines > 0, true);
 
   const second = await buildStoryDeltaPlan({
     storyMarkdown,
@@ -157,4 +160,47 @@ test('buildStoryDeltaPlan enforces low-confidence gating and deterministic creat
   assert.equal(result.pages[0].path, 'wiki/location-old-tower.md');
   assert.equal(result.skippedLowConfidence, 1);
   assert.match(result.pages[0].content, /lorebook\/story\/main/);
+  assert.equal(result.pages[0].diff.removedLines, 0);
+  assert.equal(result.pages[0].diff.addedLines > 0, true);
+});
+
+test('safe_append does not inject frontmatter into existing notes without frontmatter', async () => {
+  const result = await buildStoryDeltaPlan({
+    storyMarkdown: '# Chapter\nThe shrine gains a new warding sigil.',
+    targetFolder: 'wiki',
+    defaultTagsRaw: 'wiki',
+    lorebookName: 'story/main',
+    tagPrefix: 'lorebook',
+    updatePolicy: 'safe_append',
+    maxChunkChars: 500,
+    maxSummaryChars: 200,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    lowConfidenceThreshold: 0.5,
+    existingPages: [
+      {
+        path: 'wiki/shrine.md',
+        content: 'The shrine is old and weathered.\n'
+      }
+    ],
+    callModel: async () => JSON.stringify({
+      operations: [
+        {
+          pageKey: 'location/shrine',
+          title: 'Shrine',
+          summary: 'Ancient protected shrine.',
+          keywords: ['shrine'],
+          aliases: [],
+          content: 'The shrine gains a new warding sigil.',
+          confidence: 0.9,
+          rationale: 'Directly described state update.'
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.pages.length, 1);
+  assert.equal(result.pages[0].path, 'wiki/shrine.md');
+  assert.equal(result.pages[0].content.startsWith('---\n'), false);
+  assert.match(result.pages[0].content, /new warding sigil/);
 });

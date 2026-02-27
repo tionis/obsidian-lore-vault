@@ -354,15 +354,18 @@ Implemented:
 - schema-constrained delta operations including confidence + rationale
 - low-confidence operation skip policy with warnings/preview counts
 - deterministic operation matching (`pageKey` first, title fallback, then deterministic create)
+- dry-run diff generation for each planned change (deterministic coarse line diff)
+- per-change approval selection in panel and `Apply Selected` writes only approved changes
 - merge policies:
   - `safe_append`: preserve metadata on existing notes, append unique content blocks
   - `structured_merge`: deterministic summary/keyword/alias merge + unique content append
 - idempotence guard: duplicate content blocks are not appended on rerun
+- safe-append guard: existing notes without frontmatter stay frontmatter-free
 - fixture-backed tests for parsing, gating, deterministic paths, and idempotence behavior
 
 Still pending in this phase:
 
-- per-change approval UI before write (current apply is global)
+- structured-merge conflict UX refinements (current behavior is deterministic merge without dedicated conflict-review UI)
 
 ## Determinism Requirements (Implementation)
 

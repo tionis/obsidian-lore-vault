@@ -1703,6 +1703,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     merged.retrieval.maxGraphHops = Math.max(0, Math.min(3, Math.floor(merged.retrieval.maxGraphHops)));
     merged.retrieval.graphHopDecay = Math.max(0.2, Math.min(0.9, Number(merged.retrieval.graphHopDecay)));
+    merged.retrieval.includeBacklinksInGraphExpansion = Boolean(merged.retrieval.includeBacklinksInGraphExpansion);
     merged.retrieval.ragFallbackPolicy = (
       merged.retrieval.ragFallbackPolicy === 'off' ||
       merged.retrieval.ragFallbackPolicy === 'always'

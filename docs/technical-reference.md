@@ -109,6 +109,7 @@ Flow:
   - entry comment/title token and phrase matches
   - Unicode-aware tokenization (non-English keywords/titles are supported)
 2. build deterministic adjacency graph from wikilink-normalized relations
+  - optional backlink-aware reverse expansion can be enabled in retrieval settings
 3. run bounded hop expansion from seeds
 4. apply hop decay and accumulate score factors
 5. rank with deterministic tie-breaks:

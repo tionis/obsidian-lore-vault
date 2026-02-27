@@ -197,6 +197,7 @@ export interface ConverterSettings {
   retrieval: {
     maxGraphHops: number;
     graphHopDecay: number;
+    includeBacklinksInGraphExpansion: boolean;
     ragFallbackPolicy: 'off' | 'auto' | 'always';
     ragFallbackSeedScoreThreshold: number;
     toolCalls: {
@@ -303,6 +304,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   retrieval: {
     maxGraphHops: 2,
     graphHopDecay: 0.55,
+    includeBacklinksInGraphExpansion: true,
     ragFallbackPolicy: 'auto',
     ragFallbackSeedScoreThreshold: 120,
     toolCalls: {

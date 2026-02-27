@@ -998,6 +998,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       `Keep summary under ${this.settings.summaries.maxSummaryChars} characters.`,
       'Focus on durable facts, names, states, and consequences.',
       'Do not include headings, markdown, or bullet points.',
+      'Do not include reasoning, analysis, or preambles like "I need to..." or numbered planning.',
+      'Start directly with the factual summary content.',
+      'Bad output example: "I need to create a summary. 1. ... 2. ..."',
+      'Good output example: "Baalthasar is a dark elven Archmage whose unmatched mind magic and arcana priorities define his strategic role."',
       modeInstruction
     ].join('\n');
 

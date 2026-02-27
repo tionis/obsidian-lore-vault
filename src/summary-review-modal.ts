@@ -35,6 +35,7 @@ export class SummaryReviewModal extends Modal {
   }
 
   onOpen(): void {
+    this.modalEl.addClass('lorevault-summary-modal-shell');
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('lorevault-summary-modal');
@@ -44,7 +45,10 @@ export class SummaryReviewModal extends Modal {
     if (this.existingSummary.trim()) {
       const existing = contentEl.createDiv({ cls: 'lorevault-summary-existing' });
       existing.createEl('h3', { text: 'Existing Frontmatter Summary' });
-      existing.createEl('p', { text: this.existingSummary });
+      const existingTextarea = existing.createEl('textarea', { cls: 'lorevault-summary-textarea lorevault-summary-textarea-existing' });
+      existingTextarea.readOnly = true;
+      existingTextarea.value = this.existingSummary;
+      existingTextarea.rows = Math.min(10, Math.max(4, Math.ceil(this.existingSummary.length / 120)));
     }
 
     new Setting(contentEl)
@@ -52,6 +56,7 @@ export class SummaryReviewModal extends Modal {
       .setDesc('Review and edit before accepting.');
     const textarea = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
     textarea.value = this.summaryText;
+    textarea.rows = Math.min(14, Math.max(8, Math.ceil(this.summaryText.length / 120)));
     textarea.addEventListener('input', () => {
       this.summaryText = textarea.value;
     });
@@ -91,6 +96,7 @@ export class SummaryReviewModal extends Modal {
   }
 
   onClose(): void {
+    this.modalEl.removeClass('lorevault-summary-modal-shell');
     if (!this.resolved) {
       this.resolved = true;
       this.resolver({

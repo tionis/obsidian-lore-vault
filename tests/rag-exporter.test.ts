@@ -5,8 +5,23 @@ import { RagDocument } from '../src/models';
 
 function createMockApp() {
   const writes: Array<{ outputPath: string; content: string }> = [];
+  const folders = new Set<string>();
+  const createdFolders: string[] = [];
   const app = {
     vault: {
+      getAbstractFileByPath: (targetPath: string) => {
+        if (!folders.has(targetPath)) {
+          return null;
+        }
+        return {
+          path: targetPath,
+          children: []
+        };
+      },
+      createFolder: async (targetPath: string) => {
+        folders.add(targetPath);
+        createdFolders.push(targetPath);
+      },
       adapter: {
         write: async (outputPath: string, content: string) => {
           writes.push({ outputPath, content });
@@ -15,11 +30,11 @@ function createMockApp() {
     }
   };
 
-  return { app, writes };
+  return { app, writes, createdFolders };
 }
 
 test('RagExporter writes deterministically ordered markdown sections', async () => {
-  const { app, writes } = createMockApp();
+  const { app, writes, createdFolders } = createMockApp();
   const exporter = new RagExporter(app as any);
 
   const docs: RagDocument[] = [
@@ -50,6 +65,7 @@ test('RagExporter writes deterministically ordered markdown sections', async () 
 
   assert.equal(writes.length, 1);
   assert.equal(writes[0].outputPath, 'exports/world.rag.md');
+  assert.deepEqual(createdFolders, ['exports']);
 
   const content = writes[0].content;
   const firstIndex = content.indexOf('## A Entry');
@@ -64,7 +80,7 @@ test('RagExporter writes deterministically ordered markdown sections', async () 
 });
 
 test('RagExporter falls back to _No content_ for empty note bodies', async () => {
-  const { app, writes } = createMockApp();
+  const { app, writes, createdFolders } = createMockApp();
   const exporter = new RagExporter(app as any);
 
   await exporter.exportRagMarkdown([
@@ -78,6 +94,7 @@ test('RagExporter falls back to _No content_ for empty note bodies', async () =>
   ], 'exports/empty.rag.md', '');
 
   assert.equal(writes.length, 1);
+  assert.deepEqual(createdFolders, ['exports']);
   assert.ok(writes[0].content.includes('Scope: `(all)`'));
   assert.ok(writes[0].content.includes('_No content_'));
 });

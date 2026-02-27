@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ScopePack } from './models';
 import { ScopeOutputPaths, slugifyScope } from './scope-output-paths';
+import { ensureParentVaultFolderForFile, normalizeVaultPath } from './vault-path-utils';
 
 export interface ScopeExportManifest {
   schemaVersion: number;
@@ -21,10 +22,6 @@ export interface ScopeExportManifest {
     ragChunks: number;
     ragChunkEmbeddings: number;
   };
-}
-
-function normalizeVaultPath(value: string): string {
-  return value.replace(/\\/g, '/');
 }
 
 export function buildScopeExportManifest(
@@ -64,6 +61,7 @@ export async function writeScopeExportManifest(
   const serialized = serializeScopeExportManifest(manifest);
 
   if (!path.isAbsolute(outputPath)) {
+    await ensureParentVaultFolderForFile(app, normalizedOutputPath);
     await app.vault.adapter.write(normalizedOutputPath, serialized);
     return;
   }

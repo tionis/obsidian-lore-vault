@@ -121,6 +121,13 @@
   background-color: var(--background-modifier-border-hover);
 }
 
+.lorevault-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 /* Lorebooks Manager View */
 .lorevault-manager-view {
   height: 100%;

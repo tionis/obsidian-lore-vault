@@ -81,7 +81,7 @@ root: true
 ```
 
 Entry content defaults to the markdown body (frontmatter block removed).  
-If a `## Summary` section is present, it overrides entry content.  
+If a `## Summary` section is present, LoreVault reads only the first paragraph under that heading as summary content.  
 If section summary is missing, LoreVault falls back to frontmatter `summary`, then note body content.
 
 ## Retrieval Routing
@@ -263,8 +263,8 @@ Behavior:
 - review action:
   - `Write Summary Section`: write/update `## Summary` section in the note body
 - precedence:
-  - world_info content: `## Summary` section -> `frontmatter summary` (fallback) -> note body
-  - chapter memory: `## Summary` section -> `frontmatter summary` (fallback) -> deterministic excerpt
+  - world_info content: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> note body
+  - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> deterministic excerpt
 
 Story-level scope override (frontmatter):
 

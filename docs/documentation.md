@@ -95,7 +95,7 @@ Key fields:
 Content:
 
 - markdown body (frontmatter stripped)
-- overridden by `## Summary` section when present
+- overridden by the first paragraph under `## Summary` when present
 - if summary section is missing, LoreVault falls back to frontmatter `summary`
 - if both are missing, LoreVault uses the note body
 
@@ -356,11 +356,11 @@ Storage and determinism:
 Precedence:
 
 - world_info export content:
-  - `## Summary` section
+  - first paragraph under `## Summary`
   - frontmatter `summary` (fallback)
   - note body
 - chapter memory:
-  - `## Summary` section
+  - first paragraph under `## Summary`
   - frontmatter `summary` (fallback)
   - deterministic excerpt fallback
 

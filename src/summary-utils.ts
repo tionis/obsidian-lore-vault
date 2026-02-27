@@ -118,10 +118,23 @@ export function sanitizeSummaryModelOutput(text: string): string {
 interface SummarySectionRange {
   startLine: number;
   endLineExclusive: number;
+  paragraphStartLine: number | null;
+  paragraphEndLineExclusive: number | null;
 }
 
 function normalizeMarkdownNewlines(text: string): string {
   return text.replace(/\r\n?/g, '\n');
+}
+
+function normalizeSingleSummaryParagraph(text: string): string {
+  const normalized = normalizeMarkdownNewlines(text).trim();
+  if (!normalized) {
+    return '';
+  }
+  const firstParagraph = normalized.split(/\n\s*\n/, 1)[0] ?? '';
+  return firstParagraph
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
@@ -137,17 +150,33 @@ function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
       cursor += 1;
     }
 
-    while (cursor < lines.length) {
-      if (MAJOR_HEADING_PATTERN.test(lines[cursor])) {
-        break;
-      }
-      if (lines[cursor].trim().length === 0) {
-        break;
-      }
-      cursor += 1;
+    if (cursor >= lines.length || MAJOR_HEADING_PATTERN.test(lines[cursor])) {
+      return {
+        startLine: index,
+        endLineExclusive: cursor,
+        paragraphStartLine: null,
+        paragraphEndLineExclusive: null
+      };
     }
 
-    let endLineExclusive = cursor;
+    let paragraphEnd = cursor;
+    while (paragraphEnd < lines.length) {
+      if (paragraphEnd !== cursor && MAJOR_HEADING_PATTERN.test(lines[paragraphEnd])) {
+        break;
+      }
+      if (lines[paragraphEnd].trim().length === 0) {
+        break;
+      }
+      paragraphEnd += 1;
+    }
+
+    // Safety guard: if summary paragraph is not explicitly delimited, only treat the first line as summary.
+    const hasExplicitBoundary = paragraphEnd < lines.length;
+    const paragraphEndLineExclusive = hasExplicitBoundary
+      ? paragraphEnd
+      : Math.min(cursor + 1, lines.length);
+
+    let endLineExclusive = paragraphEndLineExclusive;
     if (
       endLineExclusive < lines.length &&
       lines[endLineExclusive].trim().length === 0 &&
@@ -158,7 +187,9 @@ function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
 
     return {
       startLine: index,
-      endLineExclusive
+      endLineExclusive,
+      paragraphStartLine: cursor,
+      paragraphEndLineExclusive
     };
   }
 
@@ -184,15 +215,16 @@ function splitFrontmatterAndBody(rawContent: string): { frontmatterBlock: string
 export function extractSummarySectionFromBody(bodyText: string): string {
   const normalized = normalizeMarkdownNewlines(bodyText);
   const range = findSummarySectionRange(normalized);
-  if (!range) {
+  if (!range || range.paragraphStartLine === null || range.paragraphEndLineExclusive === null) {
     return '';
   }
 
   const lines = normalized.split('\n');
-  return lines
-    .slice(range.startLine + 1, range.endLineExclusive)
-    .join('\n')
-    .trim();
+  return normalizeSingleSummaryParagraph(
+    lines
+      .slice(range.paragraphStartLine, range.paragraphEndLineExclusive)
+      .join('\n')
+  );
 }
 
 export function stripSummarySectionFromBody(bodyText: string): string {
@@ -238,7 +270,7 @@ export function resolveNoteSummary(
 }
 
 export function upsertSummarySectionInMarkdown(rawContent: string, summaryText: string): string {
-  const summary = summaryText.trim();
+  const summary = normalizeSingleSummaryParagraph(summaryText);
   const { frontmatterBlock, bodyText } = splitFrontmatterAndBody(rawContent);
   const bodyNormalized = normalizeMarkdownNewlines(bodyText);
   const lines = bodyNormalized.length > 0 ? bodyNormalized.split('\n') : [];
@@ -263,7 +295,7 @@ export function upsertSummarySectionInMarkdown(rawContent: string, summaryText: 
   const summaryLines = [
     '## Summary',
     '',
-    ...summary.split('\n').map(line => line.trimEnd()),
+    summary,
     ''
   ];
   if (

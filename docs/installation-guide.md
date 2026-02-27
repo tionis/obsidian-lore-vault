@@ -144,8 +144,8 @@ If you prefer to build the plugin from source:
    - In the review modal:
      - `Write Summary Section` writes/updates the `## Summary` section in the note body
    - LoreVault uses precedence:
-     - world_info: `## Summary` -> `frontmatter summary` (fallback) -> body
-     - chapter memory: `## Summary` -> `frontmatter summary` (fallback) -> excerpt
+     - world_info: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> body
+     - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> excerpt
 
 7. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"

@@ -283,6 +283,7 @@ Also available in markdown editor right-click menu as `LoreVault: Continue Story
 The same editor menu also exposes note-scoped summary actions when eligible:
 
 - `LoreVault: Run Text Command on Selection` (only when text selection is non-empty).
+- `LoreVault: Generate Keywords` for notes with lorebook-scope tags.
 - `LoreVault: Generate World Info Summary` for notes with lorebook-scope tags.
 - `LoreVault: Generate Chapter Summary` for notes with story/chapter frontmatter.
 
@@ -363,6 +364,7 @@ Settings (LoreVault -> Text Commands):
 
 Commands:
 
+- `Generate Keywords (Active Note)`
 - `Generate World Info Summary (Active Note)`
 - `Generate Chapter Summary (Active Note)`
 - `Generate World Info Summaries (Active Scope)`
@@ -370,6 +372,7 @@ Commands:
 
 Editor context menu behavior:
 
+- keyword generation action appears only when the current note is in a lorebook scope (tag-derived).
 - world_info summary action appears only when the current note is in a lorebook scope (tag-derived).
 - chapter summary action appears only when the current note resolves as a story/chapter note from frontmatter.
 
@@ -537,11 +540,15 @@ Capabilities:
 - opens a dedicated workspace view with more horizontal space for routing diagnostics
 - scope selector for switching debug target
 - lorebook contents panel with `world_info` entries (keywords, trigger parameters, collapsible content)
+- quality audit panel:
+  - per-entry risk score (duplicate-like similarity, thin content, missing keywords)
+  - embedding-driven nearest-neighbor similarity hints when embeddings are available
+  - per-row actions (`Open`, `Generate Keywords` for missing-keyword notes)
 - full inclusion/routing table for selected scope:
   - note path
   - inclusion/exclusion reason
-  - retrieval mode and keyword presence
-  - resolved route (`world_info`, `rag`, both, or none)
+  - retrieval mode and keyword count
+  - resolved route
   - detected lorebook scopes
 
 ## Query Simulation UI
@@ -557,10 +564,10 @@ Capabilities:
   - `maxGraphHops`
   - `graphHopDecay`
   - `includeBacklinksInGraphExpansion`
-  - `ragFallbackPolicy`
-  - `ragFallbackSeedScoreThreshold`
+  - `ragFallbackPolicy` (fallback policy)
+  - `ragFallbackSeedScoreThreshold` (fallback seed threshold)
   - `maxWorldInfoEntries`
-  - `maxRagDocuments`
+  - `maxRagDocuments` (max fallback entries)
   - `worldInfoBudgetRatio`
   - `worldInfoBodyLiftEnabled`
   - `worldInfoBodyLiftMaxEntries`
@@ -574,7 +581,7 @@ Capabilities:
   - reasons
   - content tiers (including `full_body` lifts)
   - body-lift decision trace (applied/skipped reason per entry)
-- per-scope selected `rag` diagnostics:
+- per-scope selected fallback diagnostics:
   - score
   - matched terms
 

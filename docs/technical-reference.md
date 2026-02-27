@@ -35,6 +35,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/lorebooks-routing-debug-view.ts`
   - scope inclusion/routing diagnostics
   - world_info content inspection
+  - quality-audit table + keyword-generation actions
 - `src/lorebooks-query-simulator-view.ts`
   - multi-scope retrieval simulation
   - retrieval knob overrides for debugging/tuning
@@ -47,6 +48,10 @@ This document is the implementation-level reference for core architecture and ru
   - summary normalization and world_info content resolution
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
+- `src/quality-audit.ts`
+  - deterministic per-entry risk scoring (missing keywords, thin content, embedding similarity)
+- `src/keyword-utils.ts`
+  - keyword model-output parsing and deterministic frontmatter keyword upsert helpers
 - `src/text-command-modal.ts`
   - prompt/template selection modal for selection rewrite commands
 - `src/text-command-review-modal.ts` + `src/text-command-diff.ts`

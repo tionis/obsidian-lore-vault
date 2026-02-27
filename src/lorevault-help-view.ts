@@ -194,7 +194,9 @@ export class LorevaultHelpView extends ItemView {
         'Tool hooks enforce hard limits per turn (call count, tool result tokens, planning time).',
         'Token budgets are enforced; world_info content is tiered short -> medium -> full, with high-score body lift using full note body when budget permits.',
         'When full body does not fit, excerpt lift uses lexical scoring and (if embeddings are enabled) semantic paragraph reranking as a fallback.',
-        'Use Query Simulation for multi-scope retrieval testing, fallback diagnostics, and body-lift decision traces.'
+        'Use Query Simulation for multi-scope retrieval testing, fallback diagnostics, and body-lift decision traces.',
+        'Routing Debug now includes a Quality Audit table that flags missing keywords, duplicate-like entries, and thin notes.',
+        'Quality Audit rows with missing keywords include a Generate Keywords action that uses your configured LLM to update frontmatter keywords.'
       ]
     });
 

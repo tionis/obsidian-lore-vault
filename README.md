@@ -200,7 +200,8 @@ Routing debug features:
 - lorebook contents panel for `world_info` entries (keywords, trigger params, collapsible content)
 - note-level inclusion/exclusion reasons
 - retrieval mode and explicit keyword count
-- keyword coverage list for entries missing explicit frontmatter keywords
+- quality audit table (risk score + reasons) using missing-keyword/thin-content heuristics and embedding similarity where available
+- per-row actions for audit items (`Open` and `Generate Keywords` for missing-keyword notes)
 - detected scope tags per note
 
 ## Query Simulation
@@ -237,6 +238,7 @@ Behavior:
 - adds right-click editor context-menu actions:
   - `LoreVault: Continue Story with Context`
   - `LoreVault: Run Text Command on Selection` (only when editor selection is non-empty)
+  - `LoreVault: Generate Keywords` (for lorebook-tagged notes)
   - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
   - `LoreVault: Generate Chapter Summary` (only when note has chapter/story frontmatter)
 
@@ -278,6 +280,7 @@ Settings path: `Settings -> LoreVault -> Text Commands`
 
 Commands:
 
+- `Generate Keywords (Active Note)`
 - `Generate World Info Summary (Active Note)`
 - `Generate Chapter Summary (Active Note)`
 - `Generate World Info Summaries (Active Scope)`
@@ -285,6 +288,7 @@ Commands:
 
 Right-click editor menu:
 
+- `LoreVault: Generate Keywords` appears for notes tagged into a lorebook scope.
 - `LoreVault: Generate World Info Summary` appears for notes tagged into a lorebook scope.
 - `LoreVault: Generate Chapter Summary` appears for notes with story/chapter frontmatter.
 

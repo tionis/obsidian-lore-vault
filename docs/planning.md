@@ -30,11 +30,13 @@ Current execution sequence:
 4. add optional fallback/tool-call retrieval extensions
 5. run broad hardening/performance tuning across the stack
 6. implement optional world_info auto-summary workflow
+7. add cost estimation/tracking workflow (far-future; provider integration dependent)
 
 Priority note:
 
 - legacy hardening tasks and auto-summary are still roadmap items
 - they are intentionally sequenced after graph-first core delivery so optimization targets are stable
+- cost management is intentionally far-future and requires tighter OpenRouter usage/pricing integration
 
 ## Scope Boundaries
 
@@ -175,6 +177,17 @@ Constraints:
 - opt-in and review-first
 - deterministic output once accepted
 - preserve manual `summary` override precedence
+
+## Future: Cost Management and Usage Tracking
+
+Add optional cost estimation/tracking to make API spend easier to plan and audit.
+
+Constraints:
+
+- far-future phase only (after core retrieval/memory architecture stabilizes)
+- prioritize OpenRouter integration first for usage + pricing metadata
+- keep behavior deterministic for stored usage/cost records
+- expose clear estimated vs actual cost labels when full provider pricing data is unavailable
 
 ## Obsidian UX Direction
 

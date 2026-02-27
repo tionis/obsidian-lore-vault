@@ -1,9 +1,11 @@
 import { MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
 import {
+  cloneDefaultTextCommandPromptTemplates,
   CompletionPreset,
   ConverterSettings,
   DEFAULT_SETTINGS,
   LoreBookEntry,
+  TextCommandPromptTemplate,
   StoryChatContextMeta,
   StoryChatForkSnapshot,
   StoryChatMessage
@@ -76,6 +78,8 @@ import {
   upsertSummarySectionInMarkdown
 } from './summary-utils';
 import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
+import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text-command-modal';
+import { TextCommandReviewModal } from './text-command-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries } from './lorebooks-manager-data';
 import { UsageLedgerStore } from './usage-ledger-store';
@@ -1619,6 +1623,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       storyChat: {
         ...DEFAULT_SETTINGS.storyChat,
         ...(data?.storyChat ?? {})
+      },
+      textCommands: {
+        ...DEFAULT_SETTINGS.textCommands,
+        ...(data?.textCommands ?? {})
       }
     };
 
@@ -1825,6 +1833,17 @@ export default class LoreBookConverterPlugin extends Plugin {
       .map(ref => normalizeLinkTarget(String(ref ?? '')))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     merged.storyChat.maxMessages = Math.max(10, Math.floor(merged.storyChat.maxMessages || DEFAULT_SETTINGS.storyChat.maxMessages));
+
+    merged.textCommands.autoAcceptEdits = Boolean(merged.textCommands.autoAcceptEdits);
+    merged.textCommands.defaultIncludeLorebookContext = Boolean(merged.textCommands.defaultIncludeLorebookContext);
+    merged.textCommands.maxContextTokens = Math.max(
+      128,
+      Math.min(12000, Math.floor(Number(merged.textCommands.maxContextTokens)))
+    );
+    merged.textCommands.systemPrompt = (merged.textCommands.systemPrompt ?? '')
+      .toString()
+      .trim() || DEFAULT_SETTINGS.textCommands.systemPrompt;
+    merged.textCommands.prompts = this.normalizeTextCommandPrompts(merged.textCommands.prompts);
 
     const messages = Array.isArray(merged.storyChat.messages) ? merged.storyChat.messages : [];
     merged.storyChat.messages = messages
@@ -2088,6 +2107,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'run-text-command-on-selection',
+      name: 'Run Text Command on Selection',
+      editorCallback: (editor, info) => {
+        void this.runTextCommandOnSelection(editor, info);
+      }
+    });
+
+    this.addCommand({
       id: 'generate-world-info-summary-active-note',
       name: 'Generate World Info Summary (Active Note)',
       callback: () => {
@@ -2135,10 +2162,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     });
 
-    this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, _editor: Editor, info: MarkdownView | MarkdownFileInfo) => {
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor, info: MarkdownView | MarkdownFileInfo) => {
       const targetFile = this.resolveFileFromEditorMenuInfo(info);
       const isLorebookNote = targetFile ? this.noteBelongsToLorebookScope(targetFile) : false;
       const isChapterNote = targetFile ? this.noteHasChapterFrontmatter(targetFile) : false;
+      const hasSelection = editor.somethingSelected() && Boolean(editor.getSelection().trim());
 
       menu.addSeparator();
 
@@ -2178,6 +2206,17 @@ export default class LoreBookConverterPlugin extends Plugin {
             void this.continueStoryWithContext();
           });
       });
+
+      if (hasSelection) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Run Text Command on Selection')
+            .setIcon('wand')
+            .onClick(() => {
+              void this.runTextCommandOnSelection(editor, info);
+            });
+        });
+      }
     }));
     
     // Add template creation command
@@ -2470,6 +2509,290 @@ export default class LoreBookConverterPlugin extends Plugin {
       return normalized;
     }
     return normalized.slice(normalized.length - maxChars);
+  }
+
+  private sanitizeTextCommandPromptId(value: string, fallbackIndex: number): string {
+    const normalized = value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (normalized) {
+      return normalized;
+    }
+    return `prompt-${fallbackIndex + 1}`;
+  }
+
+  private normalizeTextCommandPrompts(rawPrompts: unknown): TextCommandPromptTemplate[] {
+    const source = Array.isArray(rawPrompts) ? rawPrompts : [];
+    const normalized: TextCommandPromptTemplate[] = [];
+    for (let index = 0; index < source.length; index += 1) {
+      const item = source[index];
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const candidate = item as Partial<TextCommandPromptTemplate>;
+      const name = (candidate.name ?? '').toString().trim();
+      const prompt = (candidate.prompt ?? '').toString().trim();
+      if (!name || !prompt) {
+        continue;
+      }
+      const id = this.sanitizeTextCommandPromptId(
+        typeof candidate.id === 'string' ? candidate.id : name,
+        index
+      );
+      normalized.push({
+        id,
+        name,
+        prompt,
+        includeLorebookContext: Boolean(candidate.includeLorebookContext)
+      });
+    }
+
+    const deduped = normalized
+      .filter((prompt, index, array) => array.findIndex(item => item.id === prompt.id) === index)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+
+    if (deduped.length > 0) {
+      return deduped;
+    }
+    return cloneDefaultTextCommandPromptTemplates();
+  }
+
+  private buildTextSelectionPreview(selection: string): string {
+    const normalized = selection.replace(/\r\n?/g, '\n').trim();
+    if (!normalized) {
+      return '';
+    }
+    const maxChars = 900;
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return `${normalized.slice(0, maxChars).trimEnd()}\n...`;
+  }
+
+  private async promptForTextCommandSelection(selectionText: string): Promise<TextCommandPromptSelectionResult> {
+    const modal = new TextCommandPromptModal(this.app, {
+      templates: this.settings.textCommands.prompts,
+      defaultIncludeLorebookContext: this.settings.textCommands.defaultIncludeLorebookContext,
+      selectedTextPreview: this.buildTextSelectionPreview(selectionText)
+    });
+    const resultPromise = modal.waitForResult();
+    modal.open();
+    return resultPromise;
+  }
+
+  private async buildTextCommandLoreContext(
+    selectionText: string,
+    activeFile: TFile | null
+  ): Promise<{
+    markdown: string;
+    selectedScopeLabels: string[];
+    worldInfoCount: number;
+    ragCount: number;
+    worldInfoDetails: string[];
+    ragDetails: string[];
+    usedTokens: number;
+  }> {
+    const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
+    const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
+    const scopesToQuery = frontmatterScopes.length > 0
+      ? frontmatterScopes
+      : (fallbackScope ? [fallbackScope] : []);
+    const targetScopes = scopesToQuery.length > 0 ? scopesToQuery : [''];
+    const budget = Math.max(128, Math.floor(this.settings.textCommands.maxContextTokens));
+    const perScopeBudget = Math.max(96, Math.floor(budget / Math.max(1, targetScopes.length)));
+
+    const contexts: AssembledContext[] = [];
+    for (const scope of targetScopes) {
+      contexts.push(await this.liveContextIndex.query({
+        queryText: selectionText,
+        tokenBudget: perScopeBudget
+      }, scope));
+    }
+
+    const selectedScopeLabels = contexts.map(item => item.scope || '(all)');
+    const markdown = contexts
+      .map(item => item.markdown)
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+    const worldInfoCount = contexts.reduce((sum, item) => sum + item.worldInfo.length, 0);
+    const ragCount = contexts.reduce((sum, item) => sum + item.rag.length, 0);
+    const worldInfoDetails = contexts
+      .flatMap(item => item.worldInfo.slice(0, 5).map(entry => entry.entry.comment))
+      .slice(0, 8);
+    const ragDetails = contexts
+      .flatMap(item => item.rag.slice(0, 5).map(entry => entry.document.title))
+      .slice(0, 8);
+    const usedTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
+
+    return {
+      markdown,
+      selectedScopeLabels,
+      worldInfoCount,
+      ragCount,
+      worldInfoDetails,
+      ragDetails,
+      usedTokens
+    };
+  }
+
+  async runTextCommandOnSelection(editorOverride?: Editor, infoOverride?: MarkdownView | MarkdownFileInfo): Promise<void> {
+    if (this.generationInFlight) {
+      new Notice('Generation is already running. Wait for the current run to finish.');
+      return;
+    }
+
+    const markdownView = infoOverride instanceof MarkdownView
+      ? infoOverride
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    const editor = editorOverride ?? markdownView?.editor;
+    if (!editor) {
+      new Notice('No active markdown editor found.');
+      return;
+    }
+
+    const from = editor.getCursor('from');
+    const to = editor.getCursor('to');
+    const selectedText = editor.getRange(from, to);
+    if (!selectedText.trim()) {
+      new Notice('Select text in the editor first.');
+      return;
+    }
+
+    const selection = await this.promptForTextCommandSelection(selectedText);
+    if (selection.action !== 'run') {
+      return;
+    }
+    if (!selection.promptText.trim()) {
+      new Notice('Prompt cannot be empty.');
+      return;
+    }
+
+    const activeFile = infoOverride instanceof MarkdownView
+      ? (infoOverride.file ?? this.app.workspace.getActiveFile())
+      : (markdownView?.file ?? this.app.workspace.getActiveFile());
+
+    let revisedText = '';
+    let loreContextMarkdown = '';
+    let worldInfoCount = 0;
+    let ragCount = 0;
+    let scopeLabels: string[] = [];
+    let worldInfoDetails: string[] = [];
+    let ragDetails: string[] = [];
+
+    try {
+      this.generationInFlight = true;
+      this.generationAbortController = new AbortController();
+      this.setGenerationStatus('running text command', 'busy');
+      if (!this.settings.completion.enabled) {
+        new Notice('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
+        return;
+      }
+      if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+        new Notice('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
+        return;
+      }
+
+      if (selection.includeLorebookContext) {
+        const context = await this.buildTextCommandLoreContext(selectedText, activeFile);
+        loreContextMarkdown = context.markdown;
+        worldInfoCount = context.worldInfoCount;
+        ragCount = context.ragCount;
+        scopeLabels = context.selectedScopeLabels;
+        worldInfoDetails = context.worldInfoDetails;
+        ragDetails = context.ragDetails;
+      }
+
+      const completion = this.settings.completion;
+      const userPrompt = [
+        `<instruction>${selection.promptText}</instruction>`,
+        '',
+        '<lorevault_context>',
+        selection.includeLorebookContext
+          ? (loreContextMarkdown || '[No lorebook context found for this selection.]')
+          : '[Lorebook context disabled for this command.]',
+        '</lorevault_context>',
+        '',
+        '<selected_text>',
+        selectedText,
+        '</selected_text>',
+        '',
+        'Return only the transformed text.',
+        'Do not add explanations, labels, markdown fences, or notes.'
+      ].join('\n');
+
+      revisedText = await requestStoryContinuation(completion, {
+        systemPrompt: this.settings.textCommands.systemPrompt,
+        userPrompt,
+        onUsage: usage => {
+          void this.recordCompletionUsage('text_command_edit', usage, {
+            promptTemplateId: selection.promptId,
+            includeLorebookContext: selection.includeLorebookContext,
+            worldInfoCount,
+            ragCount,
+            scopeCount: scopeLabels.length
+          });
+        }
+      });
+
+      if (!revisedText.trim()) {
+        throw new Error('Model returned empty output.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Text command failed:', error);
+      new Notice(`Text command failed: ${message}`);
+      return;
+    } finally {
+      this.generationInFlight = false;
+      this.generationAbortController = null;
+      this.setGenerationStatus('idle', 'idle');
+    }
+
+    let nextText = revisedText;
+    if (!this.settings.textCommands.autoAcceptEdits) {
+      const reviewModal = new TextCommandReviewModal(
+        this.app,
+        selectedText,
+        revisedText,
+        selection.promptName
+      );
+      const reviewResultPromise = reviewModal.waitForResult();
+      reviewModal.open();
+      const review = await reviewResultPromise;
+      if (review.action !== 'apply') {
+        new Notice('Text command cancelled.');
+        return;
+      }
+      nextText = review.revisedText;
+    }
+
+    const currentSelectedText = editor.getRange(from, to);
+    if (currentSelectedText !== selectedText) {
+      new Notice('Selection changed while generating. Re-run the text command on the current selection.');
+      return;
+    }
+
+    editor.replaceRange(nextText, from, to);
+    if (selection.includeLorebookContext) {
+      new Notice(
+        `Applied text command (${scopeLabels.join(', ') || '(all)'} | world_info ${worldInfoCount}, rag ${ragCount}).`
+      );
+    } else {
+      new Notice('Applied text command edit.');
+    }
+
+    if (selection.includeLorebookContext && (worldInfoDetails.length > 0 || ragDetails.length > 0)) {
+      new Notice(
+        [
+          `text command context`,
+          `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
+          `rag: ${ragDetails.join(', ') || '(none)'}`
+        ].join('\n')
+      );
+    }
   }
 
   async continueStoryWithContext(): Promise<void> {

@@ -124,6 +124,14 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       forkSnapshots: [],
       maxMessages: 80,
       ...(overrides.storyChat ?? {})
+    },
+    textCommands: {
+      autoAcceptEdits: false,
+      defaultIncludeLorebookContext: false,
+      maxContextTokens: 1400,
+      systemPrompt: 'You are a precise editing assistant.',
+      prompts: [],
+      ...(overrides.textCommands ?? {})
     }
   };
 }

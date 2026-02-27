@@ -784,6 +784,31 @@
   gap: 8px;
 }
 
+/* Text Command Modal */
+.modal.lorevault-text-command-modal-shell {
+  width: min(92vw, 980px);
+  max-width: 980px;
+}
+
+.lorevault-text-command-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorevault-text-command-selection-preview {
+  margin: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--background-secondary);
+  max-height: 180px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
 /* Import / Extraction Views */
 .lorevault-import-view {
   height: 100%;

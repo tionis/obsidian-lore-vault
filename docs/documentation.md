@@ -280,6 +280,7 @@ Command: `Continue Story with Context`
 Also available in markdown editor right-click menu as `LoreVault: Continue Story with Context`.
 The same editor menu also exposes note-scoped summary actions when eligible:
 
+- `LoreVault: Run Text Command on Selection` (only when text selection is non-empty).
 - `LoreVault: Generate World Info Summary` for notes with lorebook-scope tags.
 - `LoreVault: Generate Chapter Summary` for notes with story/chapter frontmatter.
 
@@ -325,6 +326,36 @@ Long-form story metadata (new):
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
+
+## Text Commands (Selection Rewrite/Reformat)
+
+Command:
+
+- `Run Text Command on Selection`
+
+Editor menu:
+
+- `LoreVault: Run Text Command on Selection` appears only when selected text is non-empty.
+
+Run flow:
+
+1. select editor text
+2. open prompt modal
+  - choose prompt template from stored collection (or custom prompt)
+  - optional per-run lorebook-context toggle
+3. LoreVault optionally retrieves scoped lore context using selected text as query
+4. LoreVault sends prompt + selected text (+ optional context) to completion provider
+5. response text is treated as replacement candidate
+6. if auto-accept is off, review modal shows original + diff preview before apply
+7. selected range is replaced only if selection still matches original text
+
+Settings (LoreVault -> Text Commands):
+
+- `Auto-Accept Text Command Edits` (default off)
+- `Include Lorebook Context by Default`
+- `Text Command Context Token Budget`
+- `Text Command System Prompt`
+- `Text Command Prompt Collection (JSON)` with `Save Collection` and `Load Defaults`
 
 ## Auto Summary Workflows (Phase 9)
 

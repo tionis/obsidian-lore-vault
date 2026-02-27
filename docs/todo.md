@@ -12,6 +12,7 @@ Reference design: `docs/planning.md`.
 - Phase 13 cost tracking is complete (usage hooks + ledger + manager UI + JSON/CSV export + aggregation tests).
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
+- Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
 - Current priority is refining structured-merge conflict UX.
 
 ## Active Execution Order
@@ -137,6 +138,16 @@ Reference design: `docs/planning.md`.
 - [x] Add dry-run diff preview and per-change approval before writes.
 - [x] Add idempotence checks so rerunning the same story update does not duplicate content.
 - [x] Add fixtures/tests for deterministic merge/update behavior on existing pages.
+
+## Phase 16: Selection Text Commands
+
+- [x] Add command + editor context-menu action: `Run Text Command on Selection`.
+- [x] Add text-command prompt modal with template picker, custom prompt editing, and per-run context toggle.
+- [x] Add optional lorebook-context retrieval injection for text commands.
+- [x] Add review/approval modal with unified diff preview before apply.
+- [x] Add auto-accept setting (default off) for direct apply.
+- [x] Add settings-backed prompt collection with JSON editor + load-defaults action.
+- [x] Add tests for deterministic diff preview generation.
 
 ## Default Decisions (2026-02-27)
 

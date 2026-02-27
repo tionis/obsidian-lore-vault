@@ -142,6 +142,16 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
+    this.renderSection(contentEl, 'Text Commands', {
+      bullets: [
+        'Select text in the editor, right-click, and run `LoreVault: Run Text Command on Selection`.',
+        'Pick a stored prompt template or edit a custom prompt before running.',
+        'Each run can include lorebook context or operate on selected text only.',
+        'Generated edits are reviewed in a diff/preview modal before apply unless auto-accept is enabled.',
+        'Manage prompt collection, context defaults, and auto-accept in Settings -> Text Commands.'
+      ]
+    });
+
     this.renderSection(contentEl, 'Generation and Chat', {
       bullets: [
         'Continue Story with Context streams generated text into the active editor at the cursor.',

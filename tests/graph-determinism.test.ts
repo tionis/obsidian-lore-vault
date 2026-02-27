@@ -156,6 +156,13 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       messages: [],
       forkSnapshots: [],
       maxMessages: 80
+    },
+    textCommands: {
+      autoAcceptEdits: false,
+      defaultIncludeLorebookContext: false,
+      maxContextTokens: 1400,
+      systemPrompt: 'You are a precise editing assistant.',
+      prompts: []
     }
   };
 }

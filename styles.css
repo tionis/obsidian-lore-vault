@@ -199,3 +199,40 @@
   border-top: 1px solid var(--background-modifier-border);
   font-size: 12px;
 }
+
+.lorevault-manager-generation-card {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.lorevault-manager-generation-stats {
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.lorevault-manager-state {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lorevault-manager-state-idle {
+  color: var(--text-muted);
+}
+
+.lorevault-manager-state-preparing,
+.lorevault-manager-state-retrieving,
+.lorevault-manager-state-generating {
+  color: var(--color-blue);
+}
+
+.lorevault-manager-state-error {
+  color: var(--color-red);
+}
+
+.lorevault-manager-subheading {
+  margin: 8px 0 4px;
+  font-size: 12px;
+}

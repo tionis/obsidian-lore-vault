@@ -225,6 +225,8 @@ Settings:
 - system prompt
 - temperature
 - max output tokens
+- context window tokens
+- prompt reserve tokens
 - timeout
 
 Story frontmatter scope override:
@@ -238,6 +240,7 @@ Story frontmatter scope override:
   - values are normalized and deduplicated deterministically
   - each selected scope is queried and combined into completion context
   - completion token budget is split across selected scopes
+  - context budgets are trimmed iteratively if selected context exceeds input budget
 
 ## LoreVault Manager UI
 
@@ -246,10 +249,17 @@ Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel
 Capabilities:
 
 - lists discovered scopes with deterministic ordering
+- includes a persistent generation monitor card
 - shows counts:
   - included notes
   - `world_info` entries
   - `rag` documents
+- generation monitor details:
+  - current generation state (`idle|preparing|retrieving|generating|error`)
+  - active scopes
+  - provider/model
+  - context window and token usage
+  - selected `world_info` and `rag` items used for the active/last run
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export Scope`
@@ -284,15 +294,18 @@ Query behavior:
   - `rag`: term overlap in title/path/content
 - completion:
   - builds a prompt from scope context + recent story window
-  - calls configured completion provider
-  - inserts generated continuation text at cursor
+  - calls configured completion provider with streaming enabled
+  - inserts streamed generated continuation text at cursor
 - deterministic tie-breakers:
   - `world_info`: score desc, order desc, uid asc
   - `rag`: score desc, path asc, title asc, uid asc
 
 Token budgeting:
 
-- uses lorebook token budget (`defaultLoreBook.tokenBudget`)
+- uses completion context budget (`contextWindowTokens - maxOutputTokens`) and lorebook token budget cap (`defaultLoreBook.tokenBudget`)
+- reserves headroom via `promptReserveTokens`
+- trims story window to keep minimum context capacity
 - splits budget between sections (`world_info` 60%, `rag` 40%)
+- iteratively shrinks per-scope context budget if total selected context exceeds input budget
 - skips entries/documents that would exceed section budget
 - context block is used for generation input and is not inserted into the note

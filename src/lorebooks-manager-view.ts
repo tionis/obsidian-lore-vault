@@ -39,6 +39,18 @@ function formatReason(reason: string): string {
   }
 }
 
+function formatTokenValue(value: number): string {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)).toString() : '0';
+}
+
+function formatSecondsAgo(timestamp: number): string {
+  if (!timestamp) {
+    return '-';
+  }
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  return `${seconds}s ago`;
+}
+
 export class LorebooksManagerView extends ItemView {
   private plugin: LoreBookConverterPlugin;
 
@@ -144,6 +156,75 @@ export class LorebooksManagerView extends ItemView {
     }
   }
 
+  private renderGenerationCard(container: HTMLElement): void {
+    const telemetry = this.plugin.getGenerationTelemetry();
+    const card = container.createDiv({ cls: 'lorevault-manager-card lorevault-manager-generation-card' });
+    const header = card.createDiv({ cls: 'lorevault-manager-card-header' });
+    header.createEl('h3', { text: 'Generation Monitor' });
+    const stateBadge = header.createSpan({ cls: `lorevault-manager-state lorevault-manager-state-${telemetry.state}` });
+    stateBadge.setText(telemetry.state);
+
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: `Status: ${telemetry.statusText} | Updated: ${formatSecondsAgo(telemetry.updatedAt)}`
+    });
+
+    const provider = telemetry.provider || '-';
+    const model = telemetry.model || '-';
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: `Provider: ${provider} | Model: ${model}`
+    });
+
+    const scopeLabel = telemetry.scopes.length > 0 ? telemetry.scopes.join(', ') : '(none)';
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: `Active scopes: ${scopeLabel}`
+    });
+
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: `Context: window ${formatTokenValue(telemetry.contextWindowTokens)} | input ${formatTokenValue(telemetry.maxInputTokens)} | reserve ${formatTokenValue(telemetry.promptReserveTokens)} | story ${formatTokenValue(telemetry.storyTokens)} | used ${formatTokenValue(telemetry.contextUsedTokens)} | left ${formatTokenValue(telemetry.contextRemainingTokens)}`
+    });
+
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: `Output: ~${formatTokenValue(telemetry.generatedTokens)} / ${formatTokenValue(telemetry.maxOutputTokens)} | world_info ${formatTokenValue(telemetry.worldInfoCount)} | rag ${formatTokenValue(telemetry.ragCount)}`
+    });
+
+    if (telemetry.lastError) {
+      card.createEl('p', {
+        cls: 'lorevault-manager-warning-item',
+        text: `Last error: ${telemetry.lastError}`
+      });
+    }
+
+    const details = card.createEl('details', { cls: 'lorevault-manager-debug' });
+    details.createEl('summary', { text: 'Selected Context Items' });
+
+    const wiHeading = details.createEl('h4', { text: 'world_info' });
+    wiHeading.addClass('lorevault-manager-subheading');
+    if (telemetry.worldInfoItems.length === 0) {
+      details.createEl('p', { text: '(none)' });
+    } else {
+      const wiList = details.createEl('ul');
+      for (const item of telemetry.worldInfoItems) {
+        wiList.createEl('li', { text: item });
+      }
+    }
+
+    const ragHeading = details.createEl('h4', { text: 'rag' });
+    ragHeading.addClass('lorevault-manager-subheading');
+    if (telemetry.ragItems.length === 0) {
+      details.createEl('p', { text: '(none)' });
+    } else {
+      const ragList = details.createEl('ul');
+      for (const item of telemetry.ragItems) {
+        ragList.createEl('li', { text: item });
+      }
+    }
+  }
+
   private render(): void {
     const { contentEl } = this;
     contentEl.empty();
@@ -155,6 +236,7 @@ export class LorebooksManagerView extends ItemView {
     titleRow.createEl('h2', { text: 'LoreVault Manager' });
 
     this.renderToolbar(contentEl);
+    this.renderGenerationCard(contentEl);
 
     const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
     const summaries = buildScopeSummaries(notes, this.plugin.settings);

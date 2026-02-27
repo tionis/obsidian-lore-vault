@@ -448,6 +448,32 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Context Window Tokens')
+      .setDesc('Total prompt + completion token window used for budgeting.')
+      .addText(text => text
+        .setValue(this.plugin.settings.completion.contextWindowTokens.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= this.plugin.settings.completion.maxOutputTokens + 512) {
+            this.plugin.settings.completion.contextWindowTokens = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Prompt Reserve Tokens')
+      .setDesc('Reserved headroom for prompt overhead and safety margin.')
+      .addText(text => text
+        .setValue(this.plugin.settings.completion.promptReserveTokens.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value);
+          if (!isNaN(numValue) && numValue >= 0) {
+            this.plugin.settings.completion.promptReserveTokens = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
       .setName('Completion Timeout (ms)')
       .setDesc('Request timeout for completion API calls.')
       .addText(text => text

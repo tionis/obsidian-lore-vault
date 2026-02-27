@@ -152,6 +152,8 @@ export interface ConverterSettings {
     systemPrompt: string;
     temperature: number;
     maxOutputTokens: number;
+    contextWindowTokens: number;
+    promptReserveTokens: number;
     timeoutMs: number;
   };
 }
@@ -217,6 +219,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     systemPrompt: 'You are a story-writing assistant. Continue the story in the same tone, perspective, and tense. Use provided lore context as constraints. Output only the continuation text with no explanations or headings.',
     temperature: 0.7,
     maxOutputTokens: 700,
+    contextWindowTokens: 8192,
+    promptReserveTokens: 400,
     timeoutMs: 60000
   }
 };

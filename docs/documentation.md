@@ -310,3 +310,28 @@ Token budgeting:
 - iteratively shrinks per-scope context budget if total selected context exceeds input budget
 - skips entries/documents that would exceed section budget
 - context block is used for generation input and is not inserted into the note
+
+## Story Chat Panel
+
+Command: `Open Story Chat`
+
+Current behavior:
+
+- opens a persistent workspace view (non-modal)
+- supports streaming send/stop/regenerate turn controls
+- stores per-chat context controls:
+  - selected lorebook scopes
+  - `Use Lorebook Context` toggle
+  - manual context text
+- allows manual-context-only operation by disabling lorebook context or selecting no scopes
+- persists chat transcript and controls in plugin data
+
+Turn context assembly:
+
+- optional lorebook retrieval for selected scopes
+- optional manual context block
+- recent chat history window
+- deterministic context inspector metadata attached to assistant turns:
+  - selected scopes
+  - context token estimate
+  - selected `world_info` and `rag` item labels

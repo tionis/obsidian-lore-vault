@@ -10,6 +10,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Dual exports per scope: `world_info` JSON and `rag` markdown
 - Optional embedding-based semantic RAG with hash-cache
 - Optional LLM completion generation for story continuation
+- Story Chat panel with per-chat lorebook scope selection and manual-context mode
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
@@ -204,6 +205,22 @@ lorebooks:
 ```
 
 Accepted keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`.
+
+## Story Chat (Phase 10 Foundation)
+
+Command: `Open Story Chat`
+
+Current capabilities:
+
+- persistent right-sidebar chat panel
+- streaming assistant responses
+- per-chat lorebook scope selection (including none)
+- `Use Lorebook Context` toggle
+- manual context block (for manual-only or mixed mode)
+- send/stop/regenerate controls
+- per-response context inspector (scopes, token estimate, `world_info`/`rag` items)
+
+Chat state (messages + context controls) is persisted in plugin data.
 
 ## Development
 

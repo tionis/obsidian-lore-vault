@@ -116,6 +116,13 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
       timeoutMs: 60000
+    },
+    storyChat: {
+      selectedScopes: [],
+      useLorebookContext: true,
+      manualContext: '',
+      messages: [],
+      maxMessages: 80
     }
   };
 }

@@ -1,5 +1,11 @@
 import { App, MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
-import { ConverterSettings, DEFAULT_SETTINGS, LoreBookEntry } from './models';
+import {
+  ConverterSettings,
+  DEFAULT_SETTINGS,
+  LoreBookEntry,
+  StoryChatContextMeta,
+  StoryChatMessage
+} from './models';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
 import { LoreBookExporter } from './lorebook-exporter'; 
@@ -7,6 +13,7 @@ import { LoreBookConverterSettingTab } from './settings-tab';
 import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
 import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
+import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LiveContextIndex } from './live-context-index';
 import { EmbeddingService } from './embedding-service';
 import { requestStoryContinuationStream } from './completion-provider';
@@ -47,11 +54,26 @@ export interface GenerationTelemetry {
   lastError: string;
 }
 
+export interface StoryChatTurnRequest {
+  userMessage: string;
+  selectedScopes: string[];
+  useLorebookContext: boolean;
+  manualContext: string;
+  history: StoryChatMessage[];
+  onDelta: (delta: string) => void;
+}
+
+export interface StoryChatTurnResult {
+  assistantText: string;
+  contextMeta: StoryChatContextMeta;
+}
+
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
   private generationStatusEl: HTMLElement | null = null;
   private generationInFlight = false;
+  private generationAbortController: AbortController | null = null;
   private generationStatusLevel: 'idle' | 'busy' | 'error' = 'idle';
   private generationTelemetry: GenerationTelemetry = this.createDefaultGenerationTelemetry();
   private managerRefreshTimer: number | null = null;
@@ -196,6 +218,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshStoryChatViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof StoryChatView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
   async openLorebooksManagerView(): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE)[0];
 
@@ -209,6 +240,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorebooksManagerView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openStoryChatView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_STORY_CHAT_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof StoryChatView) {
       leaf.view.refresh();
     }
   }
@@ -232,6 +280,273 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     return [...scopes].sort((a, b) => a.localeCompare(b));
+  }
+
+  private createMessageId(prefix: string): string {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  public getAvailableScopes(): string[] {
+    const fromIndex = this.liveContextIndex?.getScopes() ?? [];
+    if (fromIndex.length > 0) {
+      return [...fromIndex].sort((a, b) => a.localeCompare(b));
+    }
+
+    const files = this.app.vault.getMarkdownFiles();
+    return this.discoverAllScopes(files);
+  }
+
+  public getStoryChatMessages(): StoryChatMessage[] {
+    return this.settings.storyChat.messages.map(message => ({
+      ...message,
+      contextMeta: message.contextMeta ? {
+        ...message.contextMeta,
+        scopes: [...message.contextMeta.scopes],
+        worldInfoItems: [...message.contextMeta.worldInfoItems],
+        ragItems: [...message.contextMeta.ragItems]
+      } : undefined
+    }));
+  }
+
+  public getStoryChatConfig(): ConverterSettings['storyChat'] {
+    return {
+      ...this.settings.storyChat,
+      selectedScopes: [...this.settings.storyChat.selectedScopes],
+      messages: this.getStoryChatMessages()
+    };
+  }
+
+  public async updateStoryChatConfig(update: Partial<ConverterSettings['storyChat']>): Promise<void> {
+    const merged: ConverterSettings = this.mergeSettings({
+      ...this.settings,
+      storyChat: {
+        ...this.settings.storyChat,
+        ...update
+      }
+    });
+    this.settings = merged;
+    await super.saveData(this.settings);
+    this.refreshStoryChatViews();
+  }
+
+  public async setStoryChatMessages(messages: StoryChatMessage[]): Promise<void> {
+    const trimmed = messages.slice(-this.settings.storyChat.maxMessages);
+    await this.updateStoryChatConfig({ messages: trimmed });
+  }
+
+  public async clearStoryChatMessages(): Promise<void> {
+    await this.setStoryChatMessages([]);
+  }
+
+  public stopActiveGeneration(): void {
+    if (!this.generationAbortController) {
+      return;
+    }
+    this.generationAbortController.abort();
+  }
+
+  private isAbortLikeError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    const normalized = error.message.toLowerCase();
+    return normalized.includes('aborted') || normalized.includes('cancelled');
+  }
+
+  private buildChatHistorySnippet(history: StoryChatMessage[]): string {
+    if (history.length === 0) {
+      return '';
+    }
+
+    const recent = history.slice(-8);
+    const rendered = recent.map(message => {
+      const label = message.role === 'assistant' ? 'Assistant' : 'User';
+      const body = message.content.trim();
+      return `${label}: ${body}`;
+    }).join('\n\n');
+
+    return this.trimTextToTokenBudget(rendered, 900);
+  }
+
+  public async runStoryChatTurn(request: StoryChatTurnRequest): Promise<StoryChatTurnResult> {
+    if (this.generationInFlight) {
+      throw new Error('LoreVault generation is already running.');
+    }
+
+    if (!this.settings.completion.enabled) {
+      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
+    }
+    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+      throw new Error('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
+    }
+
+    const completion = this.settings.completion;
+    const selectedScopes = request.selectedScopes.length > 0
+      ? request.selectedScopes.map(scope => normalizeScope(scope)).filter(Boolean)
+      : [];
+    const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
+    const manualContext = request.manualContext.trim();
+    const chatHistory = this.buildChatHistorySnippet(request.history);
+    const querySeed = [request.userMessage, chatHistory].filter(Boolean).join('\n');
+
+    const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+    const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
+    const manualContextTokens = manualContext ? this.estimateTokens(manualContext) : 0;
+    let availableForLorebookContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - manualContextTokens;
+
+    if (availableForLorebookContext < 64) {
+      availableForLorebookContext = 64;
+    }
+
+    let contexts: AssembledContext[] = [];
+    let usedContextTokens = 0;
+    if (request.useLorebookContext && selectedScopes.length > 0) {
+      let contextBudget = Math.min(
+        this.settings.defaultLoreBook.tokenBudget,
+        Math.max(64, availableForLorebookContext)
+      );
+
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        contexts = [];
+        const perScopeBudget = Math.max(64, Math.floor(contextBudget / selectedScopes.length));
+        for (const scope of selectedScopes) {
+          contexts.push(await this.liveContextIndex.query({
+            queryText: querySeed || request.userMessage,
+            tokenBudget: perScopeBudget
+          }, scope));
+        }
+
+        usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
+        const remaining = availableForLorebookContext - usedContextTokens;
+        if (remaining >= 0 || contextBudget <= 64) {
+          break;
+        }
+        const nextBudget = Math.max(64, contextBudget + remaining - 48);
+        if (nextBudget === contextBudget) {
+          break;
+        }
+        contextBudget = nextBudget;
+      }
+    }
+
+    const contextMarkdown = contexts.map(context => context.markdown).join('\n\n---\n\n');
+    const worldInfoItems = contexts
+      .flatMap(context => context.worldInfo.slice(0, 6).map(item => item.entry.comment))
+      .slice(0, 12);
+    const ragItems = contexts
+      .flatMap(context => context.rag.slice(0, 6).map(item => item.document.title))
+      .slice(0, 12);
+    const contextMeta: StoryChatContextMeta = {
+      usedLorebookContext: request.useLorebookContext && selectedScopes.length > 0,
+      usedManualContext: manualContext.length > 0,
+      scopes: selectedScopes,
+      contextTokens: usedContextTokens + manualContextTokens,
+      worldInfoCount: contexts.reduce((sum, context) => sum + context.worldInfo.length, 0),
+      ragCount: contexts.reduce((sum, context) => sum + context.rag.length, 0),
+      worldInfoItems,
+      ragItems
+    };
+
+    const userPrompt = [
+      'You are assisting with story development in a chat workflow.',
+      'Answer naturally as a writing partner.',
+      'Respect lore context as canon constraints when provided.',
+      '',
+      '<chat_history>',
+      chatHistory || '[No prior chat history.]',
+      '</chat_history>',
+      '',
+      '<manual_context>',
+      manualContext || '[No manual context provided.]',
+      '</manual_context>',
+      '',
+      '<lorevault_scopes>',
+      scopeLabels.join(', '),
+      '</lorevault_scopes>',
+      '',
+      '<lorevault_context>',
+      contextMarkdown || '[No lorebook context selected.]',
+      '</lorevault_context>',
+      '',
+      '<user_message>',
+      request.userMessage.trim(),
+      '</user_message>'
+    ].join('\n');
+
+    this.generationInFlight = true;
+    this.generationAbortController = new AbortController();
+    this.updateGenerationTelemetry({
+      ...this.createDefaultGenerationTelemetry(),
+      state: 'generating',
+      statusText: 'chat generating',
+      startedAt: Date.now(),
+      provider: completion.provider,
+      model: completion.model,
+      scopes: scopeLabels,
+      contextWindowTokens: completion.contextWindowTokens,
+      maxInputTokens,
+      promptReserveTokens: completion.promptReserveTokens,
+      contextUsedTokens: usedContextTokens + manualContextTokens,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - manualContextTokens),
+      maxOutputTokens: completion.maxOutputTokens,
+      worldInfoCount: contextMeta.worldInfoCount,
+      ragCount: contextMeta.ragCount,
+      worldInfoItems,
+      ragItems,
+      lastError: ''
+    });
+    this.setGenerationStatus('chat generating', 'busy');
+
+    let assistantText = '';
+    try {
+      await requestStoryContinuationStream(completion, {
+        systemPrompt: completion.systemPrompt,
+        userPrompt,
+        onDelta: (delta: string) => {
+          if (!delta) {
+            return;
+          }
+          assistantText += delta;
+          request.onDelta(delta);
+          this.updateGenerationTelemetry({
+            generatedTokens: this.estimateTokens(assistantText),
+            statusText: 'chat generating'
+          });
+        },
+        abortSignal: this.generationAbortController.signal
+      });
+    } catch (error) {
+      if (!this.isAbortLikeError(error)) {
+        throw error;
+      }
+    } finally {
+      this.generationInFlight = false;
+      this.generationAbortController = null;
+      this.setGenerationStatus('idle', 'idle');
+    }
+
+    const normalizedAssistantText = assistantText.trim();
+    if (!normalizedAssistantText) {
+      throw new Error('Completion provider returned empty output.');
+    }
+
+    this.updateGenerationTelemetry({
+      state: 'idle',
+      statusText: 'idle',
+      generatedTokens: this.estimateTokens(normalizedAssistantText),
+      contextUsedTokens: contextMeta.contextTokens,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - contextMeta.contextTokens),
+      worldInfoCount: contextMeta.worldInfoCount,
+      ragCount: contextMeta.ragCount,
+      worldInfoItems: contextMeta.worldInfoItems,
+      ragItems: contextMeta.ragItems,
+      lastError: ''
+    });
+
+    return {
+      assistantText: normalizedAssistantText,
+      contextMeta
+    };
   }
 
   private mergeSettings(data: Partial<ConverterSettings> | null | undefined): ConverterSettings {
@@ -265,6 +580,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       completion: {
         ...DEFAULT_SETTINGS.completion,
         ...(data?.completion ?? {})
+      },
+      storyChat: {
+        ...DEFAULT_SETTINGS.storyChat,
+        ...(data?.storyChat ?? {})
       }
     };
 
@@ -343,6 +662,48 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.completion.promptReserveTokens = Math.max(0, Math.floor(merged.completion.promptReserveTokens));
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
 
+    const selectedScopes = Array.isArray(merged.storyChat.selectedScopes)
+      ? merged.storyChat.selectedScopes
+      : [];
+    merged.storyChat.selectedScopes = selectedScopes
+      .map(scope => normalizeScope(scope))
+      .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index);
+    merged.storyChat.useLorebookContext = Boolean(merged.storyChat.useLorebookContext);
+    merged.storyChat.manualContext = (merged.storyChat.manualContext ?? '').toString();
+    merged.storyChat.maxMessages = Math.max(10, Math.floor(merged.storyChat.maxMessages || DEFAULT_SETTINGS.storyChat.maxMessages));
+
+    const messages = Array.isArray(merged.storyChat.messages) ? merged.storyChat.messages : [];
+    merged.storyChat.messages = messages
+      .filter(message => message && (message.role === 'user' || message.role === 'assistant'))
+      .map((message: any): StoryChatMessage => {
+        const role: StoryChatMessage['role'] = message.role === 'assistant' ? 'assistant' : 'user';
+        return {
+          id: typeof message.id === 'string' && message.id ? message.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role,
+          content: (message.content ?? '').toString(),
+          createdAt: Number.isFinite(message.createdAt) ? Math.floor(message.createdAt) : Date.now(),
+          contextMeta: message.contextMeta ? {
+            usedLorebookContext: Boolean(message.contextMeta.usedLorebookContext),
+            usedManualContext: Boolean(message.contextMeta.usedManualContext),
+            scopes: Array.isArray(message.contextMeta.scopes)
+              ? message.contextMeta.scopes
+                .map((scope: string) => normalizeScope(scope))
+                .filter((scope: string | null): scope is string => Boolean(scope))
+              : [],
+            contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
+            worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
+            ragCount: Math.max(0, Math.floor(message.contextMeta.ragCount ?? 0)),
+            worldInfoItems: Array.isArray(message.contextMeta.worldInfoItems)
+              ? message.contextMeta.worldInfoItems.map((item: unknown) => String(item))
+              : [],
+            ragItems: Array.isArray(message.contextMeta.ragItems)
+              ? message.contextMeta.ragItems.map((item: unknown) => String(item))
+              : []
+          } : undefined
+        };
+      })
+      .slice(-merged.storyChat.maxMessages);
+
     return merged;
   }
 
@@ -351,6 +712,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.settings = this.mergeSettings(await this.loadData());
     this.liveContextIndex = new LiveContextIndex(this.app, () => this.settings);
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
+    this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
 
     // Add custom ribbon icons with clearer intent.
     addIcon('lorevault-build', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -365,6 +727,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       <circle cx="68" cy="36" r="5" fill="currentColor"/>
       <circle cx="76" cy="52" r="5" fill="currentColor"/>
       <circle cx="64" cy="68" r="5" fill="currentColor"/>
+    </svg>`);
+    addIcon('lorevault-chat', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linejoin="round" d="M14 18h72a8 8 0 0 1 8 8v40a8 8 0 0 1-8 8H44l-20 16v-16H14a8 8 0 0 1-8-8V26a8 8 0 0 1 8-8z"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" d="M26 38h46M26 52h34"/>
     </svg>`);
 
     // Add settings tab
@@ -381,6 +747,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       void this.openLorebooksManagerView();
     });
 
+    this.addRibbonIcon('lorevault-chat', 'Open Story Chat', () => {
+      void this.openStoryChatView();
+    });
+
     // Add command
     this.addCommand({
       id: 'convert-to-lorebook',
@@ -395,6 +765,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open LoreVault Manager',
       callback: () => {
         void this.openLorebooksManagerView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-story-chat',
+      name: 'Open Story Chat',
+      callback: () => {
+        void this.openStoryChatView();
       }
     });
 
@@ -454,21 +832,25 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', file => {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
+      this.refreshStoryChatViews();
     }));
 
     this.registerEvent(this.app.vault.on('modify', file => {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
+      this.refreshStoryChatViews();
     }));
 
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
       this.refreshManagerViews();
+      this.refreshStoryChatViews();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.refreshManagerViews();
+      this.refreshStoryChatViews();
     }));
 
     void this.liveContextIndex.initialize().catch(error => {
@@ -478,6 +860,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async onunload() {
     this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
       window.clearTimeout(this.managerRefreshTimer);
       this.managerRefreshTimer = null;
@@ -490,6 +873,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     await super.saveData(this.settings);
     this.liveContextIndex?.requestFullRefresh();
     this.refreshManagerViews();
+    this.refreshStoryChatViews();
   }
 
   private resolveScopeFromActiveFile(activeFile: TFile | null): string | undefined {
@@ -595,6 +979,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     try {
       this.generationInFlight = true;
+      this.generationAbortController = new AbortController();
       if (!this.settings.completion.enabled) {
         new Notice('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
         return;
@@ -784,7 +1169,8 @@ export default class LoreBookConverterPlugin extends Plugin {
               'busy'
             );
           }
-        }
+        },
+        abortSignal: this.generationAbortController.signal
       });
 
       if (!generatedText.trim()) {
@@ -821,6 +1207,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       new Notice(`Continue Story with Context failed: ${message}`);
     } finally {
       this.generationInFlight = false;
+      this.generationAbortController = null;
       if (this.generationStatusLevel === 'error') {
         window.setTimeout(() => {
           if (!this.generationInFlight && this.generationStatusLevel === 'error') {
@@ -946,6 +1333,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
       this.liveContextIndex.requestFullRefresh();
       this.refreshManagerViews();
+      this.refreshStoryChatViews();
     } catch (error) {
       console.error('Conversion failed:', error);
       new Notice(`Conversion failed: ${error.message}`);

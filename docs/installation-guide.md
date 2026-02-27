@@ -41,10 +41,11 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - Toggle the switch to enable it
 
 4. **Verify installation**
-   - You should now see LoreVault ribbon icons in the left sidebar (build scope + manager)
+   - You should now see LoreVault ribbon icons in the left sidebar (build scope + manager + story chat)
    - The command palette (Ctrl+P or Cmd+P) should include:
      - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
+     - "Open Story Chat" (opens right sidebar panel)
      - "Continue Story with Context"
      - "Create LoreVault Entry Template"
 
@@ -107,6 +108,14 @@ If you prefer to build the plugin from source:
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
    - LoreVault queries token-budgeted context (`world_info` + `rag`) and streams generated continuation text
    - Open "Open LoreVault Manager" to watch generation state, active scopes, token usage, and selected context items live
+
+5. **Use Story Chat (Phase 10 foundation)**
+   - Run command "Open Story Chat"
+   - Select lorebook scopes to use (or disable lorebook context for manual-only chat)
+   - Optional: add manual context text in the panel
+   - Send prompts and watch streamed responses
+   - Use Stop/Regenerate as needed
+   - Expand per-turn context inspector blocks to see selected scopes and pulled items
 
 ## Troubleshooting
 

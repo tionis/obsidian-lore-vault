@@ -91,6 +91,25 @@ export interface LoreBook {
   settings: LoreBookSettings;
 }
 
+export interface StoryChatContextMeta {
+  usedLorebookContext: boolean;
+  usedManualContext: boolean;
+  scopes: string[];
+  contextTokens: number;
+  worldInfoCount: number;
+  ragCount: number;
+  worldInfoItems: string[];
+  ragItems: string[];
+}
+
+export interface StoryChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+  contextMeta?: StoryChatContextMeta;
+}
+
 export interface ConverterSettings {
   tagScoping: {
     tagPrefix: string;
@@ -155,6 +174,13 @@ export interface ConverterSettings {
     contextWindowTokens: number;
     promptReserveTokens: number;
     timeoutMs: number;
+  };
+  storyChat: {
+    selectedScopes: string[];
+    useLorebookContext: boolean;
+    manualContext: string;
+    messages: StoryChatMessage[];
+    maxMessages: number;
   };
 }
 
@@ -222,5 +248,12 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     contextWindowTokens: 8192,
     promptReserveTokens: 400,
     timeoutMs: 60000
+  },
+  storyChat: {
+    selectedScopes: [],
+    useLorebookContext: true,
+    manualContext: '',
+    messages: [],
+    maxMessages: 80
   }
 };

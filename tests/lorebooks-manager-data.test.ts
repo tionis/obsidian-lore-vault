@@ -79,6 +79,14 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       timeoutMs: 60000,
       ...(overrides.completion ?? {})
     },
+    storyChat: {
+      selectedScopes: [],
+      useLorebookContext: true,
+      manualContext: '',
+      messages: [],
+      maxMessages: 80,
+      ...(overrides.storyChat ?? {})
+    },
     ...overrides
   };
 }

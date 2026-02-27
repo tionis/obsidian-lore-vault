@@ -722,6 +722,43 @@
   gap: 8px;
 }
 
+/* Summary Review Modal */
+.modal.lorevault-summary-modal-shell {
+  width: min(92vw, 960px);
+  max-width: 960px;
+}
+
+.lorevault-summary-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorevault-summary-existing {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.lorevault-summary-textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.lorevault-summary-textarea-existing {
+  min-height: 120px;
+  opacity: 0.95;
+}
+
+.lorevault-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* Import / Extraction Views */
 .lorevault-import-view {
   height: 100%;

@@ -15,6 +15,8 @@ export class LoreBookExporter {
     outputPath: string,
     settings: ConverterSettings
   ): Promise<void> {
+    const normalizedOutputPath = outputPath.replace(/\\/g, '/');
+
     // Create entries dictionary with string keys and remove wikilinks
     const entriesDict: {[key: string]: Omit<LoreBookEntry, 'wikilinks'>} = {};
     
@@ -81,7 +83,7 @@ export class LoreBookExporter {
       if (!isAbsolutePath) {
         // Path is relative to vault - use Obsidian's API
         await this.app.vault.adapter.write(
-          outputPath,
+          normalizedOutputPath,
           JSON.stringify(lorebook, null, 2)
         );
       } else {

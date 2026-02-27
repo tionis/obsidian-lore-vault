@@ -893,6 +893,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.tagScoping.membershipMode = merged.tagScoping.membershipMode === 'cascade' ? 'cascade' : 'exact';
     merged.tagScoping.includeUntagged = Boolean(merged.tagScoping.includeUntagged);
     merged.outputPath = merged.outputPath.trim();
+    merged.outputPath = merged.outputPath.replace(/\\/g, '/');
     if (!merged.outputPath) {
       merged.outputPath = DEFAULT_SETTINGS.outputPath;
     }
@@ -918,6 +919,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     merged.sqlite.enabled = Boolean(merged.sqlite.enabled);
     merged.sqlite.outputPath = merged.sqlite.outputPath.trim();
+    merged.sqlite.outputPath = merged.sqlite.outputPath.replace(/\\/g, '/');
     if (!merged.sqlite.outputPath) {
       merged.sqlite.outputPath = DEFAULT_SETTINGS.sqlite.outputPath;
     }
@@ -966,8 +968,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     const selectedScopes = Array.isArray(merged.storyChat.selectedScopes)
       ? merged.storyChat.selectedScopes
       : [];
-    merged.storyChat.chatFolder = (merged.storyChat.chatFolder ?? '').toString().trim() || DEFAULT_SETTINGS.storyChat.chatFolder;
-    merged.storyChat.activeConversationPath = (merged.storyChat.activeConversationPath ?? '').toString().trim();
+    merged.storyChat.chatFolder = ((merged.storyChat.chatFolder ?? '').toString().trim() || DEFAULT_SETTINGS.storyChat.chatFolder).replace(/\\/g, '/');
+    merged.storyChat.activeConversationPath = (merged.storyChat.activeConversationPath ?? '').toString().trim().replace(/\\/g, '/');
     merged.storyChat.selectedScopes = selectedScopes
       .map(scope => normalizeScope(scope))
       .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index);

@@ -15,6 +15,10 @@ export interface ScopeOutputAssignment {
 const DEFAULT_SQLITE_OUTPUT_DIR = 'lorebooks';
 const DEFAULT_DOWNSTREAM_SUBPATH = 'sillytavern/lorevault.json';
 
+function normalizeVaultPathSeparators(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
 export function slugifyScope(scope: string): string {
   const normalized = normalizeScope(scope);
   const slug = normalized
@@ -26,7 +30,7 @@ export function slugifyScope(scope: string): string {
 }
 
 function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): string {
-  const configured = sqliteBaseOutputPath?.trim() || DEFAULT_SQLITE_OUTPUT_DIR;
+  const configured = normalizeVaultPathSeparators(sqliteBaseOutputPath?.trim() || DEFAULT_SQLITE_OUTPUT_DIR);
   const sqliteExt = path.extname(configured);
   const hasDbExt = sqliteExt.toLowerCase() === '.db';
 
@@ -35,21 +39,21 @@ function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): st
     const stemWithScope = rawStem.includes('{scope}')
       ? rawStem.replace(/\{scope\}/g, scopeSlug)
       : `${rawStem}-${scopeSlug}`;
-    return `${stemWithScope}.db`;
+    return normalizeVaultPathSeparators(`${stemWithScope}.db`);
   }
 
   const outputDir = configured.includes('{scope}')
     ? configured.replace(/\{scope\}/g, scopeSlug)
     : configured;
-  return path.join(outputDir, `${scopeSlug}.db`);
+  return normalizeVaultPathSeparators(path.join(outputDir, `${scopeSlug}.db`));
 }
 
 function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): string {
-  const configured = (baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH;
+  const configured = normalizeVaultPathSeparators((baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH);
   const relativeSubpath = path.isAbsolute(configured)
     ? (path.basename(configured) || path.basename(DEFAULT_DOWNSTREAM_SUBPATH))
     : configured.replace(/^[\/\\]+/, '');
-  return path.join(path.dirname(sqlitePath), relativeSubpath);
+  return normalizeVaultPathSeparators(path.join(path.dirname(sqlitePath), relativeSubpath));
 }
 
 export function resolveScopeOutputPaths(
@@ -75,9 +79,9 @@ export function resolveScopeOutputPaths(
   }
 
   return {
-    worldInfoPath: `${stemWithScope}.json`,
-    ragPath: `${stemWithScope}.rag.md`,
-    sqlitePath
+    worldInfoPath: normalizeVaultPathSeparators(`${stemWithScope}.json`),
+    ragPath: normalizeVaultPathSeparators(`${stemWithScope}.rag.md`),
+    sqlitePath: normalizeVaultPathSeparators(sqlitePath)
   };
 }
 

@@ -7,6 +7,7 @@ export interface StoryCompletionRequest {
 
 export interface StoryCompletionStreamRequest extends StoryCompletionRequest {
   onDelta: (delta: string) => void;
+  abortSignal?: AbortSignal;
 }
 
 function trimTrailingSlash(value: string): string {
@@ -369,7 +370,13 @@ export async function requestStoryContinuationStream(
   ];
 
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), config.timeoutMs);
+  let timedOut = false;
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, config.timeoutMs);
+  const abortHandler = () => controller.abort();
+  request.abortSignal?.addEventListener('abort', abortHandler);
 
   try {
     if (config.provider === 'ollama') {
@@ -416,8 +423,15 @@ export async function requestStoryContinuationStream(
 
     return await consumeOpenAiSseStream(response, request.onDelta);
   } catch (error) {
+    if (timedOut) {
+      throw new Error(`Completion request timed out after ${config.timeoutMs}ms.`);
+    }
+    if (request.abortSignal?.aborted) {
+      throw new Error('Completion request was aborted.');
+    }
     throw normalizeRequestError(error, config.timeoutMs);
   } finally {
+    request.abortSignal?.removeEventListener('abort', abortHandler);
     window.clearTimeout(timer);
   }
 }

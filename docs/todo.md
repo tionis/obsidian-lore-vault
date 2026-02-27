@@ -81,11 +81,11 @@ Reference design: `docs/planning.md`.
 
 ## Phase 10: Story Chat Panel (Next)
 
-- [ ] Add a persistent Story Chat view in Obsidian workspace (non-modal).
-- [ ] Add per-chat lorebook selection controls (multi-select scopes).
-- [ ] Add "manual context only" mode (no automatic lorebook retrieval).
-- [ ] Show live context inspector for each turn (what was added and why).
-- [ ] Add send/stop/regenerate controls with streaming output.
+- [x] Add a persistent Story Chat view in Obsidian workspace (non-modal).
+- [x] Add per-chat lorebook selection controls (multi-select scopes).
+- [x] Add "manual context only" mode (no automatic lorebook retrieval).
+- [x] Show live context inspector for each turn (what was added and why).
+- [x] Add send/stop/regenerate controls with streaming output.
 - [ ] Add tests for chat state persistence and deterministic context assembly.
 
 ## Phase 10.5: Product Boundary Hardening

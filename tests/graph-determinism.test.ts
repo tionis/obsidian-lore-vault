@@ -127,6 +127,12 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
         useGeneratedSummary: true
       }
     },
+    costTracking: {
+      enabled: false,
+      ledgerPath: '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
+      defaultInputCostPerMillionUsd: 0,
+      defaultOutputCostPerMillionUsd: 0
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',

@@ -1075,6 +1075,55 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    containerEl.createEl('h3', { text: 'Cost Tracking (Experimental)' });
+
+    new Setting(containerEl)
+      .setName('Enable Cost Tracking')
+      .setDesc('Capture completion usage (tokens/cost metadata) into a local ledger file.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.costTracking.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.costTracking.enabled = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Usage Ledger Path')
+      .setDesc('Path to usage ledger JSON file inside your vault.')
+      .addText(text => text
+        .setPlaceholder('.obsidian/plugins/lore-vault/cache/usage-ledger.json')
+        .setValue(this.plugin.settings.costTracking.ledgerPath)
+        .onChange(async (value) => {
+          this.plugin.settings.costTracking.ledgerPath = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('Default Input Cost / 1M Tokens (USD)')
+      .setDesc('Fallback input-token pricing used when provider does not return cost.')
+      .addText(text => text
+        .setValue(this.plugin.settings.costTracking.defaultInputCostPerMillionUsd.toString())
+        .onChange(async (value) => {
+          const numValue = Number(value);
+          if (!Number.isNaN(numValue) && numValue >= 0) {
+            this.plugin.settings.costTracking.defaultInputCostPerMillionUsd = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Default Output Cost / 1M Tokens (USD)')
+      .setDesc('Fallback output-token pricing used when provider does not return cost.')
+      .addText(text => text
+        .setValue(this.plugin.settings.costTracking.defaultOutputCostPerMillionUsd.toString())
+        .onChange(async (value) => {
+          const numValue = Number(value);
+          if (!Number.isNaN(numValue) && numValue >= 0) {
+            this.plugin.settings.costTracking.defaultOutputCostPerMillionUsd = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });
 
     new Setting(containerEl)

@@ -9,11 +9,22 @@ import {
 export interface StoryCompletionRequest {
   systemPrompt: string;
   userPrompt: string;
+  onUsage?: (usage: CompletionUsageReport) => void;
 }
 
 export interface StoryCompletionStreamRequest extends StoryCompletionRequest {
   onDelta: (delta: string) => void;
   abortSignal?: AbortSignal;
+}
+
+export interface CompletionUsageReport {
+  provider: 'openrouter' | 'ollama' | 'openai_compatible';
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  reportedCostUsd: number | null;
+  source: 'openai_usage' | 'ollama_usage';
 }
 
 function trimTrailingSlash(value: string): string {
@@ -125,6 +136,85 @@ function safeParseJson(value: string): any | null {
   }
 }
 
+function asFiniteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function extractReportedCostUsd(payload: any): number | null {
+  const candidates = [
+    payload?.usage?.cost,
+    payload?.usage?.total_cost,
+    payload?.usage?.estimated_cost,
+    payload?.cost,
+    payload?.total_cost
+  ];
+  for (const candidate of candidates) {
+    const parsed = asFiniteNumber(candidate);
+    if (parsed !== null && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function parseOpenAiUsage(payload: any): Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null {
+  const usage = payload?.usage;
+  if (!usage || typeof usage !== 'object') {
+    return null;
+  }
+
+  const promptTokensRaw = asFiniteNumber(usage.prompt_tokens ?? usage.input_tokens);
+  const completionTokensRaw = asFiniteNumber(usage.completion_tokens ?? usage.output_tokens);
+  const totalTokensRaw = asFiniteNumber(usage.total_tokens);
+
+  if (promptTokensRaw === null && completionTokensRaw === null && totalTokensRaw === null) {
+    return null;
+  }
+
+  const promptTokens = Math.max(
+    0,
+    Math.floor(promptTokensRaw ?? Math.max(0, (totalTokensRaw ?? 0) - (completionTokensRaw ?? 0)))
+  );
+  const completionTokens = Math.max(
+    0,
+    Math.floor(completionTokensRaw ?? Math.max(0, (totalTokensRaw ?? 0) - promptTokens))
+  );
+  const totalTokens = Math.max(
+    0,
+    Math.floor(totalTokensRaw ?? (promptTokens + completionTokens))
+  );
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reportedCostUsd: extractReportedCostUsd(payload)
+  };
+}
+
+function parseOllamaUsage(payload: any): Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null {
+  const promptTokensRaw = asFiniteNumber(payload?.prompt_eval_count);
+  const completionTokensRaw = asFiniteNumber(payload?.eval_count);
+  if (promptTokensRaw === null && completionTokensRaw === null) {
+    return null;
+  }
+
+  const promptTokens = Math.max(0, Math.floor(promptTokensRaw ?? 0));
+  const completionTokens = Math.max(0, Math.floor(completionTokensRaw ?? 0));
+  const totalTokens = promptTokens + completionTokens;
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reportedCostUsd: extractReportedCostUsd(payload)
+  };
+}
+
 function convertPlannerMessages(messages: RetrievalToolPlannerMessage[]): any[] {
   return messages.map((message) => {
     if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
@@ -192,14 +282,20 @@ function parsePlannerResponse(payload: any): RetrievalToolPlannerResponse {
 async function consumeOpenAiSseStream(
   response: Response,
   onDelta: (delta: string) => void
-): Promise<string> {
+): Promise<{
+  text: string;
+  usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null;
+}> {
   if (!response.body) {
     const payload = await response.json();
     const text = extractOpenAiCompletionText(payload).trim();
     if (text) {
       onDelta(text);
     }
-    return text;
+    return {
+      text,
+      usage: parseOpenAiUsage(payload)
+    };
   }
 
   const reader = response.body.getReader();
@@ -207,6 +303,7 @@ async function consumeOpenAiSseStream(
   let buffer = '';
   let combined = '';
   let completed = false;
+  let usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null = null;
 
   const consumeDataLine = (line: string): void => {
     if (!line.startsWith('data:')) {
@@ -223,6 +320,10 @@ async function consumeOpenAiSseStream(
     const payload = safeParseJson(payloadText);
     if (!payload) {
       return;
+    }
+    const parsedUsage = parseOpenAiUsage(payload);
+    if (parsedUsage) {
+      usage = parsedUsage;
     }
     const delta = extractOpenAiDeltaText(payload);
     if (!delta) {
@@ -264,20 +365,29 @@ async function consumeOpenAiSseStream(
     consumeDataLine(finalLine);
   }
 
-  return combined.trim();
+  return {
+    text: combined.trim(),
+    usage
+  };
 }
 
 async function consumeOllamaNdjsonStream(
   response: Response,
   onDelta: (delta: string) => void
-): Promise<string> {
+): Promise<{
+  text: string;
+  usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null;
+}> {
   if (!response.body) {
     const payload = await response.json();
     const text = extractOllamaCompletionText(payload).trim();
     if (text) {
       onDelta(text);
     }
-    return text;
+    return {
+      text,
+      usage: parseOllamaUsage(payload)
+    };
   }
 
   const reader = response.body.getReader();
@@ -285,11 +395,16 @@ async function consumeOllamaNdjsonStream(
   let buffer = '';
   let combined = '';
   let completed = false;
+  let usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null = null;
 
   const consumeJsonLine = (line: string): void => {
     const payload = safeParseJson(line);
     if (!payload) {
       return;
+    }
+    const parsedUsage = parseOllamaUsage(payload);
+    if (parsedUsage) {
+      usage = parsedUsage;
     }
     const delta = extractOllamaDeltaText(payload);
     if (delta) {
@@ -333,7 +448,10 @@ async function consumeOllamaNdjsonStream(
     consumeJsonLine(finalLine);
   }
 
-  return combined.trim();
+  return {
+    text: combined.trim(),
+    usage
+  };
 }
 
 function normalizeRequestError(error: unknown, timeoutMs: number): Error {
@@ -405,6 +523,15 @@ export async function requestStoryContinuation(
       headers,
       config.timeoutMs
     );
+    const usage = parseOllamaUsage(payload);
+    if (usage && request.onUsage) {
+      request.onUsage({
+        provider: config.provider,
+        model: config.model,
+        source: 'ollama_usage',
+        ...usage
+      });
+    }
     return extractOllamaCompletionText(payload).trim();
   }
 
@@ -419,6 +546,15 @@ export async function requestStoryContinuation(
     headers,
     config.timeoutMs
   );
+  const usage = parseOpenAiUsage(payload);
+  if (usage && request.onUsage) {
+    request.onUsage({
+      provider: config.provider,
+      model: config.model,
+      source: 'openai_usage',
+      ...usage
+    });
+  }
   return extractOpenAiCompletionText(payload).trim();
 }
 
@@ -470,8 +606,21 @@ export async function requestStoryContinuationStream(
         throw new Error(`Completion request failed (${response.status}): ${text}`);
       }
 
-      return await consumeOllamaNdjsonStream(response, request.onDelta);
+      const result = await consumeOllamaNdjsonStream(response, request.onDelta);
+      if (result.usage && request.onUsage) {
+        request.onUsage({
+          provider: config.provider,
+          model: config.model,
+          source: 'ollama_usage',
+          ...result.usage
+        });
+      }
+      return result.text;
     }
+
+    const streamOptions = config.provider === 'openrouter'
+      ? { include_usage: true }
+      : undefined;
 
     const response = await fetch(resolveOpenAiCompletionsUrl(config.endpoint), {
       method: 'POST',
@@ -481,7 +630,8 @@ export async function requestStoryContinuationStream(
         messages,
         temperature: config.temperature,
         max_tokens: config.maxOutputTokens,
-        stream: true
+        stream: true,
+        stream_options: streamOptions
       }),
       signal: controller.signal
     });
@@ -491,7 +641,16 @@ export async function requestStoryContinuationStream(
       throw new Error(`Completion request failed (${response.status}): ${text}`);
     }
 
-    return await consumeOpenAiSseStream(response, request.onDelta);
+    const result = await consumeOpenAiSseStream(response, request.onDelta);
+    if (result.usage && request.onUsage) {
+      request.onUsage({
+        provider: config.provider,
+        model: config.model,
+        source: 'openai_usage',
+        ...result.usage
+      });
+    }
+    return result.text;
   } catch (error) {
     if (timedOut) {
       throw new Error(`Completion request timed out after ${config.timeoutMs}ms.`);

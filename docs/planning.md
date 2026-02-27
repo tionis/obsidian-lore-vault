@@ -196,7 +196,8 @@ Add optional cost estimation/tracking to make API spend easier to plan and audit
 
 Constraints:
 
-- far-future phase only (after core retrieval/memory architecture stabilizes)
+- groundwork is now implemented (usage hooks + ledger + fallback estimation)
+- remaining UI/reporting work remains far-future (after core retrieval/memory architecture stabilizes)
 - prioritize OpenRouter integration first for usage + pricing metadata
 - keep behavior deterministic for stored usage/cost records
 - expose clear estimated vs actual cost labels when full provider pricing data is unavailable

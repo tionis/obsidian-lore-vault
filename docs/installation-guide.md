@@ -97,6 +97,7 @@ If you prefer to build the plugin from source:
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: configure Auto Summaries (`world_info/chapter generated-summary usage`, summary input/output character caps)
+   - Optional: enable Cost Tracking and set fallback USD-per-1M token rates for usage ledger estimates
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
 

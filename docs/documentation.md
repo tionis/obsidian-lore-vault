@@ -152,6 +152,18 @@ Computation:
 - `order = max(1, floor(score))`
 - ties resolved deterministically by ascending UID offsets
 
+Current tuned default weights:
+
+- `hierarchy`: `3800`
+- `in_degree`: `3300`
+- `pagerank`: `3000`
+- `betweenness`: `1700`
+- `out_degree`: `700`
+- `total_degree`: `250`
+- `file_depth`: `850`
+
+These defaults are calibrated against representative graph fixtures to reduce over-bias toward deep-file depth while preserving strong hub/bridge prioritization.
+
 ## Testing
 
 ```bash

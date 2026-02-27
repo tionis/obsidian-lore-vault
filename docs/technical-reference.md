@@ -98,6 +98,11 @@ Score factors:
 - `constant`
 - `order`
 
+Default graph-priority weights are tuned and regression-locked by representative fixtures:
+
+- fixture: `fixtures/graph/default-weights-representative.json`
+- test: `tests/default-weights-calibration.test.ts`
+
 Explainability includes:
 
 - seed reasons

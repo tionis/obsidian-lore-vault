@@ -7,16 +7,15 @@ Reference design: `docs/planning.md`.
 - Completed foundations: Phases 0-7 and 11/11.5.
 - Story Chat foundation is implemented (Phase 10 core UX done).
 - Optional retrieval extensions (Phase 12) are complete.
-- Phase 8 hardening is in progress (fixtures/routing/perf/compatibility complete; weight tuning remains).
-- Current priority is finalizing Phase 8 ranking-weight calibration.
+- Phase 8 hardening is complete.
+- Current priority is implementing optional world_info auto-summary workflow (Phase 9).
 - Hardening/perf pass (Phase 8), auto-summary work (Phase 9), cost tracking work (Phase 13), and import/extraction work (Phase 14) are deferred until the graph-first core is stable.
 
 ## Active Execution Order
 
-1. Finalize ranking-weight calibration with representative fixtures (Phase 8 tail).
-2. Implement optional world_info auto-summary workflow (Phase 9).
-3. Implement cost estimation/tracking workflow (Phase 13, far future).
-4. Implement inbound wiki import/extraction workflow (Phase 14, far future).
+1. Implement optional world_info auto-summary workflow (Phase 9).
+2. Implement cost estimation/tracking workflow (Phase 13, far future).
+3. Implement inbound wiki import/extraction workflow (Phase 14, far future).
 
 ## Completed Foundations (Historical)
 
@@ -76,7 +75,7 @@ Reference design: `docs/planning.md`.
 - [x] Add fixtures for mixed `world_info`/`rag` routing.
 - [x] Add performance profiling for large vaults.
 - [x] Add compatibility tests for non-English and edge-case metadata.
-- [ ] Tune default ranking weights using representative fixtures.
+- [x] Tune default ranking weights using representative fixtures.
 
 ## Phase 9: World Info Auto-Summary (Deferred Future Work)
 

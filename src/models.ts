@@ -242,13 +242,13 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     includeUntagged: false
   },
   weights: {
-    hierarchy: 8000,
-    in_degree: 4000,
-    pagerank: 2000,
-    betweenness: 1000,
-    out_degree: 500,
-    total_degree: 100,
-    file_depth: 2000
+    hierarchy: 3800,
+    in_degree: 3300,
+    pagerank: 3000,
+    betweenness: 1700,
+    out_degree: 700,
+    total_degree: 250,
+    file_depth: 850
   },
   outputPath: 'sillytavern/lorevault.json',
   defaultLoreBook: {

@@ -1,0 +1,36 @@
+{
+  "cases": [
+    {
+      "name": "core hubs outrank deep single-link entries",
+      "rootUid": 1,
+      "entries": [
+        { "uid": 1, "group": "story/core", "wikilinks": ["entity-2", "entity-3", "entity-4"] },
+        { "uid": 2, "group": "story/core", "wikilinks": ["entity-3", "entity-4", "entity-5"] },
+        { "uid": 3, "group": "story/core", "wikilinks": ["entity-2", "entity-4", "entity-6"] },
+        { "uid": 4, "group": "story/core", "wikilinks": ["entity-2", "entity-3", "entity-7", "entity-8"] },
+        { "uid": 5, "group": "story/core", "wikilinks": ["entity-2"] },
+        { "uid": 6, "group": "story/core", "wikilinks": ["entity-3"] },
+        { "uid": 7, "group": "story/archives/deep", "wikilinks": ["entity-4"] },
+        { "uid": 8, "group": "story/regions/side", "wikilinks": ["entity-4"] },
+        { "uid": 9, "group": "appendix/notes", "wikilinks": ["entity-10"] },
+        { "uid": 10, "group": "appendix/notes", "wikilinks": [] }
+      ],
+      "expectedRankedUids": [4, 3, 2, 8, 7, 6, 5, 10, 1, 9]
+    },
+    {
+      "name": "dense bidirectional hubs beat deep depth-only advantage",
+      "rootUid": 1,
+      "entries": [
+        { "uid": 1, "group": "world/core", "wikilinks": ["entity-2", "entity-3", "entity-4"] },
+        { "uid": 2, "group": "world/core", "wikilinks": ["entity-3"] },
+        { "uid": 3, "group": "world/core", "wikilinks": ["entity-2"] },
+        { "uid": 4, "group": "world/core", "wikilinks": ["entity-2", "entity-3", "entity-7"] },
+        { "uid": 5, "group": "world/core", "wikilinks": ["entity-2"] },
+        { "uid": 6, "group": "world/core", "wikilinks": ["entity-3"] },
+        { "uid": 7, "group": "world/arc/zone/depth", "wikilinks": ["entity-4"] },
+        { "uid": 8, "group": "misc", "wikilinks": [] }
+      ],
+      "expectedRankedUids": [3, 2, 4, 7, 1, 6, 5, 8]
+    }
+  ]
+}

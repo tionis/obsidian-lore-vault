@@ -206,6 +206,11 @@ Constraints:
 
 Add reverse-direction workflows to create Obsidian wiki pages from existing external context assets.
 
+Current progress:
+
+- SillyTavern lorebook import command/panel is implemented with deterministic preview + note generation.
+- Story extraction command/panel scaffold exists; extraction pipeline remains pending.
+
 Two command-driven panels:
 
 - `Import SillyTavern Lorebook`

@@ -155,6 +155,14 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
+    this.renderSection(contentEl, 'Inbound Wiki Panels', {
+      bullets: [
+        'Import SillyTavern Lorebook opens a panel with target folder, default tags, and lorebook-name tag mapping.',
+        'Paste lorebook JSON, run Preview, then Import to create/update wiki pages deterministically.',
+        'Extract Wiki Pages from Story panel is scaffolded; chunked schema-constrained extraction is the next phase.'
+      ]
+    });
+
     this.renderSection(contentEl, 'Retrieval and Budget Controls', {
       bullets: [
         'Primary retrieval is graph-first world_info (seed matches + bounded graph expansion).',

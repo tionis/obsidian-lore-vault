@@ -10,11 +10,12 @@ Reference design: `docs/planning.md`.
 - Phase 8 hardening is complete.
 - Phase 9 auto-summary workflows are complete.
 - Phase 13 cost tracking is complete (usage hooks + ledger + manager UI + JSON/CSV export + aggregation tests).
-- Current priority is import/extraction (14), then story-delta updates (15).
+- Phase 14 is in progress (import panel + deterministic lorebook JSON import implemented; story extraction pipeline pending).
+- Current priority is finishing the remaining Phase 14 extraction pipeline and merge workflow, then story-delta updates (15).
 
 ## Active Execution Order
 
-1. Implement inbound wiki import/extraction workflow (Phase 14, far future).
+1. Finish remaining Phase 14 extraction pipeline and merge workflow.
 2. Implement story-driven wiki update workflow (Phase 15, far future).
 
 ## Completed Foundations (Historical)
@@ -100,14 +101,14 @@ Reference design: `docs/planning.md`.
 
 ## Phase 14: Inbound Wiki Import and Story Extraction (Deferred Far Future Work)
 
-- [ ] Add command + panel: `Import SillyTavern Lorebook`.
-- [ ] Add command + panel: `Extract Wiki Pages from Story`.
-- [ ] Add shared panel inputs:
+- [x] Add command + panel: `Import SillyTavern Lorebook`.
+- [x] Add command + panel: `Extract Wiki Pages from Story` (panel scaffold).
+- [x] Add shared panel inputs:
   - target folder for generated wiki pages
   - default tags
   - lorebook name converted into a lorebook tag
-- [ ] Implement lorebook JSON paste-import flow with validation and deterministic page generation.
-- [ ] Map lorebook entries to frontmatter/body format (`summary`, `keywords`/`key`, tags, aliases/comment where available).
+- [x] Implement lorebook JSON paste-import flow with validation and deterministic page generation.
+- [x] Map lorebook entries to frontmatter/body format (`summary`, `keywords`/`key`, tags, aliases/comment where available).
 - [ ] Implement story markdown extraction pipeline:
   - deterministic chunking
   - per-chunk LLM extraction

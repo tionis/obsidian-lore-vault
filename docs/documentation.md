@@ -429,7 +429,40 @@ Capabilities:
 - usage/cost monitor details:
   - session/day/project totals (requests/tokens/known cost/unknown cost count)
   - budget warnings from configured daily/session limits
-  - top breakdown lists by operation and model
+- top breakdown lists by operation and model
+
+## Inbound Wiki Import and Story Extraction (Phase 14, In Progress)
+
+Commands:
+
+- `Import SillyTavern Lorebook`
+- `Extract Wiki Pages from Story`
+
+Shared panel inputs:
+
+- target folder
+- default tags
+- lorebook name converted into a lorebook tag using configured `tagPrefix`
+
+Implemented now:
+
+- SillyTavern lorebook JSON paste-import panel
+- deterministic parse and entry normalization
+- preview mode (entry count + planned file paths)
+- deterministic wiki page generation + create/update writes
+
+Current mapping for imported notes:
+
+- title/comment from ST `comment` when present
+- `keywords` from ST `key`
+- `aliases` from ST `keysecondary`
+- `summary` derived deterministically from entry content
+- tags from defaults + lorebook tag
+- note body from ST `content`
+
+Pending:
+
+- story markdown extraction pipeline (chunking + schema-constrained LLM extraction + merge/diff workflow)
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope

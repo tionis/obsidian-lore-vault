@@ -281,6 +281,29 @@ Provides an in-plugin overview of:
 - story completion/chat workflow
 - links to repository docs and roadmap files
 
+## Inbound Wiki Panels (Phase 14 In Progress)
+
+Commands:
+
+- `Import SillyTavern Lorebook`
+- `Extract Wiki Pages from Story`
+
+Current behavior:
+
+- `Import SillyTavern Lorebook` opens a panel with:
+  - target folder
+  - default tags
+  - lorebook name (converted into a lorebook tag)
+  - pasted lorebook JSON input
+- importer supports preview + deterministic note generation and create/update writes.
+- imported notes map ST entry fields to frontmatter/body:
+  - `keywords` from `key`
+  - `aliases` from `keysecondary`
+  - `title/comment` when present
+  - derived `summary`
+  - default + lorebook tags
+- `Extract Wiki Pages from Story` panel is scaffolded with shared inputs; chunked LLM extraction pipeline is pending.
+
 ## Story Chat (Phase 10 Foundation)
 
 Command: `Open Story Chat`

@@ -101,6 +101,7 @@ If you prefer to build the plugin from source:
 
 4. **Use writing-assistant context insertion**
    - Open a story note in editor view
+   - Optional: define story scopes in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
    - Place cursor where you want to continue
    - Run command "Continue Story with Context"
    - LoreVault queries token-budgeted context (`world_info` + `rag`) and inserts generated continuation text

@@ -10,6 +10,7 @@ import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-m
 import { LiveContextIndex } from './live-context-index';
 import { EmbeddingService } from './embedding-service';
 import { requestStoryContinuation } from './completion-provider';
+import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
@@ -19,6 +20,7 @@ import { buildScopePack } from './scope-pack-builder';
 import { SqlitePackExporter } from './sqlite-pack-exporter';
 import { SqlitePackReader } from './sqlite-pack-reader';
 import * as path from 'path';
+import { FrontmatterData, normalizeFrontmatter } from './frontmatter-utils';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
@@ -342,6 +344,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     return scopes[0];
   }
 
+  private resolveStoryScopesFromFrontmatter(activeFile: TFile | null): string[] {
+    if (!activeFile) {
+      return [];
+    }
+
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
+  }
+
   private resolveBuildScopeFromContext(): string | null {
     const fromActiveFile = this.resolveScopeFromActiveFile(this.app.workspace.getActiveFile());
     if (fromActiveFile) {
@@ -414,7 +426,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     const storyWindow = this.extractStoryWindow(textBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
     const scopedQuery = queryText || fallbackQuery;
-    const scope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
+    const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
+    const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
+    const scopesToQuery = frontmatterScopes.length > 0
+      ? frontmatterScopes
+      : (fallbackScope ? [fallbackScope] : []);
 
     try {
       if (!this.settings.completion.enabled) {
@@ -426,21 +442,43 @@ export default class LoreBookConverterPlugin extends Plugin {
         return;
       }
 
-      const context = await this.liveContextIndex.query({
-        queryText: scopedQuery,
-        tokenBudget: this.settings.defaultLoreBook.tokenBudget
-      }, scope);
+      const perScopeBudget = Math.max(
+        128,
+        Math.floor(this.settings.defaultLoreBook.tokenBudget / Math.max(1, scopesToQuery.length || 1))
+      );
+      const contexts = [];
 
-      new Notice(`Generating continuation for scope ${context.scope || '(all)'}...`);
+      if (scopesToQuery.length === 0) {
+        contexts.push(await this.liveContextIndex.query({
+          queryText: scopedQuery,
+          tokenBudget: perScopeBudget
+        }));
+      } else {
+        for (const scope of scopesToQuery) {
+          contexts.push(await this.liveContextIndex.query({
+            queryText: scopedQuery,
+            tokenBudget: perScopeBudget
+          }, scope));
+        }
+      }
+
+      const selectedScopeLabels = contexts.map(item => item.scope || '(all)');
+      const combinedContextMarkdown = contexts
+        .map(item => item.markdown)
+        .join('\n\n---\n\n');
+      const totalWorldInfo = contexts.reduce((sum, item) => sum + item.worldInfo.length, 0);
+      const totalRag = contexts.reduce((sum, item) => sum + item.rag.length, 0);
+
+      new Notice(`Generating continuation for ${selectedScopeLabels.length} scope(s)...`);
       const userPrompt = [
         'Continue the story from where it currently ends.',
         'Respect the lore context as canon constraints.',
         'Output only the continuation text.',
         '',
-        `<lorevault_scope>${context.scope || '(all)'}</lorevault_scope>`,
+        `<lorevault_scopes>${selectedScopeLabels.join(', ')}</lorevault_scopes>`,
         '',
         '<lorevault_context>',
-        context.markdown,
+        combinedContextMarkdown,
         '</lorevault_context>',
         '',
         '<story_so_far>',
@@ -459,7 +497,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       editor.replaceRange(insertText, cursor);
       new Notice(
-        `Inserted continuation for scope ${context.scope || '(all)'} (${context.worldInfo.length} world_info, ${context.rag.length} rag).`
+        `Inserted continuation for ${selectedScopeLabels.length} scope(s) (${totalWorldInfo} world_info, ${totalRag} rag).`
       );
     } catch (error) {
       console.error('Continue Story with Context failed:', error);

@@ -188,6 +188,18 @@ Behavior:
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 
+Story-level scope override (frontmatter):
+
+```yaml
+---
+lorebooks:
+  - universe
+  - universe/yggdrasil
+---
+```
+
+Accepted keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`.
+
 ## Development
 
 ```bash

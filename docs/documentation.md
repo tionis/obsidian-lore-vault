@@ -227,6 +227,18 @@ Settings:
 - max output tokens
 - timeout
 
+Story frontmatter scope override:
+
+- keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`
+- value format:
+  - list: `['universe', 'universe/yggdrasil']`
+  - comma-separated string: `universe, universe/yggdrasil`
+  - accepts `lorebook/<scope>` and `#lorebook/<scope>` forms
+- behavior:
+  - values are normalized and deduplicated deterministically
+  - each selected scope is queried and combined into completion context
+  - completion token budget is split across selected scopes
+
 ## LoreVault Manager UI
 
 Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel)

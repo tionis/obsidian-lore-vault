@@ -180,6 +180,32 @@ When changing routing/selection heuristics:
 
 ---
 
+## Documentation Maintenance Requirements
+
+Documentation is part of the feature contract.
+
+For any behavior or UX change, agents must update docs in the same change set:
+
+1. `README.md` for user-visible behavior changes
+2. `docs/documentation.md` for detailed functional behavior
+3. `docs/technical-reference.md` for architecture/contracts/code-level behavior
+4. `docs/installation-guide.md` when setup, commands, or settings change
+5. `docs/todo.md` when roadmap/phase status changes
+
+If the change affects in-app guidance, agents must also update embedded help:
+
+- `src/lorevault-help-view.ts`
+- relevant settings copy in `src/settings-tab.ts`
+
+Documentation updates must be:
+
+- explicit about new/changed defaults
+- explicit about migration or compatibility impacts
+- consistent across user-facing and technical docs
+- included before finalizing the task
+
+---
+
 ## Roadmap Source
 
 Planning and implementation roadmap live here:

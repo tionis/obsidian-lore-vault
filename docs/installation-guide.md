@@ -47,6 +47,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Open LoreVault Manager" (opens right sidebar panel)
      - "Open LoreVault Routing Debug" (opens dedicated routing diagnostics panel)
      - "Open Story Chat" (opens right sidebar panel)
+     - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
      - "Create LoreVault Entry Template"
 
@@ -85,6 +86,7 @@ If you prefer to build the plugin from source:
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
+   - Optional: configure Retrieval tuning (`RAG Fallback Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
    - Adjust priority weights if needed
@@ -109,7 +111,12 @@ If you prefer to build the plugin from source:
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
    - LoreVault queries token-budgeted context (`world_info` + `rag`) and streams generated continuation text
+   - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
+
+6. **Open embedded help**
+   - Run command `Open LoreVault Help`
+   - Use it as the in-plugin quick reference for setup, retrieval behavior, and export artifacts
 
 5. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"

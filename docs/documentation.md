@@ -22,6 +22,16 @@ Core scope boundary:
 - Minimum Obsidian version: `0.15.0`
 - Desktop only (`isDesktopOnly: true`)
 
+## User Documentation Surfaces
+
+- Command: `Open LoreVault Help`
+  - opens embedded in-plugin help panel (`lorevault-help-view`)
+  - provides setup/run/debug guidance for users without leaving Obsidian
+- Repository docs:
+  - `README.md` (quickstart behavior summary)
+  - `docs/documentation.md` (this detailed behavior doc)
+  - `docs/technical-reference.md` (implementation-level architecture/contracts)
+
 ## Conversion Pipeline
 
 When you run **Build Active Lorebook Scope** or **Build/Export Scope**:
@@ -423,3 +433,7 @@ Turn context assembly:
   - unresolved note references
   - context token estimate
   - selected `world_info` and `rag` item labels
+
+## Technical Deep-Dive
+
+For implementation-level details (module boundaries, manifest schema, retrieval internals, story-thread resolution), see `docs/technical-reference.md`.

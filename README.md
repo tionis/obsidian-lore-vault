@@ -7,11 +7,15 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for Sil
 - Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
 - Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
 - Canonical SQLite pack export per scope (`.db`)
+- Stable per-scope manifest export (`.manifest.json`) for downstream tooling contracts
 - Dual exports per scope: `world_info` JSON and `rag` markdown
 - Optional embedding-based semantic RAG with hash-cache
+- Graph-first retrieval with configurable RAG fallback policy (`off|auto|always`)
 - Optional LLM completion generation for story continuation
+- Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
 - Dedicated routing debug panel for inclusion/routing diagnostics
+- Embedded user help panel (`Open LoreVault Help`)
 - Frontmatter retrieval routing (`auto|world_info|rag|both|none`)
 - Deterministic processing, ordering, and tie-breaking
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
@@ -131,6 +135,7 @@ Details:
 For each built scope, LoreVault writes:
 
 - `<sqliteOutputDir>/<scope-slug>.db` -> canonical SQLite pack (default dir: `lorebooks/`)
+- `<sqliteOutputDir>/<scope-slug>.manifest.json` -> deterministic scope manifest for downstream tooling
 - `<sqliteOutputDir>/<downstreamSubpath>.json` -> `world_info` (default subpath: `sillytavern/lorevault.json`)
 - `<sqliteOutputDir>/<downstreamSubpath>.rag.md` -> `rag`
 
@@ -196,9 +201,10 @@ Behavior:
 
 - builds/refreshes an in-memory scope index
 - watches note create/modify/delete/rename events and performs near-live refresh
-- queries both retrieval layers from current editor context:
-  - `world_info` by keyword/trigger relevance
-  - `rag` by term-overlap relevance
+- resolves optional chapter-memory context from prior chapters using story frontmatter (`storyId`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`)
+- queries retrieval layers from current editor context:
+  - `world_info` by graph-first seed + expansion relevance
+  - `rag` by fallback policy (`off|auto|always`) and relevance
 - applies token-budgeted context assembly
 - sends context + story window to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
@@ -220,6 +226,18 @@ lorebooks:
 ```
 
 Accepted keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`.
+
+## Embedded Help
+
+Command: `Open LoreVault Help`
+
+Provides an in-plugin overview of:
+
+- scope/tag setup
+- retrieval and fallback behavior
+- build/export artifacts
+- story completion/chat workflow
+- links to repository docs and roadmap files
 
 ## Story Chat (Phase 10 Foundation)
 
@@ -255,6 +273,7 @@ See:
 
 - `docs/approach.md`
 - `docs/documentation.md`
+- `docs/technical-reference.md`
 - `docs/installation-guide.md`
 - `docs/profile-schema.md`
 - `docs/planning.md`

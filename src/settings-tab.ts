@@ -15,6 +15,18 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     containerEl.addClass('lorebook-converter-settings');
 
     containerEl.createEl('h2', { text: 'LoreVault Settings' });
+    containerEl.createEl('p', {
+      text: 'Need a quick guide? Open the embedded help view for commands, retrieval behavior, and export contracts.'
+    });
+
+    new Setting(containerEl)
+      .setName('Help and Documentation')
+      .setDesc('Open the in-plugin LoreVault Help panel. Repository docs: README.md, docs/documentation.md, docs/technical-reference.md.')
+      .addButton(button => button
+        .setButtonText('Open LoreVault Help')
+        .onClick(() => {
+          void this.plugin.openHelpView();
+        }));
 
     new Setting(containerEl)
       .setName('Downstream Output Subpath')

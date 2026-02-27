@@ -19,6 +19,7 @@ import {
   LorebooksRoutingDebugView
 } from './lorebooks-routing-debug-view';
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
+import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
 import { LiveContextIndex } from './live-context-index';
 import { EmbeddingService } from './embedding-service';
 import { requestStoryContinuationStream } from './completion-provider';
@@ -294,6 +295,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshHelpViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorevaultHelpView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
   async openLorebooksManagerView(): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE)[0];
 
@@ -342,6 +352,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof StoryChatView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openHelpView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_HELP_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_HELP_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultHelpView) {
       leaf.view.refresh();
     }
   }
@@ -1124,6 +1151,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
+    this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
 
     // Add custom ribbon icons with clearer intent.
     addIcon('lorevault-build', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -1162,6 +1190,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       void this.openStoryChatView();
     });
 
+    this.addRibbonIcon('help-circle', 'Open LoreVault Help', () => {
+      void this.openHelpView();
+    });
+
     // Add command
     this.addCommand({
       id: 'convert-to-lorebook',
@@ -1192,6 +1224,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open Story Chat',
       callback: () => {
         void this.openStoryChatView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-lorevault-help',
+      name: 'Open LoreVault Help',
+      callback: () => {
+        void this.openHelpView();
       }
     });
 
@@ -1285,6 +1325,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
       window.clearTimeout(this.managerRefreshTimer);
       this.managerRefreshTimer = null;
@@ -1300,6 +1341,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.refreshManagerViews();
     this.refreshRoutingDebugViews();
     this.refreshStoryChatViews();
+    this.refreshHelpViews();
   }
 
   private resolveScopeFromActiveFile(activeFile: TFile | null): string | undefined {

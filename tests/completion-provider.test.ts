@@ -31,19 +31,45 @@ function createConfig(): any {
 }
 
 async function withMockedFetch(payload: any, run: () => Promise<void>): Promise<void> {
+  await withMockedFetchSequence([payload], async () => {
+    await run();
+  });
+}
+
+interface FetchCallRecord {
+  url: string;
+  body: any;
+}
+
+async function withMockedFetchSequence(
+  payloads: any[],
+  run: (calls: FetchCallRecord[]) => Promise<void>
+): Promise<void> {
   ensureWindowShim();
   const globalAny = globalThis as any;
   const previousFetch = globalAny.fetch as FetchLike | undefined;
+  const calls: FetchCallRecord[] = [];
+  let callIndex = 0;
 
-  globalAny.fetch = async () => {
+  globalAny.fetch = async (url: string, init?: { body?: string }) => {
+    const payload = payloads[Math.min(callIndex, payloads.length - 1)];
+    callIndex += 1;
+    const parsedBody = typeof init?.body === 'string'
+      ? JSON.parse(init.body)
+      : null;
+    calls.push({
+      url,
+      body: parsedBody
+    });
     return {
       ok: true,
-      json: async () => payload
+      json: async () => payload,
+      text: async () => JSON.stringify(payload)
     };
   };
 
   try {
-    await run();
+    await run(calls);
   } finally {
     globalAny.fetch = previousFetch;
   }
@@ -124,4 +150,63 @@ test('requestStoryContinuation handles object content values and nested usage', 
     assert.equal(usageReport.completionTokens, 4);
     assert.equal(usageReport.totalTokens, 16);
   });
+});
+
+test('requestStoryContinuation retries openrouter abort responses with provider ignore fallback', async () => {
+  const firstAbortPayload = {
+    id: 'gen-1',
+    provider: 'Friendli',
+    model: 'z-ai/glm-5',
+    choices: [
+      {
+        finish_reason: 'error',
+        native_finish_reason: 'abort',
+        message: {
+          role: 'assistant',
+          content: '',
+          refusal: null,
+          reasoning: null
+        }
+      }
+    ],
+    usage: {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0
+    }
+  };
+
+  const secondSuccessPayload = {
+    id: 'gen-2',
+    provider: 'OpenAI',
+    model: 'z-ai/glm-5',
+    choices: [
+      {
+        finish_reason: 'stop',
+        message: {
+          role: 'assistant',
+          content: 'Recovered summary text.'
+        }
+      }
+    ],
+    usage: {
+      prompt_tokens: 20,
+      completion_tokens: 8,
+      total_tokens: 28
+    }
+  };
+
+  await withMockedFetchSequence(
+    [firstAbortPayload, secondSuccessPayload],
+    async (calls) => {
+      const text = await requestStoryContinuation(createConfig(), {
+        systemPrompt: 'sys',
+        userPrompt: 'user'
+      });
+      assert.equal(text, 'Recovered summary text.');
+      assert.equal(calls.length, 2);
+      assert.equal(calls[1].body?.provider?.allow_fallbacks, true);
+      assert.deepEqual(calls[1].body?.provider?.ignore, ['friendli']);
+    }
+  );
 });

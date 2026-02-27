@@ -61,7 +61,11 @@ This document is the implementation-level reference for core architecture and ru
 - `src/lorevault-import-view.ts`
   - import panel UI (`Import SillyTavern Lorebook`)
 - `src/lorevault-story-extract-view.ts`
-  - extraction panel scaffold (`Extract Wiki Pages from Story`)
+  - extraction panel (`Extract Wiki Pages from Story`) with preview/apply flow
+- `src/story-extraction.ts`
+  - deterministic chunking
+  - per-chunk extraction prompt/validation
+  - iterative merge pipeline and final page rendering
 
 ## Export Pipeline Contract
 
@@ -328,11 +332,10 @@ Implemented:
 - deterministic file naming/path allocation
 - deterministic frontmatter/body mapping for generated wiki pages
 - preview and apply import flows
-
-In progress:
-
-- story markdown extraction command/view is scaffolded
-- chunked schema-constrained extraction and merge pipeline are pending
+- story extraction command/view with preview/apply workflow
+- deterministic chunking and per-chunk schema-constrained extraction
+- iterative existing-page state injection between chunks
+- deterministic merge behavior (summary merge, set unions, unique content append)
 
 ## Determinism Requirements (Implementation)
 

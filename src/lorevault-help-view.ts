@@ -159,7 +159,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Import SillyTavern Lorebook opens a panel with target folder, default tags, and lorebook-name tag mapping.',
         'Paste lorebook JSON, run Preview, then Import to create/update wiki pages deterministically.',
-        'Extract Wiki Pages from Story panel is scaffolded; chunked schema-constrained extraction is the next phase.'
+        'Extract Wiki Pages from Story runs deterministic chunked extraction with per-chunk validation and preview/apply workflow.'
       ]
     });
 

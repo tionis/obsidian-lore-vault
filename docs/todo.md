@@ -138,18 +138,25 @@ Reference design: `docs/planning.md`.
 - [ ] Add idempotence checks so rerunning the same story update does not duplicate content.
 - [ ] Add fixtures/tests for deterministic merge/update behavior on existing pages.
 
-## Open Questions
+## Default Decisions (2026-02-27)
 
-- [ ] Should embedding fallback be global or per-lorebook configurable?
-- [ ] What minimum seed-confidence threshold should trigger fallback retrieval?
-- [ ] Should graph expansion use only wikilinks first, or also explicit relation fields in frontmatter?
-- [ ] For chat mode, should lorebook selection persist per-note, per-workspace, or per-chat thread?
-- [ ] Should chapter order prefer explicit `chapter` numeric field over graph/topological order when both exist?
-- [ ] What chapter summary granularity should be default (scene-level, chapter-level, or adaptive)?
-- [ ] Should lorebook scope tags in note body be supported, or frontmatter tags only?
-- [ ] Should cost tracking be vault-global only, or also segmented per lorebook/chat conversation?
-- [ ] What should be the fallback strategy when OpenRouter pricing metadata is absent or stale?
-- [ ] For story extraction, should we prefer context injection of generated pages, tool-calls, or hybrid?
-- [ ] How should conflicting updates to the same extracted wiki page be resolved by default?
-- [ ] Should imported lorebook entries always create one-note-per-entry, or support grouped page layouts?
-- [ ] For story-driven wiki updates, should low-confidence updates be dropped by default or queued for manual review?
+These are the current implementation defaults unless explicitly changed later.
+
+- [x] Embedding fallback scope: global setting first; per-lorebook overrides are a future extension.
+- [x] Seed-confidence threshold: keep default auto-fallback threshold at `120`.
+- [x] Graph expansion inputs: wikilinks-first; explicit relation-field expansion is future optional work.
+- [x] Chat lorebook selection persistence: per-chat thread (conversation note) as source of truth.
+- [x] Chapter ordering precedence: explicit `chapter` index first, then prev/next edges, then deterministic path tie-breaks.
+- [x] Chapter summary granularity default: chapter-level summaries (scene-level split is optional future enhancement).
+- [x] Scope tags support: Obsidian tag system as-is (frontmatter tags + body tags), no custom body parsing.
+- [x] Cost tracking segmentation: store vault-global ledger with dimensions (`scope`, `chat/story`, `model`) for rollups.
+- [x] Missing/stale provider pricing strategy: keep token usage records and mark cost as estimated/unknown with provenance timestamp.
+- [x] Story extraction context strategy: hybrid approach (inject generated page state by default, tool-calls when state grows too large).
+- [x] Conflicting extracted-page updates default: deterministic safe-merge with conflict markers and manual review.
+- [x] Import page layout default: one-note-per-entry for deterministic mapping; grouped layouts are optional later.
+- [x] Story-driven wiki updates with low confidence: queue for manual review by default (do not auto-apply low-confidence edits).
+
+## Remaining Strategic Questions
+
+- [ ] Should per-lorebook retrieval/fallback policy overrides be added before or after Phase 9?
+- [ ] For structured merge conflicts, should the long-term default be conflict markers or a dedicated interactive merge UI?

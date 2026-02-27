@@ -65,7 +65,7 @@ Settings:
 Behavior:
 
 - `exact`: only notes with matching scope tag are included
-- `cascade`: notes in child scopes are also included in ancestor scope exports
+- `cascade`: notes in child and parent scopes are included within the same hierarchy branch
 - notes with frontmatter `exclude: true` are always skipped
 - empty `activeScope`: no configured fallback scope
 - export command builds one scope at a time:
@@ -261,6 +261,7 @@ Settings:
 
 - enable/disable completion
 - provider, endpoint, api key, model
+- reusable model presets (save/update/delete + active preset selection)
 - system prompt
 - temperature
 - max output tokens
@@ -314,7 +315,7 @@ Capabilities:
   - `Build/Export` per scope
   - `Inspect Routing` per scope
   - `Open Routing Debug` (toolbar)
-  - `Open Output Folder` (opens SQLite output root)
+  - `Open Query Simulation` (toolbar)
 
 ## Routing Debug UI
 
@@ -325,16 +326,38 @@ Capabilities:
 - opens a dedicated workspace view with more horizontal space for routing diagnostics
 - scope selector for switching debug target
 - lorebook contents panel with `world_info` entries (keywords, trigger parameters, collapsible content)
-- query simulation panel:
-  - input text + token budget
-  - selected entries with score and matched keywords
-  - optional rag candidate diagnostics
 - full inclusion/routing table for selected scope:
   - note path
   - inclusion/exclusion reason
   - retrieval mode and keyword presence
   - resolved route (`world_info`, `rag`, both, or none)
   - detected lorebook scopes
+
+## Query Simulation UI
+
+Command: `Open LoreVault Query Simulation`
+
+Capabilities:
+
+- dedicated retrieval simulation view separated from routing diagnostics
+- multi-scope selection (query one or many lorebooks in a single run)
+- total token budget split evenly per selected scope
+- optional override knobs:
+  - `maxGraphHops`
+  - `graphHopDecay`
+  - `ragFallbackPolicy`
+  - `ragFallbackSeedScoreThreshold`
+  - `maxWorldInfoEntries`
+  - `maxRagDocuments`
+  - `worldInfoBudgetRatio`
+- per-scope selected `world_info` diagnostics:
+  - scores
+  - graph path
+  - reasons
+  - content tiers
+- per-scope selected `rag` diagnostics:
+  - score
+  - matched terms
 
 ## Live Query Layer (MVP)
 

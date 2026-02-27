@@ -124,6 +124,21 @@ export interface StoryChatForkSnapshot {
   noteContextRefs: string[];
 }
 
+export interface CompletionPreset {
+  id: string;
+  name: string;
+  provider: 'openrouter' | 'ollama' | 'openai_compatible';
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  temperature: number;
+  maxOutputTokens: number;
+  contextWindowTokens: number;
+  promptReserveTokens: number;
+  timeoutMs: number;
+}
+
 export interface ConverterSettings {
   tagScoping: {
     tagPrefix: string;
@@ -194,6 +209,8 @@ export interface ConverterSettings {
     contextWindowTokens: number;
     promptReserveTokens: number;
     timeoutMs: number;
+    presets: CompletionPreset[];
+    activePresetId: string;
   };
   storyChat: {
     chatFolder: string;
@@ -277,7 +294,9 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     maxOutputTokens: 700,
     contextWindowTokens: 8192,
     promptReserveTokens: 400,
-    timeoutMs: 60000
+    timeoutMs: 60000,
+    presets: [],
+    activePresetId: ''
   },
   storyChat: {
     chatFolder: 'LoreVault/chat',

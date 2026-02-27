@@ -1,5 +1,42 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import {
+  App,
+  FuzzySuggestModal,
+  Notice,
+  PluginSettingTab,
+  Setting,
+  TextComponent,
+  TFolder
+} from 'obsidian';
 import LoreBookConverterPlugin from './main';
+import { CompletionPreset } from './models';
+
+class FolderSuggestModal extends FuzzySuggestModal<string> {
+  private readonly folders: string[];
+  private readonly onChoosePath: (path: string) => void;
+
+  constructor(app: App, onChoosePath: (path: string) => void) {
+    super(app);
+    this.onChoosePath = onChoosePath;
+    this.folders = app.vault
+      .getAllLoadedFiles()
+      .filter((file): file is TFolder => file instanceof TFolder)
+      .map(folder => folder.path)
+      .sort((a, b) => a.localeCompare(b));
+    this.setPlaceholder('Select existing folder');
+  }
+
+  getItems(): string[] {
+    return this.folders;
+  }
+
+  getItemText(item: string): string {
+    return item || '(vault root)';
+  }
+
+  onChooseItem(item: string): void {
+    this.onChoosePath(item);
+  }
+}
 
 export class LoreBookConverterSettingTab extends PluginSettingTab {
   plugin: LoreBookConverterPlugin;
@@ -7,6 +44,62 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
   constructor(app: App, plugin: LoreBookConverterPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  private normalizePathInput(value: string): string {
+    return value
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
+  }
+
+  private async persistSettings(): Promise<void> {
+    await this.plugin.saveData(this.plugin.settings);
+  }
+
+  private openFolderPicker(onPick: (path: string) => void): void {
+    new FolderSuggestModal(this.app, onPick).open();
+  }
+
+  private createPresetId(name: string): string {
+    const slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return `preset-${slug || 'model'}-${Date.now().toString(36)}`;
+  }
+
+  private snapshotCurrentCompletion(name: string, id?: string): CompletionPreset {
+    const completion = this.plugin.settings.completion;
+    return {
+      id: id ?? this.createPresetId(name),
+      name,
+      provider: completion.provider,
+      endpoint: completion.endpoint,
+      apiKey: completion.apiKey,
+      model: completion.model,
+      systemPrompt: completion.systemPrompt,
+      temperature: completion.temperature,
+      maxOutputTokens: completion.maxOutputTokens,
+      contextWindowTokens: completion.contextWindowTokens,
+      promptReserveTokens: completion.promptReserveTokens,
+      timeoutMs: completion.timeoutMs
+    };
+  }
+
+  private applyCompletionPreset(preset: CompletionPreset): void {
+    const completion = this.plugin.settings.completion;
+    completion.provider = preset.provider;
+    completion.endpoint = preset.endpoint;
+    completion.apiKey = preset.apiKey;
+    completion.model = preset.model;
+    completion.systemPrompt = preset.systemPrompt;
+    completion.temperature = preset.temperature;
+    completion.maxOutputTokens = preset.maxOutputTokens;
+    completion.contextWindowTokens = preset.contextWindowTokens;
+    completion.promptReserveTokens = preset.promptReserveTokens;
+    completion.timeoutMs = preset.timeoutMs;
   }
 
   display(): void {
@@ -29,14 +122,14 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Downstream Output Subpath')
-      .setDesc('Subpath under SQLite output root for downstream exports (.json world_info and .rag.md).')
+      .setName('Downstream Export Subpath/Pattern')
+      .setDesc('Used for downstream exports under each SQLite pack directory. Produces <pattern>-<scope>.json and <pattern>-<scope>.rag.md files.')
       .addText(text => text
-        .setPlaceholder('sillytavern/lorevault.json')
+        .setPlaceholder('sillytavern/lorevault.json or sillytavern/{scope}/pack')
         .setValue(this.plugin.settings.outputPath)
         .onChange(async (value) => {
-          this.plugin.settings.outputPath = value;
-          await this.plugin.saveData(this.plugin.settings);
+          this.plugin.settings.outputPath = value.trim();
+          await this.persistSettings();
         }));
 
     // Lorebook Scope section
@@ -66,7 +159,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Membership Mode')
-      .setDesc('Exact: include only exact scope tags. Cascade: include entries from child scopes too.')
+      .setDesc('Exact: include only exact scope tags. Cascade: include exact scope, parent scopes, and child scopes.')
       .addDropdown(dropdown => dropdown
         .addOptions({
           'exact': 'Exact',
@@ -75,7 +168,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.tagScoping.membershipMode)
         .onChange(async (value) => {
           this.plugin.settings.tagScoping.membershipMode = value === 'cascade' ? 'cascade' : 'exact';
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistSettings();
         }));
 
     new Setting(containerEl)
@@ -85,7 +178,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.tagScoping.includeUntagged)
         .onChange(async (value) => {
           this.plugin.settings.tagScoping.includeUntagged = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistSettings();
         }));
 
     // Default LoreBook Settings section
@@ -342,37 +435,182 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.sqlite.enabled)
         .onChange(async (value) => {
           this.plugin.settings.sqlite.enabled = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistSettings();
         }));
 
-    new Setting(containerEl)
+    let sqliteOutputInput: TextComponent | null = null;
+    const sqliteOutputSetting = new Setting(containerEl)
       .setName('SQLite Output Directory')
-      .setDesc('Directory for canonical SQLite packs. LoreVault writes one <scope>.db file per lorebook.')
-      .addText(text => text
-        .setPlaceholder('lorebooks/')
-        .setValue(this.plugin.settings.sqlite.outputPath)
-        .onChange(async (value) => {
-          this.plugin.settings.sqlite.outputPath = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
-        }));
+      .setDesc('Directory for canonical SQLite packs. Type a path or browse existing folders. LoreVault writes one <scope>.db per lorebook.')
+      .addText(text => {
+        sqliteOutputInput = text;
+        text
+          .setPlaceholder('lorebooks/')
+          .setValue(this.plugin.settings.sqlite.outputPath)
+          .onChange(async (value) => {
+            this.plugin.settings.sqlite.outputPath = this.normalizePathInput(value);
+            await this.persistSettings();
+          });
+      });
+    sqliteOutputSetting.addButton(button => button
+      .setButtonText('Browse')
+      .setTooltip('Pick existing folder from vault')
+      .onClick(() => {
+        this.openFolderPicker((folderPath: string) => {
+          const normalized = this.normalizePathInput(folderPath);
+          this.plugin.settings.sqlite.outputPath = normalized || 'lorebooks';
+          sqliteOutputInput?.setValue(this.plugin.settings.sqlite.outputPath);
+          void this.persistSettings();
+        });
+      }));
 
     containerEl.createEl('h3', { text: 'Story Chat' });
 
-    new Setting(containerEl)
+    let chatFolderInput: TextComponent | null = null;
+    const chatFolderSetting = new Setting(containerEl)
       .setName('Story Chat Conversation Folder')
-      .setDesc('Vault folder where Story Chat conversation notes are stored.')
-      .addText(text => text
-        .setPlaceholder('LoreVault/chat')
-        .setValue(this.plugin.settings.storyChat.chatFolder)
-        .onChange(async (value) => {
-          this.plugin.settings.storyChat.chatFolder = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
-        }));
+      .setDesc('Vault folder where Story Chat conversation notes are stored. Type a path or browse existing folders.')
+      .addText(text => {
+        chatFolderInput = text;
+        text
+          .setPlaceholder('LoreVault/chat')
+          .setValue(this.plugin.settings.storyChat.chatFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.storyChat.chatFolder = this.normalizePathInput(value);
+            await this.persistSettings();
+          });
+      });
+    chatFolderSetting.addButton(button => button
+      .setButtonText('Browse')
+      .setTooltip('Pick existing folder from vault')
+      .onClick(() => {
+        this.openFolderPicker((folderPath: string) => {
+          const normalized = this.normalizePathInput(folderPath);
+          this.plugin.settings.storyChat.chatFolder = normalized || 'LoreVault/chat';
+          chatFolderInput?.setValue(this.plugin.settings.storyChat.chatFolder);
+          void this.persistSettings();
+        });
+      }));
 
     containerEl.createEl('h3', { text: 'Writing Completion' });
     containerEl.createEl('p', {
       text: 'Configure LLM generation for "Continue Story with Context".'
     });
+
+    new Setting(containerEl)
+      .setName('Active Completion Preset')
+      .setDesc('Selecting a preset immediately applies provider/model/token settings.')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', '(none)');
+        const sortedPresets = [...this.plugin.settings.completion.presets]
+          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+        for (const preset of sortedPresets) {
+          dropdown.addOption(preset.id, preset.name);
+        }
+        dropdown.setValue(this.plugin.settings.completion.activePresetId || '');
+        dropdown.onChange(async (value) => {
+          const activeId = value.trim();
+          if (!activeId) {
+            this.plugin.settings.completion.activePresetId = '';
+            await this.persistSettings();
+            return;
+          }
+
+          const preset = this.plugin.settings.completion.presets.find(item => item.id === activeId);
+          if (!preset) {
+            new Notice('Preset not found.');
+            return;
+          }
+
+          this.applyCompletionPreset(preset);
+          this.plugin.settings.completion.activePresetId = preset.id;
+          await this.persistSettings();
+          this.display();
+        });
+      });
+
+    const presetActions = new Setting(containerEl)
+      .setName('Preset Actions')
+      .setDesc('Save current completion settings as a new preset, update the active preset, or remove it.');
+
+    presetActions.addButton(button => button
+      .setButtonText('Save As New')
+      .onClick(() => {
+        const defaultName = `${this.plugin.settings.completion.provider} · ${this.plugin.settings.completion.model}`;
+        const name = window.prompt('New preset name', defaultName)?.trim();
+        if (!name) {
+          return;
+        }
+
+        const preset = this.snapshotCurrentCompletion(name);
+        this.plugin.settings.completion.presets = [
+          ...this.plugin.settings.completion.presets,
+          preset
+        ];
+        this.plugin.settings.completion.activePresetId = preset.id;
+        void this.persistSettings().then(() => {
+          new Notice(`Saved preset: ${name}`);
+          this.display();
+        });
+      }));
+
+    presetActions.addButton(button => button
+      .setButtonText('Update Active')
+      .onClick(() => {
+        const activePresetId = this.plugin.settings.completion.activePresetId;
+        if (!activePresetId) {
+          new Notice('No active preset selected.');
+          return;
+        }
+
+        const index = this.plugin.settings.completion.presets.findIndex(item => item.id === activePresetId);
+        if (index < 0) {
+          new Notice('Active preset no longer exists.');
+          return;
+        }
+
+        const existing = this.plugin.settings.completion.presets[index];
+        const name = window.prompt('Preset name', existing.name)?.trim();
+        if (!name) {
+          return;
+        }
+
+        this.plugin.settings.completion.presets[index] = this.snapshotCurrentCompletion(name, existing.id);
+        this.plugin.settings.completion.activePresetId = existing.id;
+        void this.persistSettings().then(() => {
+          new Notice(`Updated preset: ${name}`);
+          this.display();
+        });
+      }));
+
+    presetActions.addButton(button => button
+      .setButtonText('Delete Active')
+      .onClick(() => {
+        const activePresetId = this.plugin.settings.completion.activePresetId;
+        if (!activePresetId) {
+          new Notice('No active preset selected.');
+          return;
+        }
+
+        const existing = this.plugin.settings.completion.presets.find(item => item.id === activePresetId);
+        if (!existing) {
+          new Notice('Active preset no longer exists.');
+          return;
+        }
+
+        const confirmed = window.confirm(`Delete completion preset "${existing.name}"?`);
+        if (!confirmed) {
+          return;
+        }
+
+        this.plugin.settings.completion.presets = this.plugin.settings.completion.presets
+          .filter(item => item.id !== activePresetId);
+        this.plugin.settings.completion.activePresetId = '';
+        void this.persistSettings().then(() => {
+          new Notice(`Deleted preset: ${existing.name}`);
+          this.display();
+        });
+      }));
 
     new Setting(containerEl)
       .setName('Enable Writing Completion')

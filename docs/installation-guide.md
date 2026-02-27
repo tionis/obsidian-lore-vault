@@ -46,6 +46,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
      - "Open LoreVault Routing Debug" (opens dedicated routing diagnostics panel)
+     - "Open LoreVault Query Simulation" (opens dedicated retrieval simulation panel)
      - "Open Story Chat" (opens right sidebar panel)
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
@@ -81,11 +82,12 @@ If you prefer to build the plugin from source:
 
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
-   - Set downstream output subpath for exports (`world_info` JSON + `rag` markdown; default `sillytavern/lorevault.json`)
-   - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook)
+   - Set downstream output subpath/pattern for exports (`world_info` JSON + `rag` markdown; default `sillytavern/lorevault.json`)
+   - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook; folder picker available)
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
+   - Optional: create model presets and select an active completion preset for quick A/B comparison
    - Optional: configure Retrieval tuning (`RAG Fallback Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: configure embeddings backend/cache/chunking for semantic RAG
@@ -103,6 +105,7 @@ If you prefer to build the plugin from source:
    - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
    - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
    - Use "Open LoreVault Routing Debug" for full note-level inclusion/routing diagnostics
+   - Use "Open LoreVault Query Simulation" to simulate retrieval across one or multiple scopes with override knobs
    - Monitor the progress bar as your vault is converted
 
 4. **Use writing-assistant context insertion**

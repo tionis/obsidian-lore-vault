@@ -64,14 +64,9 @@ export class LorebooksManagerView extends ItemView {
       void this.plugin.openRoutingDebugView();
     });
 
-    const openFolderButton = toolbar.createEl('button', { text: 'Open Output Folder' });
-    openFolderButton.addEventListener('click', async () => {
-      try {
-        await this.plugin.openOutputFolder();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        new Notice(`Open folder failed: ${message}`);
-      }
+    const querySimulationButton = toolbar.createEl('button', { text: 'Open Query Simulation' });
+    querySimulationButton.addEventListener('click', () => {
+      void this.plugin.openQuerySimulationView();
     });
   }
 

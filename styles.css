@@ -373,6 +373,23 @@
   width: 120px;
 }
 
+.lorevault-query-scope-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-query-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Story Chat View */
 .lorevault-chat-view {
   height: 100%;

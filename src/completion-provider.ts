@@ -54,6 +54,36 @@ function normalizeContentValue(content: any): string {
   if (typeof content === 'string') {
     return content;
   }
+  if (content && typeof content === 'object') {
+    const pieces: string[] = [];
+    const maybeAdd = (value: any): void => {
+      const normalized = normalizeContentValue(value);
+      if (normalized) {
+        pieces.push(normalized);
+      }
+    };
+    maybeAdd(content.text);
+    maybeAdd(content.value);
+    maybeAdd(content.output_text);
+    maybeAdd(content.content);
+    maybeAdd(content.delta);
+    maybeAdd(content.parts);
+    maybeAdd(content.segments);
+    maybeAdd(content.items);
+    maybeAdd(content.message?.content);
+    if (pieces.length > 0) {
+      const seen = new Set<string>();
+      const deduped = pieces.filter(piece => {
+        const key = piece.trim();
+        if (!key || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+      return deduped.join('\n').trim();
+    }
+  }
   if (Array.isArray(content)) {
     const textParts = content
       .map((item: any) => {
@@ -63,8 +93,18 @@ function normalizeContentValue(content: any): string {
         if (typeof item?.text === 'string') {
           return item.text;
         }
+        if (typeof item?.value === 'string') {
+          return item.value;
+        }
+        if (typeof item?.output_text === 'string') {
+          return item.output_text;
+        }
         if (typeof item?.content === 'string') {
           return item.content;
+        }
+        const nested = normalizeContentValue(item);
+        if (nested) {
+          return nested;
         }
         return '';
       })
@@ -72,6 +112,58 @@ function normalizeContentValue(content: any): string {
     return textParts.join('\n').trim();
   }
   return '';
+}
+
+function extractResponseApiOutputText(payload: any): string {
+  const directCandidates = [
+    normalizeContentValue(payload?.output_text),
+    normalizeContentValue(payload?.response?.output_text),
+    normalizeContentValue(payload?.result?.output_text)
+  ];
+  for (const candidate of directCandidates) {
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const outputs = [
+    payload?.output,
+    payload?.response?.output,
+    payload?.result?.output
+  ];
+
+  for (const output of outputs) {
+    if (!Array.isArray(output)) {
+      continue;
+    }
+    const combined = output
+      .map((entry: any) => normalizeContentValue(entry))
+      .filter((entry: string) => entry.length > 0)
+      .join('\n')
+      .trim();
+    if (combined) {
+      return combined;
+    }
+  }
+
+  return '';
+}
+
+function summarizeCompletionPayloadShape(payload: any): string {
+  try {
+    const topKeys = payload && typeof payload === 'object'
+      ? Object.keys(payload).slice(0, 12)
+      : [];
+    const choiceKeys = payload?.choices?.[0] && typeof payload.choices[0] === 'object'
+      ? Object.keys(payload.choices[0]).slice(0, 12)
+      : [];
+    const messageKeys = payload?.choices?.[0]?.message && typeof payload.choices[0].message === 'object'
+      ? Object.keys(payload.choices[0].message).slice(0, 12)
+      : [];
+    return `topKeys=[${topKeys.join(', ')}] choiceKeys=[${choiceKeys.join(', ')}] messageKeys=[${messageKeys.join(', ')}]`;
+  } catch (_error) {
+    return 'shape_unavailable';
+  }
 }
 
 function extractOpenAiCompletionText(payload: any): string {
@@ -84,7 +176,13 @@ function extractOpenAiCompletionText(payload: any): string {
   if (textContent) {
     return textContent;
   }
-  throw new Error('Completion response did not contain choices[0].message.content.');
+  const responseApiText = extractResponseApiOutputText(payload);
+  if (responseApiText) {
+    return responseApiText;
+  }
+  throw new Error(
+    `Completion response did not contain text content. ${summarizeCompletionPayloadShape(payload)}`
+  );
 }
 
 function extractOpenAiDeltaText(payload: any): string {
@@ -100,6 +198,10 @@ function extractOpenAiDeltaText(payload: any): string {
   const textContent = normalizeContentValue(first?.text);
   if (textContent) {
     return textContent;
+  }
+  const responseDelta = normalizeContentValue(payload?.delta) || normalizeContentValue(payload?.output_text);
+  if (responseDelta) {
+    return responseDelta;
   }
   return '';
 }
@@ -162,7 +264,7 @@ function extractReportedCostUsd(payload: any): number | null {
 }
 
 function parseOpenAiUsage(payload: any): Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null {
-  const usage = payload?.usage;
+  const usage = payload?.usage ?? payload?.response?.usage ?? payload?.result?.usage;
   if (!usage || typeof usage !== 'object') {
     return null;
   }

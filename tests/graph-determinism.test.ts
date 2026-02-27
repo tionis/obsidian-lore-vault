@@ -118,6 +118,8 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       timeoutMs: 60000
     },
     storyChat: {
+      chatFolder: 'LoreVault/chat',
+      activeConversationPath: '',
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',

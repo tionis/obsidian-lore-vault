@@ -331,19 +331,20 @@ Current behavior:
 - opens a persistent workspace view (non-modal)
 - includes an in-chat generation monitor (state, scopes, token usage, output progress)
 - supports streaming send/stop controls
+- shows a conversation dropdown and supports creating new chats inline
 - stores per-chat context controls:
   - selected lorebook scopes
   - `Use Lorebook Context` toggle
   - manual context text
-  - specific note references (`path`, basename, or `[[wikilink]]`)
-- shows live resolved/unresolved preview for specific note references
+  - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
 - supports per-message actions:
   - `Edit` past user/assistant messages
-  - `Fork Here` to save branch snapshots at any turn
-  - `Regenerate` on latest assistant turn
-- provides fork snapshot controls to load/delete alternate conversation branches
-- persists chat transcript, controls, and fork snapshots in plugin data
+  - `Fork Here` to create a new conversation note from any turn
+  - `Regenerate` on latest assistant turn (adds a new assistant version)
+- allows switching between multiple generated versions of a message; only selected version is used for future context
+- persists each chat/fork as a markdown note under `LoreVault/chat`
+- plugin settings persist active conversation path and chat folder
 
 Turn context assembly:
 

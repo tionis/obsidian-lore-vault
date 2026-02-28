@@ -9,6 +9,11 @@ import {
   stripSummarySectionFromBody,
   upsertSummarySectionInMarkdown
 } from './summary-utils';
+import {
+  buildStructuredWikiBody,
+  deriveWikiTitleFromPageKey,
+  sanitizeWikiTitle
+} from './wiki-markdown-format';
 
 export type StoryDeltaUpdatePolicy = 'safe_append' | 'structured_merge';
 
@@ -449,10 +454,12 @@ export function parseStoryDeltaOperations(
     if (!resolvedKey) {
       continue;
     }
+    const fallbackTitle = deriveWikiTitleFromPageKey(resolvedKey);
+    const sanitizedTitle = sanitizeWikiTitle(title, fallbackTitle);
 
     operations.push({
       pageKey: resolvedKey,
-      title: title || resolvedKey,
+      title: sanitizedTitle,
       summary,
       keywords,
       aliases,
@@ -521,6 +528,9 @@ function buildPrompts(
     `Return at most ${Math.max(1, Math.floor(options.maxOperationsPerChunk))} operations.`,
     `Update policy: ${policyText}.`,
     'Prefer existing pageKey reuse whenever possible.',
+    'Title must be canonical note title only. Do not prefix title with type labels like "Character:", "Location:", or "Faction:".',
+    'Content must be markdown body only (no frontmatter, no top-level # title heading).',
+    'Prefer sectioned markdown with ## headings (for example ## Backstory, ## Overview, ## Relationships, ## Timeline).',
     'Do not invent facts outside the chunk.'
   ].join('\n');
 
@@ -562,7 +572,11 @@ function renderFrontmatter(state: PageState): string {
     }
   }
 
-  lines.push(`title: ${JSON.stringify(state.title || state.pageKey)}`);
+  const resolvedTitle = sanitizeWikiTitle(
+    state.title || '',
+    deriveWikiTitleFromPageKey(state.pageKey || state.title)
+  );
+  lines.push(`title: ${JSON.stringify(resolvedTitle)}`);
   lines.push(...renderYamlArray('aliases', state.aliases));
   lines.push(...renderYamlArray('keywords', state.keywords));
   lines.push(...renderYamlArray('tags', state.tags));
@@ -586,9 +600,19 @@ function renderStateContent(state: PageState, policy: StoryDeltaUpdatePolicy): s
   }
 
   const frontmatter = renderFrontmatter(state);
+  const resolvedTitle = sanitizeWikiTitle(
+    state.title || '',
+    deriveWikiTitleFromPageKey(state.pageKey || state.title)
+  );
   const bodyWithoutSummary = stripSummarySectionFromBody(rawBody);
   const baseBody = bodyWithoutSummary || (state.summary ? '' : '(no story delta content)');
-  const baseContent = ['---', frontmatter, '---', '', baseBody, ''].join('\n');
+  const structuredBody = buildStructuredWikiBody(
+    resolvedTitle,
+    state.pageKey,
+    baseBody,
+    '(no story delta content)'
+  );
+  const baseContent = ['---', frontmatter, '---', '', structuredBody, ''].join('\n');
   if (!state.summary) {
     return baseContent;
   }

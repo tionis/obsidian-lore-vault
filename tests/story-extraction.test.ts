@@ -41,7 +41,7 @@ test('parseStoryExtractionOperations validates and sorts operations', () => {
         },
         {
           pageKey: 'character/alice',
-          title: 'Alice',
+          title: 'Character: Alice',
           summary: 'Main protagonist.',
           keywords: ['Alice'],
           aliases: ['A.'],
@@ -56,6 +56,7 @@ test('parseStoryExtractionOperations validates and sorts operations', () => {
   const operations = parseStoryExtractionOperations(raw, 10);
   assert.equal(operations.length, 2);
   assert.equal(operations[0].pageKey, 'character/alice');
+  assert.equal(operations[0].title, 'Alice');
   assert.equal(operations[1].pageKey, 'location/tower');
 });
 
@@ -136,7 +137,9 @@ test('extractWikiPagesFromStory merges repeated page updates across chunks deter
   assert.equal(alice?.path, 'wiki/extracted/character-alice.md');
   assert.match(alice?.content ?? '', /keywords:\n {2}- "Alice"\n {2}- "Rowan"/);
   assert.equal(/^summary:/m.test(alice?.content ?? ''), false);
+  assert.match(alice?.content ?? '', /^# Alice$/m);
   assert.match(alice?.content ?? '', /## Summary\n\nYoung scholar entering the city\./);
+  assert.match(alice?.content ?? '', /## Backstory\n\nAlice arrives in the city seeking clues\./);
   assert.match(alice?.content ?? '', /Alice arrives in the city seeking clues\./);
   assert.match(alice?.content ?? '', /works with Rowan\./);
 

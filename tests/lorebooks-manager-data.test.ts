@@ -142,6 +142,10 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       maxMessages: 80,
       ...(overrides.storyChat ?? {})
     },
+    storySteering: {
+      folder: 'LoreVault/steering',
+      ...(overrides.storySteering ?? {})
+    },
     textCommands: {
       autoAcceptEdits: false,
       defaultIncludeLorebookContext: false,

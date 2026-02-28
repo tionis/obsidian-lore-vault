@@ -340,6 +340,9 @@ export interface ConverterSettings {
     forkSnapshots: StoryChatForkSnapshot[];
     maxMessages: number;
   };
+  storySteering: {
+    folder: string;
+  };
   textCommands: {
     autoAcceptEdits: boolean;
     defaultIncludeLorebookContext: boolean;
@@ -470,6 +473,9 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     messages: [],
     forkSnapshots: [],
     maxMessages: 80
+  },
+  storySteering: {
+    folder: 'LoreVault/steering'
   },
   textCommands: {
     autoAcceptEdits: false,

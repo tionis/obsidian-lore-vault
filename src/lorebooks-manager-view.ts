@@ -86,6 +86,11 @@ export class LorebooksManagerView extends ItemView {
     querySimulationButton.addEventListener('click', () => {
       void this.plugin.openQuerySimulationView();
     });
+
+    const steeringButton = toolbar.createEl('button', { text: 'Open Story Steering' });
+    steeringButton.addEventListener('click', () => {
+      void this.plugin.openStorySteeringView();
+    });
   }
 
   private renderScopeCard(container: HTMLElement, summary: ScopeSummary): void {

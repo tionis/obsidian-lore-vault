@@ -320,7 +320,7 @@ Needed capabilities:
 - story-focused prompts and insert-at-cursor workflows
 - chat workflow for interactive story discussion with selectable lorebooks/manual context
 
-## Story Steering Additions (Planned)
+## Story Steering Additions (In Progress)
 
 To better match proven writing workflows (for example SillyTavern/NovelAI-style steering),
 LoreVault should add explicit context staging controls instead of relying on implicit prompt assembly.
@@ -334,7 +334,11 @@ Current status:
 - deterministic staged reservations + overflow trimming are implemented with fixed trim order and pinned-layer protection
 - inspector traces now include per-layer token usage/headroom and overflow rationale
 - continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
-- remaining work focuses on richer UI-specific inspector rendering tests and follow-on continuity automation
+- scope-based steering workspace foundation is implemented:
+  - dedicated Story Steering panel
+  - markdown-backed scoped steering notes (`global`, optional `thread`, optional `chapter`, `note`)
+  - merged with chat/continuation steering assembly without mandatory `storyId`
+- remaining work focuses on LLM-assisted extraction/update actions with preview/approval
 
 Planned steering primitives:
 
@@ -371,7 +375,7 @@ Inspector requirements for this phase:
 - show token consumption and remaining headroom by layer
 - show exactly what was trimmed/compressed and why
 
-This work is tracked as Phase 20 in `docs/todo.md`.
+This work is tracked as Phases 20-21 in `docs/todo.md`.
 
 ## Graph-First Retrieval Strategy
 

@@ -32,6 +32,10 @@ This document is the implementation-level reference for core architecture and ru
   - persistent chat UI
   - note-backed conversation persistence
   - message versions/regeneration/forking
+- `src/story-steering.ts` + `src/story-steering-view.ts`
+  - scope-based steering storage (`global`/`thread`/`chapter`/`note`)
+  - markdown-backed steering note parse/serialize
+  - effective-layer merge for chat/continuation prompt assembly
 - `src/lorebooks-routing-debug-view.ts`
   - scope inclusion/routing diagnostics
   - world_info content inspection

@@ -217,7 +217,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Settings You Will Likely Use', {
       bullets: [
         'Writing Completion: provider/model/context window/max output and model presets.',
-        'LLM Operation Log: enable full request/response logging, path, retention cap, and open the built-in explorer panel.',
+        'LLM Operation Log: enable full request/response logging, path, retention cap, and open the built-in explorer panel with parsed message inspection.',
         'Story Chat folder plus Story Chat tool-call limits/write toggle.',
         'Story Steering folder and extraction sanitization setting.',
         'Retrieval controls: graph hops/decay, backlink expansion, fallback policy (`off|auto|always`), body-lift settings.',

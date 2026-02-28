@@ -12,6 +12,51 @@ export const LOREVAULT_OPERATION_LOG_VIEW_TYPE = 'lorevault-operation-log-view';
 type KindFilter = 'all' | CompletionOperationKind;
 type StatusFilter = 'all' | 'ok' | 'error';
 
+interface ParsedPayloadToolCall {
+  id: string;
+  name: string;
+  argumentsJson: string;
+}
+
+interface ParsedPayloadMessage {
+  role: string;
+  name: string;
+  toolCallId: string;
+  toolName: string;
+  content: string;
+  toolCalls: ParsedPayloadToolCall[];
+}
+
+interface ParsedPayloadToolDefinition {
+  name: string;
+  description: string;
+  parameters: unknown;
+}
+
+interface ParsedPayloadShape {
+  raw: Record<string, unknown> | null;
+  summaryParts: string[];
+  messages: ParsedPayloadMessage[];
+  tools: ParsedPayloadToolDefinition[];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
 function formatDateTime(timestamp: number): string {
   if (!timestamp || !Number.isFinite(timestamp)) {
     return '(unknown time)';
@@ -52,6 +97,202 @@ function formatAttemptHeader(attempt: CompletionOperationLogAttempt, index: numb
     attempt.error ? 'error' : 'ok'
   ].filter(Boolean);
   return parts.join(' | ');
+}
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return `${value.slice(0, maxChars)}...`;
+}
+
+function normalizeContentText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value === null || typeof value === 'undefined') {
+    return '';
+  }
+  if (Array.isArray(value)) {
+    const pieces = value
+      .map(item => normalizeContentText(item))
+      .map(item => item.trim())
+      .filter(Boolean);
+    return truncateText(pieces.join('\n').trim(), 80000);
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return truncateText(asString(value), 80000);
+  }
+
+  const candidateKeys = [
+    'text',
+    'value',
+    'output_text',
+    'content',
+    'delta',
+    'arguments',
+    'input_text',
+    'parts',
+    'segments',
+    'items'
+  ];
+  const segments: string[] = [];
+  for (const key of candidateKeys) {
+    const candidate = normalizeContentText(record[key]);
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) {
+      segments.push(trimmed);
+    }
+  }
+  if (segments.length > 0) {
+    const seen = new Set<string>();
+    const deduped = segments.filter(segment => {
+      const marker = segment.toLowerCase();
+      if (seen.has(marker)) {
+        return false;
+      }
+      seen.add(marker);
+      return true;
+    });
+    return truncateText(deduped.join('\n').trim(), 80000);
+  }
+
+  return truncateText(prettyJson(value), 80000);
+}
+
+function parsePayloadToolCalls(value: unknown): ParsedPayloadToolCall[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const calls: ParsedPayloadToolCall[] = [];
+  for (const rawCall of value) {
+    const call = asRecord(rawCall);
+    if (!call) {
+      continue;
+    }
+    const functionRecord = asRecord(call.function);
+    const name = asString(functionRecord?.name ?? call.name).trim();
+    const argumentsJson = normalizeContentText(functionRecord?.arguments ?? call.arguments).trim();
+    if (!name && !argumentsJson) {
+      continue;
+    }
+    calls.push({
+      id: asString(call.id).trim(),
+      name,
+      argumentsJson
+    });
+  }
+  return calls;
+}
+
+function parsePayloadMessages(payload: Record<string, unknown>): ParsedPayloadMessage[] {
+  const rawMessages = Array.isArray(payload.messages) ? payload.messages : [];
+  const messages: ParsedPayloadMessage[] = [];
+  for (let index = 0; index < rawMessages.length; index += 1) {
+    const rawMessage = asRecord(rawMessages[index]);
+    if (!rawMessage) {
+      continue;
+    }
+    const role = asString(rawMessage.role).trim() || `message_${index + 1}`;
+    const name = asString(rawMessage.name).trim();
+    const toolCallId = asString(rawMessage.tool_call_id).trim();
+    const toolName = asString(rawMessage.tool_name).trim();
+    const content = normalizeContentText(rawMessage.content).trim();
+    const toolCalls = parsePayloadToolCalls(rawMessage.tool_calls);
+    if (!content && toolCalls.length === 0 && !name && !toolCallId && !toolName) {
+      continue;
+    }
+    messages.push({
+      role,
+      name,
+      toolCallId,
+      toolName,
+      content,
+      toolCalls
+    });
+  }
+  return messages;
+}
+
+function parsePayloadTools(payload: Record<string, unknown>): ParsedPayloadToolDefinition[] {
+  const rawTools = Array.isArray(payload.tools) ? payload.tools : [];
+  const tools: ParsedPayloadToolDefinition[] = [];
+  for (const rawTool of rawTools) {
+    const tool = asRecord(rawTool);
+    if (!tool) {
+      continue;
+    }
+    const functionRecord = asRecord(tool.function);
+    const name = asString(functionRecord?.name ?? tool.name).trim();
+    const description = asString(functionRecord?.description ?? tool.description).trim();
+    const parameters = functionRecord?.parameters ?? tool.parameters;
+    if (!name && !description && typeof parameters === 'undefined') {
+      continue;
+    }
+    tools.push({
+      name,
+      description,
+      parameters
+    });
+  }
+  return tools;
+}
+
+function parsePayloadShape(payload: unknown): ParsedPayloadShape {
+  const raw = asRecord(payload);
+  if (!raw) {
+    return {
+      raw: null,
+      summaryParts: [],
+      messages: [],
+      tools: []
+    };
+  }
+
+  const messages = parsePayloadMessages(raw);
+  const tools = parsePayloadTools(raw);
+  const summaryParts: string[] = [];
+  const pushPart = (label: string, value: unknown): void => {
+    const text = asString(value).trim();
+    if (text.length > 0) {
+      summaryParts.push(`${label} ${text}`);
+    }
+  };
+
+  pushPart('model', raw.model);
+  if (typeof raw.temperature === 'number') {
+    summaryParts.push(`temperature ${raw.temperature}`);
+  }
+  if (typeof raw.max_tokens === 'number') {
+    summaryParts.push(`max_tokens ${Math.floor(raw.max_tokens)}`);
+  }
+  if (typeof raw.stream !== 'undefined') {
+    summaryParts.push(`stream ${String(raw.stream)}`);
+  }
+  pushPart('tool_choice', raw.tool_choice);
+  const options = asRecord(raw.options);
+  if (options) {
+    if (typeof options.temperature === 'number') {
+      summaryParts.push(`options.temperature ${options.temperature}`);
+    }
+    if (typeof options.num_predict === 'number') {
+      summaryParts.push(`options.num_predict ${Math.floor(options.num_predict)}`);
+    }
+  }
+  summaryParts.push(`messages ${messages.length}`);
+  if (tools.length > 0) {
+    summaryParts.push(`tools ${tools.length}`);
+  }
+  return {
+    raw,
+    summaryParts,
+    messages,
+    tools
+  };
 }
 
 export class LorevaultOperationLogView extends ItemView {
@@ -411,6 +652,128 @@ export class LorevaultOperationLogView extends ItemView {
     }
   }
 
+  private createReadonlyTextBox(container: HTMLElement, value: string, placeholder?: string): void {
+    const textValue = value.trim().length > 0
+      ? value
+      : (placeholder ?? '[No text content]');
+    const textArea = container.createEl('textarea', { cls: 'lorevault-operation-log-textbox' });
+    textArea.value = textValue;
+    textArea.readOnly = true;
+    textArea.rows = Math.max(4, Math.min(20, textValue.split('\n').length + 1));
+  }
+
+  private renderPayloadMessages(container: HTMLElement, messages: ParsedPayloadMessage[], label = 'Messages'): void {
+    if (messages.length === 0) {
+      return;
+    }
+    const messagesDetails = container.createEl('details');
+    messagesDetails.createEl('summary', { text: `${label} (${messages.length})` });
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      const messageDetails = messagesDetails.createEl('details');
+      const summaryParts = [
+        `#${index + 1}`,
+        message.role
+      ];
+      if (message.name) {
+        summaryParts.push(`name=${message.name}`);
+      }
+      if (message.toolCallId) {
+        summaryParts.push(`tool_call_id=${message.toolCallId}`);
+      }
+      if (message.toolName) {
+        summaryParts.push(`tool_name=${message.toolName}`);
+      }
+      if (message.toolCalls.length > 0) {
+        summaryParts.push(`tool_calls=${message.toolCalls.length}`);
+      }
+      messageDetails.createEl('summary', {
+        text: `${summaryParts.join(' | ')} | chars ${message.content.length}`
+      });
+      this.createReadonlyTextBox(messageDetails, message.content, '[No message content]');
+      if (message.toolCalls.length > 0) {
+        const toolCallsDetails = messageDetails.createEl('details');
+        toolCallsDetails.createEl('summary', {
+          text: `Tool Calls (${message.toolCalls.length})`
+        });
+        for (let callIndex = 0; callIndex < message.toolCalls.length; callIndex += 1) {
+          const call = message.toolCalls[callIndex];
+          const callDetails = toolCallsDetails.createEl('details');
+          const callSummary = [
+            `#${callIndex + 1}`,
+            call.name || '(unnamed)'
+          ];
+          if (call.id) {
+            callSummary.push(`id=${call.id}`);
+          }
+          callDetails.createEl('summary', { text: callSummary.join(' | ') });
+          this.createReadonlyTextBox(callDetails, call.argumentsJson, '[No tool arguments]');
+        }
+      }
+    }
+  }
+
+  private renderPayloadTools(container: HTMLElement, tools: ParsedPayloadToolDefinition[]): void {
+    if (tools.length === 0) {
+      return;
+    }
+    const toolsDetails = container.createEl('details');
+    toolsDetails.createEl('summary', { text: `Tool Definitions (${tools.length})` });
+    for (let index = 0; index < tools.length; index += 1) {
+      const tool = tools[index];
+      const detail = toolsDetails.createEl('details');
+      detail.createEl('summary', {
+        text: `${index + 1}. ${tool.name || '(unnamed tool)'}`
+      });
+      if (tool.description) {
+        detail.createEl('p', { text: tool.description });
+      }
+      if (typeof tool.parameters !== 'undefined') {
+        const pre = detail.createEl('pre', { cls: 'lorevault-operation-log-json' });
+        pre.setText(prettyJson(tool.parameters));
+      }
+    }
+  }
+
+  private renderPayloadBreakdown(
+    container: HTMLElement,
+    payload: unknown,
+    options?: { includeRawJson?: boolean; rawLabel?: string }
+  ): void {
+    const parsed = parsePayloadShape(payload);
+    if (!parsed.raw) {
+      container.createEl('p', {
+        cls: 'lorevault-operation-log-subtle',
+        text: 'Payload is not an object record.'
+      });
+      if (options?.includeRawJson) {
+        const rawDetails = container.createEl('details');
+        rawDetails.createEl('summary', { text: options.rawLabel ?? 'Raw JSON' });
+        rawDetails.createEl('pre', {
+          cls: 'lorevault-operation-log-json',
+          text: prettyJson(payload)
+        });
+      }
+      return;
+    }
+
+    if (parsed.summaryParts.length > 0) {
+      container.createEl('p', {
+        text: parsed.summaryParts.join(' | ')
+      });
+    }
+    this.renderPayloadMessages(container, parsed.messages);
+    this.renderPayloadTools(container, parsed.tools);
+    if (options?.includeRawJson) {
+      const rawDetails = container.createEl('details');
+      rawDetails.createEl('summary', { text: options.rawLabel ?? 'Raw JSON' });
+      rawDetails.createEl('pre', {
+        cls: 'lorevault-operation-log-json',
+        text: prettyJson(payload)
+      });
+    }
+  }
+
   private renderEntry(entry: ParsedOperationLogEntry): void {
     if (!this.listEl) {
       return;
@@ -468,9 +831,9 @@ export class LorevaultOperationLogView extends ItemView {
 
     const requestDetails = details.createEl('details');
     requestDetails.createEl('summary', { text: 'Request Payload' });
-    requestDetails.createEl('pre', {
-      cls: 'lorevault-operation-log-json',
-      text: prettyJson(entry.record.request)
+    this.renderPayloadBreakdown(requestDetails, entry.record.request, {
+      includeRawJson: true,
+      rawLabel: 'Request JSON'
     });
 
     const attemptsDetails = details.createEl('details');
@@ -482,16 +845,18 @@ export class LorevaultOperationLogView extends ItemView {
         const attempt = entry.record.attempts[index];
         const attemptDetails = attemptsDetails.createEl('details');
         attemptDetails.createEl('summary', { text: formatAttemptHeader(attempt, index) });
-        attemptDetails.createEl('pre', {
-          cls: 'lorevault-operation-log-json',
-          text: prettyJson(attempt.requestBody)
+        const attemptRequestDetails = attemptDetails.createEl('details');
+        attemptRequestDetails.createEl('summary', { text: 'Attempt Request' });
+        this.renderPayloadBreakdown(attemptRequestDetails, attempt.requestBody, {
+          includeRawJson: true,
+          rawLabel: 'Attempt Request JSON'
         });
         if (typeof attempt.responseBody !== 'undefined') {
           const responseDetails = attemptDetails.createEl('details');
           responseDetails.createEl('summary', { text: 'Response Body' });
-          responseDetails.createEl('pre', {
-            cls: 'lorevault-operation-log-json',
-            text: prettyJson(attempt.responseBody)
+          this.renderPayloadBreakdown(responseDetails, attempt.responseBody, {
+            includeRawJson: true,
+            rawLabel: 'Response JSON'
           });
         }
         if (attempt.responseText) {

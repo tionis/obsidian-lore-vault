@@ -271,7 +271,7 @@ Behavior:
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
 For debugging, `LLM Operation Log` settings can persist full request/response content (including tool-planner calls) to a vault JSONL file.
-Use command `Open LLM Operation Log Explorer` (or Settings -> `Open LLM Operation Log Explorer`) to browse/search entries and inspect full payloads in-plugin.
+Use command `Open LLM Operation Log Explorer` (or Settings -> `Open LLM Operation Log Explorer`) to browse/search entries, inspect parsed request messages in expandable textboxes, and view full raw payload JSON in-plugin.
 Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`, with pricing provenance and optional budgets by operation/model/scope.
 Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
 

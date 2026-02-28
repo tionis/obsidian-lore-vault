@@ -745,7 +745,7 @@ LLM operation log settings:
 - `Open LLM Operation Log Explorer` (settings button + command)
 
 When enabled, LoreVault writes full LLM request/response content (including tool planner calls) to the configured JSONL file.
-Use command `Open LLM Operation Log Explorer` to inspect/search entries and view full request/response payloads inside the plugin.
+Use command `Open LLM Operation Log Explorer` to inspect/search entries, view parsed request messages (with preserved newlines) in expandable textboxes, and open full raw request/response payload JSON inside the plugin.
 
 ## Story Chat Panel
 

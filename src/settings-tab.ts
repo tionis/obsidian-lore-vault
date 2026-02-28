@@ -907,6 +907,13 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    containerEl.createEl('p', {
+      text: 'Steering layer placement controls where pinned instructions, story notes, scene intent, and parsed inline directives are staged in prompts.'
+    });
+    containerEl.createEl('p', {
+      text: 'Inline directive syntax: [LV: ...] or <!-- LV: ... --> (parsed from near-cursor story text only).'
+    });
+
     const placementOptions = {
       system: 'System Prompt',
       pre_history: 'Pre-History Block',

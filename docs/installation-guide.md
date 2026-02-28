@@ -194,7 +194,8 @@ If you prefer to build the plugin from source:
 11. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
    - Run command `Apply Story Delta to Existing Wiki`
    - Provide story markdown directly or set `Source Story Note Path` and click `Use Active Note`
-   - Set target wiki folder (manual path or `Browse`) and optional scope tag filter
+   - Select one or more lorebook scopes in `Lorebooks to Consider`
+   - Set `New Note Target Folder` (manual path or `Browse`) for create operations
    - Choose update policy:
      - `safe_append` (default): preserve existing metadata on existing pages
      - `structured_merge`: merge summary-section/keywords/aliases where confidence is high

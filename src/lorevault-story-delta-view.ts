@@ -11,27 +11,19 @@ import {
   StoryDeltaResult,
   StoryDeltaUpdatePolicy
 } from './story-delta-update';
+import { extractLorebookScopesFromTags, normalizeScope, shouldIncludeInScope } from './lorebook-scoping';
 import { normalizeVaultPath } from './vault-path-utils';
 
 export const LOREVAULT_STORY_DELTA_VIEW_TYPE = 'lorevault-story-delta-view';
-
-function normalizeTag(tag: string): string {
-  return tag
-    .trim()
-    .replace(/^#+/, '')
-    .replace(/^\/+|\/+$/g, '')
-    .toLowerCase();
-}
 
 export class LorevaultStoryDeltaView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private sourceStoryNotePath = '';
   private storyMarkdown = '';
-  private targetFolder = 'LoreVault/import';
-  private requiredScopeTag = '';
+  private newNoteTargetFolder = 'LoreVault/import';
+  private selectedLorebookScopes: string[] = [];
   private updatePolicy: StoryDeltaUpdatePolicy = 'safe_append';
   private defaultTags = '';
-  private lorebookName = '';
   private maxChunkChars = 5000;
   private maxOperationsPerChunk = 12;
   private maxExistingPagesInPrompt = 80;
@@ -42,6 +34,7 @@ export class LorevaultStoryDeltaView extends ItemView {
   private applyStatus = '';
   private lastPreview: StoryDeltaResult | null = null;
   private approvedPaths = new Set<string>();
+  private lastExistingPageCount = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -61,6 +54,12 @@ export class LorevaultStoryDeltaView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    if (this.selectedLorebookScopes.length === 0) {
+      const activeScope = normalizeScope(this.plugin.settings.tagScoping.activeScope);
+      if (activeScope) {
+        this.selectedLorebookScopes = [activeScope];
+      }
+    }
     this.render();
   }
 
@@ -111,32 +110,31 @@ export class LorevaultStoryDeltaView extends ItemView {
   }
 
   private async collectTargetPages(): Promise<StoryDeltaExistingPageInput[]> {
-    const normalizedTarget = normalizeVaultPath(this.targetFolder.trim().replace(/^\/+|\/+$/g, ''));
-    if (!normalizedTarget) {
-      throw new Error('Target folder is required.');
+    const selectedScopes = this.getNormalizedSelectedScopes();
+    if (selectedScopes.length === 0) {
+      throw new Error('Select at least one lorebook scope to consider.');
     }
 
-    const scopeTag = normalizeTag(this.requiredScopeTag);
+    const prefix = this.plugin.settings.tagScoping.tagPrefix;
+    const membershipMode = this.plugin.settings.tagScoping.membershipMode;
     const allFiles = this.app.vault.getMarkdownFiles();
-    const files = allFiles
-      .filter(file => file.path === normalizedTarget || file.path.startsWith(`${normalizedTarget}/`))
-      .sort((left, right) => left.path.localeCompare(right.path));
+    const files = [...allFiles].sort((left, right) => left.path.localeCompare(right.path));
 
     const selected: TFile[] = [];
     for (const file of files) {
-      if (!scopeTag) {
-        selected.push(file);
-        continue;
-      }
       const cache = this.app.metadataCache.getFileCache(file);
-      if (!cache) {
+      const tags = cache ? (getAllTags(cache) ?? []) : [];
+      const noteScopes = extractLorebookScopesFromTags(tags, prefix);
+      const inSelectedLorebook = selectedScopes.some(scope => shouldIncludeInScope(
+        noteScopes,
+        scope,
+        membershipMode,
+        false
+      ));
+      if (!inSelectedLorebook) {
         continue;
       }
-      const tags = getAllTags(cache) ?? [];
-      const hasTag = tags.some(tag => normalizeTag(tag) === scopeTag);
-      if (hasTag) {
-        selected.push(file);
-      }
+      selected.push(file);
     }
 
     const pages: StoryDeltaExistingPageInput[] = [];
@@ -159,6 +157,55 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
     this.sourceStoryNotePath = activeFile.path;
     this.render();
+  }
+
+  private getNormalizedSelectedScopes(): string[] {
+    const normalized = this.selectedLorebookScopes
+      .map(scope => normalizeScope(scope))
+      .filter(Boolean);
+    return [...new Set(normalized)].sort((left, right) => left.localeCompare(right));
+  }
+
+  private addLorebookScope(scope: string): void {
+    const normalized = normalizeScope(scope);
+    if (!normalized) {
+      return;
+    }
+    if (this.selectedLorebookScopes.some(item => normalizeScope(item) === normalized)) {
+      return;
+    }
+    this.selectedLorebookScopes.push(normalized);
+    this.selectedLorebookScopes.sort((left, right) => left.localeCompare(right));
+    this.render();
+  }
+
+  private removeLorebookScope(scope: string): void {
+    const normalized = normalizeScope(scope);
+    this.selectedLorebookScopes = this.selectedLorebookScopes
+      .filter(item => normalizeScope(item) !== normalized);
+    this.render();
+  }
+
+  private getAvailableLorebookScopes(): string[] {
+    const prefix = this.plugin.settings.tagScoping.tagPrefix;
+    const scopes = new Set<string>();
+    const activeScope = normalizeScope(this.plugin.settings.tagScoping.activeScope);
+    if (activeScope) {
+      scopes.add(activeScope);
+    }
+
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const tags = cache ? (getAllTags(cache) ?? []) : [];
+      for (const scope of extractLorebookScopesFromTags(tags, prefix)) {
+        const normalized = normalizeScope(scope);
+        if (normalized) {
+          scopes.add(normalized);
+        }
+      }
+    }
+
+    return [...scopes].sort((left, right) => left.localeCompare(right));
   }
 
   private getSelectedPages(): StoryDeltaPlannedPage[] {
@@ -205,13 +252,15 @@ export class LorevaultStoryDeltaView extends ItemView {
     try {
       const storyMarkdown = await this.resolveStoryMarkdown();
       const existingPages = await this.collectTargetPages();
+      this.lastExistingPageCount = existingPages.length;
+      const selectedScopes = this.getNormalizedSelectedScopes();
 
       const completion = this.plugin.settings.completion;
       const result = await buildStoryDeltaPlan({
         storyMarkdown,
-        targetFolder: this.targetFolder,
+        newNoteFolder: this.newNoteTargetFolder,
         defaultTagsRaw: this.defaultTags,
-        lorebookName: this.lorebookName,
+        lorebookScopes: selectedScopes,
         tagPrefix: this.plugin.settings.tagScoping.tagPrefix,
         updatePolicy: this.updatePolicy,
         maxChunkChars: this.maxChunkChars,
@@ -276,6 +325,7 @@ export class LorevaultStoryDeltaView extends ItemView {
     this.approvedPaths = new Set<string>();
     this.previewError = '';
     this.applyStatus = '';
+    this.lastExistingPageCount = 0;
     this.render();
   }
 
@@ -340,6 +390,12 @@ export class LorevaultStoryDeltaView extends ItemView {
     container.createEl('p', {
       text: `Preview complete: ${this.lastPreview.pages.length} write(s) (${createCount} create, ${updateCount} update), ${this.lastPreview.skippedLowConfidence} low-confidence skipped. Selected for apply: ${selectedCount}.`
     });
+    if (this.lastExistingPageCount > 0) {
+      const scopes = this.getNormalizedSelectedScopes();
+      container.createEl('p', {
+        text: `Existing pages considered: ${this.lastExistingPageCount} | Lorebooks: ${scopes.join(', ')}`
+      });
+    }
 
     if (this.applyStatus) {
       container.createEl('p', { text: this.applyStatus });
@@ -419,36 +475,81 @@ export class LorevaultStoryDeltaView extends ItemView {
           });
       });
 
-    let targetFolderInput: { setValue: (value: string) => void } | null = null;
+    const availableScopes = this.getAvailableLorebookScopes();
+    const selectedScopes = this.getNormalizedSelectedScopes();
+    const unselectedScopes = availableScopes.filter(scope => !selectedScopes.includes(scope));
+
+    const scopesSetting = new Setting(contentEl)
+      .setName('Lorebooks to Consider')
+      .setDesc('Only notes in these lorebook scopes are considered for existing-page updates.');
+    const selectedList = scopesSetting.controlEl.createDiv({ cls: 'lorevault-import-review-list' });
+    if (selectedScopes.length === 0) {
+      selectedList.createEl('p', { text: 'No lorebooks selected.' });
+    } else {
+      for (const scope of selectedScopes) {
+        const row = selectedList.createDiv({ cls: 'lorevault-import-review-item' });
+        row.createEl('code', { text: scope });
+        const removeButton = row.createEl('button', { text: 'Remove' });
+        removeButton.addEventListener('click', () => {
+          this.removeLorebookScope(scope);
+        });
+      }
+    }
+
+    const scopeActions = scopesSetting.controlEl.createDiv({ cls: 'lorevault-import-actions' });
+    const scopeSelect = scopeActions.createEl('select');
+    if (unselectedScopes.length === 0) {
+      const option = scopeSelect.createEl('option');
+      option.value = '';
+      option.text = availableScopes.length === 0
+        ? 'No lorebooks found'
+        : 'All lorebooks already selected';
+      scopeSelect.disabled = true;
+    } else {
+      for (const scope of unselectedScopes) {
+        const option = scopeSelect.createEl('option');
+        option.value = scope;
+        option.text = scope;
+      }
+    }
+    const addScopeButton = scopeActions.createEl('button', { text: 'Add Lorebook' });
+    addScopeButton.disabled = unselectedScopes.length === 0;
+    addScopeButton.addEventListener('click', () => {
+      const value = scopeSelect.value.trim();
+      if (!value) {
+        return;
+      }
+      this.addLorebookScope(value);
+    });
+    const activeScope = normalizeScope(this.plugin.settings.tagScoping.activeScope);
+    const addActiveScopeButton = scopeActions.createEl('button', { text: 'Add Active Scope' });
+    addActiveScopeButton.disabled = !activeScope || selectedScopes.includes(activeScope);
+    addActiveScopeButton.addEventListener('click', () => {
+      if (activeScope) {
+        this.addLorebookScope(activeScope);
+      }
+    });
+
+    let newNoteTargetFolderInput: { setValue: (value: string) => void } | null = null;
     new Setting(contentEl)
-      .setName('Target Wiki Folder')
-      .setDesc('Only notes in this folder are considered for existing-page updates.')
+      .setName('New Note Target Folder')
+      .setDesc('Used only when Story Delta creates new notes.')
       .addText(text => {
-        targetFolderInput = text;
+        newNoteTargetFolderInput = text;
         text
           .setPlaceholder('LoreVault/import')
-          .setValue(this.targetFolder)
+          .setValue(this.newNoteTargetFolder)
           .onChange(value => {
-            this.targetFolder = value.trim();
+            this.newNoteTargetFolder = value.trim();
           });
       })
       .addButton(button => button
         .setButtonText('Browse')
         .onClick(() => {
           openVaultFolderPicker(this.app, path => {
-            this.targetFolder = path;
-            targetFolderInput?.setValue(path);
+            this.newNoteTargetFolder = path;
+            newNoteTargetFolderInput?.setValue(path);
           });
-        }));
-
-    new Setting(contentEl)
-      .setName('Optional Scope Tag Filter')
-      .setDesc('If set, only notes with this tag are eligible for updates.')
-      .addText(text => text
-        .setPlaceholder('lorebook/universe')
-        .setValue(this.requiredScopeTag)
-        .onChange(value => {
-          this.requiredScopeTag = value.trim();
         }));
 
     new Setting(contentEl)
@@ -477,16 +578,6 @@ export class LorevaultStoryDeltaView extends ItemView {
             this.defaultTags = value;
           });
       });
-
-    new Setting(contentEl)
-      .setName('Lorebook Name')
-      .setDesc(`Converted into one lorebook tag under prefix "${this.plugin.settings.tagScoping.tagPrefix}" for newly created pages.`)
-      .addText(text => text
-        .setPlaceholder('story/main')
-        .setValue(this.lorebookName)
-        .onChange(value => {
-          this.lorebookName = value;
-        }));
 
     new Setting(contentEl)
       .setName('Max Chunk Chars')

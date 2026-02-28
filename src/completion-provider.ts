@@ -10,6 +10,7 @@ export interface StoryCompletionRequest {
   systemPrompt: string;
   userPrompt: string;
   onUsage?: (usage: CompletionUsageReport) => void;
+  abortSignal?: AbortSignal;
 }
 
 export interface StoryCompletionStreamRequest extends StoryCompletionRequest {
@@ -628,10 +629,17 @@ async function fetchJson(
   url: string,
   body: unknown,
   headers: Record<string, string>,
-  timeoutMs: number
+  timeoutMs: number,
+  abortSignal?: AbortSignal
 ): Promise<any> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const abortHandler = () => controller.abort();
+  abortSignal?.addEventListener('abort', abortHandler);
 
   try {
     const response = await fetch(url, {
@@ -647,7 +655,16 @@ async function fetchJson(
     }
 
     return await response.json();
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Completion request timed out after ${timeoutMs}ms.`);
+    }
+    if (abortSignal?.aborted) {
+      throw new Error('Completion request was aborted.');
+    }
+    throw normalizeRequestError(error, timeoutMs);
   } finally {
+    abortSignal?.removeEventListener('abort', abortHandler);
     window.clearTimeout(timer);
   }
 }
@@ -681,7 +698,8 @@ export async function requestStoryContinuation(
         }
       },
       headers,
-      config.timeoutMs
+      config.timeoutMs,
+      request.abortSignal
     );
     const usage = parseOllamaUsage(payload);
     if (usage && request.onUsage) {
@@ -719,7 +737,8 @@ export async function requestStoryContinuation(
     url,
     baseBody,
     headers,
-    config.timeoutMs
+    config.timeoutMs,
+    request.abortSignal
   );
   reportUsage(firstPayload);
 
@@ -746,7 +765,8 @@ export async function requestStoryContinuation(
       url,
       retryBody,
       headers,
-      config.timeoutMs
+      config.timeoutMs,
+      request.abortSignal
     );
     reportUsage(retryPayload);
 

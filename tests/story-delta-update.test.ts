@@ -42,9 +42,9 @@ test('buildStoryDeltaPlan strips inline LV directives from prompt source', async
 
   await buildStoryDeltaPlan({
     storyMarkdown: '# Chapter\n[LV: Keep pacing brisk]\nAlice returns to the square.',
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: '',
-    lorebookName: '',
+    lorebookScopes: [],
     tagPrefix: 'lorebook',
     updatePolicy: 'safe_append',
     maxChunkChars: 500,
@@ -107,9 +107,9 @@ test('buildStoryDeltaPlan supports idempotent safe_append updates', async () => 
 
   const first = await buildStoryDeltaPlan({
     storyMarkdown,
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: 'wiki',
-    lorebookName: 'story/main',
+    lorebookScopes: ['story/main'],
     tagPrefix: 'lorebook',
     updatePolicy: 'safe_append',
     maxChunkChars: 500,
@@ -130,9 +130,9 @@ test('buildStoryDeltaPlan supports idempotent safe_append updates', async () => 
 
   const second = await buildStoryDeltaPlan({
     storyMarkdown,
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: 'wiki',
-    lorebookName: 'story/main',
+    lorebookScopes: ['story/main'],
     tagPrefix: 'lorebook',
     updatePolicy: 'safe_append',
     maxChunkChars: 500,
@@ -156,9 +156,9 @@ test('buildStoryDeltaPlan enforces low-confidence gating and deterministic creat
 
   const result = await buildStoryDeltaPlan({
     storyMarkdown,
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: 'wiki, updated',
-    lorebookName: 'story/main',
+    lorebookScopes: ['story/main'],
     tagPrefix: 'lorebook',
     updatePolicy: 'structured_merge',
     maxChunkChars: 500,
@@ -209,9 +209,9 @@ test('buildStoryDeltaPlan enforces low-confidence gating and deterministic creat
 test('safe_append does not inject frontmatter into existing notes without frontmatter', async () => {
   const result = await buildStoryDeltaPlan({
     storyMarkdown: '# Chapter\nThe shrine gains a new warding sigil.',
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: 'wiki',
-    lorebookName: 'story/main',
+    lorebookScopes: ['story/main'],
     tagPrefix: 'lorebook',
     updatePolicy: 'safe_append',
     maxChunkChars: 500,
@@ -250,9 +250,9 @@ test('safe_append does not inject frontmatter into existing notes without frontm
 test('structured_merge migrates legacy frontmatter summary to summary section', async () => {
   const result = await buildStoryDeltaPlan({
     storyMarkdown: '# Chapter\nAlice documents the hidden routes near the tower.',
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: 'wiki',
-    lorebookName: 'story/main',
+    lorebookScopes: ['story/main'],
     tagPrefix: 'lorebook',
     updatePolicy: 'structured_merge',
     maxChunkChars: 500,
@@ -301,9 +301,9 @@ test('structured_merge migrates legacy frontmatter summary to summary section', 
 test('structured_merge prefers existing summary section over frontmatter fallback', async () => {
   const result = await buildStoryDeltaPlan({
     storyMarkdown: '# Chapter\nThe watch confirms another patrol update.',
-    targetFolder: 'wiki',
+    newNoteFolder: 'wiki',
     defaultTagsRaw: 'wiki',
-    lorebookName: 'story/main',
+    lorebookScopes: ['story/main'],
     tagPrefix: 'lorebook',
     updatePolicy: 'structured_merge',
     maxChunkChars: 500,

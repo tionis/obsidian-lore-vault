@@ -22,6 +22,9 @@ export class StorySteeringView extends ItemView {
   private selectedScopeKey = '';
   private state: StorySteeringState = createEmptyStorySteeringState();
   private isLoading = false;
+  private extractionInFlight = false;
+  private extractionSource: 'active_note' | 'story_window' | null = null;
+  private extractionAbortController: AbortController | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -75,8 +78,18 @@ export class StorySteeringView extends ItemView {
   }
 
   private async runSteeringExtraction(source: 'active_note' | 'story_window'): Promise<void> {
+    if (this.extractionInFlight) {
+      new Notice('Steering extraction is already running.');
+      return;
+    }
+    const controller = new AbortController();
+    this.extractionInFlight = true;
+    this.extractionSource = source;
+    this.extractionAbortController = controller;
+    await this.render();
+
     try {
-      const proposal = await this.plugin.extractStorySteeringProposal(source, this.state);
+      const proposal = await this.plugin.extractStorySteeringProposal(source, this.state, controller.signal);
       const review = await this.reviewExtraction(
         proposal.sourceLabel,
         proposal.notePath,
@@ -90,8 +103,21 @@ export class StorySteeringView extends ItemView {
       new Notice('Applied extracted steering to panel. Click Save Scope to persist.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`Steering extraction failed: ${message}`);
+      if (/aborted/i.test(message)) {
+        new Notice('Steering extraction aborted.');
+      } else {
+        new Notice(`Steering extraction failed: ${message}`);
+      }
+    } finally {
+      this.extractionInFlight = false;
+      this.extractionSource = null;
+      this.extractionAbortController = null;
+      await this.render();
     }
+  }
+
+  private abortSteeringExtraction(): void {
+    this.extractionAbortController?.abort();
   }
 
   private parseListInput(value: string): string[] {
@@ -252,18 +278,42 @@ export class StorySteeringView extends ItemView {
       extractionSection.createEl('p', {
         text: 'Extract proposed steering from story text, review/edit in a modal, then optionally save.'
       });
+      if (this.extractionInFlight) {
+        const label = this.extractionSource === 'active_note'
+          ? 'active note'
+          : this.extractionSource === 'story_window'
+            ? 'story window'
+            : 'source text';
+        extractionSection.createEl('p', {
+          cls: 'lorevault-help-note',
+          text: `Running extraction from ${label}...`
+        });
+      }
       const extractionActions = extractionSection.createDiv({ cls: 'lorevault-help-actions' });
       const extractNoteButton = extractionActions.createEl('button', {
-        text: 'Extract from Active Note'
+        text: this.extractionInFlight && this.extractionSource === 'active_note'
+          ? 'Extracting...'
+          : 'Extract from Active Note'
       });
+      extractNoteButton.disabled = this.extractionInFlight;
       extractNoteButton.addEventListener('click', () => {
         void this.runSteeringExtraction('active_note');
       });
       const extractWindowButton = extractionActions.createEl('button', {
-        text: 'Extract from Story Window'
+        text: this.extractionInFlight && this.extractionSource === 'story_window'
+          ? 'Extracting...'
+          : 'Extract from Story Window'
       });
+      extractWindowButton.disabled = this.extractionInFlight;
       extractWindowButton.addEventListener('click', () => {
         void this.runSteeringExtraction('story_window');
+      });
+      const abortExtractionButton = extractionActions.createEl('button', {
+        text: 'Abort Extraction'
+      });
+      abortExtractionButton.disabled = !this.extractionInFlight;
+      abortExtractionButton.addEventListener('click', () => {
+        this.abortSteeringExtraction();
       });
 
       const editorSection = contentEl.createDiv({ cls: 'lorevault-help-section' });

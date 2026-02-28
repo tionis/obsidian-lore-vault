@@ -208,7 +208,7 @@ export class LorevaultHelpView extends ItemView {
         'Import SillyTavern Lorebook: paste ST lorebook JSON, preview generated notes, then import into your target folder.',
         'Extract Wiki Pages from Story: paste story markdown and run chunked extraction to create/extend wiki notes with preview before apply.',
         'Apply Story Delta to Existing Wiki (lorebook update panel): compare new story text against existing notes and apply reviewed updates.',
-        'All three panels support target folder + lorebook tagging so outputs stay scoped, with a Browse picker for selecting existing folders.',
+        'Story Delta updates are scoped by selected lorebooks; only newly created pages use the New Note Target Folder setting.',
         'Extraction/update output is normalized to readable wiki structure: top # Title, then ## Summary, then sectioned body headings.',
         'Imported/extracted/updated summaries are written to note `## Summary` sections (frontmatter `summary` is fallback input only).',
         'Story Delta includes low-confidence gating and per-change approval checkboxes before writing.'

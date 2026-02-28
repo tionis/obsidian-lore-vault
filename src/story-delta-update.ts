@@ -68,9 +68,9 @@ export interface StoryDeltaResult {
 
 export interface StoryDeltaUpdateOptions {
   storyMarkdown: string;
-  targetFolder: string;
+  newNoteFolder: string;
   defaultTagsRaw: string;
-  lorebookName: string;
+  lorebookScopes: string[];
   tagPrefix: string;
   updatePolicy: StoryDeltaUpdatePolicy;
   maxChunkChars: number;
@@ -130,8 +130,8 @@ function normalizeTagPrefix(tagPrefix: string): string {
   return normalized || 'lorebook';
 }
 
-function normalizeLorebookNameToScope(name: string): string {
-  return name
+function normalizeLorebookScope(scope: string): string {
+  return scope
     .trim()
     .toLowerCase()
     .replace(/\\/g, '/')
@@ -905,9 +905,9 @@ export async function buildStoryDeltaPlan(
     throw new Error('Story markdown is empty.');
   }
 
-  const targetFolder = normalizeVaultPath(options.targetFolder.trim().replace(/^\/+|\/+$/g, ''));
-  if (!targetFolder) {
-    throw new Error('Target folder is required.');
+  const newNoteFolder = normalizeVaultPath(options.newNoteFolder.trim().replace(/^\/+|\/+$/g, ''));
+  if (!newNoteFolder) {
+    throw new Error('New note target folder is required.');
   }
 
   const chunks = splitStoryMarkdownIntoChunks(storyMarkdown, options.maxChunkChars);
@@ -920,9 +920,11 @@ export async function buildStoryDeltaPlan(
 
   const tagPrefix = normalizeTagPrefix(options.tagPrefix);
   const defaultTags = parseDefaultTags(options.defaultTagsRaw);
-  const lorebookScope = normalizeLorebookNameToScope(options.lorebookName);
-  const lorebookTag = lorebookScope ? `${tagPrefix}/${lorebookScope}` : '';
-  const tags = lorebookTag ? uniqueStrings([...defaultTags, lorebookTag]) : defaultTags;
+  const lorebookTags = options.lorebookScopes
+    .map(scope => normalizeLorebookScope(scope))
+    .filter(Boolean)
+    .map(scope => `${tagPrefix}/${scope}`);
+  const tags = uniqueStrings([...defaultTags, ...lorebookTags]);
 
   const pageByPath = new Map<string, PageState>();
   const pageKeyToPath = new Map<string, string>();
@@ -962,7 +964,7 @@ export async function buildStoryDeltaPlan(
 
           const skippedState = resolvePageStateForOperation(
             operation,
-            targetFolder,
+            newNoteFolder,
             tags,
             usedPaths,
             pageByPath,
@@ -976,7 +978,7 @@ export async function buildStoryDeltaPlan(
 
         const state = resolvePageStateForOperation(
           operation,
-          targetFolder,
+          newNoteFolder,
           tags,
           usedPaths,
           pageByPath,

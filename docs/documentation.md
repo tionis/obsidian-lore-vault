@@ -312,7 +312,13 @@ Settings:
   - inline directives
 - timeout
 
-Story frontmatter scope override:
+Story lorebook scope selection order:
+
+1. Story Steering merged state `activeLorebooks` (preferred)
+2. Story frontmatter scope keys (fallback)
+3. active-note lorebook tag / configured active scope (final fallback)
+
+Story frontmatter scope keys (fallback):
 
 - keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`
 - value format:
@@ -349,6 +355,13 @@ Long-form story metadata (new):
 - `lvStoryId` (optional): Story Steering thread scope key override
 - `lvChapterId` (optional): Story Steering chapter scope value override
 - `lvNoteId` (auto-managed): stable note identifier used for move-safe Story Steering note/chapter scope links
+
+Story Steering scope notes include:
+
+- reusable steering text/list fields
+- `Active Lorebooks` list (one scope per line)
+  - this list is the preferred lorebook scope source for `Continue Story with Context`
+  - frontmatter scope keys remain fallback-compatible
 
 Story Steering extraction behavior:
 

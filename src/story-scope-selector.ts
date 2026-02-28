@@ -8,7 +8,7 @@ const STORY_SCOPE_KEYS = [
   'activeLorebooks'
 ];
 
-function normalizeScopeReference(rawValue: string, tagPrefix: string): string {
+export function normalizeStoryScopeReference(rawValue: string, tagPrefix: string): string {
   const normalizedPrefix = normalizeTagPrefix(tagPrefix);
   let value = rawValue.trim().replace(/^#+/, '').replace(/^\/+/, '');
   if (!value) {
@@ -23,17 +23,12 @@ function normalizeScopeReference(rawValue: string, tagPrefix: string): string {
   return normalizeScope(value);
 }
 
-export function parseStoryScopesFromFrontmatter(
-  frontmatter: FrontmatterData,
-  tagPrefix: string
-): string[] {
-  const normalizedFrontmatter = normalizeFrontmatter(frontmatter);
-  const rawValues = asStringArray(getFrontmatterValue(normalizedFrontmatter, ...STORY_SCOPE_KEYS));
+export function parseStoryScopesFromRawValues(rawValues: string[], tagPrefix: string): string[] {
   const seen = new Set<string>();
   const scopes: string[] = [];
 
   for (const rawValue of rawValues) {
-    const scope = normalizeScopeReference(rawValue, tagPrefix);
+    const scope = normalizeStoryScopeReference(rawValue, tagPrefix);
     if (!scope || seen.has(scope)) {
       continue;
     }
@@ -42,4 +37,13 @@ export function parseStoryScopesFromFrontmatter(
   }
 
   return scopes;
+}
+
+export function parseStoryScopesFromFrontmatter(
+  frontmatter: FrontmatterData,
+  tagPrefix: string
+): string[] {
+  const normalizedFrontmatter = normalizeFrontmatter(frontmatter);
+  const rawValues = asStringArray(getFrontmatterValue(normalizedFrontmatter, ...STORY_SCOPE_KEYS));
+  return parseStoryScopesFromRawValues(rawValues, tagPrefix);
 }

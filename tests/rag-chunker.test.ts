@@ -32,8 +32,8 @@ function doc(uid: number, title: string, content: string): RagDocument {
   };
 }
 
-test('auto chunking keeps short notes as one chunk', () => {
-  const chunks = chunkRagDocuments([
+test('auto chunking keeps short notes as one chunk', async () => {
+  const chunks = await chunkRagDocuments([
     doc(1, 'Aurelia', 'A short lore note.')
   ], baseEmbeddingSettings({ chunkingMode: 'auto' }));
 
@@ -42,7 +42,7 @@ test('auto chunking keeps short notes as one chunk', () => {
   assert.equal(chunks[0].title, 'Aurelia');
 });
 
-test('section chunking is heading-aware', () => {
+test('section chunking is heading-aware', async () => {
   const content = [
     '# Appearance',
     'Silver hair and blue eyes.',
@@ -51,7 +51,7 @@ test('section chunking is heading-aware', () => {
     'Born in the floating city and trained as a navigator.'
   ].join('\n');
 
-  const chunks = chunkRagDocuments([
+  const chunks = await chunkRagDocuments([
     doc(2, 'Character Sheet', content)
   ], baseEmbeddingSettings({
     chunkingMode: 'section',
@@ -64,7 +64,7 @@ test('section chunking is heading-aware', () => {
   assert.equal(chunks[1].heading, 'Backstory');
 });
 
-test('note chunking splits long notes deterministically', () => {
+test('note chunking splits long notes deterministically', async () => {
   const longText = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(120);
   const settings = baseEmbeddingSettings({
     chunkingMode: 'note',
@@ -72,8 +72,8 @@ test('note chunking splits long notes deterministically', () => {
     overlapChars: 100
   });
 
-  const firstRun = chunkRagDocuments([doc(3, 'Long Note', longText)], settings);
-  const secondRun = chunkRagDocuments([doc(3, 'Long Note', longText)], settings);
+  const firstRun = await chunkRagDocuments([doc(3, 'Long Note', longText)], settings);
+  const secondRun = await chunkRagDocuments([doc(3, 'Long Note', longText)], settings);
 
   assert.ok(firstRun.length > 1);
   assert.deepEqual(

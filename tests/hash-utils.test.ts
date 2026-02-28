@@ -67,7 +67,7 @@ test('sha256HexAsync matches node crypto and sync helper', async () => {
   }
 });
 
-test('sha256HexAsync falls back to sync hashing when WebCrypto is unavailable', async () => {
+test('sha256HexAsync throws when WebCrypto is unavailable', async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
@@ -77,7 +77,10 @@ test('sha256HexAsync falls back to sync hashing when WebCrypto is unavailable', 
 
   try {
     const value = 'fallback path check';
-    assert.equal(await sha256HexAsync(value), sha256Hex(value));
+    await assert.rejects(
+      () => sha256HexAsync(value),
+      /WebCrypto subtle\.digest is unavailable/
+    );
   } finally {
     if (descriptor) {
       Object.defineProperty(globalThis, 'crypto', descriptor);

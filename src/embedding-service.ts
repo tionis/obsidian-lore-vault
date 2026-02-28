@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { ConverterSettings, RagChunk, RagChunkEmbedding } from './models';
-import { sha256HexAsync, stableJsonHash } from './hash-utils';
+import { sha256HexAsync, stableJsonHashAsync } from './hash-utils';
 import { requestEmbeddings } from './embedding-provider';
 import { CachedEmbeddingRecord, EmbeddingCache } from './embedding-cache';
 
@@ -43,7 +43,7 @@ export class EmbeddingService {
     this.app = app;
     this.config = config;
     this.cache = new EmbeddingCache(app, config);
-    this.chunkingSignature = stableJsonHash({
+    this.chunkingSignature = JSON.stringify({
       mode: config.chunkingMode,
       minChunkChars: config.minChunkChars,
       maxChunkChars: config.maxChunkChars,
@@ -52,7 +52,7 @@ export class EmbeddingService {
   }
 
   private async createCacheKey(textHash: string): Promise<string> {
-    const stablePayload = stableJsonHash({
+    const stablePayload = await stableJsonHashAsync({
       provider: this.config.provider,
       model: this.config.model,
       instruction: this.config.instruction,

@@ -55,7 +55,8 @@ This document is the implementation-level reference for core architecture and ru
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
 - `src/hash-utils.ts`
-  - deterministic hashing and identifier normalization (`@noble/hashes` based)
+  - deterministic hashing and identifier normalization (`@noble/hashes` sync + WebCrypto async)
+  - `sha256HexAsync` requires WebCrypto (`crypto.subtle`) at runtime
 - `src/quality-audit.ts`
   - deterministic per-entry risk scoring (missing keywords, thin content, embedding similarity)
 - `src/keyword-utils.ts`

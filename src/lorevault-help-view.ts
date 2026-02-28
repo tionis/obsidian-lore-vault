@@ -175,6 +175,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Chat assistant-turn details expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.',
         'Story Steering panel stores reusable steering layers in markdown notes by scope (`global`, `thread`, `chapter`, `note`).',
         'Continue Story and Story Chat merge scoped steering with note/chat/frontmatter steering at generation time.',
+        'Story Steering panel can extract proposed steering from active note text or near-cursor story window via LLM, then opens a review modal before apply.',
         'Manager -> Generation Monitor -> Selected Context Items shows inline directives, continuity state, prompt-layer usage, overflow policy decisions, and selected retrieval items.',
         'Writing Completion settings expose steering layer placement controls for pinned/story/scene/directive layers.'
       ],

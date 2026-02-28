@@ -235,7 +235,7 @@ Reference design: `docs/planning.md`.
 - [x] Support scope layers without mandatory `storyId` (`global` -> optional `thread` -> optional `chapter` -> `note`).
 - [x] Merge scoped steering into Continue Story and Story Chat prompt assembly.
 - [x] Expose steering panel via command palette, manager toolbar, and in-plugin help actions.
-- [ ] Add LLM-assisted extraction actions (proposal + review) to populate/update steering sections from story text.
+- [x] Add LLM-assisted extraction actions (proposal + review) to populate/update steering sections from story text.
 
 ## Default Decisions (2026-02-27)
 

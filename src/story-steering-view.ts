@@ -1,7 +1,9 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
+import { StorySteeringReviewModal, StorySteeringReviewResult } from './story-steering-review-modal';
 import {
   createEmptyStorySteeringState,
+  normalizeStorySteeringState,
   StorySteeringEffectiveState,
   StorySteeringScope,
   StorySteeringScopeType,
@@ -52,6 +54,44 @@ export class StorySteeringView extends ItemView {
 
   refresh(): void {
     void this.render();
+  }
+
+  private async reviewExtraction(
+    sourceLabel: string,
+    notePath: string,
+    proposedState: StorySteeringState
+  ): Promise<StorySteeringReviewResult> {
+    return new Promise(resolve => {
+      const modal = new StorySteeringReviewModal(
+        this.app,
+        sourceLabel,
+        notePath,
+        proposedState,
+        this.state,
+        result => resolve(result)
+      );
+      modal.open();
+    });
+  }
+
+  private async runSteeringExtraction(source: 'active_note' | 'story_window'): Promise<void> {
+    try {
+      const proposal = await this.plugin.extractStorySteeringProposal(source, this.state);
+      const review = await this.reviewExtraction(
+        proposal.sourceLabel,
+        proposal.notePath,
+        proposal.proposal
+      );
+      if (review.action === 'cancel') {
+        return;
+      }
+      this.state = normalizeStorySteeringState(review.state);
+      await this.render();
+      new Notice('Applied extracted steering to panel. Click Save Scope to persist.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Steering extraction failed: ${message}`);
+    }
   }
 
   private parseListInput(value: string): string[] {
@@ -205,6 +245,25 @@ export class StorySteeringView extends ItemView {
       const openButton = actions.createEl('button', { text: 'Open Scope Note' });
       openButton.addEventListener('click', () => {
         void this.plugin.openStorySteeringScopeNote(this.getSelectedScope());
+      });
+
+      const extractionSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
+      extractionSection.createEl('h3', { text: 'LLM Assistance' });
+      extractionSection.createEl('p', {
+        text: 'Extract proposed steering from story text, review/edit in a modal, then optionally save.'
+      });
+      const extractionActions = extractionSection.createDiv({ cls: 'lorevault-help-actions' });
+      const extractNoteButton = extractionActions.createEl('button', {
+        text: 'Extract from Active Note'
+      });
+      extractNoteButton.addEventListener('click', () => {
+        void this.runSteeringExtraction('active_note');
+      });
+      const extractWindowButton = extractionActions.createEl('button', {
+        text: 'Extract from Story Window'
+      });
+      extractWindowButton.addEventListener('click', () => {
+        void this.runSteeringExtraction('story_window');
       });
 
       const editorSection = contentEl.createDiv({ cls: 'lorevault-help-section' });

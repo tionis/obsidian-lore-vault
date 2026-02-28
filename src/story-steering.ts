@@ -181,6 +181,58 @@ export function parseStorySteeringMarkdown(markdown: string): StorySteeringState
   return normalizeStorySteeringState(next);
 }
 
+function extractJsonPayload(raw: string): unknown {
+  const fenced = raw.match(/```json\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1] : raw;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start < 0 || end <= start) {
+    throw new Error('Response did not contain a JSON object.');
+  }
+  return JSON.parse(candidate.slice(start, end + 1));
+}
+
+function parseExtractionList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return normalizeListField(
+      value
+        .map(item => (typeof item === 'string' ? item : ''))
+        .filter(Boolean)
+    );
+  }
+  if (typeof value === 'string') {
+    return normalizeListField(
+      value
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(item => item.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, ''))
+        .filter(Boolean)
+    );
+  }
+  return [];
+}
+
+export function parseStorySteeringExtractionResponse(raw: string): StorySteeringState {
+  const payload = extractJsonPayload(raw);
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Steering extraction payload is not an object.');
+  }
+
+  const objectPayload = payload as {[key: string]: unknown};
+  const candidate = (objectPayload.state && typeof objectPayload.state === 'object')
+    ? (objectPayload.state as {[key: string]: unknown})
+    : objectPayload;
+
+  return normalizeStorySteeringState({
+    pinnedInstructions: normalizeTextField(candidate.pinnedInstructions),
+    storyNotes: normalizeTextField(candidate.storyNotes),
+    sceneIntent: normalizeTextField(candidate.sceneIntent),
+    plotThreads: parseExtractionList(candidate.plotThreads),
+    openLoops: parseExtractionList(candidate.openLoops),
+    canonDeltas: parseExtractionList(candidate.canonDeltas)
+  });
+}
+
 function renderListSection(items: string[]): string {
   if (items.length === 0) {
     return '_None._';

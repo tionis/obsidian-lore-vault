@@ -132,6 +132,7 @@ If you prefer to build the plugin from source:
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
+   - Story Steering writes/uses `lvNoteId` in frontmatter for move-safe note/chapter scope links (auto-generated when needed)
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
 5. **Open embedded help**

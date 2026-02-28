@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildStorySteeringScopeResolutions,
   buildStorySteeringFilePath,
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
@@ -122,4 +123,38 @@ test('story steering extraction parser accepts plain json and fenced json payloa
   assert.equal(fenced.pinnedInstructions, 'Keep tense consistent.');
   assert.deepEqual(fenced.plotThreads, ['Thread C']);
   assert.deepEqual(fenced.openLoops, ['Loop C', 'Loop D']);
+});
+
+test('story steering scope resolutions use stable note-id keys with legacy path alias', () => {
+  const resolutions = buildStorySteeringScopeResolutions(
+    'stories/ch07.md',
+    {},
+    'lvn-abc123'
+  );
+
+  const noteResolution = resolutions.find(item => item.scope.type === 'note');
+  assert.ok(noteResolution);
+  assert.equal(noteResolution?.scope.key, 'note:lvn-abc123');
+  assert.deepEqual(noteResolution?.legacyScopes, [{
+    type: 'note',
+    key: 'stories/ch07.md'
+  }]);
+});
+
+test('chapter scope resolution migrates from legacy path fallback to note-id fallback', () => {
+  const resolutions = buildStorySteeringScopeResolutions(
+    'stories/ch07.md',
+    {
+      chapter: 7
+    },
+    'lvn-abc123'
+  );
+
+  const chapterResolution = resolutions.find(item => item.scope.type === 'chapter');
+  assert.ok(chapterResolution);
+  assert.equal(chapterResolution?.scope.key, 'note:lvn-abc123::chapter:7');
+  assert.deepEqual(chapterResolution?.legacyScopes, [{
+    type: 'chapter',
+    key: 'stories/ch07.md::chapter:7'
+  }]);
 });

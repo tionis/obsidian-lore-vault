@@ -349,6 +349,9 @@ Long-form story metadata (new):
 - `chapterTitle`: optional chapter display title
 - `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
 - `nextChapter`: optional links/paths to following chapter notes
+- `lvStoryId` (optional): Story Steering thread scope key override
+- `lvChapterId` (optional): Story Steering chapter scope value override
+- `lvNoteId` (auto-managed): stable note identifier used for move-safe Story Steering note/chapter scope links
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.

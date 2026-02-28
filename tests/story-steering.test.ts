@@ -21,6 +21,7 @@ test('story steering markdown round-trips deterministic sections', () => {
     pinnedInstructions: 'Keep tense in past tense.',
     storyNotes: 'Highlight character conflict.',
     sceneIntent: 'End on a hard decision.',
+    activeLorebooks: ['universe', 'universe/yggdrasil'],
     plotThreads: ['The envoy is hiding something'],
     openLoops: ['Who sabotaged the bridge?'],
     canonDeltas: ['Ari knows the true sigil']
@@ -50,9 +51,24 @@ test('story steering parser supports bullet and ordered list forms', () => {
   ].join('\n');
 
   const parsed = parseStorySteeringMarkdown(markdown);
+  assert.deepEqual(parsed.activeLorebooks, []);
   assert.deepEqual(parsed.plotThreads, ['Thread A', 'Thread B']);
   assert.deepEqual(parsed.openLoops, ['Loop A']);
   assert.deepEqual(parsed.canonDeltas, ['Delta A']);
+});
+
+test('story steering parser supports active lorebooks section aliases', () => {
+  const markdown = [
+    '# Any title',
+    '',
+    '## Lorebook Scopes',
+    '',
+    '- #lorebook/universe',
+    '- universe/yggdrasil'
+  ].join('\n');
+
+  const parsed = parseStorySteeringMarkdown(markdown);
+  assert.deepEqual(parsed.activeLorebooks, ['#lorebook/universe', 'universe/yggdrasil']);
 });
 
 test('story steering merge combines layered text and list state deterministically', () => {
@@ -60,6 +76,7 @@ test('story steering merge combines layered text and list state deterministicall
     {
       ...createEmptyStorySteeringState(),
       pinnedInstructions: 'Keep prose concise.',
+      activeLorebooks: ['universe'],
       plotThreads: ['Thread A'],
       openLoops: ['Loop A']
     },
@@ -67,6 +84,7 @@ test('story steering merge combines layered text and list state deterministicall
       ...createEmptyStorySteeringState(),
       pinnedInstructions: 'Keep prose concise.',
       storyNotes: 'Focus on tension.',
+      activeLorebooks: ['universe/yggdrasil', 'universe'],
       plotThreads: ['Thread B', 'Thread A'],
       canonDeltas: ['Delta A']
     }
@@ -74,6 +92,7 @@ test('story steering merge combines layered text and list state deterministicall
 
   assert.equal(merged.pinnedInstructions, 'Keep prose concise.');
   assert.equal(merged.storyNotes, 'Focus on tension.');
+  assert.deepEqual(merged.activeLorebooks, ['universe', 'universe/yggdrasil']);
   assert.deepEqual(merged.plotThreads, ['Thread A', 'Thread B']);
   assert.deepEqual(merged.openLoops, ['Loop A']);
   assert.deepEqual(merged.canonDeltas, ['Delta A']);
@@ -103,11 +122,13 @@ test('story steering extraction parser accepts plain json and fenced json payloa
     pinnedInstructions: 'Keep tone bleak.',
     storyNotes: 'Focus on aftermath.',
     sceneIntent: 'End with unresolved threat.',
+    activeLorebooks: ['universe/main'],
     plotThreads: ['Thread A', 'Thread B'],
     openLoops: ['Loop A'],
     canonDeltas: ['Delta A']
   }));
   assert.equal(plain.pinnedInstructions, 'Keep tone bleak.');
+  assert.deepEqual(plain.activeLorebooks, ['universe/main']);
   assert.deepEqual(plain.plotThreads, ['Thread A', 'Thread B']);
 
   const fenced = parseStorySteeringExtractionResponse([
@@ -138,6 +159,7 @@ test('story steering extraction sanitization removes lorebook-like profile facts
     pinnedInstructions: 'Baalthasar is an ancient dark elven archmage.',
     storyNotes: 'Focus on escalating tension and keep dialogue concise.',
     sceneIntent: 'Ari is a young courier.',
+    activeLorebooks: ['universe/main'],
     plotThreads: [
       'Who sabotaged the bridge?',
       'Baalthasar is a dark elf mage.'

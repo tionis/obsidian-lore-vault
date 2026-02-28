@@ -49,7 +49,7 @@ import {
   requestStoryContinuation,
   requestStoryContinuationStream
 } from './completion-provider';
-import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
+import { parseStoryScopesFromFrontmatter, parseStoryScopesFromRawValues } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
@@ -2154,15 +2154,18 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const completion = this.settings.completion;
-    const selectedScopes = request.selectedScopes.length > 0
+    const requestedScopes = request.selectedScopes.length > 0
       ? request.selectedScopes.map(scope => normalizeScope(scope)).filter(Boolean)
       : [];
-    const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     const activeStoryFile = this.app.workspace.getActiveFile();
     const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeStoryFile);
+    const selectedScopes = requestedScopes.length > 0
+      ? requestedScopes
+      : this.resolveStoryScopeSelection(activeStoryFile, scopedSteering.merged, { allowFallback: false }).scopes;
+    const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
     const mergedPinnedInstructions = this.mergeSteeringText(
       scopedSteering.merged.pinnedInstructions,
       request.pinnedInstructions
@@ -3841,6 +3844,59 @@ export default class LoreBookConverterPlugin extends Plugin {
     return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
   }
 
+  private resolveStoryScopesFromSteeringState(state: StorySteeringState | null | undefined): string[] {
+    if (!state) {
+      return [];
+    }
+    return parseStoryScopesFromRawValues(
+      Array.isArray(state.activeLorebooks) ? state.activeLorebooks : [],
+      this.settings.tagScoping.tagPrefix
+    );
+  }
+
+  private resolveStoryScopeSelection(
+    activeFile: TFile | null,
+    steeringState?: StorySteeringState | null,
+    options?: { allowFallback?: boolean }
+  ): { scopes: string[]; source: 'steering' | 'frontmatter' | 'fallback' | 'none' } {
+    const allowFallback = options?.allowFallback !== false;
+    const steeringScopes = this.resolveStoryScopesFromSteeringState(steeringState);
+    if (steeringScopes.length > 0) {
+      return {
+        scopes: steeringScopes,
+        source: 'steering'
+      };
+    }
+
+    const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
+    if (frontmatterScopes.length > 0) {
+      return {
+        scopes: frontmatterScopes,
+        source: 'frontmatter'
+      };
+    }
+
+    if (!allowFallback) {
+      return {
+        scopes: [],
+        source: 'none'
+      };
+    }
+
+    const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
+    if (fallbackScope) {
+      return {
+        scopes: [fallbackScope],
+        source: 'fallback'
+      };
+    }
+
+    return {
+      scopes: [],
+      source: 'none'
+    };
+  }
+
   private collectStoryThreadNodes(): StoryThreadNode[] {
     const nodes: StoryThreadNode[] = [];
     const files = [...this.app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
@@ -4331,14 +4387,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     const inlineDirectives = inlineDirectiveResolution.directives;
     const textBeforeCursor = stripInlineLoreDirectives(rawTextBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
-    const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
-    const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
-    const scopesToQuery = frontmatterScopes.length > 0
-      ? frontmatterScopes
-      : (fallbackScope ? [fallbackScope] : []);
-    const targetScopes = scopesToQuery.length > 0 ? scopesToQuery : [''];
-    const targetScopeLabels = targetScopes.map(scope => scope || '(all)');
-    const initialScopeLabel = this.renderScopeListLabel(targetScopeLabels);
+    let targetScopes: string[] = [''];
+    let targetScopeLabels: string[] = ['(all)'];
+    let initialScopeLabel = '(all)';
+    let scopeSelectionSource: 'steering' | 'frontmatter' | 'fallback' | 'none' = 'none';
 
     try {
       this.generationInFlight = true;
@@ -4353,6 +4405,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       const completion = this.settings.completion;
+      const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
+      const scopeSelection = this.resolveStoryScopeSelection(activeFile, scopedSteering.merged);
+      scopeSelectionSource = scopeSelection.source;
+      targetScopes = scopeSelection.scopes.length > 0 ? scopeSelection.scopes : [''];
+      targetScopeLabels = targetScopes.map(scope => scope || '(all)');
+      initialScopeLabel = this.renderScopeListLabel(targetScopeLabels);
       const startedAt = Date.now();
       this.updateGenerationTelemetry({
         ...this.createDefaultGenerationTelemetry(),
@@ -4371,7 +4429,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
-      const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
       const steeringFromFrontmatter = this.resolveSteeringFromFrontmatter(activeFile);
       const mergedSteering = {
         pinnedInstructions: this.mergeSteeringText(
@@ -4712,6 +4769,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         `steering(system): ~${steeringSystemTokens} tokens`,
         `steering(pre_history): ~${steeringPreHistoryPromptTokens} tokens`,
         `steering(pre_response): ~${steeringPreResponsePromptTokens} tokens`,
+        `scope_selection_source: ${scopeSelectionSource}`,
         `local_window: ~${storyPromptTokens} tokens`,
         `inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`,
         `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryPromptTokens} tokens`,

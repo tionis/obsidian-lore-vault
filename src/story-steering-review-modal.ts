@@ -94,6 +94,16 @@ export class StorySteeringReviewModal extends Modal {
     });
 
     new Setting(contentEl)
+      .setName('Active Lorebooks')
+      .setDesc('One lorebook scope per line (for example universe/yggdrasil).');
+    const lorebooksInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
+    lorebooksInput.value = formatList(this.draftState.activeLorebooks);
+    lorebooksInput.rows = 4;
+    lorebooksInput.addEventListener('input', () => {
+      this.draftState.activeLorebooks = parseList(lorebooksInput.value);
+    });
+
+    new Setting(contentEl)
       .setName('Active Plot Threads')
       .setDesc('One item per line.');
     const threadsInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
@@ -135,6 +145,7 @@ export class StorySteeringReviewModal extends Modal {
         !normalized.pinnedInstructions &&
         !normalized.storyNotes &&
         !normalized.sceneIntent &&
+        normalized.activeLorebooks.length === 0 &&
         normalized.plotThreads.length === 0 &&
         normalized.openLoops.length === 0 &&
         normalized.canonDeltas.length === 0

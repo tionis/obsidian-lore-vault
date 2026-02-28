@@ -32,6 +32,7 @@ export interface StorySteeringState {
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
+  activeLorebooks: string[];
   plotThreads: string[];
   openLoops: string[];
   canonDeltas: string[];
@@ -52,6 +53,7 @@ const EMPTY_STORY_STEERING_STATE: StorySteeringState = {
   pinnedInstructions: '',
   storyNotes: '',
   sceneIntent: '',
+  activeLorebooks: [],
   plotThreads: [],
   openLoops: [],
   canonDeltas: []
@@ -63,7 +65,11 @@ const TEXT_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'p
   'scene intent': 'sceneIntent'
 };
 
-const LIST_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'plotThreads' | 'openLoops' | 'canonDeltas'>} = {
+const LIST_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'activeLorebooks' | 'plotThreads' | 'openLoops' | 'canonDeltas'>} = {
+  'active lorebooks': 'activeLorebooks',
+  'lorebooks': 'activeLorebooks',
+  'lorebook scopes': 'activeLorebooks',
+  'active scopes': 'activeLorebooks',
   'active plot threads': 'plotThreads',
   'plot threads': 'plotThreads',
   'open loops': 'openLoops',
@@ -163,6 +169,7 @@ export function normalizeStorySteeringState(input: Partial<StorySteeringState> |
     pinnedInstructions: normalizeTextField(state.pinnedInstructions),
     storyNotes: normalizeTextField(state.storyNotes),
     sceneIntent: normalizeTextField(state.sceneIntent),
+    activeLorebooks: normalizeListField(Array.isArray(state.activeLorebooks) ? state.activeLorebooks : []),
     plotThreads: normalizeListField(Array.isArray(state.plotThreads) ? state.plotThreads : []),
     openLoops: normalizeListField(Array.isArray(state.openLoops) ? state.openLoops : []),
     canonDeltas: normalizeListField(Array.isArray(state.canonDeltas) ? state.canonDeltas : [])
@@ -269,6 +276,7 @@ export function sanitizeStorySteeringExtractionState(state: StorySteeringState):
     pinnedInstructions: sanitizeExtractionTextField(normalized.pinnedInstructions),
     storyNotes: sanitizeExtractionTextField(normalized.storyNotes),
     sceneIntent: sanitizeExtractionTextField(normalized.sceneIntent),
+    activeLorebooks: normalized.activeLorebooks,
     plotThreads: sanitizeExtractionListField(normalized.plotThreads),
     openLoops: sanitizeExtractionListField(normalized.openLoops),
     canonDeltas: sanitizeExtractionListField(normalized.canonDeltas)
@@ -290,6 +298,7 @@ export function parseStorySteeringExtractionResponse(raw: string): StorySteering
     pinnedInstructions: normalizeTextField(candidate.pinnedInstructions),
     storyNotes: normalizeTextField(candidate.storyNotes),
     sceneIntent: normalizeTextField(candidate.sceneIntent),
+    activeLorebooks: parseExtractionList(candidate.activeLorebooks),
     plotThreads: parseExtractionList(candidate.plotThreads),
     openLoops: parseExtractionList(candidate.openLoops),
     canonDeltas: parseExtractionList(candidate.canonDeltas)
@@ -329,6 +338,10 @@ export function stringifyStorySteeringMarkdown(scope: StorySteeringScope, state:
     '',
     normalized.sceneIntent || '_None._',
     '',
+    '## Active Lorebooks',
+    '',
+    renderListSection(normalized.activeLorebooks),
+    '',
     '## Active Plot Threads',
     '',
     renderListSection(normalized.plotThreads),
@@ -355,6 +368,7 @@ export function mergeStorySteeringStates(states: StorySteeringState[]): StorySte
     pinnedInstructions: mergeTextLayers(normalized.map(state => state.pinnedInstructions)),
     storyNotes: mergeTextLayers(normalized.map(state => state.storyNotes)),
     sceneIntent: mergeTextLayers(normalized.map(state => state.sceneIntent)),
+    activeLorebooks: uniqueStrings(normalized.flatMap(state => state.activeLorebooks)),
     plotThreads: uniqueStrings(normalized.flatMap(state => state.plotThreads)),
     openLoops: uniqueStrings(normalized.flatMap(state => state.openLoops)),
     canonDeltas: uniqueStrings(normalized.flatMap(state => state.canonDeltas))

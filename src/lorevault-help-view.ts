@@ -175,6 +175,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Chat assistant-turn details expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.',
         'Story Steering panel stores reusable steering layers in markdown notes by scope (`global`, `thread`, `chapter`, `note`).',
         'Story Steering uses move-safe note IDs (`lvNoteId`) in frontmatter; missing IDs are auto-generated when scope resolution runs.',
+        'Story Steering supports `Active Lorebooks` per scope; these are the primary lorebook selection source for Continue Story when present.',
         'Continue Story and Story Chat merge scoped steering with note/chat/frontmatter steering at generation time.',
         'Story Steering panel can extract proposed steering from active note text or near-cursor story window via LLM, then opens a review modal before apply.',
         'Story Steering extraction sanitization is configurable in settings (`strict` default, or `off` for raw extraction output).',

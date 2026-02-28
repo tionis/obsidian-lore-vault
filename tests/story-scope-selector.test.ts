@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStoryScopesFromFrontmatter } from '../src/story-scope-selector';
+import { parseStoryScopesFromFrontmatter, parseStoryScopesFromRawValues } from '../src/story-scope-selector';
 
 test('parseStoryScopesFromFrontmatter parses lorebooks array and normalizes scopes', () => {
   const scopes = parseStoryScopesFromFrontmatter({
@@ -36,4 +36,14 @@ test('parseStoryScopesFromFrontmatter ignores empty or invalid values', () => {
   }, 'lorebook');
 
   assert.deepEqual(scopes, []);
+});
+
+test('parseStoryScopesFromRawValues normalizes steering-scope arrays', () => {
+  const scopes = parseStoryScopesFromRawValues([
+    'Universe/Main',
+    '#lorebook/universe/main',
+    'lorebook/universe/side'
+  ], 'lorebook');
+
+  assert.deepEqual(scopes, ['universe/main', 'universe/side']);
 });

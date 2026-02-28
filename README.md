@@ -327,7 +327,12 @@ Behavior:
   - world_info content: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> note body
   - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> deterministic excerpt
 
-Story-level scope override (frontmatter):
+Story-level scope override:
+
+- Preferred: set `Active Lorebooks` in Story Steering scope notes (`global`/`thread`/`chapter`/`note`).
+- Frontmatter keys remain supported as fallback.
+
+Frontmatter fallback example:
 
 ```yaml
 ---

@@ -164,6 +164,7 @@ export class StorySteeringView extends ItemView {
         layer.state.pinnedInstructions ? 'pinned' : '',
         layer.state.storyNotes ? 'notes' : '',
         layer.state.sceneIntent ? 'intent' : '',
+        layer.state.activeLorebooks.length > 0 ? `lorebooks:${layer.state.activeLorebooks.length}` : '',
         layer.state.plotThreads.length > 0 ? `threads:${layer.state.plotThreads.length}` : '',
         layer.state.openLoops.length > 0 ? `loops:${layer.state.openLoops.length}` : '',
         layer.state.canonDeltas.length > 0 ? `deltas:${layer.state.canonDeltas.length}` : ''
@@ -177,6 +178,9 @@ export class StorySteeringView extends ItemView {
     merged.createEl('strong', { text: 'Merged Effective Steering' });
     merged.createEl('p', {
       text: `Pinned: ${effective.merged.pinnedInstructions ? 'yes' : 'no'} | Notes: ${effective.merged.storyNotes ? 'yes' : 'no'} | Intent: ${effective.merged.sceneIntent ? 'yes' : 'no'}`
+    });
+    merged.createEl('p', {
+      text: `Active lorebooks: ${effective.merged.activeLorebooks.length > 0 ? effective.merged.activeLorebooks.join(', ') : '(none)'}`
     });
     merged.createEl('p', {
       text: `Plot threads: ${effective.merged.plotThreads.length} | Open loops: ${effective.merged.openLoops.length} | Canon deltas: ${effective.merged.canonDeltas.length}`
@@ -348,6 +352,14 @@ export class StorySteeringView extends ItemView {
       intentInput.placeholder = 'What this scene/chapter should accomplish.';
       intentInput.addEventListener('input', () => {
         this.state.sceneIntent = intentInput.value.trim();
+      });
+
+      editorSection.createEl('label', { text: 'Active Lorebooks (one scope per line)' });
+      const lorebooksInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
+      lorebooksInput.value = this.formatListInput(this.state.activeLorebooks);
+      lorebooksInput.placeholder = 'universe\naurora/arc-1';
+      lorebooksInput.addEventListener('input', () => {
+        this.state.activeLorebooks = this.parseListInput(lorebooksInput.value);
       });
 
       editorSection.createEl('label', { text: 'Active Plot Threads (one per line)' });

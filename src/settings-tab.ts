@@ -1339,12 +1339,12 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedding Cache Directory')
-      .setDesc('One-file-per-hash cache directory (relative to vault root or absolute path).')
+      .setDesc('Vault-relative one-file-per-hash cache directory.')
       .addText(text => text
         .setPlaceholder('.obsidian/plugins/lore-vault/cache/embeddings')
         .setValue(this.plugin.settings.embeddings.cacheDir)
         .onChange(async (value) => {
-          this.plugin.settings.embeddings.cacheDir = value.trim();
+          this.plugin.settings.embeddings.cacheDir = this.normalizePathInput(value);
           await this.plugin.saveData(this.plugin.settings);
         }));
 

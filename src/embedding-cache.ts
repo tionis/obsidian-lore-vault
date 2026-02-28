@@ -1,8 +1,11 @@
 import { App } from 'obsidian';
-import * as fs from 'fs';
-import * as path from 'path';
 import { ConverterSettings } from './models';
 import { slugifyIdentifier } from './hash-utils';
+import {
+  ensureParentVaultFolderForFile,
+  joinVaultPath,
+  normalizeVaultRelativePath
+} from './vault-path-utils';
 
 export interface CachedEmbeddingRecord {
   cacheKey: string;
@@ -14,23 +17,6 @@ export interface CachedEmbeddingRecord {
   createdAt: number;
 }
 
-function ensureDir(dirPath: string): void {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-}
-
-function resolveBaseDir(app: App, cacheDir: string): string {
-  if (path.isAbsolute(cacheDir)) {
-    return cacheDir;
-  }
-  const adapter = app.vault.adapter as any;
-  if (typeof adapter.getBasePath !== 'function') {
-    throw new Error('Unable to resolve vault base path for embedding cache.');
-  }
-  return path.join(adapter.getBasePath() as string, cacheDir);
-}
-
 export class EmbeddingCache {
   private app: App;
   private settings: ConverterSettings['embeddings'];
@@ -40,26 +26,29 @@ export class EmbeddingCache {
     this.settings = settings;
   }
 
+  private resolveCacheRoot(): string {
+    return normalizeVaultRelativePath(this.settings.cacheDir);
+  }
+
   private recordPath(cacheKey: string): string {
-    const root = resolveBaseDir(this.app, this.settings.cacheDir);
+    const root = this.resolveCacheRoot();
     const providerDir = slugifyIdentifier(this.settings.provider);
     const modelDir = slugifyIdentifier(this.settings.model);
     const chunkDir = slugifyIdentifier(
       `${this.settings.chunkingMode}-${this.settings.minChunkChars}-${this.settings.maxChunkChars}-${this.settings.overlapChars}`
     );
     const prefix = cacheKey.slice(0, 2);
-    const dirPath = path.join(root, providerDir, modelDir, chunkDir, prefix);
-    return path.join(dirPath, `${cacheKey}.json`);
+    return joinVaultPath(root, providerDir, modelDir, chunkDir, prefix, `${cacheKey}.json`);
   }
 
-  get(cacheKey: string): CachedEmbeddingRecord | null {
+  async get(cacheKey: string): Promise<CachedEmbeddingRecord | null> {
     const filePath = this.recordPath(cacheKey);
-    if (!fs.existsSync(filePath)) {
+    if (!(await this.app.vault.adapter.exists(filePath))) {
       return null;
     }
 
     try {
-      const raw = fs.readFileSync(filePath, 'utf8');
+      const raw = await this.app.vault.adapter.read(filePath);
       const parsed = JSON.parse(raw) as CachedEmbeddingRecord;
       if (!Array.isArray(parsed.vector)) {
         return null;
@@ -70,9 +59,9 @@ export class EmbeddingCache {
     }
   }
 
-  set(record: CachedEmbeddingRecord): void {
+  async set(record: CachedEmbeddingRecord): Promise<void> {
     const filePath = this.recordPath(record.cacheKey);
-    ensureDir(path.dirname(filePath));
-    fs.writeFileSync(filePath, JSON.stringify(record), 'utf8');
+    await ensureParentVaultFolderForFile(this.app, filePath);
+    await this.app.vault.adapter.write(filePath, JSON.stringify(record));
   }
 }

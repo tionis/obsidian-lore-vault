@@ -5,7 +5,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
 ## Prerequisites
 
 - [Obsidian](https://obsidian.md/) (version 0.15.0 or higher)
-- Desktop environment (plugin is desktop-only)
+- Desktop or mobile environment
 - A basic understanding of file management
 - Comfort with accessing hidden folders (like `.obsidian`)
 

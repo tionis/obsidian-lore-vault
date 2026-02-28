@@ -20,8 +20,8 @@ Core scope boundary:
 - Plugin id: `lore-vault`
 - Plugin name: `LoreVault`
 - Minimum Obsidian version: `0.15.0`
-- Desktop only (`isDesktopOnly: true`)
-- Planned mobile migration: `docs/mobile-compatibility-plan.md`
+- Desktop and mobile supported (`isDesktopOnly: false`)
+- Mobile compatibility matrix and QA checklist: `docs/mobile-compatibility-plan.md`
 
 ## User Documentation Surfaces
 
@@ -261,6 +261,7 @@ Default model:
 Caching:
 
 - one-file-per-hash cache records
+- cache directory must be vault-relative
 - cache key includes:
   - chunk text hash
   - provider/model

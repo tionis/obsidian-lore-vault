@@ -1,6 +1,11 @@
-import * as path from 'path';
 import { normalizeScope } from './lorebook-scoping';
-import { normalizeVaultRelativePath } from './vault-path-utils';
+import {
+  getVaultDirname,
+  getVaultExtname,
+  joinVaultPath,
+  normalizeVaultPathForComparison,
+  normalizeVaultRelativePath
+} from './vault-path-utils';
 
 export interface ScopeOutputPaths {
   worldInfoPath: string;
@@ -34,7 +39,7 @@ function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): st
   const configured = normalizeVaultPathSeparators(
     normalizeVaultRelativePath(sqliteBaseOutputPath?.trim() || DEFAULT_SQLITE_OUTPUT_DIR)
   );
-  const sqliteExt = path.extname(configured);
+  const sqliteExt = getVaultExtname(configured);
   const hasDbExt = sqliteExt.toLowerCase() === '.db';
 
   if (hasDbExt) {
@@ -48,7 +53,7 @@ function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): st
   const outputDir = configured.includes('{scope}')
     ? configured.replace(/\{scope\}/g, scopeSlug)
     : configured;
-  return normalizeVaultPathSeparators(path.join(outputDir, `${scopeSlug}.db`));
+  return normalizeVaultPathSeparators(joinVaultPath(outputDir, `${scopeSlug}.db`));
 }
 
 function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): string {
@@ -56,7 +61,7 @@ function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): 
     normalizeVaultRelativePath((baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH)
   );
   const relativeSubpath = configured.replace(/^[/\\]+/, '');
-  return normalizeVaultPathSeparators(path.join(path.dirname(sqlitePath), relativeSubpath));
+  return normalizeVaultPathSeparators(joinVaultPath(getVaultDirname(sqlitePath), relativeSubpath));
 }
 
 export function resolveScopeOutputPaths(
@@ -68,7 +73,7 @@ export function resolveScopeOutputPaths(
   const scopeSlug = slugifyScope(scope);
   const sqlitePath = resolveSqlitePath(scopeSlug, sqliteBaseOutputPath);
   const downstreamBasePath = resolveDownstreamBasePath(baseOutputPath, sqlitePath);
-  const ext = path.extname(downstreamBasePath);
+  const ext = getVaultExtname(downstreamBasePath);
   const hasJsonExt = ext.toLowerCase() === '.json';
   const stem = hasJsonExt
     ? downstreamBasePath.slice(0, -ext.length)
@@ -90,7 +95,7 @@ export function resolveScopeOutputPaths(
 
 function toCollisionKey(outputPath: string): string {
   // Use normalized lowercase keys for Windows-safe collision detection.
-  return path.normalize(outputPath).toLowerCase();
+  return normalizeVaultPathForComparison(outputPath).toLowerCase();
 }
 
 export function assertUniqueOutputPaths(

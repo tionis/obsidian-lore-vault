@@ -1,4 +1,4 @@
-import * as path from 'path';
+import { getVaultBasename } from './vault-path-utils';
 
 export function normalizeLinkTarget(target: string): string {
   // Obsidian-style link targets can include headings/block refs and optional .md suffixes.
@@ -25,7 +25,7 @@ export function extractWikilinks(content: string): string[] {
     links.push(link);
 
     // Also add the base name as a fallback alias.
-    const base = path.basename(link);
+    const base = getVaultBasename(link);
     if (base !== link) {
       links.push(base);
     }

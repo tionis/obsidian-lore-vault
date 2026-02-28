@@ -96,7 +96,7 @@ export class EmbeddingService {
 
     for (const chunk of sortedChunks) {
       const cacheKey = this.createCacheKey(chunk.textHash);
-      const cached = this.cache.get(cacheKey);
+      const cached = await this.cache.get(cacheKey);
       if (cached) {
         results.push({
           chunkId: chunk.chunkId,
@@ -124,7 +124,7 @@ export class EmbeddingService {
         const item = batch[j];
         const vector = vectors[j];
         const embedding = this.toEmbeddingRecord(item.chunk, item.cacheKey, vector);
-        this.cache.set(this.toCachedRecord(embedding));
+        await this.cache.set(this.toCachedRecord(embedding));
         results.push(embedding);
       }
     }

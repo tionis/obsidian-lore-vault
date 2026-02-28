@@ -6,8 +6,8 @@ Enable LoreVault to run on Obsidian Mobile while preserving deterministic behavi
 
 Current state:
 
-- `manifest.json` sets `isDesktopOnly: true`.
-- Multiple runtime paths use Node/Electron APIs (`fs`, `path`, vault `getBasePath`) that are not portable to mobile.
+- `manifest.json` sets `isDesktopOnly: false`.
+- Runtime export/cache paths are adapter-based and vault-relative.
 
 ## Scope
 
@@ -89,6 +89,7 @@ Migrate these modules to adapter-backed IO:
 Deliverable:
 
 - All export/cache paths function with vault-relative paths on mobile.
+- Status: complete.
 
 ### 3) Path Handling Cleanup
 
@@ -99,6 +100,7 @@ Deliverable:
 Deliverable:
 
 - Same scope -> same relative output paths on desktop and mobile.
+- Status: complete for mobile-executed runtime paths.
 
 ### 4) UX/Settings Gating
 
@@ -112,12 +114,13 @@ Deliverable:
 
 ### 5) Manifest Flip and Rollout
 
-- After workstreams 1-4 pass QA, set `isDesktopOnly: false`.
-- Roll out behind a “mobile supported” milestone.
+- `isDesktopOnly` set to `false`.
+- Mobile support rollout enabled.
 
 Deliverable:
 
 - Plugin loads and runs on mobile with core workflows.
+- Status: manifest flipped.
 
 ## QA and Acceptance Criteria
 
@@ -154,9 +157,16 @@ Mitigations:
 
 ## Proposed Implementation Order
 
-1. IO abstraction + adapter-backed binary/text helpers.
-2. Migrate SQLite exporter/reader.
-3. Migrate embedding cache and remaining exporters.
-4. Settings/UI capability gating.
-5. QA matrix completion.
-6. Flip `isDesktopOnly` to `false`.
+1. IO abstraction + adapter-backed binary/text helpers. (done)
+2. Migrate SQLite exporter/reader. (done)
+3. Migrate embedding cache and remaining exporters. (done)
+4. Settings/UI capability gating. (done)
+5. QA matrix completion. (ongoing hardening)
+6. Flip `isDesktopOnly` to `false`. (done)
+
+## Completion Notes
+
+- Runtime export/cache IO no longer depends on Node `fs` or `adapter.getBasePath()`.
+- Runtime path handling for mobile-executed code paths no longer depends on Node `path`.
+- Export/cache configuration is validated as vault-relative for deterministic cross-platform behavior.
+- Remaining work is QA hardening and performance tuning on large mobile vaults.

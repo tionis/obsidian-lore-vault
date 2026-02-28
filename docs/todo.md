@@ -249,4 +249,4 @@ These are the current implementation defaults unless explicitly changed later.
 ## Remaining Strategic Questions
 
 - [x] Should per-lorebook retrieval/fallback policy overrides be added before or after Phase 9? -> after Phase 9.
-- [ ] For structured merge conflicts, should the long-term default be conflict markers or a dedicated interactive merge UI?
+- [x] For structured merge conflicts, should the long-term default be conflict markers or a dedicated interactive merge UI? -> keep deterministic conflict markers as default; interactive merge UI remains an optional future enhancement.

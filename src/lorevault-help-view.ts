@@ -98,7 +98,7 @@ export class LorevaultHelpView extends ItemView {
         'Tag notes with #lorebook/... to assign scope membership.',
         'Add frontmatter keywords/key for stronger retrieval precision.',
         'Notes are included as unified lore entries by default; use `retrieval: none` to exclude.',
-        'Run Build Active Lorebook Scope from command palette or ribbon.'
+        'Run Build Active Lorebook Scope from command palette or the LoreVault Manager.'
       ],
       actions: [
         { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() },
@@ -109,8 +109,8 @@ export class LorevaultHelpView extends ItemView {
 
     this.renderSection(contentEl, 'Long-Form Story Workflow', {
       bullets: [
-        'Create one note per chapter/scene and keep a stable storyId for the same story thread.',
-        'Set chapter numbers where possible so thread order is explicit and deterministic.',
+        'Create one note per chapter/scene and keep a stable storyId for the same story.',
+        'Set chapter numbers where possible so story order is explicit and deterministic.',
         'Optionally set previousChapter/nextChapter links to enforce explicit sequence edges.',
         'Add a `## Summary` section near the top of chapter notes for higher-quality chapter memory injection.'
       ],
@@ -173,7 +173,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
         'Story Chat supports per-chat scope selection, manual context, specific-note context lists, steering text fields, and continuity controls.',
         'Story Chat assistant-turn details expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.',
-        'Story Steering panel stores reusable steering layers in markdown notes by scope (`global`, `thread`, `chapter`, `note`).',
+        'Story Steering panel stores reusable steering layers in markdown notes by scope (`global`, `story`, `chapter`, `note`).',
         'Story Steering uses move-safe note IDs (`lvNoteId`) in frontmatter; missing IDs are auto-generated when scope resolution runs.',
         'Story Steering supports `Active Lorebooks` per scope; these are the primary lorebook selection source for Continue Story when present.',
         'Continue Story and Story Chat merge scoped steering with note/chat/frontmatter steering at generation time.',

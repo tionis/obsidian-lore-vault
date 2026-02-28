@@ -667,7 +667,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     let steeringFolderInput: TextComponent | null = null;
     const steeringFolderSetting = new Setting(containerEl)
       .setName('Story Steering Folder')
-      .setDesc('Vault folder where scope-based steering notes are stored (global/thread/chapter/note).')
+      .setDesc('Vault folder where scope-based steering notes are stored (global/story/chapter/note).')
       .addText(text => {
         steeringFolderInput = text;
         text

@@ -13,6 +13,8 @@ export interface QualityAuditRow {
   riskLevel: QualityRiskLevel;
   reasons: string[];
   bestSimilarUid: number | null;
+  bestSimilarTitle: string | null;
+  bestSimilarPath: string;
   bestSimilarScore: number;
   canGenerateKeywords: boolean;
 }
@@ -214,6 +216,8 @@ export function buildQualityAuditRows(input: QualityAuditInput): QualityAuditRow
       riskLevel: toRiskLevel(riskScore),
       reasons,
       bestSimilarUid,
+      bestSimilarTitle: bestSimilarUid !== null ? (titleByUid.get(bestSimilarUid) ?? `UID ${bestSimilarUid}`) : null,
+      bestSimilarPath: bestSimilarUid !== null ? (pathByUid.get(bestSimilarUid) ?? '') : '',
       bestSimilarScore,
       canGenerateKeywords: keywords.length === 0 && Boolean(pathByUid.get(entry.uid))
     });
@@ -226,4 +230,3 @@ export function buildQualityAuditRows(input: QualityAuditInput): QualityAuditRow
     left.uid - right.uid
   ));
 }
-

@@ -329,7 +329,7 @@ Behavior:
 
 Story-level scope override:
 
-- Preferred: set `Active Lorebooks` in Story Steering scope notes (`global`/`thread`/`chapter`/`note`).
+- Preferred: set `Active Lorebooks` in Story Steering scope notes (`global`/`story`/`chapter`/`note`).
 - Frontmatter keys remain supported as fallback.
 
 Frontmatter fallback example:

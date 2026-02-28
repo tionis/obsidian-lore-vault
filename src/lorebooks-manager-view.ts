@@ -41,6 +41,8 @@ function formatLayerUsageRow(layer: PromptLayerUsage): string {
 export class LorebooksManagerView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private renderVersion = 0;
+  private generationDetailsOpen = false;
+  private usageDetailsOpen = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -179,6 +181,10 @@ export class LorebooksManagerView extends ItemView {
     }
 
     const details = card.createEl('details', { cls: 'lorevault-manager-debug' });
+    details.open = this.generationDetailsOpen;
+    details.addEventListener('toggle', () => {
+      this.generationDetailsOpen = details.open;
+    });
     details.createEl('summary', { text: 'Selected Context Items' });
 
     const wiHeading = details.createEl('h4', { text: 'world_info' });
@@ -311,6 +317,10 @@ export class LorebooksManagerView extends ItemView {
       }
 
       const details = card.createEl('details', { cls: 'lorevault-manager-debug' });
+      details.open = this.usageDetailsOpen;
+      details.addEventListener('toggle', () => {
+        this.usageDetailsOpen = details.open;
+      });
       details.createEl('summary', { text: 'Top Usage Breakdown' });
 
       const opHeading = details.createEl('h4', { text: 'By Operation' });

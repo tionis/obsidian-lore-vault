@@ -20,25 +20,23 @@ Rationale:
 - graph expansion from explicitly mentioned entities gives predictable context growth
 - users need inspectable context composition during live generation/chat, not opaque retrieval
 
-## Execution Priority Update (2026-02-27)
+## Execution Priority Update (2026-02-28)
 
 Current execution sequence:
 
-1. finish Story Chat validation and boundary hardening
-2. implement graph-first retrieval core
-3. implement long-form story memory layers
-4. add optional fallback/tool-call retrieval extensions
-5. run broad hardening/performance tuning across the stack
-6. add cost estimation/tracking workflow (far-future; provider integration dependent)
-7. add inbound import/extraction workflow for ST lorebooks and stories (far-future)
-8. add story-driven wiki update workflow for maintaining existing pages after writing (far-future)
+1. finish structured-merge conflict UX refinement in story-delta workflows
+2. add export freshness controls (manual vs background, scoped incremental rebuild policy)
+3. complete user-facing terminology migration (`thread` -> `story`) with compatibility aliases
+4. reduce full-vault rescans in panel rendering paths via shared scope metadata cache/index
+5. close Lorebook Auditor parity gaps (duplicate actions docs/tests)
+6. keep advanced cost management as far-future (provider integration dependent)
+7. continue long-tail hardening/performance work on large vaults
 
 Priority note:
 
-- legacy hardening tasks and auto-summary are still roadmap items
-- they are intentionally sequenced after graph-first core delivery so optimization targets are stable
-- advanced cost management (provider pricing sync and richer budgeting UX) is far-future and requires tighter OpenRouter usage/pricing integration
-- story-to-wiki extraction is intentionally far-future and depends on robust schema-constrained LLM orchestration
+- core retrieval/chat foundations are in place; current work is stabilization and UX consistency
+- advanced cost management (provider pricing sync and richer budgeting UX) remains far-future and requires tighter OpenRouter usage/pricing integration
+- story/wiki import and update foundations are implemented; remaining work is merge UX and operator control polish
 
 ## Scope Boundaries
 
@@ -336,7 +334,7 @@ Current status:
 - continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
 - scope-based steering workspace foundation is implemented:
   - dedicated Story Steering panel
-  - markdown-backed scoped steering notes (`global`, optional `thread`, optional `chapter`, `note`)
+  - markdown-backed scoped steering notes (`global`, optional `story` [compat alias: `thread`], optional `chapter`, `note`)
   - merged with chat/continuation steering assembly without mandatory `storyId`
 - LLM-assisted extraction actions are implemented in the Story Steering panel:
   - extract from active note or story window
@@ -458,7 +456,7 @@ Unless overridden in a later roadmap decision:
 - embedding fallback policy is configured globally (not per-lorebook yet)
 - auto fallback seed threshold remains `120`
 - graph expansion is wikilinks-first
-- chat scope/context selection persists per conversation thread
+- chat scope/context selection persists per conversation note
 - chapter ordering prefers explicit `chapter` index before link/path tie-breaks
 - chapter memory summaries are chapter-level by default
 - low-confidence story-driven wiki updates are queued for manual review

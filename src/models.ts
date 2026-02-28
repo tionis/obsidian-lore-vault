@@ -103,17 +103,28 @@ export interface PromptLayerUsage {
   trimReason?: string;
 }
 
+export interface ContinuitySelection {
+  includePlotThreads: boolean;
+  includeOpenLoops: boolean;
+  includeCanonDeltas: boolean;
+}
+
 export interface StoryChatContextMeta {
   usedLorebookContext: boolean;
   usedManualContext: boolean;
   usedSpecificNotesContext: boolean;
   usedChapterMemoryContext?: boolean;
   usedInlineDirectives?: boolean;
+  usedContinuityState?: boolean;
   scopes: string[];
   specificNotePaths: string[];
   unresolvedNoteRefs: string[];
   chapterMemoryItems?: string[];
   inlineDirectiveItems?: string[];
+  continuityPlotThreads?: string[];
+  continuityOpenLoops?: string[];
+  continuityCanonDeltas?: string[];
+  continuitySelection?: ContinuitySelection;
   layerTrace?: string[];
   layerUsage?: PromptLayerUsage[];
   overflowTrace?: string[];
@@ -143,6 +154,10 @@ export interface StoryChatForkSnapshot {
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
+  continuityPlotThreads: string[];
+  continuityOpenLoops: string[];
+  continuityCanonDeltas: string[];
+  continuitySelection: ContinuitySelection;
   noteContextRefs: string[];
 }
 
@@ -316,6 +331,10 @@ export interface ConverterSettings {
     pinnedInstructions: string;
     storyNotes: string;
     sceneIntent: string;
+    continuityPlotThreads: string[];
+    continuityOpenLoops: string[];
+    continuityCanonDeltas: string[];
+    continuitySelection: ContinuitySelection;
     noteContextRefs: string[];
     messages: StoryChatMessage[];
     forkSnapshots: StoryChatForkSnapshot[];
@@ -439,6 +458,14 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     pinnedInstructions: '',
     storyNotes: '',
     sceneIntent: '',
+    continuityPlotThreads: [],
+    continuityOpenLoops: [],
+    continuityCanonDeltas: [],
+    continuitySelection: {
+      includePlotThreads: true,
+      includeOpenLoops: true,
+      includeCanonDeltas: true
+    },
     noteContextRefs: [],
     messages: [],
     forkSnapshots: [],

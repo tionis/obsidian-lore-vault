@@ -333,7 +333,8 @@ Current status:
 - placement policy is implemented per steering layer (`system`, `pre-history`, `pre-response`) via Writing Completion settings
 - deterministic staged reservations + overflow trimming are implemented with fixed trim order and pinned-layer protection
 - inspector traces now include per-layer token usage/headroom and overflow rationale
-- remaining work focuses on continuity-state primitives (threads/open loops/canon deltas) and richer UI-specific inspector rendering tests
+- continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
+- remaining work focuses on richer UI-specific inspector rendering tests and follow-on continuity automation
 
 Planned steering primitives:
 

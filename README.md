@@ -245,6 +245,9 @@ Behavior:
 - ignores non-prefixed bracket text (for example `[Editor Note: ...]`)
 - injects inline directives as a dedicated steering layer with per-turn count/token caps
 - supports optional continuation frontmatter steering keys (`lvPinnedInstructions`, `lvStoryNotes`, `lvSceneIntent`)
+- supports continuation continuity-state frontmatter lists/toggles:
+  - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
+  - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
 - sends context + story window to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
@@ -404,6 +407,7 @@ Current capabilities:
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
 - per-chat steering fields (pinned instructions, story notes, scene intent)
+- per-chat continuity controls (plot threads, open loops, canon deltas, per-group inclusion toggles)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
@@ -411,6 +415,7 @@ Current capabilities:
 - regenerate appends a new assistant message version; users can switch active versions
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 - per-response layer budget/overflow inspector (`reserved`, `used`, `headroom`, trim rationale)
+- per-response continuity inspector (included threads/open loops/canon deltas)
 - chapter memory shown in layer trace indicates summary source (`section`, `frontmatter`, or `excerpt`)
 
 Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.

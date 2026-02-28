@@ -128,6 +128,14 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       pinnedInstructions: '',
       storyNotes: '',
       sceneIntent: '',
+      continuityPlotThreads: [],
+      continuityOpenLoops: [],
+      continuityCanonDeltas: [],
+      continuitySelection: {
+        includePlotThreads: true,
+        includeOpenLoops: true,
+        includeCanonDeltas: true
+      },
       noteContextRefs: [],
       messages: [],
       forkSnapshots: [],

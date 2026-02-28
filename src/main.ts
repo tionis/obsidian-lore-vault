@@ -1,5 +1,6 @@
 import { MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
 import {
+  ContinuitySelection,
   cloneDefaultTextCommandPromptTemplates,
   CompletionPreset,
   ConverterSettings,
@@ -158,6 +159,10 @@ export interface StoryChatTurnRequest {
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
+  continuityPlotThreads: string[];
+  continuityOpenLoops: string[];
+  continuityCanonDeltas: string[];
+  continuitySelection: ContinuitySelection;
   noteContextRefs: string[];
   history: StoryChatMessage[];
   onDelta: (delta: string) => void;
@@ -405,6 +410,82 @@ export default class LoreBookConverterPlugin extends Plugin {
         getFrontmatterValue(frontmatter, 'lvSceneIntent', 'sceneIntent', 'chapterIntent')
       ) ?? ''
     };
+  }
+
+  private normalizeContinuityItems(values: string[]): string[] {
+    return uniqueStrings(
+      values
+        .map(value => value.trim())
+        .filter(Boolean)
+    );
+  }
+
+  private resolveContinuityFromFrontmatter(file: TFile | null): {
+    plotThreads: string[];
+    openLoops: string[];
+    canonDeltas: string[];
+    selection: ContinuitySelection;
+  } {
+    if (!file) {
+      return {
+        plotThreads: [],
+        openLoops: [],
+        canonDeltas: [],
+        selection: {
+          includePlotThreads: true,
+          includeOpenLoops: true,
+          includeCanonDeltas: true
+        }
+      };
+    }
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const plotThreads = this.normalizeContinuityItems(
+      asStringArray(getFrontmatterValue(frontmatter, 'lvPlotThreads', 'plotThreads', 'activePlotThreads'))
+    );
+    const openLoops = this.normalizeContinuityItems(
+      asStringArray(getFrontmatterValue(frontmatter, 'lvOpenLoops', 'openLoops', 'unresolvedCommitments'))
+    );
+    const canonDeltas = this.normalizeContinuityItems(
+      asStringArray(getFrontmatterValue(frontmatter, 'lvCanonDeltas', 'canonDeltas', 'recentCanonDeltas'))
+    );
+
+    return {
+      plotThreads,
+      openLoops,
+      canonDeltas,
+      selection: {
+        includePlotThreads: asBoolean(
+          getFrontmatterValue(frontmatter, 'lvIncludePlotThreads', 'includePlotThreads')
+        ) ?? true,
+        includeOpenLoops: asBoolean(
+          getFrontmatterValue(frontmatter, 'lvIncludeOpenLoops', 'includeOpenLoops')
+        ) ?? true,
+        includeCanonDeltas: asBoolean(
+          getFrontmatterValue(frontmatter, 'lvIncludeCanonDeltas', 'includeCanonDeltas')
+        ) ?? true
+      }
+    };
+  }
+
+  private buildContinuityMarkdown(input: {
+    plotThreads: string[];
+    openLoops: string[];
+    canonDeltas: string[];
+    selection: ContinuitySelection;
+  }): string {
+    const sections: string[] = [];
+    if (input.selection.includePlotThreads && input.plotThreads.length > 0) {
+      sections.push(`### Active Plot Threads\n${input.plotThreads.map((item, index) => `${index + 1}. ${item}`).join('\n')}`);
+    }
+    if (input.selection.includeOpenLoops && input.openLoops.length > 0) {
+      sections.push(`### Unresolved Commitments\n${input.openLoops.map((item, index) => `${index + 1}. ${item}`).join('\n')}`);
+    }
+    if (input.selection.includeCanonDeltas && input.canonDeltas.length > 0) {
+      sections.push(`### Recent Canon Deltas\n${input.canonDeltas.map((item, index) => `${index + 1}. ${item}`).join('\n')}`);
+    }
+    return sections.join('\n\n');
   }
 
   private trimTextToTokenBudget(text: string, tokenBudget: number): string {
@@ -918,6 +999,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
         chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
         inlineDirectiveItems: [...(message.contextMeta.inlineDirectiveItems ?? [])],
+        continuityPlotThreads: [...(message.contextMeta.continuityPlotThreads ?? [])],
+        continuityOpenLoops: [...(message.contextMeta.continuityOpenLoops ?? [])],
+        continuityCanonDeltas: [...(message.contextMeta.continuityCanonDeltas ?? [])],
+        continuitySelection: message.contextMeta.continuitySelection
+          ? { ...message.contextMeta.continuitySelection }
+          : undefined,
         layerTrace: [...(message.contextMeta.layerTrace ?? [])],
         layerUsage: [...(message.contextMeta.layerUsage ?? []).map(layer => ({ ...layer }))],
         overflowTrace: [...(message.contextMeta.overflowTrace ?? [])],
@@ -931,6 +1018,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.settings.storyChat.forkSnapshots.map(snapshot => ({
       ...snapshot,
       selectedScopes: [...snapshot.selectedScopes],
+      continuityPlotThreads: [...(snapshot.continuityPlotThreads ?? [])],
+      continuityOpenLoops: [...(snapshot.continuityOpenLoops ?? [])],
+      continuityCanonDeltas: [...(snapshot.continuityCanonDeltas ?? [])],
+      continuitySelection: snapshot.continuitySelection
+        ? { ...snapshot.continuitySelection }
+        : {
+          includePlotThreads: true,
+          includeOpenLoops: true,
+          includeCanonDeltas: true
+        },
       noteContextRefs: [...snapshot.noteContextRefs],
       messages: snapshot.messages.map(message => ({
         ...message,
@@ -941,6 +1038,12 @@ export default class LoreBookConverterPlugin extends Plugin {
           unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
           chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
           inlineDirectiveItems: [...(message.contextMeta.inlineDirectiveItems ?? [])],
+          continuityPlotThreads: [...(message.contextMeta.continuityPlotThreads ?? [])],
+          continuityOpenLoops: [...(message.contextMeta.continuityOpenLoops ?? [])],
+          continuityCanonDeltas: [...(message.contextMeta.continuityCanonDeltas ?? [])],
+          continuitySelection: message.contextMeta.continuitySelection
+            ? { ...message.contextMeta.continuitySelection }
+            : undefined,
           layerTrace: [...(message.contextMeta.layerTrace ?? [])],
           layerUsage: [...(message.contextMeta.layerUsage ?? []).map(layer => ({ ...layer }))],
           overflowTrace: [...(message.contextMeta.overflowTrace ?? [])],
@@ -1782,6 +1885,20 @@ export default class LoreBookConverterPlugin extends Plugin {
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
+    const continuityPlotThreads = this.normalizeContinuityItems(request.continuityPlotThreads ?? []);
+    const continuityOpenLoops = this.normalizeContinuityItems(request.continuityOpenLoops ?? []);
+    const continuityCanonDeltas = this.normalizeContinuityItems(request.continuityCanonDeltas ?? []);
+    const continuitySelection: ContinuitySelection = {
+      includePlotThreads: request.continuitySelection?.includePlotThreads !== false,
+      includeOpenLoops: request.continuitySelection?.includeOpenLoops !== false,
+      includeCanonDeltas: request.continuitySelection?.includeCanonDeltas !== false
+    };
+    const continuityMarkdown = this.buildContinuityMarkdown({
+      plotThreads: continuityPlotThreads,
+      openLoops: continuityOpenLoops,
+      canonDeltas: continuityCanonDeltas,
+      selection: continuitySelection
+    });
     const activeEditorTextBeforeCursor = this.getActiveEditorTextBeforeCursor();
     const inlineDirectiveResolution = this.resolveInlineDirectivesFromText(activeEditorTextBeforeCursor);
     const inlineDirectives = inlineDirectiveResolution.directives;
@@ -1969,6 +2086,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (inlineDirectiveSection?.trimmed) {
       inlineDirectiveDiagnostics.push('trimmed_to_reservation');
     }
+    const continuityBudget = Math.max(96, Math.min(12000, Math.floor(maxInputTokens * 0.12)));
 
     const promptSegments: PromptSegment[] = [
       {
@@ -1996,6 +2114,15 @@ export default class LoreBookConverterPlugin extends Plugin {
         reservedTokens: manualContextBudget,
         placement: 'pre_response',
         trimMode: 'tail',
+        minTokens: 0
+      },
+      {
+        key: 'continuity_state',
+        label: 'Continuity State',
+        content: continuityMarkdown,
+        reservedTokens: continuityBudget,
+        placement: 'pre_response',
+        trimMode: 'head',
         minTokens: 0
       },
       {
@@ -2067,6 +2194,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         'chapter_memory_context',
         'specific_notes_context',
         'manual_context',
+        'continuity_state',
         'chat_history',
         'pre_response_steering',
         'pre_history_steering'
@@ -2075,6 +2203,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const promptSegmentsByKey = new Map(overflowResult.segments.map(segment => [segment.key, segment]));
     const chatHistoryForPrompt = promptSegmentsByKey.get('chat_history')?.content ?? '';
     const manualContextForPrompt = promptSegmentsByKey.get('manual_context')?.content ?? '';
+    const continuityForPrompt = promptSegmentsByKey.get('continuity_state')?.content ?? '';
     const specificNotesForPrompt = promptSegmentsByKey.get('specific_notes_context')?.content ?? '';
     const chapterMemoryForPrompt = promptSegmentsByKey.get('chapter_memory_context')?.content ?? '';
     const toolContextForPrompt = promptSegmentsByKey.get('tool_retrieval_context')?.content ?? '';
@@ -2084,6 +2213,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const userMessageForPrompt = promptSegmentsByKey.get('user_message')?.content ?? request.userMessage.trim();
     const chatHistoryPromptTokens = estimateTextTokens(chatHistoryForPrompt);
     const manualContextPromptTokens = estimateTextTokens(manualContextForPrompt);
+    const continuityPromptTokens = estimateTextTokens(continuityForPrompt);
     const specificNotesPromptTokens = estimateTextTokens(specificNotesForPrompt);
     const chapterMemoryPromptTokens = estimateTextTokens(chapterMemoryForPrompt);
     const toolContextPromptTokens = estimateTextTokens(toolContextForPrompt);
@@ -2097,6 +2227,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const contextTokensUsed = loreContextPromptTokens
       + toolContextPromptTokens
       + manualContextPromptTokens
+      + continuityPromptTokens
       + specificNotesPromptTokens
       + chapterMemoryPromptTokens
       + chatHistoryPromptTokens
@@ -2114,6 +2245,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     layerTrace.push(`local_window: chat_history ~${chatHistoryPromptTokens} tokens`);
     if (manualContextPromptTokens > 0) {
       layerTrace.push(`manual_context: ~${manualContextPromptTokens} tokens`);
+    }
+    if (continuityPromptTokens > 0) {
+      layerTrace.push(`continuity_state: threads ${continuitySelection.includePlotThreads ? continuityPlotThreads.length : 0}, open_loops ${continuitySelection.includeOpenLoops ? continuityOpenLoops.length : 0}, canon_deltas ${continuitySelection.includeCanonDeltas ? continuityCanonDeltas.length : 0}, ~${continuityPromptTokens} tokens`);
     }
     if (specificNotesPromptTokens > 0) {
       layerTrace.push(`specific_notes: ${specificNotePaths.length} notes, ~${specificNotesPromptTokens} tokens`);
@@ -2167,6 +2301,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const contextMeta: StoryChatContextMeta = {
       usedLorebookContext: useLorebookContext,
       usedManualContext: manualContextForPrompt.length > 0,
+      usedContinuityState: continuityForPrompt.length > 0,
       usedSpecificNotesContext: specificNotePaths.length > 0,
       usedChapterMemoryContext: chapterMemoryItems.length > 0,
       usedInlineDirectives: resolvedInlineDirectiveItems.length > 0,
@@ -2175,6 +2310,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       unresolvedNoteRefs,
       chapterMemoryItems,
       inlineDirectiveItems: resolvedInlineDirectiveItems,
+      continuityPlotThreads: continuitySelection.includePlotThreads ? continuityPlotThreads : [],
+      continuityOpenLoops: continuitySelection.includeOpenLoops ? continuityOpenLoops : [],
+      continuityCanonDeltas: continuitySelection.includeCanonDeltas ? continuityCanonDeltas : [],
+      continuitySelection,
       layerTrace,
       layerUsage,
       overflowTrace,
@@ -2205,6 +2344,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       '<manual_context>',
       manualContextForPrompt || '[No manual context provided.]',
       '</manual_context>',
+      '',
+      '<continuity_state>',
+      continuityForPrompt || '[No continuity state provided.]',
+      '</continuity_state>',
       '',
       '<specific_notes_context>',
       specificNotesForPrompt || '[No specific notes selected.]',
@@ -2302,9 +2445,15 @@ export default class LoreBookConverterPlugin extends Plugin {
         scopeCount: selectedScopes.length,
         usedLorebookContext: useLorebookContext,
         usedManualContext: manualContextForPrompt.length > 0,
+        usedContinuityState: continuityForPrompt.length > 0,
         usedSpecificNotesContext: specificNotePaths.length > 0,
         usedChapterMemoryContext: chapterMemoryItems.length > 0,
-        inlineDirectiveCount: resolvedInlineDirectiveItems.length
+        inlineDirectiveCount: resolvedInlineDirectiveItems.length,
+        continuityItemCount: (
+          (continuitySelection.includePlotThreads ? continuityPlotThreads.length : 0)
+          + (continuitySelection.includeOpenLoops ? continuityOpenLoops.length : 0)
+          + (continuitySelection.includeCanonDeltas ? continuityCanonDeltas.length : 0)
+        )
       });
     }
 
@@ -2635,6 +2784,30 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.storyChat.pinnedInstructions = (merged.storyChat.pinnedInstructions ?? '').toString();
     merged.storyChat.storyNotes = (merged.storyChat.storyNotes ?? '').toString();
     merged.storyChat.sceneIntent = (merged.storyChat.sceneIntent ?? '').toString();
+    const continuityPlotThreads = Array.isArray(merged.storyChat.continuityPlotThreads)
+      ? merged.storyChat.continuityPlotThreads
+      : [];
+    const continuityOpenLoops = Array.isArray(merged.storyChat.continuityOpenLoops)
+      ? merged.storyChat.continuityOpenLoops
+      : [];
+    const continuityCanonDeltas = Array.isArray(merged.storyChat.continuityCanonDeltas)
+      ? merged.storyChat.continuityCanonDeltas
+      : [];
+    merged.storyChat.continuityPlotThreads = this.normalizeContinuityItems(
+      continuityPlotThreads.map(item => String(item ?? ''))
+    );
+    merged.storyChat.continuityOpenLoops = this.normalizeContinuityItems(
+      continuityOpenLoops.map(item => String(item ?? ''))
+    );
+    merged.storyChat.continuityCanonDeltas = this.normalizeContinuityItems(
+      continuityCanonDeltas.map(item => String(item ?? ''))
+    );
+    const continuitySelectionRaw = merged.storyChat.continuitySelection ?? DEFAULT_SETTINGS.storyChat.continuitySelection;
+    merged.storyChat.continuitySelection = {
+      includePlotThreads: continuitySelectionRaw.includePlotThreads !== false,
+      includeOpenLoops: continuitySelectionRaw.includeOpenLoops !== false,
+      includeCanonDeltas: continuitySelectionRaw.includeCanonDeltas !== false
+    };
     const noteContextRefs = Array.isArray(merged.storyChat.noteContextRefs)
       ? merged.storyChat.noteContextRefs
       : [];
@@ -2673,6 +2846,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
             usedChapterMemoryContext: Boolean(message.contextMeta.usedChapterMemoryContext),
             usedInlineDirectives: Boolean(message.contextMeta.usedInlineDirectives),
+            usedContinuityState: Boolean(message.contextMeta.usedContinuityState),
             scopes: Array.isArray(message.contextMeta.scopes)
               ? message.contextMeta.scopes
                 .map((scope: string) => normalizeScope(scope))
@@ -2690,6 +2864,22 @@ export default class LoreBookConverterPlugin extends Plugin {
             inlineDirectiveItems: Array.isArray(message.contextMeta.inlineDirectiveItems)
               ? message.contextMeta.inlineDirectiveItems.map((item: unknown) => String(item))
               : [],
+            continuityPlotThreads: Array.isArray(message.contextMeta.continuityPlotThreads)
+              ? message.contextMeta.continuityPlotThreads.map((item: unknown) => String(item))
+              : [],
+            continuityOpenLoops: Array.isArray(message.contextMeta.continuityOpenLoops)
+              ? message.contextMeta.continuityOpenLoops.map((item: unknown) => String(item))
+              : [],
+            continuityCanonDeltas: Array.isArray(message.contextMeta.continuityCanonDeltas)
+              ? message.contextMeta.continuityCanonDeltas.map((item: unknown) => String(item))
+              : [],
+            continuitySelection: message.contextMeta.continuitySelection
+              ? {
+                includePlotThreads: message.contextMeta.continuitySelection.includePlotThreads !== false,
+                includeOpenLoops: message.contextMeta.continuitySelection.includeOpenLoops !== false,
+                includeCanonDeltas: message.contextMeta.continuitySelection.includeCanonDeltas !== false
+              }
+              : undefined,
             layerTrace: Array.isArray(message.contextMeta.layerTrace)
               ? message.contextMeta.layerTrace.map((item: unknown) => String(item))
               : [],
@@ -2745,6 +2935,7 @@ export default class LoreBookConverterPlugin extends Plugin {
               usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
               usedChapterMemoryContext: Boolean(message.contextMeta.usedChapterMemoryContext),
               usedInlineDirectives: Boolean(message.contextMeta.usedInlineDirectives),
+              usedContinuityState: Boolean(message.contextMeta.usedContinuityState),
               scopes: Array.isArray(message.contextMeta.scopes)
                 ? message.contextMeta.scopes
                   .map((scope: string) => normalizeScope(scope))
@@ -2762,6 +2953,22 @@ export default class LoreBookConverterPlugin extends Plugin {
               inlineDirectiveItems: Array.isArray(message.contextMeta.inlineDirectiveItems)
                 ? message.contextMeta.inlineDirectiveItems.map((item: unknown) => String(item))
                 : [],
+              continuityPlotThreads: Array.isArray(message.contextMeta.continuityPlotThreads)
+                ? message.contextMeta.continuityPlotThreads.map((item: unknown) => String(item))
+                : [],
+              continuityOpenLoops: Array.isArray(message.contextMeta.continuityOpenLoops)
+                ? message.contextMeta.continuityOpenLoops.map((item: unknown) => String(item))
+                : [],
+              continuityCanonDeltas: Array.isArray(message.contextMeta.continuityCanonDeltas)
+                ? message.contextMeta.continuityCanonDeltas.map((item: unknown) => String(item))
+                : [],
+              continuitySelection: message.contextMeta.continuitySelection
+                ? {
+                  includePlotThreads: message.contextMeta.continuitySelection.includePlotThreads !== false,
+                  includeOpenLoops: message.contextMeta.continuitySelection.includeOpenLoops !== false,
+                  includeCanonDeltas: message.contextMeta.continuitySelection.includeCanonDeltas !== false
+                }
+                : undefined,
               layerTrace: Array.isArray(message.contextMeta.layerTrace)
                 ? message.contextMeta.layerTrace.map((item: unknown) => String(item))
                 : [],
@@ -2816,6 +3023,32 @@ export default class LoreBookConverterPlugin extends Plugin {
           pinnedInstructions: (snapshot.pinnedInstructions ?? '').toString(),
           storyNotes: (snapshot.storyNotes ?? '').toString(),
           sceneIntent: (snapshot.sceneIntent ?? '').toString(),
+          continuityPlotThreads: this.normalizeContinuityItems(
+            Array.isArray(snapshot.continuityPlotThreads)
+              ? snapshot.continuityPlotThreads.map((item: unknown) => String(item ?? ''))
+              : []
+          ),
+          continuityOpenLoops: this.normalizeContinuityItems(
+            Array.isArray(snapshot.continuityOpenLoops)
+              ? snapshot.continuityOpenLoops.map((item: unknown) => String(item ?? ''))
+              : []
+          ),
+          continuityCanonDeltas: this.normalizeContinuityItems(
+            Array.isArray(snapshot.continuityCanonDeltas)
+              ? snapshot.continuityCanonDeltas.map((item: unknown) => String(item ?? ''))
+              : []
+          ),
+          continuitySelection: snapshot.continuitySelection
+            ? {
+              includePlotThreads: snapshot.continuitySelection.includePlotThreads !== false,
+              includeOpenLoops: snapshot.continuitySelection.includeOpenLoops !== false,
+              includeCanonDeltas: snapshot.continuitySelection.includeCanonDeltas !== false
+            }
+            : {
+              includePlotThreads: true,
+              includeOpenLoops: true,
+              includeCanonDeltas: true
+            },
           noteContextRefs
         };
       })
@@ -3792,6 +4025,13 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
       const steeringFromFrontmatter = this.resolveSteeringFromFrontmatter(activeFile);
+      const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(activeFile);
+      const continuityMarkdown = this.buildContinuityMarkdown({
+        plotThreads: continuityFromFrontmatter.plotThreads,
+        openLoops: continuityFromFrontmatter.openLoops,
+        canonDeltas: continuityFromFrontmatter.canonDeltas,
+        selection: continuityFromFrontmatter.selection
+      });
       const steeringSections = this.createSteeringSections({
         maxInputTokens,
         pinnedInstructions: steeringFromFrontmatter.pinnedInstructions,
@@ -3979,6 +4219,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (inlineDirectiveSection?.trimmed) {
         inlineDirectiveDiagnostics.push('trimmed_to_reservation');
       }
+      const continuityBudget = Math.max(96, Math.min(12000, Math.floor(maxInputTokens * 0.12)));
 
       const promptSegments: PromptSegment[] = [
         {
@@ -3995,6 +4236,15 @@ export default class LoreBookConverterPlugin extends Plugin {
           label: 'Chapter Memory',
           content: chapterMemoryMarkdown,
           reservedTokens: Math.max(0, Math.floor(Math.max(0, availableForContext) * 0.3)),
+          placement: 'pre_response',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        {
+          key: 'continuity_state',
+          label: 'Continuity State',
+          content: continuityMarkdown,
+          reservedTokens: continuityBudget,
           placement: 'pre_response',
           trimMode: 'head',
           minTokens: 0
@@ -4047,6 +4297,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           'tool_retrieval_context',
           'lorebook_context',
           'chapter_memory_context',
+          'continuity_state',
           'pre_response_steering',
           'pre_history_steering',
           'story_window'
@@ -4055,11 +4306,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       const promptSegmentsByKey = new Map(overflowResult.segments.map(segment => [segment.key, segment]));
       const preHistorySteeringForPrompt = promptSegmentsByKey.get('pre_history_steering')?.content ?? '';
       const chapterMemoryForPrompt = promptSegmentsByKey.get('chapter_memory_context')?.content ?? '';
+      const continuityForPrompt = promptSegmentsByKey.get('continuity_state')?.content ?? '';
       const toolContextForPrompt = promptSegmentsByKey.get('tool_retrieval_context')?.content ?? '';
       const loreContextForPrompt = promptSegmentsByKey.get('lorebook_context')?.content ?? '';
       const preResponseSteeringForPrompt = promptSegmentsByKey.get('pre_response_steering')?.content ?? '';
       const storyWindowForPrompt = promptSegmentsByKey.get('story_window')?.content ?? '';
       const chapterMemoryPromptTokens = estimateTextTokens(chapterMemoryForPrompt);
+      const continuityPromptTokens = estimateTextTokens(continuityForPrompt);
       const toolContextPromptTokens = estimateTextTokens(toolContextForPrompt);
       const loreContextPromptTokens = estimateTextTokens(loreContextForPrompt);
       const storyPromptTokens = estimateTextTokens(storyWindowForPrompt);
@@ -4068,6 +4321,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       const steeringNonSystemPromptTokens = steeringPreHistoryPromptTokens + steeringPreResponsePromptTokens;
       const contextUsedPromptTokens = loreContextPromptTokens
         + chapterMemoryPromptTokens
+        + continuityPromptTokens
         + toolContextPromptTokens
         + steeringNonSystemPromptTokens;
       remainingInputTokens = Math.max(
@@ -4084,6 +4338,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         `local_window: ~${storyPromptTokens} tokens`,
         `inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`,
         `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryPromptTokens} tokens`,
+        `continuity_state: threads ${continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads.length : 0}, open_loops ${continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops.length : 0}, canon_deltas ${continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas.length : 0}, ~${continuityPromptTokens} tokens`,
         ...chapterMemoryLayerTrace,
         `graph_memory(world_info): ${totalWorldInfo} entries, ~${loreContextPromptTokens} tokens`,
         `fallback_entries: ${totalRag} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
@@ -4128,6 +4383,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
           `inline directives: ${resolvedInlineDirectiveItems.join(' | ') || '(none)'}`,
           `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
+          `continuity: threads ${(continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads : []).join(' | ') || '(none)'} | open loops ${(continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops : []).join(' | ') || '(none)'} | canon deltas ${(continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas : []).join(' | ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
           `fallback: ${ragDetails.join(', ') || '(none)'}`,
           `tool_hooks: ${toolContextItems.join(', ') || '(none)'}`,
@@ -4150,6 +4406,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         '<story_chapter_memory>',
         chapterMemoryForPrompt || '[No prior chapter memory available.]',
         '</story_chapter_memory>',
+        '',
+        '<continuity_state>',
+        continuityForPrompt || '[No continuity state provided.]',
+        '</continuity_state>',
         '',
         `<lorevault_scopes>${selectedScopeLabels.join(', ')}</lorevault_scopes>`,
         '',
@@ -4224,7 +4484,12 @@ export default class LoreBookConverterPlugin extends Plugin {
           worldInfoCount: totalWorldInfo,
           ragCount: totalRag,
           usedChapterMemoryContext: chapterMemoryItems.length > 0,
-          inlineDirectiveCount: resolvedInlineDirectiveItems.length
+          inlineDirectiveCount: resolvedInlineDirectiveItems.length,
+          continuityItemCount: (
+            (continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads.length : 0)
+            + (continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops.length : 0)
+            + (continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas.length : 0)
+          )
         });
       }
 

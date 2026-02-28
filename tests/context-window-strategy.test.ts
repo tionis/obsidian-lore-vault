@@ -55,3 +55,26 @@ test('extractAdaptiveStoryWindow grows with larger budgets', () => {
   assert.ok(large.length > small.length);
   assert.ok(large.length <= 9000 * 4);
 });
+
+test('extractAdaptiveQueryWindow clamps large-context budgets deterministically', () => {
+  const source = `${makeText(260000, 'q')}TAIL-SENTINEL`;
+  const windowed = extractAdaptiveQueryWindow(source, 200000);
+
+  assert.ok(windowed.endsWith('TAIL-SENTINEL'));
+  assert.ok(windowed.length <= 180000);
+  assert.ok(windowed.length >= 170000);
+});
+
+test('extractAdaptiveStoryWindow scales for 200k-context models with bounded cap', () => {
+  const opening = 'OPENING-SENTINEL\n' + makeText(420000, 'a');
+  const middle = '\n\n## Midpoint\n\n' + makeText(420000, 'm');
+  const tail = '\n\nTAIL-SENTINEL\n' + makeText(420000, 'z');
+  const source = `${opening}${middle}${tail}`;
+
+  const windowed = extractAdaptiveStoryWindow(source, 200000);
+
+  assert.ok(windowed.includes('OPENING-SENTINEL'));
+  assert.ok(windowed.includes('TAIL-SENTINEL'));
+  assert.ok(windowed.length <= 900000);
+  assert.ok(windowed.length >= 500000);
+});

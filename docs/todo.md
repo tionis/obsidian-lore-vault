@@ -212,13 +212,13 @@ Reference design: `docs/planning.md`.
   - [x] rendered layer order
   - [x] token usage per layer
   - [x] trims/compressions and rationale
-- [ ] Add continuity-state tracking primitives for long-form drafting:
-  - [ ] active plot threads
-  - [ ] unresolved commitments/open loops
-  - [ ] recent canon/fact deltas
-  - [ ] selectable inclusion in generation context
+- [x] Add continuity-state tracking primitives for long-form drafting:
+  - [x] active plot threads
+  - [x] unresolved commitments/open loops
+  - [x] recent canon/fact deltas
+  - [x] selectable inclusion in generation context
 - [x] Add tests for deterministic layer ordering, budget partitioning, and overflow behavior.
-- [ ] Add fixtures covering large-context models (for example `200k`) to verify scaling logic.
+- [x] Add fixtures/tests covering large-context models (for example `200k`) to verify scaling logic.
 - [ ] Add tests for inline directive parsing/exclusion/ordering and inspector visibility.
   - [x] parser/exclusion/ordering coverage
   - [ ] dedicated UI inspector rendering assertions

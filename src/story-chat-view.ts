@@ -101,6 +101,14 @@ export class StoryChatView extends ItemView {
   private pinnedInstructions = '';
   private storyNotes = '';
   private sceneIntent = '';
+  private continuityPlotThreads: string[] = [];
+  private continuityOpenLoops: string[] = [];
+  private continuityCanonDeltas: string[] = [];
+  private continuitySelection = {
+    includePlotThreads: true,
+    includeOpenLoops: true,
+    includeCanonDeltas: true
+  };
   private noteContextRefs: string[] = [];
   private messages: ConversationMessage[] = [];
   private conversationSummaries: ConversationSummary[] = [];
@@ -214,6 +222,17 @@ export class StoryChatView extends ItemView {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
+  private parseMultilineList(value: string): string[] {
+    return value
+      .split('\n')
+      .map(item => item.trim())
+      .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+  }
+
+  private formatMultilineList(values: string[]): string {
+    return values.join('\n');
+  }
+
   private cloneContextMeta(meta: StoryChatContextMeta | undefined): StoryChatContextMeta | undefined {
     return cloneStoryChatContextMeta(meta);
   }
@@ -285,6 +304,10 @@ export class StoryChatView extends ItemView {
     this.pinnedInstructions = document.pinnedInstructions;
     this.storyNotes = document.storyNotes;
     this.sceneIntent = document.sceneIntent;
+    this.continuityPlotThreads = [...document.continuityPlotThreads];
+    this.continuityOpenLoops = [...document.continuityOpenLoops];
+    this.continuityCanonDeltas = [...document.continuityCanonDeltas];
+    this.continuitySelection = { ...document.continuitySelection };
     this.noteContextRefs = [...document.noteContextRefs];
     this.messages = document.messages.map(message => this.cloneMessage(message));
     this.editingMessageId = null;
@@ -305,6 +328,10 @@ export class StoryChatView extends ItemView {
       pinnedInstructions: this.pinnedInstructions,
       storyNotes: this.storyNotes,
       sceneIntent: this.sceneIntent,
+      continuityPlotThreads: [...this.continuityPlotThreads],
+      continuityOpenLoops: [...this.continuityOpenLoops],
+      continuityCanonDeltas: [...this.continuityCanonDeltas],
+      continuitySelection: { ...this.continuitySelection },
       noteContextRefs: [...this.noteContextRefs],
       messages: this.messages.map(message => this.cloneMessage(message))
     };
@@ -407,6 +434,10 @@ export class StoryChatView extends ItemView {
       pinnedInstructions: this.pinnedInstructions,
       storyNotes: this.storyNotes,
       sceneIntent: this.sceneIntent,
+      continuityPlotThreads: [...this.continuityPlotThreads],
+      continuityOpenLoops: [...this.continuityOpenLoops],
+      continuityCanonDeltas: [...this.continuityCanonDeltas],
+      continuitySelection: { ...this.continuitySelection },
       noteContextRefs: [...this.noteContextRefs],
       messages: sourceMessages
     };
@@ -670,6 +701,67 @@ export class StoryChatView extends ItemView {
       this.scheduleConversationSave();
     });
 
+    const continuitySection = controls.createDiv({ cls: 'lorevault-chat-manual' });
+    continuitySection.createEl('strong', { text: 'Continuity State' });
+
+    const continuityToggleRow = continuitySection.createDiv({ cls: 'lorevault-chat-scope-list' });
+    const plotToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
+    const plotToggle = plotToggleRow.createEl('input', { type: 'checkbox' });
+    plotToggle.checked = this.continuitySelection.includePlotThreads;
+    plotToggle.addEventListener('change', () => {
+      this.continuitySelection.includePlotThreads = plotToggle.checked;
+      this.scheduleConversationSave();
+    });
+    plotToggleRow.createEl('label', { text: 'Include Active Plot Threads' });
+
+    const openLoopToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
+    const openLoopToggle = openLoopToggleRow.createEl('input', { type: 'checkbox' });
+    openLoopToggle.checked = this.continuitySelection.includeOpenLoops;
+    openLoopToggle.addEventListener('change', () => {
+      this.continuitySelection.includeOpenLoops = openLoopToggle.checked;
+      this.scheduleConversationSave();
+    });
+    openLoopToggleRow.createEl('label', { text: 'Include Unresolved Commitments' });
+
+    const canonToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
+    const canonToggle = canonToggleRow.createEl('input', { type: 'checkbox' });
+    canonToggle.checked = this.continuitySelection.includeCanonDeltas;
+    canonToggle.addEventListener('change', () => {
+      this.continuitySelection.includeCanonDeltas = canonToggle.checked;
+      this.scheduleConversationSave();
+    });
+    canonToggleRow.createEl('label', { text: 'Include Recent Canon Deltas' });
+
+    const plotThreadsInput = continuitySection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    plotThreadsInput.placeholder = 'One active plot thread per line.';
+    plotThreadsInput.value = this.formatMultilineList(this.continuityPlotThreads);
+    plotThreadsInput.addEventListener('input', () => {
+      this.continuityPlotThreads = this.parseMultilineList(plotThreadsInput.value);
+      this.scheduleConversationSave();
+    });
+
+    const openLoopsInput = continuitySection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    openLoopsInput.placeholder = 'One unresolved commitment/open loop per line.';
+    openLoopsInput.value = this.formatMultilineList(this.continuityOpenLoops);
+    openLoopsInput.addEventListener('input', () => {
+      this.continuityOpenLoops = this.parseMultilineList(openLoopsInput.value);
+      this.scheduleConversationSave();
+    });
+
+    const canonDeltasInput = continuitySection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    canonDeltasInput.placeholder = 'One recent canon/fact delta per line.';
+    canonDeltasInput.value = this.formatMultilineList(this.continuityCanonDeltas);
+    canonDeltasInput.addEventListener('input', () => {
+      this.continuityCanonDeltas = this.parseMultilineList(canonDeltasInput.value);
+      this.scheduleConversationSave();
+    });
+
     this.renderSpecificNotesControls(controls);
   }
 
@@ -775,6 +867,18 @@ export class StoryChatView extends ItemView {
     });
     details.createEl('p', {
       text: `inline directives: ${(version.contextMeta.inlineDirectiveItems ?? []).join(' | ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `continuity: ${version.contextMeta.usedContinuityState ? 'on' : 'off'} | threads ${(version.contextMeta.continuityPlotThreads ?? []).length} | open loops ${(version.contextMeta.continuityOpenLoops ?? []).length} | canon deltas ${(version.contextMeta.continuityCanonDeltas ?? []).length}`
+    });
+    details.createEl('p', {
+      text: `continuity items: threads ${(version.contextMeta.continuityPlotThreads ?? []).join(' | ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `continuity items: open loops ${(version.contextMeta.continuityOpenLoops ?? []).join(' | ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `continuity items: canon deltas ${(version.contextMeta.continuityCanonDeltas ?? []).join(' | ') || '(none)'}`
     });
     if ((version.contextMeta.overflowTrace ?? []).length > 0) {
       details.createEl('p', {
@@ -1189,6 +1293,10 @@ export class StoryChatView extends ItemView {
         pinnedInstructions: this.pinnedInstructions,
         storyNotes: this.storyNotes,
         sceneIntent: this.sceneIntent,
+        continuityPlotThreads: [...this.continuityPlotThreads],
+        continuityOpenLoops: [...this.continuityOpenLoops],
+        continuityCanonDeltas: [...this.continuityCanonDeltas],
+        continuitySelection: { ...this.continuitySelection },
         noteContextRefs: this.noteContextRefs,
         history: this.buildHistoryForGeneration(targetAssistantMessage.id),
         onDelta: delta => {

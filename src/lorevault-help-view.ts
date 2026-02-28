@@ -166,12 +166,13 @@ export class LorevaultHelpView extends ItemView {
         'Directive hits are capped per turn and shown in generation/chat layer traces.',
         'Steering layer placement is configurable in settings (`system` vs `pre-history` vs `pre-response`).',
         'Continue Story also reads optional note frontmatter steering (`lvPinnedInstructions`, `lvStoryNotes`, `lvSceneIntent`).',
+        'Continue Story can also read continuity frontmatter lists/toggles (`lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`, and `lvInclude*` toggles).',
         'Writing Completion settings support reusable model presets for quick provider/model A/B testing.',
         'Optional Cost Tracking settings persist token/cost usage records for continuation, chat, and summary runs.',
         'Manager panel includes usage/cost rollups (session/day/project) with optional budget warnings.',
         'Use commands Export Usage Report (JSON/CSV) for deterministic report exports.',
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
-        'Story Chat supports per-chat scope selection, manual context, specific-note context lists, and steering text fields.',
+        'Story Chat supports per-chat scope selection, manual context, specific-note context lists, steering text fields, and continuity controls.',
         'Assistant turns expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.'
       ],
       actions: [

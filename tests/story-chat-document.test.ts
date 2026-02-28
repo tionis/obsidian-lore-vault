@@ -57,6 +57,14 @@ test('normalizeConversationDocument sanitizes malformed conversation payloads', 
   assert.equal(normalized.pinnedInstructions, '');
   assert.equal(normalized.storyNotes, '');
   assert.equal(normalized.sceneIntent, '');
+  assert.deepEqual(normalized.continuityPlotThreads, []);
+  assert.deepEqual(normalized.continuityOpenLoops, []);
+  assert.deepEqual(normalized.continuityCanonDeltas, []);
+  assert.deepEqual(normalized.continuitySelection, {
+    includePlotThreads: true,
+    includeOpenLoops: true,
+    includeCanonDeltas: true
+  });
   assert.equal(normalized.messages.length, 2);
   assert.equal(normalized.messages[0].role, 'assistant');
   assert.equal(normalized.messages[0].versions[0].content, '42');
@@ -80,6 +88,14 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
     pinnedInstructions: 'Keep the narration in close third person.',
     storyNotes: 'Avoid sudden POV shifts.',
     sceneIntent: 'Escalate conflict before chapter close.',
+    continuityPlotThreads: ['Recover the relic', 'Secure alliance with House Ryn'],
+    continuityOpenLoops: ['Who leaked the route?'],
+    continuityCanonDeltas: ['Aerin learned void-step'],
+    continuitySelection: {
+      includePlotThreads: true,
+      includeOpenLoops: true,
+      includeCanonDeltas: true
+    },
     noteContextRefs: ['Characters/Alice'],
     messages: [
       {
@@ -111,11 +127,20 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
               usedSpecificNotesContext: true,
               usedChapterMemoryContext: false,
               usedInlineDirectives: false,
+              usedContinuityState: true,
               scopes: ['universe/core'],
               specificNotePaths: ['Characters/Alice.md'],
               unresolvedNoteRefs: [],
               chapterMemoryItems: [],
               inlineDirectiveItems: [],
+              continuityPlotThreads: ['Recover the relic'],
+              continuityOpenLoops: ['Who leaked the route?'],
+              continuityCanonDeltas: ['Aerin learned void-step'],
+              continuitySelection: {
+                includePlotThreads: true,
+                includeOpenLoops: true,
+                includeCanonDeltas: true
+              },
               layerTrace: [],
               layerUsage: [
                 {

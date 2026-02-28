@@ -161,6 +161,14 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       pinnedInstructions: '',
       storyNotes: '',
       sceneIntent: '',
+      continuityPlotThreads: [],
+      continuityOpenLoops: [],
+      continuityCanonDeltas: [],
+      continuitySelection: {
+        includePlotThreads: true,
+        includeOpenLoops: true,
+        includeCanonDeltas: true
+      },
       noteContextRefs: [],
       messages: [],
       forkSnapshots: [],

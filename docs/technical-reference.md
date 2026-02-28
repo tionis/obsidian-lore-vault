@@ -327,6 +327,7 @@ Stored structure:
 
 - conversation metadata
 - per-conversation steering fields (pinned instructions, story notes, scene intent)
+- per-conversation continuity state (plot threads, open loops, canon deltas, inclusion toggles)
 - per-turn messages
 - message versions with active version selector
 - optional context inspector metadata on assistant versions

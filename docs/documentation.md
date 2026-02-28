@@ -333,6 +333,14 @@ Optional frontmatter steering keys for editor continuation:
 - `lvPinnedInstructions` (or `lvPinned` / `pinnedInstructions`)
 - `lvStoryNotes` (or `lvStoryNote` / `storyNotes` / `authorNote`)
 - `lvSceneIntent` (or `sceneIntent` / `chapterIntent`)
+- continuity lists:
+  - `lvPlotThreads` (or `plotThreads` / `activePlotThreads`)
+  - `lvOpenLoops` (or `openLoops` / `unresolvedCommitments`)
+  - `lvCanonDeltas` (or `canonDeltas` / `recentCanonDeltas`)
+- continuity inclusion toggles:
+  - `lvIncludePlotThreads` (or `includePlotThreads`)
+  - `lvIncludeOpenLoops` (or `includeOpenLoops`)
+  - `lvIncludeCanonDeltas` (or `includeCanonDeltas`)
 
 Long-form story metadata (new):
 
@@ -694,6 +702,11 @@ Current behavior:
   - pinned instructions text
   - story notes text
   - scene intent text
+  - continuity state:
+    - active plot threads (list)
+    - unresolved commitments/open loops (list)
+    - recent canon deltas (list)
+    - per-group inclusion toggles
   - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
 - supports per-message actions:
@@ -710,6 +723,7 @@ Turn context assembly:
 - optional lorebook retrieval for selected scopes
 - optional tool-retrieved context layer (when enabled and budget allows)
 - explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
+- optional continuity-state layer (plot threads, open loops, canon deltas) with selectable inclusion
 - optional manual context block
 - optional specific-note context blocks resolved from note references
 - recent chat history window
@@ -718,6 +732,7 @@ Turn context assembly:
   - resolved specific note paths
   - unresolved note references
   - chapter memory summaries used for the turn
+  - continuity state items included for the turn
   - per-layer context trace (`steering(system/pre_history/pre_response)`, `local_window`, `inline_directives`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_entries`, `tool_hooks`)
   - per-layer usage table (`reserved`, `used`, `headroom`, trim flag/reason)
   - overflow trace entries when staged prompt trimming occurs

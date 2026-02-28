@@ -1,4 +1,4 @@
-import { StoryChatContextMeta } from './models';
+import { ContinuitySelection, StoryChatContextMeta } from './models';
 
 export const CHAT_SCHEMA_VERSION = 1;
 export const CHAT_CODE_BLOCK_LANGUAGE = 'lorevault-chat';
@@ -30,6 +30,10 @@ export interface ConversationDocument {
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
+  continuityPlotThreads: string[];
+  continuityOpenLoops: string[];
+  continuityCanonDeltas: string[];
+  continuitySelection: ContinuitySelection;
   noteContextRefs: string[];
   messages: ConversationMessage[];
 }
@@ -45,6 +49,23 @@ function dedupeStrings(values: string[]): string[] {
   return values.filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
 }
 
+function normalizeContinuitySelection(raw: unknown): ContinuitySelection {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      includePlotThreads: true,
+      includeOpenLoops: true,
+      includeCanonDeltas: true
+    };
+  }
+
+  const value = raw as Record<string, unknown>;
+  return {
+    includePlotThreads: value.includePlotThreads !== false,
+    includeOpenLoops: value.includeOpenLoops !== false,
+    includeCanonDeltas: value.includeCanonDeltas !== false
+  };
+}
+
 export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined): StoryChatContextMeta | undefined {
   if (!meta) {
     return undefined;
@@ -57,6 +78,10 @@ export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined
     unresolvedNoteRefs: [...meta.unresolvedNoteRefs],
     chapterMemoryItems: [...(meta.chapterMemoryItems ?? [])],
     inlineDirectiveItems: [...(meta.inlineDirectiveItems ?? [])],
+    continuityPlotThreads: [...(meta.continuityPlotThreads ?? [])],
+    continuityOpenLoops: [...(meta.continuityOpenLoops ?? [])],
+    continuityCanonDeltas: [...(meta.continuityCanonDeltas ?? [])],
+    continuitySelection: meta.continuitySelection ? { ...meta.continuitySelection } : undefined,
     layerTrace: [...(meta.layerTrace ?? [])],
     layerUsage: (meta.layerUsage ?? []).map(layer => ({ ...layer })),
     overflowTrace: [...(meta.overflowTrace ?? [])],
@@ -77,6 +102,7 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     usedSpecificNotesContext: Boolean(meta.usedSpecificNotesContext),
     usedChapterMemoryContext: Boolean(meta.usedChapterMemoryContext),
     usedInlineDirectives: Boolean(meta.usedInlineDirectives),
+    usedContinuityState: Boolean(meta.usedContinuityState),
     scopes: Array.isArray(meta.scopes)
       ? meta.scopes.map(value => String(value ?? ''))
       : [],
@@ -92,6 +118,16 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     inlineDirectiveItems: Array.isArray(meta.inlineDirectiveItems)
       ? meta.inlineDirectiveItems.map(value => String(value ?? ''))
       : [],
+    continuityPlotThreads: Array.isArray(meta.continuityPlotThreads)
+      ? meta.continuityPlotThreads.map(value => String(value ?? ''))
+      : [],
+    continuityOpenLoops: Array.isArray(meta.continuityOpenLoops)
+      ? meta.continuityOpenLoops.map(value => String(value ?? ''))
+      : [],
+    continuityCanonDeltas: Array.isArray(meta.continuityCanonDeltas)
+      ? meta.continuityCanonDeltas.map(value => String(value ?? ''))
+      : [],
+    continuitySelection: normalizeContinuitySelection(meta.continuitySelection),
     layerTrace: Array.isArray(meta.layerTrace)
       ? meta.layerTrace.map(value => String(value ?? ''))
       : [],
@@ -209,6 +245,15 @@ export function normalizeConversationDocument(
   const noteContextRefs = Array.isArray(payload.noteContextRefs)
     ? dedupeStrings(payload.noteContextRefs.map(value => String(value ?? '').trim()))
     : [];
+  const continuityPlotThreads = Array.isArray(payload.continuityPlotThreads)
+    ? dedupeStrings(payload.continuityPlotThreads.map(value => String(value ?? '').trim()))
+    : [];
+  const continuityOpenLoops = Array.isArray(payload.continuityOpenLoops)
+    ? dedupeStrings(payload.continuityOpenLoops.map(value => String(value ?? '').trim()))
+    : [];
+  const continuityCanonDeltas = Array.isArray(payload.continuityCanonDeltas)
+    ? dedupeStrings(payload.continuityCanonDeltas.map(value => String(value ?? '').trim()))
+    : [];
 
   return {
     schemaVersion: Number.isFinite(payload.schemaVersion) ? Math.floor(Number(payload.schemaVersion)) : CHAT_SCHEMA_VERSION,
@@ -222,6 +267,10 @@ export function normalizeConversationDocument(
     pinnedInstructions: typeof payload.pinnedInstructions === 'string' ? payload.pinnedInstructions : '',
     storyNotes: typeof payload.storyNotes === 'string' ? payload.storyNotes : '',
     sceneIntent: typeof payload.sceneIntent === 'string' ? payload.sceneIntent : '',
+    continuityPlotThreads,
+    continuityOpenLoops,
+    continuityCanonDeltas,
+    continuitySelection: normalizeContinuitySelection(payload.continuitySelection),
     noteContextRefs,
     messages
   };

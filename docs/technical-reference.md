@@ -297,7 +297,14 @@ Settings contract (`ConverterSettings.textCommands`):
 - `defaultIncludeLorebookContext`
 - `maxContextTokens`
 - `systemPrompt`
-- `prompts[]` (id/name/prompt/includeLorebookContext)
+- `promptsFolder` (markdown prompt-note directory)
+
+Prompt note frontmatter contract (per note in `promptsFolder`):
+
+- `promptKind: text_command` (or `textcommand`)
+- `title`/`name` (optional display name)
+- `id` (optional stable template id)
+- `includeLorebookContext: true|false` (default from settings)
 
 ## Story Chat Persistence
 

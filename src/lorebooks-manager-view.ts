@@ -72,9 +72,9 @@ export class LorebooksManagerView extends ItemView {
     const refreshButton = toolbar.createEl('button', { text: 'Refresh' });
     refreshButton.addEventListener('click', () => this.render());
 
-    const routingButton = toolbar.createEl('button', { text: 'Open Routing Debug' });
+    const routingButton = toolbar.createEl('button', { text: 'Open Lorebook Auditor' });
     routingButton.addEventListener('click', () => {
-      void this.plugin.openRoutingDebugView();
+      void this.plugin.openLorebookAuditorView();
     });
 
     const querySimulationButton = toolbar.createEl('button', { text: 'Open Query Simulation' });
@@ -119,9 +119,9 @@ export class LorebooksManagerView extends ItemView {
       }
     });
 
-    const inspectButton = actions.createEl('button', { text: 'Inspect Routing' });
+    const inspectButton = actions.createEl('button', { text: 'Open Auditor' });
     inspectButton.addEventListener('click', () => {
-      void this.plugin.openRoutingDebugView(summary.scope);
+      void this.plugin.openLorebookAuditorView(summary.scope);
     });
   }
 

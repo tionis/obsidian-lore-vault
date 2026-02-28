@@ -12,30 +12,6 @@ function formatScopeLabel(scope: string): string {
   return scope || '(all)';
 }
 
-function formatRouteBadge(includeWorldInfo: boolean, includeRag: boolean): string {
-  if (includeWorldInfo) {
-    return includeRag ? 'entry (+projection)' : 'entry';
-  }
-  return '-';
-}
-
-function formatReason(reason: string): string {
-  switch (reason) {
-    case 'included':
-      return 'included';
-    case 'excluded_by_frontmatter':
-      return 'excluded: frontmatter exclude';
-    case 'scope_mismatch':
-      return 'excluded: scope mismatch';
-    case 'untagged_excluded':
-      return 'excluded: untagged note';
-    case 'retrieval_disabled':
-      return 'excluded: retrieval disabled';
-    default:
-      return reason;
-  }
-}
-
 function formatTriggerMode(entry: {
   constant: boolean;
   vectorized: boolean;
@@ -89,6 +65,7 @@ function computeBodyLiftCandidateContent(bodyText: string): string {
 export class LorebooksRoutingDebugView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedScope: string | null = null;
+  private selectedKeywordPaths = new Set<string>();
   private keywordGenerationPaths = new Set<string>();
   private renderVersion = 0;
 
@@ -102,7 +79,7 @@ export class LorebooksRoutingDebugView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'LoreVault Routing Debug';
+    return 'LoreVault Lorebook Auditor';
   }
 
   getIcon(): string {
@@ -296,32 +273,6 @@ export class LorebooksRoutingDebugView extends ItemView {
     }
   }
 
-  private renderRoutingTable(container: HTMLElement, summary: ScopeSummary): void {
-    const section = container.createDiv({ cls: 'lorevault-routing-section' });
-    section.createEl('h3', { text: 'Scope Routing Decisions' });
-
-    const tableWrap = section.createDiv({ cls: 'lorevault-manager-table-wrap' });
-    const table = tableWrap.createEl('table', { cls: 'lorevault-manager-table' });
-    const headRow = table.createEl('thead').createEl('tr');
-    headRow.createEl('th', { text: 'Note' });
-    headRow.createEl('th', { text: 'Decision' });
-    headRow.createEl('th', { text: 'Route' });
-    headRow.createEl('th', { text: 'Retrieval' });
-    headRow.createEl('th', { text: 'Keyword Count' });
-    headRow.createEl('th', { text: 'Scopes' });
-
-    const tbody = table.createEl('tbody');
-    for (const note of summary.notes) {
-      const row = tbody.createEl('tr');
-      row.createEl('td', { text: note.path });
-      row.createEl('td', { text: formatReason(note.reason) });
-      row.createEl('td', { text: formatRouteBadge(note.includeWorldInfo, note.includeRag) });
-      row.createEl('td', { text: note.retrievalMode });
-      row.createEl('td', { text: note.hasKeywords ? `${note.keywordCount}` : '0' });
-      row.createEl('td', { text: note.scopes.join(', ') || '-' });
-    }
-  }
-
   private async handleGenerateKeywords(path: string): Promise<void> {
     if (!path || this.keywordGenerationPaths.has(path)) {
       return;
@@ -332,10 +283,37 @@ export class LorebooksRoutingDebugView extends ItemView {
       await this.plugin.generateKeywordsForNotePath(path);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Keyword generation from routing debug failed:', error);
+      console.error('Keyword generation from lorebook auditor failed:', error);
       new Notice(`Keyword generation failed: ${message}`);
     } finally {
       this.keywordGenerationPaths.delete(path);
+      void this.render();
+    }
+  }
+
+  private async handleGenerateKeywordsBulk(paths: string[]): Promise<void> {
+    const uniquePaths = [...new Set(paths.map(path => path.trim()).filter(Boolean))];
+    if (uniquePaths.length === 0) {
+      return;
+    }
+
+    for (const path of uniquePaths) {
+      this.keywordGenerationPaths.add(path);
+    }
+
+    try {
+      await this.plugin.generateKeywordsForNotePaths(uniquePaths);
+      for (const path of uniquePaths) {
+        this.selectedKeywordPaths.delete(path);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Bulk keyword generation failed:', error);
+      new Notice(`Bulk keyword generation failed: ${message}`);
+    } finally {
+      for (const path of uniquePaths) {
+        this.keywordGenerationPaths.delete(path);
+      }
       void this.render();
     }
   }
@@ -371,9 +349,43 @@ export class LorebooksRoutingDebugView extends ItemView {
       text: 'Use this to spot missing keywords, duplicate-like notes, and thin content. Generate keyword suggestions directly for missing-keyword entries.'
     });
 
+    const actionablePaths = missing.map(row => row.path).filter(Boolean);
+    const validSelectedPaths = [...this.selectedKeywordPaths]
+      .filter(path => actionablePaths.includes(path));
+    this.selectedKeywordPaths = new Set(validSelectedPaths);
+
+    const controls = section.createDiv({ cls: 'lorevault-routing-query-controls' });
+    const bulkRunning = this.keywordGenerationPaths.size > 0;
+    const selectAll = controls.createEl('button', {
+      text: `Select Missing (${actionablePaths.length})`
+    });
+    selectAll.disabled = actionablePaths.length === 0 || bulkRunning;
+    selectAll.addEventListener('click', () => {
+      this.selectedKeywordPaths = new Set(actionablePaths);
+      void this.render();
+    });
+
+    const clearSelection = controls.createEl('button', { text: 'Clear Selection' });
+    clearSelection.disabled = this.selectedKeywordPaths.size === 0 || bulkRunning;
+    clearSelection.addEventListener('click', () => {
+      this.selectedKeywordPaths.clear();
+      void this.render();
+    });
+
+    const generateSelected = controls.createEl('button', {
+      text: bulkRunning
+        ? `Generating Keywords (${this.keywordGenerationPaths.size} Running)`
+        : `Generate Keywords (${this.selectedKeywordPaths.size} Selected)`
+    });
+    generateSelected.disabled = this.selectedKeywordPaths.size === 0 || bulkRunning;
+    generateSelected.addEventListener('click', () => {
+      void this.handleGenerateKeywordsBulk([...this.selectedKeywordPaths]);
+    });
+
     const tableWrap = section.createDiv({ cls: 'lorevault-manager-table-wrap' });
     const table = tableWrap.createEl('table', { cls: 'lorevault-manager-table' });
     const headRow = table.createEl('thead').createEl('tr');
+    headRow.createEl('th', { text: 'Select' });
     headRow.createEl('th', { text: 'Entry' });
     headRow.createEl('th', { text: 'Risk' });
     headRow.createEl('th', { text: 'Keywords' });
@@ -385,6 +397,23 @@ export class LorebooksRoutingDebugView extends ItemView {
     const visibleRows = rows.slice(0, 150);
     for (const row of visibleRows) {
       const tr = tbody.createEl('tr');
+      const selectCell = tr.createEl('td');
+      if (row.canGenerateKeywords && row.path) {
+        const checkbox = selectCell.createEl('input', {
+          type: 'checkbox'
+        });
+        checkbox.checked = this.selectedKeywordPaths.has(row.path);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            this.selectedKeywordPaths.add(row.path);
+          } else {
+            this.selectedKeywordPaths.delete(row.path);
+          }
+          void this.render();
+        });
+      } else {
+        selectCell.setText('-');
+      }
       tr.createEl('td', { text: row.path ? `${row.title} (${row.path})` : row.title });
       tr.createEl('td', { text: `${row.riskLevel} (${row.riskScore})` });
       tr.createEl('td', { text: `${row.keywordCount}` });
@@ -408,7 +437,7 @@ export class LorebooksRoutingDebugView extends ItemView {
         const generateButton = actionsCell.createEl('button', {
           text: running ? 'Generating…' : 'Generate Keywords'
         });
-        generateButton.disabled = running;
+        generateButton.disabled = running || bulkRunning;
         generateButton.addEventListener('click', () => {
           void this.handleGenerateKeywords(row.path);
         });
@@ -425,7 +454,7 @@ export class LorebooksRoutingDebugView extends ItemView {
     const titleRow = contentEl.createDiv({ cls: 'lorevault-routing-title-row' });
     const icon = titleRow.createSpan({ cls: 'lorevault-routing-icon' });
     setIcon(icon, 'binary');
-    titleRow.createEl('h2', { text: 'LoreVault Routing Debug' });
+    titleRow.createEl('h2', { text: 'LoreVault Lorebook Auditor' });
 
     const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
     const summaries = buildScopeSummaries(notes, this.plugin.settings);
@@ -461,6 +490,5 @@ export class LorebooksRoutingDebugView extends ItemView {
       this.renderQualityAudit(contentEl, selectedSummary, pack);
       this.renderLorebookContents(contentEl, pack);
     }
-    this.renderRoutingTable(contentEl, selectedSummary);
   }
 }

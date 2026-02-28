@@ -298,7 +298,7 @@ export interface ConverterSettings {
     defaultIncludeLorebookContext: boolean;
     maxContextTokens: number;
     systemPrompt: string;
-    prompts: TextCommandPromptTemplate[];
+    promptsFolder: string;
   };
 }
 
@@ -412,6 +412,6 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     defaultIncludeLorebookContext: false,
     maxContextTokens: 1400,
     systemPrompt: 'You are a precise editing assistant for markdown writing. Apply the user instruction to the provided text and return only the transformed text.',
-    prompts: cloneDefaultTextCommandPromptTemplates()
+    promptsFolder: 'LoreVault/prompts/text-commands'
   }
 };

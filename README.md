@@ -19,7 +19,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for wri
 - Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
 - Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
-- Dedicated routing debug panel for inclusion/routing diagnostics
+- Dedicated lorebook auditor panel for user-facing quality checks
 - Dedicated query simulation panel for multi-scope retrieval simulation
 - Embedded user help panel (`Open LoreVault Help`)
 - Frontmatter retrieval mode (`auto|world_info|rag|both|none`, with `none` as hard exclusion)
@@ -187,22 +187,21 @@ Manager features:
 - generation monitor (running state, active scopes, token budget, selected context items, output progress)
 - usage and cost monitor (session/day/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
 - `Build/Export` action per scope
-- `Inspect Routing` action per scope
-- toolbar shortcuts to open routing and query simulation diagnostics
+- `Open Auditor` action per scope
+- toolbar shortcuts to open the lorebook auditor and query simulation diagnostics
 
-## Routing Debug
+## Lorebook Auditor
 
-Use command `Open LoreVault Routing Debug` to open a dedicated diagnostics view.
+Use command `Open LoreVault Lorebook Auditor` to open a dedicated diagnostics view.
 
-Routing debug features:
+Lorebook auditor features:
 
 - scope selector
 - lorebook contents panel for `world_info` entries (keywords, trigger params, collapsible content)
-- note-level inclusion/exclusion reasons
-- retrieval mode and explicit keyword count
 - quality audit table (risk score + reasons) using missing-keyword/thin-content heuristics and embedding similarity where available
 - per-row actions for audit items (`Open` and `Generate Keywords` for missing-keyword notes)
-- detected scope tags per note
+- bulk keyword generation from selected missing-keyword entries
+- keyword generation always opens a review step before writing frontmatter
 
 ## Query Simulation
 
@@ -260,7 +259,7 @@ Editor context menu:
 Behavior:
 
 - opens a prompt modal with:
-  - prompt template selection from your stored collection
+  - prompt template selection from prompt-note files in your configured prompt folder
   - editable custom prompt text
   - per-run toggle for lorebook context injection
 - submits selected text + prompt (and optional lore context) to the configured completion model
@@ -274,7 +273,8 @@ Settings path: `Settings -> LoreVault -> Text Commands`
 - default lore-context toggle
 - context token budget
 - text-command system prompt
-- prompt collection JSON editor (`Save Collection` / `Load Defaults`)
+- prompt notes folder path
+- create default prompt notes action (creates markdown prompt templates with frontmatter)
 
 ## Auto Summary Commands (Phase 9)
 

@@ -5,16 +5,13 @@ import {
   Notice,
   PluginSettingTab,
   Setting,
-  TextAreaComponent,
   TextComponent,
   TFolder
 } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import {
-  cloneDefaultTextCommandPromptTemplates,
   CompletionPreset,
-  DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES,
-  TextCommandPromptTemplate
+  DEFAULT_SETTINGS
 } from './models';
 
 class FolderSuggestModal extends FuzzySuggestModal<string> {
@@ -242,66 +239,6 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
     return `preset-${slug || 'model'}-${Date.now().toString(36)}`;
-  }
-
-  private normalizeTextCommandPromptId(value: string, fallbackIndex: number): string {
-    const normalized = value
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    if (normalized) {
-      return normalized;
-    }
-    return `prompt-${fallbackIndex + 1}`;
-  }
-
-  private serializeTextCommandPrompts(prompts: TextCommandPromptTemplate[]): string {
-    const view = prompts.map(prompt => ({
-      id: prompt.id,
-      name: prompt.name,
-      includeLorebookContext: prompt.includeLorebookContext,
-      prompt: prompt.prompt
-    }));
-    return JSON.stringify(view, null, 2);
-  }
-
-  private parseTextCommandPromptsJson(rawJson: string): TextCommandPromptTemplate[] {
-    const parsed = JSON.parse(rawJson) as unknown;
-    if (!Array.isArray(parsed)) {
-      throw new Error('Prompt collection must be a JSON array.');
-    }
-
-    const prompts: TextCommandPromptTemplate[] = [];
-    for (let index = 0; index < parsed.length; index += 1) {
-      const candidate = parsed[index];
-      if (!candidate || typeof candidate !== 'object') {
-        continue;
-      }
-      const item = candidate as any;
-      const name = (item['name'] ?? '').toString().trim();
-      const prompt = (item['prompt'] ?? '').toString().trim();
-      if (!name || !prompt) {
-        continue;
-      }
-      const rawId = (item['id'] ?? '').toString();
-      const id = this.normalizeTextCommandPromptId(rawId || name, index);
-      prompts.push({
-        id,
-        name,
-        prompt,
-        includeLorebookContext: Boolean(item['includeLorebookContext'])
-      });
-    }
-
-    const deduped = prompts
-      .filter((prompt, index, array) => array.findIndex(item => item.id === prompt.id) === index)
-      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-    if (deduped.length === 0) {
-      throw new Error('Prompt collection is empty after validation.');
-    }
-    return deduped;
   }
 
   private snapshotCurrentCompletion(name: string, id?: string): CompletionPreset {
@@ -1032,46 +969,40 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.persistSettings();
         }));
 
-    let promptLibraryDraft = this.serializeTextCommandPrompts(this.plugin.settings.textCommands.prompts);
-    let promptLibraryInput: TextAreaComponent | null = null;
-    const promptLibrarySetting = new Setting(containerEl)
-      .setName('Text Command Prompt Collection (JSON)')
-      .setDesc('Stored in plugin settings/data. Edit JSON and save. Each item: id, name, prompt, includeLorebookContext.')
-      .addTextArea(text => {
-        promptLibraryInput = text;
-        text.inputEl.rows = 14;
-        text
-          .setValue(promptLibraryDraft)
-          .onChange(value => {
-            promptLibraryDraft = value;
-          });
-      });
-
-    promptLibrarySetting.addButton(button => button
-      .setButtonText('Save Collection')
-      .onClick(async () => {
-        try {
-          const parsed = this.parseTextCommandPromptsJson(promptLibraryDraft);
-          this.plugin.settings.textCommands.prompts = parsed;
+    new Setting(containerEl)
+      .setName('Text Command Prompt Notes Folder')
+      .setDesc('Prompt templates are markdown notes in this folder. Use frontmatter `promptKind: text_command` and `includeLorebookContext: true|false`.')
+      .addText(text => text
+        .setPlaceholder('LoreVault/prompts/text-commands')
+        .setValue(this.plugin.settings.textCommands.promptsFolder)
+        .onChange(async value => {
+          const normalized = this.normalizePathInput(value);
+          this.plugin.settings.textCommands.promptsFolder = normalized || DEFAULT_SETTINGS.textCommands.promptsFolder;
           await this.persistSettings();
-          new Notice(`Saved ${parsed.length} text command prompt template(s).`);
-          this.display();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          new Notice(`Prompt collection save failed: ${message}`);
-        }
-      }));
+        }))
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          this.openFolderPicker(path => {
+            this.plugin.settings.textCommands.promptsFolder = this.normalizePathInput(path) || DEFAULT_SETTINGS.textCommands.promptsFolder;
+            void this.persistSettings().then(() => this.display());
+          });
+        }));
 
-    promptLibrarySetting.addButton(button => button
-      .setButtonText('Load Defaults')
-      .setTooltip(`Load ${DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES.length} built-in prompt templates`)
-      .onClick(async () => {
-        this.plugin.settings.textCommands.prompts = cloneDefaultTextCommandPromptTemplates();
-        promptLibraryDraft = this.serializeTextCommandPrompts(this.plugin.settings.textCommands.prompts);
-        promptLibraryInput?.setValue(promptLibraryDraft);
-        await this.persistSettings();
-        new Notice('Loaded default text command prompt templates.');
-      }));
+    new Setting(containerEl)
+      .setName('Prompt Notes')
+      .setDesc('Create default prompt notes in the configured folder (existing files are not overwritten).')
+      .addButton(button => button
+        .setButtonText('Create Default Prompt Notes')
+        .onClick(async () => {
+          try {
+            const result = await this.plugin.populateDefaultTextCommandPromptNotes();
+            new Notice(`Prompt notes updated: ${result.created} created, ${result.skipped} skipped (${result.folder}).`);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to create prompt notes: ${message}`);
+          }
+        }));
 
     containerEl.createEl('h3', { text: 'Retrieval (Graph + Fallback Entries)' });
 

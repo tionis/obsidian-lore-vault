@@ -362,10 +362,10 @@ export class LorebooksQuerySimulationView extends ItemView {
       void this.render();
     });
 
-    const openRoutingButton = toolbar.createEl('button', { text: 'Open Routing Debug' });
+    const openRoutingButton = toolbar.createEl('button', { text: 'Open Lorebook Auditor' });
     openRoutingButton.addEventListener('click', () => {
       const scopes = [...this.selectedScopes];
-      void this.plugin.openRoutingDebugView(scopes.length === 1 ? scopes[0] : undefined);
+      void this.plugin.openLorebookAuditorView(scopes.length === 1 ? scopes[0] : undefined);
     });
   }
 

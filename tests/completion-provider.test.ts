@@ -210,3 +210,39 @@ test('requestStoryContinuation retries openrouter abort responses with provider 
     }
   );
 });
+
+test('requestStoryContinuation supports external abort signal', async () => {
+  ensureWindowShim();
+  const globalAny = globalThis as any;
+  const previousFetch = globalAny.fetch as FetchLike | undefined;
+  globalAny.fetch = async (_url: string, init?: { signal?: AbortSignal }) => {
+    return await new Promise((_resolve, reject) => {
+      const onAbort = () => {
+        const error = new Error('Aborted');
+        (error as any).name = 'AbortError';
+        reject(error);
+      };
+      if (init?.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      init?.signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  };
+
+  try {
+    const controller = new AbortController();
+    const requestPromise = requestStoryContinuation(createConfig(), {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      abortSignal: controller.signal
+    });
+    controller.abort();
+    await assert.rejects(
+      requestPromise,
+      /Completion request was aborted\./
+    );
+  } finally {
+    globalAny.fetch = previousFetch;
+  }
+});

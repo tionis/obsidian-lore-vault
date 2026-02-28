@@ -505,9 +505,14 @@ Commands:
 
 Shared panel inputs:
 
-- target folder (manual path or Browse picker)
-- default tags
-- lorebook name converted into a lorebook tag using configured `tagPrefix`
+- `Import SillyTavern Lorebook` and `Extract Wiki Pages from Story`:
+  - target folder (manual path or Browse picker)
+  - default tags
+  - lorebook name converted into a lorebook tag using configured `tagPrefix`
+- `Apply Story Delta to Existing Wiki`:
+  - lorebook scope selection list (add/remove scopes to consider for existing-page updates)
+  - `New Note Target Folder` (used only for new-note creation)
+  - default tags
 
 Implemented now:
 
@@ -549,9 +554,9 @@ Current merge policy (default):
 - story delta note matching order:
   - explicit/normalized `pageKey`
   - normalized `title`
-  - deterministic new-note creation in target folder
+  - deterministic new-note creation in `New Note Target Folder`
 - story delta can use inline markdown or load source markdown from a story note path
-- story delta supports optional scope-tag filter when selecting existing notes from target folder
+- story delta selects existing notes from one or more chosen lorebook scopes
 - story delta preview includes per-change dry-run diff snippets (`+`/`-` line summary + collapsed preview block)
 - story delta apply supports per-change approval checkboxes and `Apply Selected`
 - warns when scopes have no included notes or no entries in one section

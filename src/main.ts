@@ -1147,7 +1147,8 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   public async extractStorySteeringProposal(
     source: StorySteeringExtractionSource,
-    currentState: StorySteeringState
+    currentState: StorySteeringState,
+    abortSignal?: AbortSignal
   ): Promise<{
     proposal: StorySteeringState;
     notePath: string;
@@ -1219,6 +1220,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const rawResponse = await requestStoryContinuation(completion, {
       systemPrompt,
       userPrompt,
+      abortSignal,
       onUsage: usage => {
         usageReport = usage;
       }

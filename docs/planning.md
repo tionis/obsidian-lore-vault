@@ -358,11 +358,12 @@ Directive safety constraints:
 - directives must not leak into lore exports or wiki import/update extraction pipelines
 - directive count/tokens should be capped per turn to avoid prompt abuse/bloat
 
-Hashing migration direction (planned):
+Hashing migration direction (implemented):
 
-- short term: use vetted cross-platform sync hashing dependency for deterministic runtime IDs/cache keys
-- medium term: add gradual async WebCrypto migration (`sha256HexAsync`) where call sites are already async
-- long term: remove sync fallback once all hash-dependent pipelines are async-compatible and benchmarked
+- sync deterministic hashing remains available for internal deterministic helpers
+- async runtime hashing (`sha256HexAsync`) is WebCrypto-backed (`crypto.subtle`)
+- runtime hash-dependent pipelines have been migrated to async hashing call paths
+- async helper no longer silently falls back to sync hashing when WebCrypto is unavailable
 
 Inspector requirements for this phase:
 

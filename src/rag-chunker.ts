@@ -1,5 +1,5 @@
 import { ConverterSettings, RagChunk, RagDocument } from './models';
-import { sha256Hex } from './hash-utils';
+import { sha256HexAsync } from './hash-utils';
 
 interface SectionSlice {
   heading: string;
@@ -16,18 +16,17 @@ function normalizeBody(content: string): string {
   return content.replace(/\r\n/g, '\n').trim();
 }
 
-function createChunk(
+async function createChunk(
   doc: RagDocument,
   chunkIndex: number,
   heading: string,
   text: string,
   startOffset: number,
   endOffset: number
-): RagChunk {
+): Promise<RagChunk> {
   const normalizedText = text.trim();
-  const textHash = sha256Hex(normalizedText);
-  const chunkId = sha256Hex(`${doc.path}|${doc.uid}|${chunkIndex}|${textHash}`);
-
+  const textHash = await sha256HexAsync(normalizedText);
+  const chunkId = await sha256HexAsync(`${doc.path}|${doc.uid}|${chunkIndex}|${textHash}`);
   return {
     chunkId,
     docUid: doc.uid,
@@ -44,7 +43,7 @@ function createChunk(
   };
 }
 
-function splitLongText(
+async function splitLongText(
   doc: RagDocument,
   heading: string,
   text: string,
@@ -52,7 +51,7 @@ function splitLongText(
   maxChunkChars: number,
   overlapChars: number,
   nextChunkIndex: () => number
-): RagChunk[] {
+): Promise<RagChunk[]> {
   const chunks: RagChunk[] = [];
   const source = text.trim();
   if (!source) {
@@ -71,7 +70,7 @@ function splitLongText(
 
     const slice = source.slice(cursor, end).trim();
     if (slice.length > 0) {
-      const chunk = createChunk(
+      const chunk = await createChunk(
         doc,
         nextChunkIndex(),
         heading,
@@ -176,12 +175,12 @@ function mergeTinySections(sections: SectionSlice[], minChunkChars: number): Sec
   return merged;
 }
 
-function chunkDocumentBySections(
+async function chunkDocumentBySections(
   doc: RagDocument,
   minChunkChars: number,
   maxChunkChars: number,
   overlapChars: number
-): RagChunk[] {
+): Promise<RagChunk[]> {
   const normalized = normalizeBody(doc.content);
   if (!normalized) {
     return [];
@@ -204,7 +203,7 @@ function chunkDocumentBySections(
 
     if (sectionText.length <= maxChunkChars) {
       chunks.push(
-        createChunk(
+        await createChunk(
           doc,
           nextChunkIndex(),
           section.heading,
@@ -216,7 +215,7 @@ function chunkDocumentBySections(
       continue;
     }
 
-    chunks.push(...splitLongText(
+    chunks.push(...await splitLongText(
       doc,
       section.heading,
       sectionText,
@@ -230,11 +229,11 @@ function chunkDocumentBySections(
   return chunks;
 }
 
-function chunkDocumentByNote(
+async function chunkDocumentByNote(
   doc: RagDocument,
   maxChunkChars: number,
   overlapChars: number
-): RagChunk[] {
+): Promise<RagChunk[]> {
   const normalized = normalizeBody(doc.content);
   if (!normalized) {
     return [];
@@ -248,7 +247,7 @@ function chunkDocumentByNote(
   };
 
   if (normalized.length <= maxChunkChars) {
-    return [createChunk(doc, 0, '', normalized, 0, normalized.length)];
+    return [await createChunk(doc, 0, '', normalized, 0, normalized.length)];
   }
 
   return splitLongText(
@@ -262,10 +261,10 @@ function chunkDocumentByNote(
   );
 }
 
-export function chunkRagDocuments(
+export async function chunkRagDocuments(
   documents: RagDocument[],
   settings: ConverterSettings['embeddings']
-): RagChunk[] {
+): Promise<RagChunk[]> {
   const sortedDocs = [...documents].sort((a, b) => {
     return (
       a.path.localeCompare(b.path) ||
@@ -284,9 +283,9 @@ export function chunkRagDocuments(
 
     let docChunks: RagChunk[];
     if (settings.chunkingMode === 'note') {
-      docChunks = chunkDocumentByNote(doc, settings.maxChunkChars, settings.overlapChars);
+      docChunks = await chunkDocumentByNote(doc, settings.maxChunkChars, settings.overlapChars);
     } else if (settings.chunkingMode === 'section') {
-      docChunks = chunkDocumentBySections(
+      docChunks = await chunkDocumentBySections(
         doc,
         settings.minChunkChars,
         settings.maxChunkChars,
@@ -295,9 +294,9 @@ export function chunkRagDocuments(
     } else {
       // Auto mode: keep short/medium notes whole; split larger notes by sections.
       if (body.length <= Math.max(settings.maxChunkChars, settings.minChunkChars * 2)) {
-        docChunks = chunkDocumentByNote(doc, settings.maxChunkChars, settings.overlapChars);
+        docChunks = await chunkDocumentByNote(doc, settings.maxChunkChars, settings.overlapChars);
       } else {
-        docChunks = chunkDocumentBySections(
+        docChunks = await chunkDocumentBySections(
           doc,
           settings.minChunkChars,
           settings.maxChunkChars,

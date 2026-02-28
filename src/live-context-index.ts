@@ -5,7 +5,7 @@ import { ScopeContextPack, AssembledContext, ContextQueryOptions, SelectedWorldI
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopePack } from './scope-pack-builder';
 import { EmbeddingService } from './embedding-service';
-import { sha256Hex } from './hash-utils';
+import { sha256HexAsync } from './hash-utils';
 
 interface RefreshTask {
   changedPaths: Set<string>;
@@ -377,7 +377,7 @@ export class LiveContextIndex {
           continue;
         }
 
-        const textHash = sha256Hex(paragraph);
+        const textHash = await sha256HexAsync(paragraph);
         const chunkId = `worldinfo:${uid}:p:${index}:${textHash.slice(0, 12)}`;
         chunks.push({
           chunkId,

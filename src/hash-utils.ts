@@ -28,7 +28,7 @@ function getSubtleCrypto():
 export async function sha256HexAsync(value: string): Promise<string> {
   const subtle = getSubtleCrypto();
   if (!subtle) {
-    return sha256Hex(value);
+    throw new Error('WebCrypto subtle.digest is unavailable; use sha256Hex for sync hashing paths.');
   }
   const digest = await subtle.digest('SHA-256', textEncoder.encode(value));
   return bytesToHex(new Uint8Array(digest));

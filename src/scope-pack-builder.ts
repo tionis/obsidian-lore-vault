@@ -87,7 +87,7 @@ export async function buildScopePack(
   });
 
   stepper.setStatus(`Scope ${scope || '(all)'}: chunking RAG documents...`);
-  const ragChunks = chunkRagDocuments(ragDocuments, scopedSettings.embeddings);
+  const ragChunks = await chunkRagDocuments(ragDocuments, scopedSettings.embeddings);
   stepper.update();
 
   let ragChunkEmbeddings = [] as ScopePack['ragChunkEmbeddings'];

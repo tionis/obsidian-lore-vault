@@ -3434,6 +3434,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       <path fill="none" stroke="currentColor" stroke-width="8" stroke-linejoin="round" d="M14 18h72a8 8 0 0 1 8 8v40a8 8 0 0 1-8 8H44l-20 16v-16H14a8 8 0 0 1-8-8V26a8 8 0 0 1 8-8z"/>
       <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" d="M26 38h46M26 52h34"/>
     </svg>`);
+    addIcon('lorevault-steering', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="32" fill="none" stroke="currentColor" stroke-width="8"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M50 18v10M50 72v10M18 50h10M72 50h10"/>
+      <path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" d="M50 50l18-14"/>
+      <circle cx="50" cy="50" r="6" fill="currentColor"/>
+    </svg>`);
 
     // Add settings tab
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
@@ -3451,6 +3457,10 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.addRibbonIcon('lorevault-chat', 'Open Story Chat', () => {
       void this.openStoryChatView();
+    });
+
+    this.addRibbonIcon('lorevault-steering', 'Open Story Steering', () => {
+      void this.openStorySteeringView();
     });
 
     this.addRibbonIcon('help-circle', 'Open LoreVault Help', () => {

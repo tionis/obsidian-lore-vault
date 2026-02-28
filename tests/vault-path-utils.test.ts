@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureParentVaultFolderForFile } from '../src/vault-path-utils';
+import {
+  ensureParentVaultFolderForFile,
+  getVaultBasename,
+  getVaultDirname,
+  getVaultExtname,
+  joinVaultPath,
+  normalizeVaultPathForComparison
+} from '../src/vault-path-utils';
 
 function createMockApp(existing: string[] = []) {
   const folders = new Set(existing);
@@ -40,4 +47,12 @@ test('ensureParentVaultFolderForFile skips root-level files', async () => {
   await ensureParentVaultFolderForFile(app as any, 'world-info.json');
 
   assert.deepEqual(created, []);
+});
+
+test('vault path helper functions normalize deterministic path semantics', () => {
+  assert.equal(joinVaultPath('lorebooks/', '/sillytavern', 'pack.json'), 'lorebooks/sillytavern/pack.json');
+  assert.equal(getVaultBasename('lorebooks/sillytavern/pack.json'), 'pack.json');
+  assert.equal(getVaultDirname('lorebooks/sillytavern/pack.json'), 'lorebooks/sillytavern');
+  assert.equal(getVaultExtname('lorebooks/sillytavern/pack.json'), '.json');
+  assert.equal(normalizeVaultPathForComparison('lorebooks/./sillytavern/../sillytavern/pack.json'), 'lorebooks/sillytavern/pack.json');
 });

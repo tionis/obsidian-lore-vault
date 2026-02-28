@@ -4,7 +4,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for wri
 
 ## Current Status
 
-- Desktop-only plugin (`manifest.json` uses `isDesktopOnly: true`)
+- Desktop and mobile compatible (`manifest.json` uses `isDesktopOnly: false`)
 - Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
 - Canonical SQLite pack export per scope (`.db`)
 - Unified lore-entry model per scope (single canonical entry set)
@@ -27,9 +27,10 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for wri
 - Unicode-aware retrieval tokenization for non-English keywords/titles
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
 
-Mobile roadmap:
+Mobile rollout notes:
 
-- see `docs/mobile-compatibility-plan.md` for phased migration to mobile-safe IO/runtime paths.
+- export/cache paths must be vault-relative (absolute filesystem paths are rejected).
+- see `docs/mobile-compatibility-plan.md` for the compatibility matrix and QA checklist.
 
 ## Migration Notes
 

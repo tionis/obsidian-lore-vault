@@ -15,6 +15,7 @@ Reference design: `docs/planning.md`.
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
 - Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).
 - Phase 18 quality audit foundation is complete (risk scoring + missing-keyword actions + LLM keyword generation).
+- Phase 19 mobile compatibility migration is complete (adapter-based export/cache IO + vault-relative path contract + manifest flip).
 - Current priority is refining structured-merge conflict UX.
 
 ## Active Execution Order
@@ -172,17 +173,17 @@ Reference design: `docs/planning.md`.
 ## Phase 19: Mobile Compatibility
 
 - [x] Add mobile-safe storage adapter abstraction for vault-binary read/write (`src/vault-binary-io.ts`).
-- [ ] Migrate runtime filesystem paths away from Node `fs` in:
+- [x] Migrate runtime filesystem paths away from Node `fs` in:
   - [x] `src/lorebook-exporter.ts`
   - [x] `src/rag-exporter.ts`
   - [x] `src/sqlite-pack-exporter.ts`
   - [x] `src/sqlite-pack-reader.ts`
-  - [ ] `src/embedding-cache.ts`
+  - [x] `src/embedding-cache.ts`
   - [x] `src/sqlite-cli.ts` (removed; replaced by vault adapter IO utility)
-- [ ] Replace Node `path` usage in mobile-executed code paths with vault-path utilities.
+- [x] Replace Node `path` usage in mobile-executed code paths with vault-path utilities.
 - [x] Enforce vault-relative export paths in settings normalization/path resolution (absolute paths rejected).
-- [ ] Add mobile-focused regression tests for deterministic export paths and adapter IO.
-- [ ] Validate mobile QA matrix and flip `manifest.json isDesktopOnly` to `false`.
+- [x] Add mobile-focused regression tests for deterministic export paths and adapter IO.
+- [x] Validate mobile QA matrix and flip `manifest.json isDesktopOnly` to `false`.
 
 ## Default Decisions (2026-02-27)
 

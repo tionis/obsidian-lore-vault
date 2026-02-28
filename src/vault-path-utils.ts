@@ -2,6 +2,72 @@ export function normalizeVaultPath(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
+export function joinVaultPath(...parts: string[]): string {
+  const normalizedParts: string[] = [];
+  for (const part of parts) {
+    const normalized = normalizeVaultPath(part ?? '');
+    if (!normalized) {
+      continue;
+    }
+    for (const segment of normalized.split('/')) {
+      const trimmed = segment.trim();
+      if (!trimmed) {
+        continue;
+      }
+      normalizedParts.push(trimmed);
+    }
+  }
+  return normalizedParts.join('/');
+}
+
+export function getVaultBasename(value: string): string {
+  const normalized = normalizeVaultPath(value ?? '').replace(/\/+$/, '');
+  if (!normalized) {
+    return '';
+  }
+  const lastSlash = normalized.lastIndexOf('/');
+  return lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;
+}
+
+export function getVaultDirname(value: string): string {
+  const normalized = normalizeVaultPath(value ?? '').replace(/\/+$/, '');
+  if (!normalized) {
+    return '';
+  }
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash < 0) {
+    return '';
+  }
+  return normalized.slice(0, lastSlash);
+}
+
+export function getVaultExtname(value: string): string {
+  const basename = getVaultBasename(value);
+  const lastDot = basename.lastIndexOf('.');
+  if (lastDot <= 0) {
+    return '';
+  }
+  return basename.slice(lastDot);
+}
+
+export function normalizeVaultPathForComparison(value: string): string {
+  const normalized = normalizeVaultPath(value ?? '');
+  const segments = normalized.split('/');
+  const resolved: string[] = [];
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed || trimmed === '.') {
+      continue;
+    }
+    if (trimmed === '..') {
+      resolved.pop();
+      continue;
+    }
+    resolved.push(trimmed);
+  }
+  return resolved.join('/');
+}
+
 export function isAbsoluteFilesystemPath(value: string): boolean {
   if (!value) {
     return false;

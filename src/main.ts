@@ -61,7 +61,6 @@ import {
   parseStoryThreadNodeFromFrontmatter,
   resolveStoryThread
 } from './story-thread-resolver';
-import * as path from 'path';
 import {
   asBoolean,
   asString,
@@ -94,7 +93,7 @@ import {
   UsageLedgerReportSnapshot
 } from './usage-ledger-report';
 import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
-import { normalizeVaultRelativePath } from './vault-path-utils';
+import { getVaultBasename, normalizeVaultRelativePath } from './vault-path-utils';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -799,7 +798,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     }
 
-    const basename = path.basename(normalizedRef);
+    const basename = getVaultBasename(normalizedRef);
     const byBasename = this.app.vault
       .getMarkdownFiles()
       .filter(file => file.basename.localeCompare(basename, undefined, { sensitivity: 'accent' }) === 0);
@@ -1928,7 +1927,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.embeddings.instruction = merged.embeddings.instruction.trim();
     merged.embeddings.batchSize = Math.max(1, Math.floor(merged.embeddings.batchSize));
     merged.embeddings.timeoutMs = Math.max(1000, Math.floor(merged.embeddings.timeoutMs));
-    merged.embeddings.cacheDir = merged.embeddings.cacheDir.trim() || DEFAULT_SETTINGS.embeddings.cacheDir;
+    const mergedEmbeddingCacheDir = (merged.embeddings.cacheDir ?? '').trim().replace(/\\/g, '/');
+    try {
+      merged.embeddings.cacheDir = normalizeVaultRelativePath(
+        mergedEmbeddingCacheDir || DEFAULT_SETTINGS.embeddings.cacheDir
+      );
+    } catch {
+      console.warn(`Invalid embeddings cache path "${merged.embeddings.cacheDir}". Falling back to default.`);
+      merged.embeddings.cacheDir = DEFAULT_SETTINGS.embeddings.cacheDir;
+    }
     merged.embeddings.chunkingMode = (
       merged.embeddings.chunkingMode === 'note' ||
       merged.embeddings.chunkingMode === 'section'

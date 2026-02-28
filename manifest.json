@@ -6,5 +6,5 @@
   "description": "Build scoped world info and RAG context packs from Obsidian notes",
   "author": "Your Name",
   "authorUrl": "https://yourwebsite.com",
-  "isDesktopOnly": true
+  "isDesktopOnly": false
 }

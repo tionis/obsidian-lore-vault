@@ -87,6 +87,11 @@ Per scope, LoreVault writes:
 - downstream world info JSON
 - downstream fallback markdown projection
 
+Storage contract:
+
+- SQLite export/read paths are vault-relative and use Obsidian adapter binary IO.
+- Absolute filesystem export paths are intentionally rejected.
+
 Canonicality:
 
 - SQLite is the source of truth for downstream tooling.

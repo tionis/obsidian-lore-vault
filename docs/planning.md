@@ -259,7 +259,7 @@ Target direction:
 - remove Node/Electron-only filesystem dependencies from core runtime paths
 - keep deterministic output behavior between desktop and mobile
 - support vault-relative exports/cache paths on mobile
-- keep absolute-path export behavior desktop-only (with explicit UI gating)
+- reject absolute filesystem export paths in favor of deterministic vault-relative outputs
 
 ## Story-Driven Wiki Update Workflow (Phase 15 Foundation)
 

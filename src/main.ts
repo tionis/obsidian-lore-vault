@@ -94,6 +94,7 @@ import {
   UsageLedgerReportSnapshot
 } from './usage-ledger-report';
 import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
+import { normalizeVaultRelativePath } from './vault-path-utils';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -1880,9 +1881,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.tagScoping.activeScope = normalizeScope(merged.tagScoping.activeScope);
     merged.tagScoping.membershipMode = merged.tagScoping.membershipMode === 'cascade' ? 'cascade' : 'exact';
     merged.tagScoping.includeUntagged = Boolean(merged.tagScoping.includeUntagged);
-    merged.outputPath = merged.outputPath.trim();
-    merged.outputPath = merged.outputPath.replace(/\\/g, '/');
-    if (!merged.outputPath) {
+    const mergedOutputPath = (merged.outputPath ?? '').trim().replace(/\\/g, '/');
+    try {
+      merged.outputPath = normalizeVaultRelativePath(mergedOutputPath || DEFAULT_SETTINGS.outputPath);
+    } catch {
+      console.warn(`Invalid downstream output path "${merged.outputPath}". Falling back to default.`);
       merged.outputPath = DEFAULT_SETTINGS.outputPath;
     }
 
@@ -1906,9 +1909,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
 
     merged.sqlite.enabled = Boolean(merged.sqlite.enabled);
-    merged.sqlite.outputPath = merged.sqlite.outputPath.trim();
-    merged.sqlite.outputPath = merged.sqlite.outputPath.replace(/\\/g, '/');
-    if (!merged.sqlite.outputPath) {
+    const mergedSqlitePath = (merged.sqlite.outputPath ?? '').trim().replace(/\\/g, '/');
+    try {
+      merged.sqlite.outputPath = normalizeVaultRelativePath(mergedSqlitePath || DEFAULT_SETTINGS.sqlite.outputPath);
+    } catch {
+      console.warn(`Invalid sqlite output path "${merged.sqlite.outputPath}". Falling back to default.`);
       merged.sqlite.outputPath = DEFAULT_SETTINGS.sqlite.outputPath;
     }
 

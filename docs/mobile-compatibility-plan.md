@@ -23,7 +23,6 @@ In scope:
 
 Out of scope (initial mobile delivery):
 
-- Writing exports to arbitrary absolute filesystem paths outside the vault.
 - Desktop-specific optimizations that depend on Node APIs.
 
 ## Technical Constraints
@@ -45,7 +44,7 @@ Avoid on mobile:
 `Build/Export`:
 
 - Keep `.db` + downstream outputs in vault-relative output directories.
-- Disable/ignore absolute-output path behavior on mobile.
+- Reject absolute filesystem output paths with clear validation errors.
 
 Embedding cache:
 
@@ -104,7 +103,7 @@ Deliverable:
 ### 4) UX/Settings Gating
 
 - Add capability checks (`mobile`/`desktop`) in settings/UI.
-- Hide or warn on desktop-only options (absolute path behavior).
+- Clarify vault-relative path requirements in settings/help.
 - Add explicit notes in settings/help for mobile limitations.
 
 Deliverable:
@@ -161,4 +160,3 @@ Mitigations:
 4. Settings/UI capability gating.
 5. QA matrix completion.
 6. Flip `isDesktopOnly` to `false`.
-

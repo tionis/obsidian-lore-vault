@@ -152,6 +152,9 @@ For each built scope, LoreVault writes:
 - `<sqliteOutputDir>/<downstreamSubpath>.json` -> `world_info` (default subpath: `sillytavern/lorevault.json`)
 - `<sqliteOutputDir>/<downstreamSubpath>.rag.md` -> `rag`
 
+`sqliteOutputDir` must be vault-relative (absolute filesystem paths are not supported).
+`downstreamSubpath` must also be vault-relative.
+
 Downstream filenames are scope-specific. If the downstream subpath does not contain `{scope}`, LoreVault appends a scope slug:
 
 - `lorebooks/sillytavern/lorevault-universe.json`

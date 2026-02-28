@@ -1,8 +1,9 @@
 import { App } from 'obsidian';
-import * as fs from 'fs';
-import * as path from 'path';
 import { RagDocument } from './models';
-import { ensureParentVaultFolderForFile, normalizeVaultPath } from './vault-path-utils';
+import {
+  ensureParentVaultFolderForFile,
+  normalizeVaultRelativePath
+} from './vault-path-utils';
 
 function compareRagDocs(a: RagDocument, b: RagDocument): number {
   return (
@@ -24,7 +25,7 @@ export class RagExporter {
     outputPath: string,
     scopeLabel: string
   ): Promise<void> {
-    const normalizedOutputPath = normalizeVaultPath(outputPath);
+    const normalizedOutputPath = normalizeVaultRelativePath(outputPath);
     const sortedDocuments = [...documents].sort(compareRagDocs);
     const normalizedScopeLabel = scopeLabel || '(all)';
 
@@ -42,22 +43,12 @@ export class RagExporter {
     ].join('\n');
 
     try {
-      const isAbsolutePath = path.isAbsolute(outputPath);
+      await ensureParentVaultFolderForFile(this.app, normalizedOutputPath);
+      await this.app.vault.adapter.write(normalizedOutputPath, markdown);
 
-      if (!isAbsolutePath) {
-        await ensureParentVaultFolderForFile(this.app, normalizedOutputPath);
-        await this.app.vault.adapter.write(normalizedOutputPath, markdown);
-      } else {
-        const dirPath = path.dirname(outputPath);
-        if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath, { recursive: true });
-        }
-        fs.writeFileSync(outputPath, markdown, 'utf8');
-      }
-
-      console.log(`Successfully exported ${documents.length} RAG docs to ${outputPath}`);
+      console.log(`Successfully exported ${documents.length} RAG docs to ${normalizedOutputPath}`);
     } catch (e) {
-      console.error(`Error writing RAG markdown to ${outputPath}:`, e);
+      console.error(`Error writing RAG markdown to ${normalizedOutputPath}:`, e);
       throw e;
     }
   }

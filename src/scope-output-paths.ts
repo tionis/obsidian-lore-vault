@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { normalizeScope } from './lorebook-scoping';
+import { normalizeVaultRelativePath } from './vault-path-utils';
 
 export interface ScopeOutputPaths {
   worldInfoPath: string;
@@ -30,7 +31,9 @@ export function slugifyScope(scope: string): string {
 }
 
 function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): string {
-  const configured = normalizeVaultPathSeparators(sqliteBaseOutputPath?.trim() || DEFAULT_SQLITE_OUTPUT_DIR);
+  const configured = normalizeVaultPathSeparators(
+    normalizeVaultRelativePath(sqliteBaseOutputPath?.trim() || DEFAULT_SQLITE_OUTPUT_DIR)
+  );
   const sqliteExt = path.extname(configured);
   const hasDbExt = sqliteExt.toLowerCase() === '.db';
 
@@ -49,10 +52,10 @@ function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): st
 }
 
 function resolveDownstreamBasePath(baseOutputPath: string, sqlitePath: string): string {
-  const configured = normalizeVaultPathSeparators((baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH);
-  const relativeSubpath = path.isAbsolute(configured)
-    ? (path.basename(configured) || path.basename(DEFAULT_DOWNSTREAM_SUBPATH))
-    : configured.replace(/^[/\\]+/, '');
+  const configured = normalizeVaultPathSeparators(
+    normalizeVaultRelativePath((baseOutputPath || '').trim() || DEFAULT_DOWNSTREAM_SUBPATH)
+  );
+  const relativeSubpath = configured.replace(/^[/\\]+/, '');
   return normalizeVaultPathSeparators(path.join(path.dirname(sqlitePath), relativeSubpath));
 }
 

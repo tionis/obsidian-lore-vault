@@ -44,7 +44,7 @@ export class StorySteeringView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    const suggested = this.plugin.getSuggestedStorySteeringScope('note');
+    const suggested = await this.plugin.getSuggestedStorySteeringScope('note');
     this.selectedScopeType = suggested.type;
     this.selectedScopeKey = suggested.key;
     await this.loadSelectedScope();
@@ -228,7 +228,7 @@ export class StorySteeringView extends ItemView {
         ? 'story thread key (for example chronicles-main)'
         : this.selectedScopeType === 'chapter'
           ? 'chapter scope key (for example chronicles-main::chapter:7)'
-          : 'note path (for example story/ch07.md)';
+          : 'note scope key (for example note:lvn-...)';
       scopeKeyInput.value = this.selectedScopeType === 'global' ? 'global' : this.selectedScopeKey;
       scopeKeyInput.addEventListener('input', () => {
         this.selectedScopeKey = scopeKeyInput.value;
@@ -238,10 +238,17 @@ export class StorySteeringView extends ItemView {
 
       const useActiveButton = actions.createEl('button', { text: 'Use Active Note' });
       useActiveButton.addEventListener('click', () => {
-        const suggested = this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType);
-        this.selectedScopeType = suggested.type;
-        this.selectedScopeKey = suggested.key;
-        void this.render();
+        void (async () => {
+          try {
+            const suggested = await this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType);
+            this.selectedScopeType = suggested.type;
+            this.selectedScopeKey = suggested.key;
+            await this.render();
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to resolve active-note scope: ${message}`);
+          }
+        })();
       });
 
       const loadButton = actions.createEl('button', { text: 'Load Scope' });

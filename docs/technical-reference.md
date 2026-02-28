@@ -34,6 +34,8 @@ This document is the implementation-level reference for core architecture and ru
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - scope-based steering storage (`global`/`thread`/`chapter`/`note`)
+  - move-safe scope linking via `lvNoteId` frontmatter IDs
+  - legacy path-keyed note/chapter scope migration to ID-keyed scope files
   - markdown-backed steering note parse/serialize
   - effective-layer merge for chat/continuation prompt assembly
 - `src/story-steering-review-modal.ts`

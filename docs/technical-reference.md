@@ -66,6 +66,10 @@ This document is the implementation-level reference for core architecture and ru
 - `src/hash-utils.ts`
   - deterministic hashing and identifier normalization (`@noble/hashes` sync + WebCrypto async)
   - `sha256HexAsync` requires WebCrypto (`crypto.subtle`) at runtime
+- `src/scope-pack-metadata.ts`
+  - deterministic scope-pack metadata snapshot/signature assembly
+  - note-level embedding centroid derivation from chunk embeddings
+  - canonical SQLite `meta` row generation/content signatures
 - `src/quality-audit.ts`
   - deterministic per-entry risk scoring (missing keywords, thin content, embedding similarity)
 - `src/keyword-utils.ts`
@@ -115,17 +119,24 @@ Canonicality:
 - SQLite is the source of truth for downstream tooling.
 - Downstream exporters should consume SQLite artifacts rather than vault markdown.
 
-### SQLite Meta Keys
+### SQLite Schema
 
-`meta` table records deterministic build metadata:
+Canonical schema documentation lives in:
 
-- `schema_version`
-- `scope`
-- `generated_at`
-- `world_info_entries_count`
-- `rag_documents_count`
-- `rag_chunks_count`
-- `rag_chunk_embeddings_count`
+- `docs/sqlite-pack-schema.md`
+
+Highlights:
+
+- canonical lore data tables:
+  - `world_info_entries`
+  - `rag_documents`
+  - `rag_chunks`
+  - `rag_chunk_embeddings`
+  - `source_notes`
+  - `note_embeddings`
+- deterministic ordering contract per table
+- rich `meta` keys for schema/build/settings/content signatures
+- embeddings included at chunk and note levels for downstream reuse
 
 ## Retrieval Engine
 

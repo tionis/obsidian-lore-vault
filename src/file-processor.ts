@@ -1,5 +1,11 @@
 import { App, TFile, getAllTags } from 'obsidian';
-import { ConverterSettings, LoreBookEntry, RagDocument } from './models';
+import {
+  ConverterSettings,
+  LoreBookEntry,
+  RagDocument,
+  ScopePackSourceNote,
+  ScopePackSummarySource
+} from './models';
 import { ProgressBar } from './progress-bar';
 import { LinkTargetIndex, extractWikilinks } from './link-target-index';
 import {
@@ -15,8 +21,9 @@ import {
 } from './frontmatter-utils';
 import { extractLorebookScopesFromTags, shouldIncludeInScope } from './lorebook-scoping';
 import { parseRetrievalMode, resolveRetrievalTargets } from './retrieval-routing';
-import { resolveWorldInfoContent } from './summary-utils';
+import { resolveNoteSummary, stripSummarySectionFromBody } from './summary-utils';
 import { stripInlineLoreDirectives } from './inline-directives';
+import { sha256Hex } from './hash-utils';
 
 const SELECTIVE_LOGIC_MAP: {[key: string]: number} = {
   'or': 0,
@@ -64,6 +71,7 @@ export class FileProcessor {
   private entries: {[key: number]: LoreBookEntry} = {};
   private worldInfoBodyByUid: {[key: number]: string} = {};
   private ragDocuments: RagDocument[] = [];
+  private sourceNotes: ScopePackSourceNote[] = [];
   private nextUid: number = 0;
   private rootUid: number | null = null;
 
@@ -94,6 +102,15 @@ export class FileProcessor {
 
     const tags = getAllTags(cache) ?? [];
     return extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix);
+  }
+
+  private getAllNoteTags(file: TFile): string[] {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache) {
+      return [];
+    }
+    const tags = getAllTags(cache) ?? [];
+    return uniqueStrings(tags).sort((a, b) => a.localeCompare(b));
   }
 
   private isSourceFile(file: TFile, frontmatter: FrontmatterData): boolean {
@@ -129,7 +146,11 @@ export class FileProcessor {
 
       const noteBody = sanitizedBody.trim();
       const summaryOverride = asString(getFrontmatterValue(frontmatter, 'summary'));
-      const content = resolveWorldInfoContent(noteBody, summaryOverride);
+      const resolvedSummary = resolveNoteSummary(noteBody, summaryOverride);
+      const content = resolvedSummary
+        ? resolvedSummary.text
+        : stripSummarySectionFromBody(noteBody);
+      const summarySource: ScopePackSummarySource = resolvedSummary?.source ?? 'body';
 
       const aliases = asStringArray(getFrontmatterValue(frontmatter, 'aliases'));
       const frontmatterKeywords = asStringArray(getFrontmatterValue(frontmatter, 'key', 'keywords'));
@@ -148,10 +169,36 @@ export class FileProcessor {
       const retrievalMode = parseRetrievalMode(getFrontmatterValue(frontmatter, 'retrieval')) ?? 'auto';
       const routing = resolveRetrievalTargets(retrievalMode, frontmatterKeywords.length > 0);
       const scope = this.settings.tagScoping.activeScope;
+      const noteTags = this.getAllNoteTags(file);
+      const lorebookScopes = this.getLorebookScopes(file);
 
       if (!routing.includeWorldInfo && !routing.includeRag) {
         return null;
       }
+
+      this.sourceNotes.push({
+        uid,
+        scope,
+        path: file.path,
+        basename: name,
+        title: comment,
+        tags: noteTags,
+        lorebookScopes,
+        aliases: uniqueStrings(aliases).sort((a, b) => a.localeCompare(b)),
+        keywords: uniqueStrings(frontmatterKeywords).sort((a, b) => a.localeCompare(b)),
+        keysecondary: uniqueStrings(keysecondary).sort((a, b) => a.localeCompare(b)),
+        retrievalMode,
+        includeWorldInfo: routing.includeWorldInfo,
+        includeRag: routing.includeRag,
+        summary: content,
+        summarySource,
+        summaryHash: sha256Hex(content),
+        noteBody,
+        noteBodyHash: sha256Hex(noteBody),
+        wikilinks: uniqueStrings(wikilinks).sort((a, b) => a.localeCompare(b)),
+        modifiedTime: Number.isFinite(file.stat.mtime) ? file.stat.mtime : 0,
+        sizeBytes: Number.isFinite(file.stat.size) ? file.stat.size : 0
+      });
 
       if (routing.includeRag) {
         this.ragDocuments.push({
@@ -275,11 +322,16 @@ export class FileProcessor {
     return this.ragDocuments;
   }
 
+  getSourceNotes(): ScopePackSourceNote[] {
+    return this.sourceNotes;
+  }
+
   reset(): void {
     this.linkTargetIndex.reset();
     this.entries = {};
     this.worldInfoBodyByUid = {};
     this.ragDocuments = [];
+    this.sourceNotes = [];
     this.nextUid = 0;
     this.rootUid = null;
   }

@@ -173,7 +173,13 @@ SQLite pack includes:
 - `rag` documents
 - chunked `rag` text segments
 - optional chunk embeddings
-- build metadata in `meta` table (schema/scope/timestamp/counts)
+- source note metadata (paths/tags/retrieval mode/summary/body hashes)
+- note-level centroid embeddings (derived from chunk embeddings)
+- build metadata in `meta` table (schema/build signatures/settings snapshots/counts)
+
+Schema reference:
+
+- `docs/sqlite-pack-schema.md`
 
 Embedding backends:
 

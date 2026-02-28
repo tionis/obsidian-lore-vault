@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { ScopePack } from './models';
 import { getSqlJs } from './sqlite-runtime';
 import { normalizeVaultFilePath, writeVaultBinary } from './vault-binary-io';
+import { collectScopePackMetaRows } from './scope-pack-metadata';
 
 function createSchema(db: any): void {
   db.run(`
@@ -49,10 +50,48 @@ function createSchema(db: any): void {
       vector_json TEXT NOT NULL,
       PRIMARY KEY (chunk_id, provider, model)
     );
+    CREATE TABLE source_notes (
+      uid INTEGER PRIMARY KEY,
+      scope TEXT NOT NULL,
+      path TEXT NOT NULL,
+      basename TEXT NOT NULL,
+      title TEXT NOT NULL,
+      tags_json TEXT NOT NULL,
+      lorebook_scopes_json TEXT NOT NULL,
+      aliases_json TEXT NOT NULL,
+      keywords_json TEXT NOT NULL,
+      keysecondary_json TEXT NOT NULL,
+      retrieval_mode TEXT NOT NULL,
+      include_world_info INTEGER NOT NULL,
+      include_rag INTEGER NOT NULL,
+      summary_source TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      summary_hash TEXT NOT NULL,
+      note_body TEXT NOT NULL,
+      note_body_hash TEXT NOT NULL,
+      wikilinks_json TEXT NOT NULL,
+      modified_time INTEGER NOT NULL,
+      size_bytes INTEGER NOT NULL
+    );
+    CREATE TABLE note_embeddings (
+      uid INTEGER NOT NULL,
+      scope TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimensions INTEGER NOT NULL,
+      aggregation TEXT NOT NULL,
+      source_chunk_count INTEGER NOT NULL,
+      cache_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      vector_json TEXT NOT NULL,
+      PRIMARY KEY (uid, provider, model)
+    );
     CREATE INDEX idx_world_info_scope_order ON world_info_entries(scope, order_value DESC, uid ASC);
     CREATE INDEX idx_rag_documents_scope_path ON rag_documents(scope, path, uid);
     CREATE INDEX idx_rag_chunks_doc_uid ON rag_chunks(doc_uid, chunk_index);
     CREATE INDEX idx_rag_chunk_embeddings_chunk_id ON rag_chunk_embeddings(chunk_id);
+    CREATE INDEX idx_source_notes_scope_path ON source_notes(scope, path, uid);
+    CREATE INDEX idx_note_embeddings_scope_uid ON note_embeddings(scope, uid);
   `);
 }
 
@@ -74,13 +113,9 @@ export class SqlitePackExporter {
       db.run('BEGIN IMMEDIATE;');
 
       const metaStmt = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?);');
-      metaStmt.run(['schema_version', String(pack.schemaVersion)]);
-      metaStmt.run(['scope', pack.scope]);
-      metaStmt.run(['generated_at', String(pack.generatedAt)]);
-      metaStmt.run(['world_info_entries_count', String(pack.worldInfoEntries.length)]);
-      metaStmt.run(['rag_documents_count', String(pack.ragDocuments.length)]);
-      metaStmt.run(['rag_chunks_count', String(pack.ragChunks.length)]);
-      metaStmt.run(['rag_chunk_embeddings_count', String(pack.ragChunkEmbeddings.length)]);
+      for (const [key, value] of collectScopePackMetaRows(pack)) {
+        metaStmt.run([key, value]);
+      }
       metaStmt.free();
 
       const worldInfoStmt = db.prepare(`
@@ -152,6 +187,59 @@ export class SqlitePackExporter {
         ]);
       }
       embeddingStmt.free();
+
+      const sourceNoteStmt = db.prepare(`
+        INSERT INTO source_notes
+        (uid, scope, path, basename, title, tags_json, lorebook_scopes_json, aliases_json, keywords_json, keysecondary_json, retrieval_mode, include_world_info, include_rag, summary_source, summary, summary_hash, note_body, note_body_hash, wikilinks_json, modified_time, size_bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `);
+      for (const note of pack.sourceNotes) {
+        sourceNoteStmt.run([
+          note.uid,
+          note.scope,
+          note.path,
+          note.basename,
+          note.title,
+          JSON.stringify(note.tags),
+          JSON.stringify(note.lorebookScopes),
+          JSON.stringify(note.aliases),
+          JSON.stringify(note.keywords),
+          JSON.stringify(note.keysecondary),
+          note.retrievalMode,
+          note.includeWorldInfo ? 1 : 0,
+          note.includeRag ? 1 : 0,
+          note.summarySource,
+          note.summary,
+          note.summaryHash,
+          note.noteBody,
+          note.noteBodyHash,
+          JSON.stringify(note.wikilinks),
+          note.modifiedTime,
+          note.sizeBytes
+        ]);
+      }
+      sourceNoteStmt.free();
+
+      const noteEmbeddingStmt = db.prepare(`
+        INSERT INTO note_embeddings
+        (uid, scope, provider, model, dimensions, aggregation, source_chunk_count, cache_key, created_at, vector_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      `);
+      for (const embedding of pack.noteEmbeddings) {
+        noteEmbeddingStmt.run([
+          embedding.uid,
+          embedding.scope,
+          embedding.provider,
+          embedding.model,
+          embedding.dimensions,
+          embedding.aggregation,
+          embedding.sourceChunkCount,
+          embedding.cacheKey,
+          embedding.createdAt,
+          JSON.stringify(embedding.vector)
+        ]);
+      }
+      noteEmbeddingStmt.free();
 
       db.run('COMMIT;');
       const bytes = db.export();

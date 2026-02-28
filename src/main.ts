@@ -644,6 +644,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     return new Date(timestamp).toISOString().replace(/[:.]/g, '-');
   }
 
+  private isPathAlreadyExistsError(error: unknown): boolean {
+    const maybe = error as { code?: string; message?: string };
+    const code = typeof maybe?.code === 'string' ? maybe.code.toUpperCase() : '';
+    if (code === 'EEXIST') {
+      return true;
+    }
+    const message = typeof maybe?.message === 'string' ? maybe.message.toLowerCase() : String(error ?? '').toLowerCase();
+    return message.includes('already exists');
+  }
+
   private async ensureVaultDirectory(pathValue: string): Promise<void> {
     const normalizedParts = pathValue
       .split('/')
@@ -658,7 +668,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       current = current ? `${current}/${part}` : part;
       const exists = await this.app.vault.adapter.exists(current);
       if (!exists) {
-        await this.app.vault.adapter.mkdir(current);
+        try {
+          await this.app.vault.adapter.mkdir(current);
+        } catch (error) {
+          if (!this.isPathAlreadyExistsError(error)) {
+            throw error;
+          }
+        }
       }
     }
   }
@@ -4975,7 +4991,11 @@ export default class LoreBookConverterPlugin extends Plugin {
           files,
           buildAllScopes,
           embeddingService,
-          progress
+          progress,
+          {
+            pluginId: this.manifest.id,
+            pluginVersion: this.manifest.version
+          }
         );
 
         const scopedSettings = scopePackResult.scopedSettings;

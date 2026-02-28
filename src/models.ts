@@ -68,14 +68,89 @@ export interface RagChunkEmbedding {
   createdAt: number;
 }
 
+export type ScopePackRetrievalMode = 'auto' | 'world_info' | 'rag' | 'both' | 'none';
+export type ScopePackSummarySource = 'section' | 'frontmatter' | 'body';
+
+export interface ScopePackSourceNote {
+  uid: number;
+  scope: string;
+  path: string;
+  basename: string;
+  title: string;
+  tags: string[];
+  lorebookScopes: string[];
+  aliases: string[];
+  keywords: string[];
+  keysecondary: string[];
+  retrievalMode: ScopePackRetrievalMode;
+  includeWorldInfo: boolean;
+  includeRag: boolean;
+  summary: string;
+  summarySource: ScopePackSummarySource;
+  summaryHash: string;
+  noteBody: string;
+  noteBodyHash: string;
+  wikilinks: string[];
+  modifiedTime: number;
+  sizeBytes: number;
+}
+
+export interface ScopePackNoteEmbedding {
+  uid: number;
+  scope: string;
+  provider: string;
+  model: string;
+  dimensions: number;
+  aggregation: 'mean_normalized';
+  sourceChunkCount: number;
+  cacheKey: string;
+  createdAt: number;
+  vector: number[];
+}
+
+export interface ScopePackBuildMetadata {
+  format: 'lorevault.scope-pack';
+  schemaVersion: number;
+  pluginId: string;
+  pluginVersion: string;
+  buildMode: 'single_scope' | 'multi_scope';
+  sourceFileCount: number;
+  sourceNoteCount: number;
+  explicitRootUid: number | null;
+  settingsSnapshot: {
+    tagScoping: ConverterSettings['tagScoping'];
+    weights: ConverterSettings['weights'];
+    defaultEntry: ConverterSettings['defaultEntry'];
+    retrieval: ConverterSettings['retrieval'];
+    summaries: ConverterSettings['summaries'];
+    embeddings: {
+      enabled: boolean;
+      provider: ConverterSettings['embeddings']['provider'];
+      endpoint: string;
+      model: string;
+      instruction: string;
+      batchSize: number;
+      timeoutMs: number;
+      chunkingMode: ConverterSettings['embeddings']['chunkingMode'];
+      minChunkChars: number;
+      maxChunkChars: number;
+      overlapChars: number;
+    };
+  };
+  settingsSignature: string;
+}
+
 export interface ScopePack {
   schemaVersion: number;
   scope: string;
   generatedAt: number;
+  metadata: ScopePackBuildMetadata;
   worldInfoEntries: LoreBookEntry[];
   ragDocuments: RagDocument[];
   ragChunks: RagChunk[];
   ragChunkEmbeddings: RagChunkEmbedding[];
+  sourceNotes: ScopePackSourceNote[];
+  noteEmbeddings: ScopePackNoteEmbedding[];
 }
 
 export interface LoreBookSettings {

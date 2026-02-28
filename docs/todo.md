@@ -219,13 +219,13 @@ Reference design: `docs/planning.md`.
   - [x] selectable inclusion in generation context
 - [x] Add tests for deterministic layer ordering, budget partitioning, and overflow behavior.
 - [x] Add fixtures/tests covering large-context models (for example `200k`) to verify scaling logic.
-- [ ] Add tests for inline directive parsing/exclusion/ordering and inspector visibility.
+- [x] Add tests for inline directive parsing/exclusion/ordering and inspector visibility.
   - [x] parser/exclusion/ordering coverage
-  - [ ] dedicated UI inspector rendering assertions
+  - [x] dedicated UI inspector rendering assertions
 - [ ] Add gradual async hashing migration plan (WebCrypto-backed):
-  - [ ] add async hash helper surface (`sha256HexAsync`) and dual-path tests
-  - [ ] migrate async-safe call sites first (non-hot-path cache/index operations)
-  - [ ] keep sync hash path for deterministic hot paths until pipeline async refactor is complete
+  - [x] add async hash helper surface (`sha256HexAsync`) and dual-path tests
+  - [x] migrate async-safe call sites first (non-hot-path cache/index operations)
+  - [x] keep sync hash path for deterministic hot paths until pipeline async refactor is complete
   - [ ] remove sync hashing fallback only after all runtime call sites are async-compatible
 
 ## Default Decisions (2026-02-27)

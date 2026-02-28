@@ -153,6 +153,9 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
                 }
               ],
               overflowTrace: [],
+              chatToolTrace: [],
+              chatToolCalls: [],
+              chatToolWrites: [],
               contextTokens: 320,
               worldInfoCount: 4,
               ragCount: 1,

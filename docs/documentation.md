@@ -286,6 +286,7 @@ Live query combines:
 ## Writing Completion
 
 Command: `Continue Story with Context`
+Stop command: `Stop Active Generation`
 Also available in markdown editor right-click menu as `LoreVault: Continue Story with Context`.
 Also registered as an editor action command so it appears in mobile editor action menus.
 Also available via ribbon icon for fast mobile invocation.
@@ -372,7 +373,9 @@ Story Steering scope notes include:
 
 Story Steering extraction behavior:
 
-- extraction focuses on control metadata (instructions, intent, active threads/loops/deltas)
+- extraction/update focuses on control metadata (instructions, intent, active threads/loops/deltas)
+- existing steering state is treated as baseline and fields without evidence remain preserved
+- optional per-run update prompt can steer what should be changed
 - optional sanitization mode controls filtering:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
@@ -402,6 +405,7 @@ Run flow:
 5. response text is treated as replacement candidate
 6. if auto-accept is off, review modal shows original + diff preview before apply
 7. selected range is replaced only if selection still matches original text
+8. default `Canon Consistency Pass` template emphasizes lorebook factual consistency and only minimal style edits needed to fix canon conflicts
 
 Settings (LoreVault -> Text Commands):
 
@@ -695,6 +699,7 @@ Query behavior:
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
   - calls configured completion provider with streaming enabled
   - inserts streamed generated continuation text at cursor
+  - active story-text generation can be aborted via `Stop Active Generation` (or editor menu while running)
 - deterministic tie-breakers:
   - `world_info`: score desc, hop asc, order desc, uid asc
   - `rag`: score desc, path asc, title asc, uid asc
@@ -732,6 +737,16 @@ Retrieval tuning settings (applies immediately to live query and generation):
 - `Tool Result Token Cap`
 - `Tool Planning Time Cap (ms)`
 
+LLM operation log settings:
+
+- `Enable LLM Operation Log`
+- `LLM Operation Log Path`
+- `LLM Operation Log Max Entries`
+- `Open LLM Operation Log Explorer` (settings button + command)
+
+When enabled, LoreVault writes full LLM request/response content (including tool planner calls) to the configured JSONL file.
+Use command `Open LLM Operation Log Explorer` to inspect/search entries and view full request/response payloads inside the plugin.
+
 ## Story Chat Panel
 
 Command: `Open Story Chat`
@@ -764,10 +779,21 @@ Current behavior:
 - persists each chat/fork as a markdown note under `LoreVault/chat`
 - plugin settings persist active conversation path and chat folder
 - chat folder path is configurable in settings (`Story Chat Conversation Folder`)
+- optional Story Chat tool-calling settings:
+  - `Enable Story Chat Tool Calls`
+  - `Story Chat Tool Calls Per Turn`
+  - `Story Chat Tool Result Token Cap`
+  - `Story Chat Tool Planning Time Cap (ms)`
+  - `Allow Story Chat Tool Write Actions`
 
 Turn context assembly:
 
 - optional lorebook retrieval for selected scopes
+- optional Story Chat agent tool layer (when enabled and budget allows):
+  - search/read selected lorebook entries
+  - search/read linked story and manually selected notes
+  - read steering scopes in allowed active scope chain
+  - optionally update steering scopes/create lorebook notes when write actions are enabled and current turn includes explicit write intent
 - optional tool-retrieved context layer (when enabled and budget allows)
 - explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
 - optional continuity-state layer (plot threads, open loops, canon deltas) with selectable inclusion
@@ -780,7 +806,8 @@ Turn context assembly:
   - unresolved note references
   - chapter memory summaries used for the turn
   - continuity state items included for the turn
-  - per-layer context trace (`steering(system/pre_history/pre_response)`, `local_window`, `inline_directives`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_entries`, `tool_hooks`)
+  - per-layer context trace (`steering(system/pre_history/pre_response)`, `local_window`, `inline_directives`, `manual_context`, `specific_notes`, `chapter_memory`, `agent_tools`, `graph_memory`, `fallback_entries`, `tool_hooks`)
+  - Story Chat agent tool traces (calls, write actions, stop reason)
   - per-layer usage table (`reserved`, `used`, `headroom`, trim flag/reason)
   - overflow trace entries when staged prompt trimming occurs
   - context token estimate

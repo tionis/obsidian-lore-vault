@@ -918,3 +918,113 @@
   font-size: 11px;
   line-height: 1.35;
 }
+
+.lorevault-operation-log-view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorevault-operation-log-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lorevault-operation-log-icon {
+  display: inline-flex;
+}
+
+.lorevault-operation-log-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.lorevault-operation-log-auto-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lorevault-operation-log-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.lorevault-operation-log-search {
+  width: 100%;
+}
+
+.lorevault-operation-log-path,
+.lorevault-operation-log-status {
+  font-size: 12px;
+}
+
+.lorevault-operation-log-warning {
+  color: var(--text-warning);
+}
+
+.lorevault-operation-log-error {
+  color: var(--color-red);
+}
+
+.lorevault-operation-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lorevault-operation-log-subtle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lorevault-operation-log-entry {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.lorevault-operation-log-entry-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.lorevault-operation-log-status-ok {
+  color: var(--color-green);
+}
+
+.lorevault-operation-log-status-error {
+  color: var(--color-red);
+}
+
+.lorevault-operation-log-json {
+  margin: 6px 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .lorevault-operation-log-filters {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,7 +1,6 @@
 import { ConverterSettings } from './models';
 import {
   RetrievalToolPlanner,
-  RetrievalToolPlannerMessage,
   RetrievalToolPlannerRequest,
   RetrievalToolPlannerResponse
 } from './retrieval-tool-hooks';
@@ -9,7 +8,9 @@ import {
 export interface StoryCompletionRequest {
   systemPrompt: string;
   userPrompt: string;
+  operationName?: string;
   onUsage?: (usage: CompletionUsageReport) => void;
+  onOperationLog?: CompletionOperationLogger;
   abortSignal?: AbortSignal;
 }
 
@@ -28,8 +29,110 @@ export interface CompletionUsageReport {
   source: 'openai_usage' | 'ollama_usage';
 }
 
+export type CompletionOperationKind = 'completion' | 'completion_stream' | 'tool_planner';
+
+export interface CompletionOperationLogAttempt {
+  index: number;
+  url: string;
+  requestBody: unknown;
+  responseBody?: unknown;
+  responseText?: string;
+  error?: string;
+}
+
+export interface CompletionOperationLogRecord {
+  id: string;
+  kind: CompletionOperationKind;
+  operationName: string;
+  provider: ConverterSettings['completion']['provider'];
+  model: string;
+  endpoint: string;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+  status: 'ok' | 'error';
+  aborted: boolean;
+  error?: string;
+  request: Record<string, unknown>;
+  attempts: CompletionOperationLogAttempt[];
+  finalText?: string;
+  usage?: CompletionUsageReport | null;
+}
+
+export type CompletionOperationLogger = (
+  record: CompletionOperationLogRecord
+) => void | Promise<void>;
+
+export interface CompletionToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface CompletionToolCall {
+  id: string;
+  name: string;
+  argumentsJson: string;
+}
+
+export interface CompletionToolPlannerMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  toolCallId?: string;
+  toolName?: string;
+  toolCalls?: CompletionToolCall[];
+}
+
+export interface CompletionToolPlannerRequest {
+  messages: CompletionToolPlannerMessage[];
+  toolDefinitions: CompletionToolDefinition[];
+  timeoutMs: number;
+  abortSignal?: AbortSignal;
+}
+
+export interface CompletionToolPlannerResponse {
+  assistantText: string;
+  toolCalls: CompletionToolCall[];
+  finishReason: string;
+}
+
+export type CompletionToolPlanner = (
+  request: CompletionToolPlannerRequest
+) => Promise<CompletionToolPlannerResponse>;
+
+export interface CompletionToolPlannerOptions {
+  operationName?: string;
+  onOperationLog?: CompletionOperationLogger;
+}
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
+}
+
+function createOperationId(kind: CompletionOperationKind): string {
+  return `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /aborted|cancelled/i.test(message);
+}
+
+async function emitOperationLog(
+  logger: CompletionOperationLogger | undefined,
+  record: CompletionOperationLogRecord
+): Promise<void> {
+  if (!logger) {
+    return;
+  }
+  try {
+    await logger(record);
+  } catch (error) {
+    console.warn('LoreVault: Failed to write completion operation log:', error);
+  }
 }
 
 function resolveOpenAiCompletionsUrl(endpoint: string): string {
@@ -376,7 +479,7 @@ function parseOllamaUsage(payload: any): Omit<CompletionUsageReport, 'provider' 
   };
 }
 
-function convertPlannerMessages(messages: RetrievalToolPlannerMessage[]): any[] {
+function convertPlannerMessages(messages: CompletionToolPlannerMessage[]): any[] {
   return messages.map((message) => {
     if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
       return {
@@ -409,7 +512,7 @@ function convertPlannerMessages(messages: RetrievalToolPlannerMessage[]): any[] 
   });
 }
 
-function parsePlannerResponse(payload: any): RetrievalToolPlannerResponse {
+function parsePlannerResponse(payload: any): CompletionToolPlannerResponse {
   const choice = payload?.choices?.[0] ?? {};
   const message = choice?.message ?? {};
   const finishReason = String(choice?.finish_reason ?? '');
@@ -435,7 +538,7 @@ function parsePlannerResponse(payload: any): RetrievalToolPlannerResponse {
 
   return {
     assistantText,
-    toolCalls: toolCalls as RetrievalToolPlannerResponse['toolCalls'],
+    toolCalls,
     finishReason
   };
 }
@@ -673,6 +776,9 @@ export async function requestStoryContinuation(
   config: ConverterSettings['completion'],
   request: StoryCompletionRequest
 ): Promise<string> {
+  const operationId = createOperationId('completion');
+  const operationName = request.operationName?.trim() || 'completion';
+  const startedAt = Date.now();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -684,11 +790,16 @@ export async function requestStoryContinuation(
     { role: 'system', content: request.systemPrompt },
     { role: 'user', content: request.userPrompt }
   ];
+  const attempts: CompletionOperationLogAttempt[] = [];
+  let usageForLog: CompletionUsageReport | null = null;
+  let finalText = '';
+  let finalError = '';
+  let aborted = false;
 
-  if (config.provider === 'ollama') {
-    const payload = await fetchJson(
-      resolveOllamaChatUrl(config.endpoint),
-      {
+  try {
+    if (config.provider === 'ollama') {
+      const url = resolveOllamaChatUrl(config.endpoint);
+      const body: Record<string, unknown> = {
         model: config.model,
         stream: false,
         messages,
@@ -696,97 +807,164 @@ export async function requestStoryContinuation(
           temperature: config.temperature,
           num_predict: config.maxOutputTokens
         }
-      },
-      headers,
-      config.timeoutMs,
-      request.abortSignal
-    );
-    const usage = parseOllamaUsage(payload);
-    if (usage && request.onUsage) {
-      request.onUsage({
-        provider: config.provider,
-        model: config.model,
-        source: 'ollama_usage',
-        ...usage
-      });
-    }
-    return extractOllamaCompletionText(payload).trim();
-  }
-
-  const url = resolveOpenAiCompletionsUrl(config.endpoint);
-  const baseBody: Record<string, unknown> = {
-    model: config.model,
-    messages,
-    temperature: config.temperature,
-    max_tokens: config.maxOutputTokens
-  };
-
-  const reportUsage = (payload: any): void => {
-    const usage = parseOpenAiUsage(payload);
-    if (usage && request.onUsage) {
-      request.onUsage({
-        provider: config.provider,
-        model: config.model,
-        source: 'openai_usage',
-        ...usage
-      });
-    }
-  };
-
-  const firstPayload = await fetchJson(
-    url,
-    baseBody,
-    headers,
-    config.timeoutMs,
-    request.abortSignal
-  );
-  reportUsage(firstPayload);
-
-  const firstText = extractOpenAiCompletionTextOrEmpty(firstPayload);
-  if (firstText) {
-    return firstText;
-  }
-
-  if (config.provider === 'openrouter' && isAbortLikeCompletionFailure(firstPayload)) {
-    const providerId = extractOpenRouterProviderId(firstPayload);
-    const retryBody: Record<string, unknown> = {
-      ...baseBody,
-      provider: providerId
-        ? {
-          allow_fallbacks: true,
-          ignore: [providerId]
+      };
+      const attempt: CompletionOperationLogAttempt = {
+        index: 1,
+        url,
+        requestBody: body
+      };
+      attempts.push(attempt);
+      const payload = await fetchJson(
+        url,
+        body,
+        headers,
+        config.timeoutMs,
+        request.abortSignal
+      );
+      attempt.responseBody = payload;
+      const usage = parseOllamaUsage(payload);
+      if (usage) {
+        usageForLog = {
+          provider: config.provider,
+          model: config.model,
+          source: 'ollama_usage',
+          ...usage
+        };
+        if (request.onUsage) {
+          request.onUsage(usageForLog);
         }
-        : {
-          allow_fallbacks: true
-        }
+      }
+      finalText = extractOllamaCompletionText(payload).trim();
+      return finalText;
+    }
+
+    const url = resolveOpenAiCompletionsUrl(config.endpoint);
+    const baseBody: Record<string, unknown> = {
+      model: config.model,
+      messages,
+      temperature: config.temperature,
+      max_tokens: config.maxOutputTokens
     };
 
-    const retryPayload = await fetchJson(
+    const reportUsage = (payload: any): void => {
+      const usage = parseOpenAiUsage(payload);
+      if (usage) {
+        usageForLog = {
+          provider: config.provider,
+          model: config.model,
+          source: 'openai_usage',
+          ...usage
+        };
+        if (request.onUsage) {
+          request.onUsage(usageForLog);
+        }
+      }
+    };
+
+    const firstAttempt: CompletionOperationLogAttempt = {
+      index: 1,
       url,
-      retryBody,
+      requestBody: baseBody
+    };
+    attempts.push(firstAttempt);
+    const firstPayload = await fetchJson(
+      url,
+      baseBody,
       headers,
       config.timeoutMs,
       request.abortSignal
     );
-    reportUsage(retryPayload);
+    firstAttempt.responseBody = firstPayload;
+    reportUsage(firstPayload);
 
-    const retryText = extractOpenAiCompletionTextOrEmpty(retryPayload);
-    if (retryText) {
-      return retryText;
+    const firstText = extractOpenAiCompletionTextOrEmpty(firstPayload);
+    if (firstText) {
+      finalText = firstText;
+      return finalText;
     }
 
-    throw new Error(
-      `Completion failed after OpenRouter provider retry. first=(${summarizeCompletionFailure(firstPayload)}) retry=(${summarizeCompletionFailure(retryPayload)})`
-    );
-  }
+    if (config.provider === 'openrouter' && isAbortLikeCompletionFailure(firstPayload)) {
+      const providerId = extractOpenRouterProviderId(firstPayload);
+      const retryBody: Record<string, unknown> = {
+        ...baseBody,
+        provider: providerId
+          ? {
+            allow_fallbacks: true,
+            ignore: [providerId]
+          }
+          : {
+            allow_fallbacks: true
+          }
+      };
 
-  return extractOpenAiCompletionText(firstPayload).trim();
+      const retryAttempt: CompletionOperationLogAttempt = {
+        index: 2,
+        url,
+        requestBody: retryBody
+      };
+      attempts.push(retryAttempt);
+      const retryPayload = await fetchJson(
+        url,
+        retryBody,
+        headers,
+        config.timeoutMs,
+        request.abortSignal
+      );
+      retryAttempt.responseBody = retryPayload;
+      reportUsage(retryPayload);
+
+      const retryText = extractOpenAiCompletionTextOrEmpty(retryPayload);
+      if (retryText) {
+        finalText = retryText;
+        return finalText;
+      }
+
+      throw new Error(
+        `Completion failed after OpenRouter provider retry. first=(${summarizeCompletionFailure(firstPayload)}) retry=(${summarizeCompletionFailure(retryPayload)})`
+      );
+    }
+
+    finalText = extractOpenAiCompletionText(firstPayload).trim();
+    return finalText;
+  } catch (error) {
+    finalError = error instanceof Error ? error.message : String(error);
+    aborted = isAbortLikeError(error);
+    if (attempts.length > 0) {
+      attempts[attempts.length - 1].error = finalError;
+    }
+    throw error;
+  } finally {
+    const finishedAt = Date.now();
+    await emitOperationLog(request.onOperationLog, {
+      id: operationId,
+      kind: 'completion',
+      operationName,
+      provider: config.provider,
+      model: config.model,
+      endpoint: config.endpoint,
+      startedAt,
+      finishedAt,
+      durationMs: Math.max(0, finishedAt - startedAt),
+      status: finalError ? 'error' : 'ok',
+      aborted,
+      ...(finalError ? { error: finalError } : {}),
+      request: {
+        messages
+      },
+      attempts,
+      ...(finalText ? { finalText } : {}),
+      usage: usageForLog
+    });
+  }
 }
 
 export async function requestStoryContinuationStream(
   config: ConverterSettings['completion'],
   request: StoryCompletionStreamRequest
 ): Promise<string> {
+  const operationId = createOperationId('completion_stream');
+  const operationName = request.operationName?.trim() || 'completion_stream';
+  const startedAt = Date.now();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream'
@@ -799,6 +977,11 @@ export async function requestStoryContinuationStream(
     { role: 'system', content: request.systemPrompt },
     { role: 'user', content: request.userPrompt }
   ];
+  const attempts: CompletionOperationLogAttempt[] = [];
+  let usageForLog: CompletionUsageReport | null = null;
+  let finalText = '';
+  let finalError = '';
+  let aborted = false;
 
   const controller = new AbortController();
   let timedOut = false;
@@ -811,93 +994,173 @@ export async function requestStoryContinuationStream(
 
   try {
     if (config.provider === 'ollama') {
-      const response = await fetch(resolveOllamaChatUrl(config.endpoint), {
+      const url = resolveOllamaChatUrl(config.endpoint);
+      const body: Record<string, unknown> = {
+        model: config.model,
+        stream: true,
+        messages,
+        options: {
+          temperature: config.temperature,
+          num_predict: config.maxOutputTokens
+        }
+      };
+      const attempt: CompletionOperationLogAttempt = {
+        index: 1,
+        url,
+        requestBody: body
+      };
+      attempts.push(attempt);
+      const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: config.model,
-          stream: true,
-          messages,
-          options: {
-            temperature: config.temperature,
-            num_predict: config.maxOutputTokens
-          }
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal
       });
 
       if (!response.ok) {
         const text = await response.text();
+        attempt.error = text;
         throw new Error(`Completion request failed (${response.status}): ${text}`);
       }
 
       const result = await consumeOllamaNdjsonStream(response, request.onDelta);
+      finalText = result.text;
+      attempt.responseText = result.text;
       if (result.usage && request.onUsage) {
-        request.onUsage({
+        const usage = {
           provider: config.provider,
           model: config.model,
           source: 'ollama_usage',
           ...result.usage
-        });
+        } as CompletionUsageReport;
+        usageForLog = usage;
+        request.onUsage(usage);
+      } else if (result.usage) {
+        usageForLog = {
+          provider: config.provider,
+          model: config.model,
+          source: 'ollama_usage',
+          ...result.usage
+        };
       }
-      return result.text;
+      return finalText;
     }
 
     const streamOptions = config.provider === 'openrouter'
       ? { include_usage: true }
       : undefined;
 
-    const response = await fetch(resolveOpenAiCompletionsUrl(config.endpoint), {
+    const url = resolveOpenAiCompletionsUrl(config.endpoint);
+    const body: Record<string, unknown> = {
+      model: config.model,
+      messages,
+      temperature: config.temperature,
+      max_tokens: config.maxOutputTokens,
+      stream: true,
+      stream_options: streamOptions
+    };
+    const attempt: CompletionOperationLogAttempt = {
+      index: 1,
+      url,
+      requestBody: body
+    };
+    attempts.push(attempt);
+    const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        model: config.model,
-        messages,
-        temperature: config.temperature,
-        max_tokens: config.maxOutputTokens,
-        stream: true,
-        stream_options: streamOptions
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
 
     if (!response.ok) {
       const text = await response.text();
+      attempt.error = text;
       throw new Error(`Completion request failed (${response.status}): ${text}`);
     }
 
     const result = await consumeOpenAiSseStream(response, request.onDelta);
+    finalText = result.text;
+    attempt.responseText = result.text;
     if (result.usage && request.onUsage) {
-      request.onUsage({
+      const usage = {
         provider: config.provider,
         model: config.model,
         source: 'openai_usage',
         ...result.usage
-      });
+      } as CompletionUsageReport;
+      usageForLog = usage;
+      request.onUsage(usage);
+    } else if (result.usage) {
+      usageForLog = {
+        provider: config.provider,
+        model: config.model,
+        source: 'openai_usage',
+        ...result.usage
+      };
     }
-    return result.text;
+    return finalText;
   } catch (error) {
     if (timedOut) {
-      throw new Error(`Completion request timed out after ${config.timeoutMs}ms.`);
+      finalError = `Completion request timed out after ${config.timeoutMs}ms.`;
+      if (attempts.length > 0) {
+        attempts[attempts.length - 1].error = finalError;
+      }
+      throw new Error(finalError);
     }
     if (request.abortSignal?.aborted) {
-      throw new Error('Completion request was aborted.');
+      finalError = 'Completion request was aborted.';
+      aborted = true;
+      if (attempts.length > 0) {
+        attempts[attempts.length - 1].error = finalError;
+      }
+      throw new Error(finalError);
     }
-    throw normalizeRequestError(error, config.timeoutMs);
+    const normalized = normalizeRequestError(error, config.timeoutMs);
+    finalError = normalized.message;
+    aborted = isAbortLikeError(normalized);
+    if (attempts.length > 0) {
+      attempts[attempts.length - 1].error = finalError;
+    }
+    throw normalized;
   } finally {
     request.abortSignal?.removeEventListener('abort', abortHandler);
     window.clearTimeout(timer);
+    const finishedAt = Date.now();
+    await emitOperationLog(request.onOperationLog, {
+      id: operationId,
+      kind: 'completion_stream',
+      operationName,
+      provider: config.provider,
+      model: config.model,
+      endpoint: config.endpoint,
+      startedAt,
+      finishedAt,
+      durationMs: Math.max(0, finishedAt - startedAt),
+      status: finalError ? 'error' : 'ok',
+      aborted,
+      ...(finalError ? { error: finalError } : {}),
+      request: {
+        messages
+      },
+      attempts,
+      ...(finalText ? { finalText } : {}),
+      usage: usageForLog
+    });
   }
 }
 
-export function createCompletionRetrievalToolPlanner(
-  config: ConverterSettings['completion']
-): RetrievalToolPlanner | null {
+export function createCompletionToolPlanner(
+  config: ConverterSettings['completion'],
+  options?: CompletionToolPlannerOptions
+): CompletionToolPlanner | null {
   if (config.provider === 'ollama') {
     return null;
   }
 
-  return async (request: RetrievalToolPlannerRequest): Promise<RetrievalToolPlannerResponse> => {
+  return async (request: CompletionToolPlannerRequest): Promise<CompletionToolPlannerResponse> => {
+    const operationId = createOperationId('tool_planner');
+    const operationName = options?.operationName?.trim() || 'tool_planner';
+    const startedAt = Date.now();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -915,40 +1178,103 @@ export function createCompletionRetrievalToolPlanner(
     const abortHandler = () => controller.abort();
     request.abortSignal?.addEventListener('abort', abortHandler);
 
+    let finalError = '';
+    let aborted = false;
+    const url = resolveOpenAiCompletionsUrl(config.endpoint);
+    const requestBody: Record<string, unknown> = {
+      model: config.model,
+      messages: convertPlannerMessages(request.messages),
+      tools: request.toolDefinitions,
+      tool_choice: 'auto',
+      temperature: 0,
+      max_tokens: 240,
+      stream: false
+    };
+    let responseBody: unknown;
     try {
-      const response = await fetch(resolveOpenAiCompletionsUrl(config.endpoint), {
+      const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: config.model,
-          messages: convertPlannerMessages(request.messages),
-          tools: request.toolDefinitions,
-          tool_choice: 'auto',
-          temperature: 0,
-          max_tokens: 240,
-          stream: false
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
 
       if (!response.ok) {
         const text = await response.text();
+        finalError = `Retrieval tool planner request failed (${response.status}): ${text}`;
         throw new Error(`Retrieval tool planner request failed (${response.status}): ${text}`);
       }
 
       const payload = await response.json();
+      responseBody = payload;
       return parsePlannerResponse(payload);
     } catch (error) {
       if (timedOut) {
-        throw new Error(`Retrieval tool planner request timed out after ${timeoutMs}ms.`);
+        finalError = `Retrieval tool planner request timed out after ${timeoutMs}ms.`;
+        throw new Error(finalError);
       }
       if (request.abortSignal?.aborted) {
-        throw new Error('Retrieval tool planner request was aborted.');
+        finalError = 'Retrieval tool planner request was aborted.';
+        aborted = true;
+        throw new Error(finalError);
       }
-      throw normalizeRequestError(error, timeoutMs);
+      const normalized = normalizeRequestError(error, timeoutMs);
+      finalError = normalized.message;
+      aborted = isAbortLikeError(normalized);
+      throw normalized;
     } finally {
       request.abortSignal?.removeEventListener('abort', abortHandler);
       window.clearTimeout(timer);
+      const finishedAt = Date.now();
+      await emitOperationLog(options?.onOperationLog, {
+        id: operationId,
+        kind: 'tool_planner',
+        operationName,
+        provider: config.provider,
+        model: config.model,
+        endpoint: config.endpoint,
+        startedAt,
+        finishedAt,
+        durationMs: Math.max(0, finishedAt - startedAt),
+        status: finalError ? 'error' : 'ok',
+        aborted,
+        ...(finalError ? { error: finalError } : {}),
+        request: {
+          messages: request.messages,
+          toolDefinitions: request.toolDefinitions
+        },
+        attempts: [{
+          index: 1,
+          url,
+          requestBody,
+          ...(responseBody !== undefined ? { responseBody } : {}),
+          ...(finalError ? { error: finalError } : {})
+        }]
+      });
     }
+  };
+}
+
+export function createCompletionRetrievalToolPlanner(
+  config: ConverterSettings['completion'],
+  options?: CompletionToolPlannerOptions
+): RetrievalToolPlanner | null {
+  const planner = createCompletionToolPlanner(config, options);
+  if (!planner) {
+    return null;
+  }
+
+  return async (request: RetrievalToolPlannerRequest): Promise<RetrievalToolPlannerResponse> => {
+    const response = await planner({
+      messages: request.messages,
+      toolDefinitions: request.toolDefinitions,
+      timeoutMs: request.timeoutMs,
+      abortSignal: request.abortSignal
+    });
+    return {
+      assistantText: response.assistantText,
+      toolCalls: response.toolCalls as RetrievalToolPlannerResponse['toolCalls'],
+      finishReason: response.finishReason
+    };
   };
 }

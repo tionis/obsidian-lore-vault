@@ -16,6 +16,10 @@ Reference design: `docs/planning.md`.
 - Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).
 - Phase 18 quality audit foundation is complete (risk scoring + missing-keyword actions + LLM keyword generation).
 - Phase 19 mobile compatibility migration is complete (adapter-based export/cache IO + vault-relative path contract + manifest flip).
+- Story Steering LLM update prompt support is complete (optional per-run change request + baseline-preserving update behavior).
+- Story Chat agentic tool layer is complete (bounded lorebook/story/steering tool calls with scoped access and optional write gating).
+- LLM operation log is complete (full request/response/tool-planner payload persistence with retention controls + in-plugin explorer view).
+- Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order
@@ -240,6 +244,7 @@ Reference design: `docs/planning.md`.
 - [x] Merge scoped steering into Continue Story and Story Chat prompt assembly.
 - [x] Expose steering panel via command palette, manager toolbar, and in-plugin help actions.
 - [x] Add LLM-assisted extraction actions (proposal + review) to populate/update steering sections from story text.
+- [x] Add optional update prompt input for steering LLM assist and preserve-existing-state update contract.
 
 ## Phase 22: Stabilization and Roadmap Alignment (Current)
 
@@ -262,6 +267,20 @@ Reference design: `docs/planning.md`.
 - [x] Lorebook Auditor parity:
   - [x] document current row actions (`Open Entry`, `Open Similar`, `Open Pair`, keyword actions)
   - [x] add tests for duplicate/similarity actions and embeddings-present/absent messaging
+- [x] Agentic workflow integration:
+  - [x] add Story Chat tool-calling planner loop with bounded call/token/time limits
+  - [x] expose lorebook/story/steering read tools with scoped-access safety boundaries
+  - [x] add optional write tools (steering update + lorebook note create) behind explicit setting and per-turn write-intent gate
+  - [x] expose chat tool call/write traces in context inspector metadata
+- [x] LLM operation logging:
+  - [x] add vault-backed JSONL operation log for completion + streaming + tool planner calls
+  - [x] add settings for operation-log enable/path/max-entry retention
+  - [x] add operation-log explorer panel with command, filters, and full payload inspection
+- [x] Story completion stop UX:
+  - [x] add command: `Stop Active Generation`
+  - [x] expose editor menu stop action while generation is active
+- [x] Text command canon consistency default prompt update:
+  - [x] bias default template toward lorebook factual consistency constraints
 - [ ] Advanced cost-management follow-up (far future):
   - [ ] integrate provider pricing metadata sync (OpenRouter-first)
   - [x] store/display estimated-vs-actual cost provenance per ledger row

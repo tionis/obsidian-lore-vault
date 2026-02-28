@@ -137,6 +137,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Continue Story in Editor', {
       bullets: [
         'Use editor context menu: `LoreVault: Continue Story with Context`.',
+        'Use command `Stop Active Generation` (or editor menu while running) to abort story text completion.',
         'Works on desktop and mobile editor menus.',
         'Context assembly order: local story window -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
         'Generation Monitor in Manager shows context usage, selected entries, and trim decisions.',
@@ -153,7 +154,9 @@ export class LorevaultHelpView extends ItemView {
         'Story Steering stores reusable controls in scope notes: `global`, `story`, `chapter`, `note`.',
         '`Active Lorebooks` in steering notes is the primary lorebook selector for continuation.',
         'Steering layers: pinned instructions, story notes, scene intent, plot threads, open loops, canon deltas.',
+        'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/save.',
         'Story Chat supports per-conversation scopes, manual context, specific note references, and fork/regenerate.',
+        'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed steering scopes.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'
       ],
       actions: [
@@ -214,21 +217,27 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Settings You Will Likely Use', {
       bullets: [
         'Writing Completion: provider/model/context window/max output and model presets.',
-        'Story Chat folder and Story Steering folder.',
+        'LLM Operation Log: enable full request/response logging, path, retention cap, and open the built-in explorer panel.',
+        'Story Chat folder plus Story Chat tool-call limits/write toggle.',
+        'Story Steering folder and extraction sanitization setting.',
         'Retrieval controls: graph hops/decay, backlink expansion, fallback policy (`off|auto|always`), body-lift settings.',
         'Text Commands: prompt folder, default context toggle, auto-accept.',
         'Cost Tracking: usage ledger path, pricing overrides, and optional budget alerts (daily/session/operation/model/scope).'
+      ],
+      actions: [
+        { label: 'Open Operation Log Explorer', onClick: () => void this.plugin.openOperationLogView() }
       ]
     });
 
     this.renderSection(contentEl, 'Command Coverage', {
       bullets: [
         'Build/Manage: `Build Active Lorebook Scope`, `Open LoreVault Manager`, `Open LoreVault Lorebook Auditor`, `Open LoreVault Query Simulation`.',
-        'Story Tools: `Continue Story with Context`, `Open Story Chat`, `Open Story Steering`.',
+        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Steering`.',
         'Summary/Keyword: `Generate World Info Summary (Active Note)`, `Generate Keywords (Active Note)`, `Generate Chapter Summary (Active Note)`.',
         'Batch Summary: `Generate World Info Summaries (Active Scope)`, `Generate Chapter Summaries (Current Story)`.',
         'Import/Update: `Import SillyTavern Lorebook`, `Extract Wiki Pages from Story`, `Apply Story Delta to Existing Wiki`.',
         'Text Editing: `Run Text Command on Selection`.',
+        'Operation Log: `Open LLM Operation Log Explorer`.',
         'Usage/Reporting: `Export Usage Report (JSON)`, `Export Usage Report (CSV)`.',
         'Template: `Create LoreVault Entry Template`.',
         'Help: `Open LoreVault Help`.'

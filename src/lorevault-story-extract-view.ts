@@ -96,7 +96,9 @@ export class LorevaultStoryExtractView extends ItemView {
         maxExistingPagesInPrompt: this.maxExistingPagesInPrompt,
         callModel: (systemPrompt, userPrompt) => requestStoryContinuation(completion, {
           systemPrompt,
-          userPrompt
+          userPrompt,
+          operationName: 'story_extract_preview',
+          onOperationLog: record => this.plugin.appendCompletionOperationLog(record)
         })
       });
       this.lastPreview = result;

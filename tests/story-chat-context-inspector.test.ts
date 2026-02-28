@@ -39,6 +39,9 @@ function buildMeta(overrides: Partial<StoryChatContextMeta> = {}): StoryChatCont
       }
     ],
     overflowTrace: ['history_window: trimmed 200 tokens'],
+    chatToolTrace: ['story_chat_tools: 1 call(s), stop=completed, write_tools=off'],
+    chatToolCalls: ['get_steering_scope: note:lvn-abc123'],
+    chatToolWrites: [],
     contextTokens: 2048,
     worldInfoCount: 5,
     ragCount: 1,
@@ -54,11 +57,15 @@ test('buildStoryChatContextInspectorSummary exposes directive counts and scope l
   assert.match(summary, /directives 2/);
   assert.match(summary, /world_info 5/);
   assert.match(summary, /fallback 1/);
+  assert.match(summary, /tools 1/);
 });
 
 test('buildStoryChatContextInspectorLines renders inline directives and optional diagnostics', () => {
   const lines = buildStoryChatContextInspectorLines(buildMeta());
   assert.ok(lines.includes('inline directives: Keep POV narrow | Do not resolve cliffhanger'));
+  assert.ok(lines.includes('chat tools: calls get_steering_scope: note:lvn-abc123'));
+  assert.ok(lines.includes('chat tools: writes (none)'));
+  assert.ok(lines.includes('chat tool trace: story_chat_tools: 1 call(s), stop=completed, write_tools=off'));
   assert.ok(lines.includes('overflow policy: history_window: trimmed 200 tokens'));
   assert.ok(lines.some(line => line.startsWith('layer budgets: inline_directives@pre_response used 28/64')));
   assert.ok(lines.includes('layer trace: history_window: 1200 tokens'));
@@ -75,6 +82,9 @@ test('buildStoryChatContextInspectorLines renders none markers when optional lis
     continuityOpenLoops: [],
     continuityCanonDeltas: [],
     overflowTrace: [],
+    chatToolTrace: [],
+    chatToolCalls: [],
+    chatToolWrites: [],
     layerUsage: [],
     worldInfoItems: [],
     ragItems: [],
@@ -82,6 +92,9 @@ test('buildStoryChatContextInspectorLines renders none markers when optional lis
   }));
 
   assert.ok(lines.includes('inline directives: (none)'));
+  assert.ok(lines.includes('chat tools: calls (none)'));
+  assert.ok(lines.includes('chat tools: writes (none)'));
+  assert.ok(lines.includes('chat tool trace: (none)'));
   assert.ok(lines.includes('world_info: (none)'));
   assert.ok(lines.includes('fallback: (none)'));
   assert.ok(lines.includes('layer trace: (none)'));

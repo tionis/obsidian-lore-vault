@@ -100,6 +100,11 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       budgetByModelUsd: overrides.costTracking?.budgetByModelUsd ?? {},
       budgetByScopeUsd: overrides.costTracking?.budgetByScopeUsd ?? {}
     },
+    operationLog: {
+      enabled: overrides.operationLog?.enabled ?? false,
+      path: overrides.operationLog?.path ?? '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
+      maxEntries: overrides.operationLog?.maxEntries ?? 400
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',
@@ -143,6 +148,13 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       messages: [],
       forkSnapshots: [],
       maxMessages: 80,
+      toolCalls: {
+        enabled: false,
+        maxCallsPerTurn: 6,
+        maxResultTokensPerTurn: 2400,
+        maxPlanningTimeMs: 10000,
+        allowWriteActions: false
+      },
       ...(overrides.storyChat ?? {})
     },
     storySteering: {

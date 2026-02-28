@@ -204,6 +204,9 @@ export interface StoryChatContextMeta {
   layerTrace?: string[];
   layerUsage?: PromptLayerUsage[];
   overflowTrace?: string[];
+  chatToolTrace?: string[];
+  chatToolCalls?: string[];
+  chatToolWrites?: string[];
   contextTokens: number;
   worldInfoCount: number;
   ragCount: number;
@@ -287,7 +290,7 @@ export const DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES: TextCommandPromptTemplate[] 
   {
     id: 'canon-consistency',
     name: 'Canon Consistency Pass',
-    prompt: 'Edit this text to improve consistency with established lore and character/world facts while preserving core intent.',
+    prompt: 'Edit this text to maximize factual consistency with lorebook facts and established character/world canon. Preserve intent, voice, and pacing; change only what is needed to resolve canon conflicts.',
     includeLorebookContext: true
   }
 ];
@@ -391,6 +394,11 @@ export interface ConverterSettings {
     budgetByModelUsd: {[providerModel: string]: number};
     budgetByScopeUsd: {[scope: string]: number};
   };
+  operationLog: {
+    enabled: boolean;
+    path: string;
+    maxEntries: number;
+  };
   completion: {
     enabled: boolean;
     provider: 'openrouter' | 'ollama' | 'openai_compatible';
@@ -429,6 +437,13 @@ export interface ConverterSettings {
     messages: StoryChatMessage[];
     forkSnapshots: StoryChatForkSnapshot[];
     maxMessages: number;
+    toolCalls: {
+      enabled: boolean;
+      maxCallsPerTurn: number;
+      maxResultTokensPerTurn: number;
+      maxPlanningTimeMs: number;
+      allowWriteActions: boolean;
+    };
   };
   storySteering: {
     folder: string;
@@ -529,6 +544,11 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     budgetByModelUsd: {},
     budgetByScopeUsd: {}
   },
+  operationLog: {
+    enabled: false,
+    path: '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
+    maxEntries: 400
+  },
   completion: {
     enabled: false,
     provider: 'openrouter',
@@ -570,7 +590,14 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     noteContextRefs: [],
     messages: [],
     forkSnapshots: [],
-    maxMessages: 80
+    maxMessages: 80,
+    toolCalls: {
+      enabled: false,
+      maxCallsPerTurn: 6,
+      maxResultTokensPerTurn: 2400,
+      maxPlanningTimeMs: 10000,
+      allowWriteActions: false
+    }
   },
   storySteering: {
     folder: 'LoreVault/steering',

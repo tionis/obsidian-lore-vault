@@ -19,7 +19,7 @@ function formatLayerUsage(meta: StoryChatContextMeta): string | null {
 }
 
 export function buildStoryChatContextInspectorSummary(meta: StoryChatContextMeta): string {
-  return `Injected context · scopes ${joinOrNone(meta.scopes, ', ')} · directives ${(meta.inlineDirectiveItems ?? []).length} · notes ${meta.specificNotePaths.length} · world_info ${meta.worldInfoCount} · fallback ${meta.ragCount}`;
+  return `Injected context · scopes ${joinOrNone(meta.scopes, ', ')} · directives ${(meta.inlineDirectiveItems ?? []).length} · notes ${meta.specificNotePaths.length} · world_info ${meta.worldInfoCount} · fallback ${meta.ragCount} · tools ${(meta.chatToolCalls ?? []).length}`;
 }
 
 export function buildStoryChatContextInspectorLines(meta: StoryChatContextMeta): string[] {
@@ -33,6 +33,8 @@ export function buildStoryChatContextInspectorLines(meta: StoryChatContextMeta):
     `continuity items: threads ${joinOrNone(meta.continuityPlotThreads, ' | ')}`,
     `continuity items: open loops ${joinOrNone(meta.continuityOpenLoops, ' | ')}`,
     `continuity items: canon deltas ${joinOrNone(meta.continuityCanonDeltas, ' | ')}`,
+    `chat tools: calls ${joinOrNone(meta.chatToolCalls, ' | ')}`,
+    `chat tools: writes ${joinOrNone(meta.chatToolWrites, ' | ')}`,
   ];
 
   const overflowTrace = meta.overflowTrace ?? [];
@@ -47,6 +49,7 @@ export function buildStoryChatContextInspectorLines(meta: StoryChatContextMeta):
 
   lines.push(`world_info: ${joinOrNone(meta.worldInfoItems, ', ')}`);
   lines.push(`fallback: ${joinOrNone(meta.ragItems, ', ')}`);
+  lines.push(`chat tool trace: ${joinOrNone(meta.chatToolTrace, ' | ')}`);
   lines.push(`layer trace: ${joinOrNone(meta.layerTrace, ' | ')}`);
   return lines;
 }

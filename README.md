@@ -254,8 +254,10 @@ Behavior:
 - supports continuation continuity-state frontmatter lists/toggles:
   - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
   - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
+- Story Steering LLM assistance supports optional update prompts so users can request targeted steering changes before review/save
 - sends context + story window to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
+- generation can be aborted with command `Stop Active Generation` (also available as editor-menu action while a run is in progress)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
 - reports active scopes and pulled `world_info`/fallback items at generation start
 - adds right-click editor context-menu actions:
@@ -268,6 +270,8 @@ Behavior:
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
+For debugging, `LLM Operation Log` settings can persist full request/response content (including tool-planner calls) to a vault JSONL file.
+Use command `Open LLM Operation Log Explorer` (or Settings -> `Open LLM Operation Log Explorer`) to browse/search entries and inspect full payloads in-plugin.
 Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`, with pricing provenance and optional budgets by operation/model/scope.
 Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
 
@@ -291,6 +295,7 @@ Behavior:
 - returns transformed text only
 - by default opens a review modal with original text + diff preview before apply
 - optional auto-accept can apply directly without review
+- default `Canon Consistency Pass` prompt now prioritizes factual consistency with lorebook canon and minimizes non-factual rewrites
 
 Settings path: `Settings -> LoreVault -> Text Commands`
 
@@ -420,6 +425,11 @@ Current capabilities:
 - per-chat steering fields (pinned instructions, story notes, scene intent)
 - per-chat continuity controls (plot threads, open loops, canon deltas, per-group inclusion toggles)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
+- optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
+  - search/read selected lorebook entries
+  - search/read linked story and manually selected note context
+  - read steering scopes in the active scope chain (`global`/`story`/`chapter`/`note`)
+  - optionally update steering scopes and create lorebook-tagged notes when write actions are enabled
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
@@ -427,6 +437,7 @@ Current capabilities:
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 - per-response layer budget/overflow inspector (`reserved`, `used`, `headroom`, trim rationale)
 - per-response continuity inspector (included threads/open loops/canon deltas)
+- per-response agent tool inspector rows (tool call summaries, write actions, and tool-loop trace)
 - chapter memory shown in layer trace indicates summary source (`section`, `frontmatter`, or `excerpt`)
 
 Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.

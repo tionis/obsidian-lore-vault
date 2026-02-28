@@ -10,6 +10,7 @@ This document is the implementation-level reference for core architecture and ru
   - export pipeline orchestration
   - completion orchestration
   - story-chat turn orchestration
+  - vault-backed LLM operation log persistence (`operationLog` settings) + explorer-view refresh hooks
 - `src/live-context-index.ts`
   - near-live scope indexing
   - scope pack rebuild strategy
@@ -23,6 +24,10 @@ This document is the implementation-level reference for core architecture and ru
   - model-driven retrieval tool loop (`search_entries`, `expand_neighbors`, `get_entry`)
   - deterministic local tool execution and context rendering
   - per-turn safety limits (calls/tokens/time)
+- `src/completion-provider.ts`
+  - completion adapters (OpenRouter/Ollama/OpenAI-compatible)
+  - generic OpenAI-style tool planner helper used by retrieval hooks and Story Chat agent tools
+  - per-call operation log emission hooks (full request/response payloads + errors + aborts)
 - `src/scope-pack-builder.ts`
   - deterministic note processing
   - graph ranking
@@ -38,6 +43,7 @@ This document is the implementation-level reference for core architecture and ru
   - per-scope `activeLorebooks` list used as primary scope selection source for continuation
   - move-safe scope linking via `lvNoteId` frontmatter IDs
   - legacy path-keyed note/chapter scope migration to ID-keyed scope files
+  - LLM-assisted steering update flow with optional per-run update prompt
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
   - markdown-backed steering note parse/serialize
   - effective-layer merge for chat/continuation prompt assembly
@@ -45,7 +51,7 @@ This document is the implementation-level reference for core architecture and ru
   - shared metadata/scope cache reused by manager/steering/auditor UI
   - explicit invalidation on vault and settings mutations
 - `src/story-steering-review-modal.ts`
-  - review/edit approval modal for LLM-proposed steering extraction updates
+  - review/edit approval modal for LLM-proposed steering updates
 - `src/lorebooks-routing-debug-view.ts`
   - scope inclusion/routing diagnostics
   - world_info content inspection
@@ -102,6 +108,10 @@ This document is the implementation-level reference for core architecture and ru
 - `src/lorevault-story-delta-view.ts`
   - story delta update panel (`Apply Story Delta to Existing Wiki`) with preview/apply flow
   - conflict review rows + decision persistence (`accept`/`reject`/`keep_both`)
+- `src/lorevault-operation-log-view.ts` + `src/operation-log.ts`
+  - operation-log explorer UI (`Open LLM Operation Log Explorer`)
+  - JSONL parsing/coercion with malformed-line diagnostics
+  - filter/search and full payload inspection for completion/planner calls
 - `src/story-delta-update.ts`
   - deterministic chunked delta extraction
   - low-confidence gating
@@ -232,6 +242,39 @@ Hard limits per turn:
 
 If a limit is reached, tool loop stops deterministically and trace output records stop reason.
 
+### Story Chat Agent Tool Layer (Optional)
+
+Story Chat has a separate bounded tool loop (`settings.storyChat.toolCalls.*`) that runs before final chat response generation.
+
+Available tools:
+
+- lorebook read/search (selected scopes only):
+  - `search_lorebook_entries`
+  - `get_lorebook_entry`
+- linked-story/manual-note read/search:
+  - `search_story_notes`
+  - `read_story_note`
+- steering scope read/update (active scope chain only):
+  - `get_steering_scope`
+  - `update_steering_scope`
+- optional lorebook note creation:
+  - `create_lorebook_entry_note`
+
+Boundary contract:
+
+- no whole-vault traversal; tools are restricted to:
+  - selected lorebook scopes
+  - linked story note set (story thread + manually selected note refs)
+  - steering scopes in active-note chain (`global`/`story`/`chapter`/`note`)
+- write tools require:
+  - `settings.storyChat.toolCalls.allowWriteActions = true`
+  - explicit write intent in current user turn (deterministic heuristic gate)
+
+Turn metadata contract:
+
+- tool loop traces, call summaries, and write summaries are persisted in assistant turn `contextMeta`
+- context inspector renders these as separate rows (`chat tools: calls/writes`, `chat tool trace`)
+
 ## Budgeting and Content Tiering
 
 `world_info` and fallback budgets are split from the per-query token budget.
@@ -359,7 +402,7 @@ Stored structure:
 - per-conversation continuity state (plot threads, open loops, canon deltas, inclusion toggles)
 - per-turn messages
 - message versions with active version selector
-- optional context inspector metadata on assistant versions
+- optional context inspector metadata on assistant versions (including agent tool traces/calls/writes)
 
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
 
@@ -451,6 +494,35 @@ Core contracts:
 Current non-goals in this phase:
 
 - provider pricing auto-sync
+
+## LLM Operation Log
+
+Optional debugging surface (`settings.operationLog.*`):
+
+- `enabled`: toggles persistence
+- `path`: vault-relative JSONL log file
+- `maxEntries`: retention cap (oldest entries trimmed deterministically by file order)
+
+Captured records include:
+
+- completion calls (`requestStoryContinuation`)
+- streaming completion calls (`requestStoryContinuationStream`)
+- completion tool-planner calls (`createCompletionToolPlanner`)
+
+Each record stores:
+
+- operation metadata (id, kind, operation name, provider/model, timing, status/abort)
+- full request payload content (messages/tool definitions)
+- attempt-level request/response payloads and errors
+- final text output (when available)
+- parsed usage report (when available)
+
+Explorer surface:
+
+- command: `Open LLM Operation Log Explorer`
+- view type: `lorevault-operation-log-view`
+- reads/parses the configured JSONL path, shows malformed line diagnostics, and supports text/status/kind filters
+- per-entry inspection includes request payload, attempt payloads/responses/errors, final output text, and normalized record JSON
 
 ## Phase 14 Import/Extraction (Current Progress)
 

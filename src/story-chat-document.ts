@@ -85,6 +85,9 @@ export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined
     layerTrace: [...(meta.layerTrace ?? [])],
     layerUsage: (meta.layerUsage ?? []).map(layer => ({ ...layer })),
     overflowTrace: [...(meta.overflowTrace ?? [])],
+    chatToolTrace: [...(meta.chatToolTrace ?? [])],
+    chatToolCalls: [...(meta.chatToolCalls ?? [])],
+    chatToolWrites: [...(meta.chatToolWrites ?? [])],
     worldInfoItems: [...meta.worldInfoItems],
     ragItems: [...meta.ragItems]
   };
@@ -152,6 +155,15 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
       : [],
     overflowTrace: Array.isArray(meta.overflowTrace)
       ? meta.overflowTrace.map(value => String(value ?? ''))
+      : [],
+    chatToolTrace: Array.isArray(meta.chatToolTrace)
+      ? meta.chatToolTrace.map(value => String(value ?? ''))
+      : [],
+    chatToolCalls: Array.isArray(meta.chatToolCalls)
+      ? meta.chatToolCalls.map(value => String(value ?? ''))
+      : [],
+    chatToolWrites: Array.isArray(meta.chatToolWrites)
+      ? meta.chatToolWrites.map(value => String(value ?? ''))
       : [],
     contextTokens: Math.max(0, Math.floor(Number(meta.contextTokens ?? 0))),
     worldInfoCount: Math.max(0, Math.floor(Number(meta.worldInfoCount ?? 0))),

@@ -192,7 +192,6 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     return value
       .trim()
       .replace(/\\/g, '/')
-      .replace(/^\/+/, '')
       .replace(/\/+$/, '');
   }
 
@@ -612,7 +611,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     let sqliteOutputInput: TextComponent | null = null;
     const sqliteOutputSetting = new Setting(containerEl)
       .setName('SQLite Output Directory')
-      .setDesc('Directory for canonical SQLite packs. Type a path or browse existing folders. LoreVault writes one <scope>.db per lorebook.')
+      .setDesc('Vault-relative directory for canonical SQLite packs. Type a path or browse existing folders. LoreVault writes one <scope>.db per lorebook.')
       .addText(text => {
         sqliteOutputInput = text;
         text

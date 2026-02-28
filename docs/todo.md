@@ -171,19 +171,18 @@ Reference design: `docs/planning.md`.
 
 ## Phase 19: Mobile Compatibility
 
-- [ ] Add mobile-safe storage adapter abstraction for text/binary read/write and directory creation.
+- [x] Add mobile-safe storage adapter abstraction for vault-binary read/write (`src/vault-binary-io.ts`).
 - [ ] Migrate runtime filesystem paths away from Node `fs` in:
-  - `src/lorebook-exporter.ts`
-  - `src/rag-exporter.ts`
-  - `src/sqlite-pack-exporter.ts`
-  - `src/sqlite-pack-reader.ts`
-  - `src/embedding-cache.ts`
-  - `src/sqlite-cli.ts`
+  - [x] `src/lorebook-exporter.ts`
+  - [x] `src/rag-exporter.ts`
+  - [x] `src/sqlite-pack-exporter.ts`
+  - [x] `src/sqlite-pack-reader.ts`
+  - [ ] `src/embedding-cache.ts`
+  - [x] `src/sqlite-cli.ts` (removed; replaced by vault adapter IO utility)
 - [ ] Replace Node `path` usage in mobile-executed code paths with vault-path utilities.
-- [ ] Gate desktop-only behaviors in settings/help (absolute output paths and related UX).
+- [x] Enforce vault-relative export paths in settings normalization/path resolution (absolute paths rejected).
 - [ ] Add mobile-focused regression tests for deterministic export paths and adapter IO.
 - [ ] Validate mobile QA matrix and flip `manifest.json isDesktopOnly` to `false`.
-- [ ] Keep absolute filesystem export support desktop-only with explicit warning/fallback behavior.
 
 ## Default Decisions (2026-02-27)
 

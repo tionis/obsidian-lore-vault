@@ -1,8 +1,7 @@
 import { App } from 'obsidian';
-import * as fs from 'fs';
 import { LoreBookEntry, RagDocument, RagChunk, RagChunkEmbedding, ScopePack } from './models';
-import { resolveAbsoluteOutputPath } from './sqlite-cli';
 import { getSqlJs } from './sqlite-runtime';
+import { readVaultBinary } from './vault-binary-io';
 
 type SqlCell = string | number | Uint8Array | null;
 type SqlRow = Record<string, SqlCell>;
@@ -60,15 +59,10 @@ export class SqlitePackReader {
     this.app = app;
   }
 
-  private resolvePath(outputPath: string): string {
-    return resolveAbsoluteOutputPath(this.app, outputPath);
-  }
-
   private async withDatabase<T>(outputPath: string, handler: (db: any) => T): Promise<T> {
-    const dbPath = this.resolvePath(outputPath);
-    const dbBytes = fs.readFileSync(dbPath);
+    const dbBytes = await readVaultBinary(this.app, outputPath);
     const SQL = await getSqlJs();
-    const db = new SQL.Database(new Uint8Array(dbBytes));
+    const db = new SQL.Database(dbBytes);
 
     try {
       return handler(db);

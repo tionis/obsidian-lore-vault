@@ -1,8 +1,9 @@
 import { App } from 'obsidian';
-import * as fs from 'fs';
-import * as path from 'path';
 import { LoreBookEntry, LoreBook, ConverterSettings } from './models';
-import { ensureParentVaultFolderForFile, normalizeVaultPath } from './vault-path-utils';
+import {
+  ensureParentVaultFolderForFile,
+  normalizeVaultRelativePath
+} from './vault-path-utils';
 
 export class LoreBookExporter {
   private app: App;
@@ -16,7 +17,7 @@ export class LoreBookExporter {
     outputPath: string,
     settings: ConverterSettings
   ): Promise<void> {
-    const normalizedOutputPath = normalizeVaultPath(outputPath);
+    const normalizedOutputPath = normalizeVaultRelativePath(outputPath);
 
     // Create entries dictionary with string keys and remove wikilinks
     const entriesDict: {[key: string]: Omit<LoreBookEntry, 'wikilinks'>} = {};
@@ -76,30 +77,16 @@ export class LoreBookExporter {
       }
     };
     
-    // Save to file using Electron's fs module (available in Obsidian desktop)
     try {
-      // Check if path is absolute or relative
-      const isAbsolutePath = path.isAbsolute(outputPath);
+      await ensureParentVaultFolderForFile(this.app, normalizedOutputPath);
+      await this.app.vault.adapter.write(
+        normalizedOutputPath,
+        JSON.stringify(lorebook, null, 2)
+      );
       
-      if (!isAbsolutePath) {
-        // Path is relative to vault - use Obsidian's API
-        await ensureParentVaultFolderForFile(this.app, normalizedOutputPath);
-        await this.app.vault.adapter.write(
-          normalizedOutputPath,
-          JSON.stringify(lorebook, null, 2)
-        );
-      } else {
-        // Path is outside the vault - use Node's fs
-        const dirPath = path.dirname(outputPath);
-        if (!fs.existsSync(dirPath)) {
-          fs.mkdirSync(dirPath, { recursive: true });
-        }
-        fs.writeFileSync(outputPath, JSON.stringify(lorebook, null, 2), 'utf8');
-      }
-      
-      console.log(`Successfully exported ${Object.keys(entries).length} entries to ${outputPath}`);
+      console.log(`Successfully exported ${Object.keys(entries).length} entries to ${normalizedOutputPath}`);
     } catch (e) {
-      console.error(`Error writing JSON to ${outputPath}:`, e);
+      console.error(`Error writing JSON to ${normalizedOutputPath}:`, e);
       throw e;
     }
   }

@@ -208,8 +208,9 @@ SQLite path behavior:
 
 - if SQLite output setting is a directory: write `<dir>/<scope-slug>.db`
 - if SQLite output setting is a `.db` file path: append `-<scope-slug>` unless `{scope}` is present
+- SQLite output path must be vault-relative (absolute filesystem paths are rejected)
+- downstream export subpath/pattern must be vault-relative (absolute filesystem paths are rejected)
 - downstream exports are always written under the SQLite scope directory (for example `lorebooks/sillytavern/...`)
-- absolute downstream subpaths are normalized to file basename under SQLite root
 
 Output build fails fast if path collisions are detected.
 

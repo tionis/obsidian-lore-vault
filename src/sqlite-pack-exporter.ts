@@ -1,8 +1,7 @@
 import { App } from 'obsidian';
-import * as fs from 'fs';
 import { ScopePack } from './models';
-import { ensureParentDirectory, resolveAbsoluteOutputPath } from './sqlite-cli';
 import { getSqlJs } from './sqlite-runtime';
+import { normalizeVaultFilePath, writeVaultBinary } from './vault-binary-io';
 
 function createSchema(db: any): void {
   db.run(`
@@ -65,8 +64,7 @@ export class SqlitePackExporter {
   }
 
   async exportScopePack(pack: ScopePack, outputPath: string): Promise<string> {
-    const absolutePath = resolveAbsoluteOutputPath(this.app, outputPath);
-    ensureParentDirectory(absolutePath);
+    const normalizedPath = normalizeVaultFilePath(outputPath);
 
     const SQL = await getSqlJs();
     const db = new SQL.Database();
@@ -157,8 +155,8 @@ export class SqlitePackExporter {
 
       db.run('COMMIT;');
       const bytes = db.export();
-      fs.writeFileSync(absolutePath, Buffer.from(bytes));
-      return absolutePath;
+      await writeVaultBinary(this.app, normalizedPath, bytes);
+      return normalizedPath;
     } finally {
       db.close();
     }

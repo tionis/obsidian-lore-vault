@@ -52,6 +52,28 @@ test('resolveScopeOutputPaths normalizes backslash separators to vault-style pat
   assert.equal(resolved.sqlitePath, 'lorebooks/characters-minor.db');
 });
 
+test('resolveScopeOutputPaths rejects absolute downstream output patterns', () => {
+  assert.throws(
+    () => resolveScopeOutputPaths('/tmp/lorevault.json', 'world', false),
+    /Absolute filesystem paths are not supported/
+  );
+  assert.throws(
+    () => resolveScopeOutputPaths('C:\\exports\\lorevault.json', 'world', false),
+    /Absolute filesystem paths are not supported/
+  );
+});
+
+test('resolveScopeOutputPaths rejects absolute sqlite output directories', () => {
+  assert.throws(
+    () => resolveScopeOutputPaths('sillytavern/lorevault.json', 'world', false, '/tmp/lorebooks'),
+    /Absolute filesystem paths are not supported/
+  );
+  assert.throws(
+    () => resolveScopeOutputPaths('sillytavern/lorevault.json', 'world', false, 'C:\\exports\\lorebooks'),
+    /Absolute filesystem paths are not supported/
+  );
+});
+
 test('assertUniqueOutputPaths throws on collisions', () => {
   const first = resolveScopeOutputPaths('sillytavern/lorevault-{scope}', 'World A', false);
   const second = resolveScopeOutputPaths('sillytavern/lorevault-{scope}', 'world-a', false);

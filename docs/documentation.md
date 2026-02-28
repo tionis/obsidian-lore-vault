@@ -219,7 +219,7 @@ Export freshness policy (`LoreVault Settings -> SQLite`):
 - `manual`: only explicit build actions update exports
 - `on_build` (default): exports update when build commands/buttons run
 - `background_debounced`: vault edits queue impacted-scope rebuilds after debounce delay
-- manager scope cards display per-scope `Last canonical export` timestamp
+- manager scope cards display per-scope `Last canonical export` timestamp plus relative age in seconds (`N seconds ago`)
 
 ## Companion Publishing Contract (Phase 10.5)
 
@@ -374,8 +374,12 @@ Story Steering scope notes include:
 Story Steering extraction behavior:
 
 - extraction/update focuses on control metadata (instructions, intent, active threads/loops/deltas)
+- source options:
+  - `Update from Active Note`: active note body
+  - `Update from Near-Cursor Context`: story text before cursor in active editor (fallback to note body when no editor window is available)
 - existing steering state is treated as baseline and fields without evidence remain preserved
 - optional per-run update prompt can steer what should be changed
+- review modal shows per-field `Current` (read-only) vs `Proposed` (editable) values before apply
 - optional sanitization mode controls filtering:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
@@ -693,7 +697,7 @@ Query behavior:
     - default fallback policy is `auto` (used when seed confidence is low or no `world_info` matches are selected)
     - configurable fallback policy: `off|auto|always`
 - completion:
-  - builds a prompt from scope context + recent story window
+  - builds a prompt from scope context + recent near-cursor story context
   - stages explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
   - steering placement is configurable per layer (`system`, `pre-history`, `pre-response`)
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
@@ -714,7 +718,7 @@ Token budgeting:
 - uses completion context budget (`contextWindowTokens - maxOutputTokens`) and lorebook token budget cap (`defaultLoreBook.tokenBudget`)
 - reserves headroom via `promptReserveTokens`
 - reserves deterministic per-layer slices for steering/history/retrieval/output based on configured context window
-- trims story window to keep minimum context capacity
+- trims near-cursor story context to keep minimum context capacity
 - splits budget between sections (`world_info` 70%, `rag` 30% by default)
 - iteratively shrinks per-scope context budget if total selected context exceeds input budget
 - runs deterministic overflow trimming in fixed layer order and records trim rationale in layer traces

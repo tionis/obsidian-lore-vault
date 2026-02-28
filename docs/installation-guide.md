@@ -138,6 +138,8 @@ If you prefer to build the plugin from source:
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - Story Steering writes/uses `lvNoteId` in frontmatter for move-safe note/chapter scope links (auto-generated when needed)
    - Story Steering LLM assistance supports optional update prompts so you can request targeted steering changes before review/save
+   - In Story Steering, `Update from Near-Cursor Context` uses text before cursor in the active editor (fallback: active note body)
+   - Story Steering review modal shows `Current` vs `Proposed` values per field before apply
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads without leaving Obsidian
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 

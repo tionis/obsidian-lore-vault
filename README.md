@@ -255,7 +255,8 @@ Behavior:
   - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
   - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
 - Story Steering LLM assistance supports optional update prompts so users can request targeted steering changes before review/save
-- sends context + story window to configured completion provider
+- Story Steering update review modal shows field-level `Current` vs `Proposed` values for manual comparison before apply
+- sends context + local near-cursor story context to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - generation can be aborted with command `Stop Active Generation` (also available as editor-menu action while a run is in progress)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)

@@ -44,6 +44,7 @@ This document is the implementation-level reference for core architecture and ru
   - move-safe scope linking via `lvNoteId` frontmatter IDs
   - legacy path-keyed note/chapter scope migration to ID-keyed scope files
   - LLM-assisted steering update flow with optional per-run update prompt
+  - extraction source modes: active note body or near-cursor editor context (text-before-cursor, note-body fallback)
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
   - markdown-backed steering note parse/serialize
   - effective-layer merge for chat/continuation prompt assembly
@@ -52,6 +53,7 @@ This document is the implementation-level reference for core architecture and ru
   - explicit invalidation on vault and settings mutations
 - `src/story-steering-review-modal.ts`
   - review/edit approval modal for LLM-proposed steering updates
+  - field-level `Current` (read-only) vs `Proposed` (editable) comparison layout
 - `src/lorebooks-routing-debug-view.ts`
   - scope inclusion/routing diagnostics
   - world_info content inspection

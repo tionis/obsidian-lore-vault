@@ -19,7 +19,7 @@ function formatSecondsAgo(timestamp: number): string {
     return '-';
   }
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  return `${seconds}s ago`;
+  return `${seconds} second${seconds === 1 ? '' : 's'} ago`;
 }
 
 function formatDateTime(timestamp: number): string {

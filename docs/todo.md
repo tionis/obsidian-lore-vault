@@ -276,6 +276,9 @@ Reference design: `docs/planning.md`.
   - [x] add vault-backed JSONL operation log for completion + streaming + tool planner calls
   - [x] add settings for operation-log enable/path/max-entry retention
   - [x] add operation-log explorer panel with command, filters, and full payload inspection
+- [x] Story Steering review/wording clarity:
+  - [x] show field-level `Current` vs `Proposed` values in steering update review modal
+  - [x] rename ambiguous `Story Window` extraction source label to `Near-Cursor Context` and document behavior
 - [x] Story completion stop UX:
   - [x] add command: `Stop Active Generation`
   - [x] expose editor menu stop action while generation is active

@@ -442,6 +442,10 @@ export class StorySteeringView extends ItemView {
       extractionSection.createEl('p', {
         text: 'Update steering from story text, review/edit in a modal, then optionally save.'
       });
+      extractionSection.createEl('p', {
+        cls: 'lorevault-help-note',
+        text: '`Near-Cursor Context` means story text before the cursor in the active editor; if unavailable, it falls back to the active note body.'
+      });
       extractionSection.createEl('label', { text: 'Optional Update Prompt' });
       const extractionPromptInput = extractionSection.createEl('textarea', {
         cls: 'lorevault-chat-manual-input'
@@ -455,7 +459,7 @@ export class StorySteeringView extends ItemView {
         const label = this.extractionSource === 'active_note'
           ? 'active note'
           : this.extractionSource === 'story_window'
-            ? 'story window'
+            ? 'near-cursor context'
             : 'source text';
         extractionSection.createEl('p', {
           cls: 'lorevault-help-note',
@@ -475,7 +479,7 @@ export class StorySteeringView extends ItemView {
       const extractWindowButton = extractionActions.createEl('button', {
         text: this.extractionInFlight && this.extractionSource === 'story_window'
           ? 'Updating...'
-          : 'Update from Story Window'
+          : 'Update from Near-Cursor Context'
       });
       extractWindowButton.disabled = this.extractionInFlight;
       extractWindowButton.addEventListener('click', () => {

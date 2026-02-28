@@ -778,10 +778,55 @@
   opacity: 0.95;
 }
 
+.lorevault-steering-review-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-steering-review-change {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lorevault-steering-review-change.is-changed {
+  color: var(--text-accent);
+}
+
+.lorevault-steering-review-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lorevault-steering-review-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-steering-review-column label {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lorevault-steering-review-textarea {
+  min-height: 120px;
+}
+
 .lorevault-summary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .lorevault-steering-review-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Text Command Modal */

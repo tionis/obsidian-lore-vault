@@ -286,7 +286,7 @@ export function parseStorySteeringExtractionResponse(raw: string): StorySteering
     ? (objectPayload.state as {[key: string]: unknown})
     : objectPayload;
 
-  return sanitizeStorySteeringExtractionState({
+  return normalizeStorySteeringState({
     pinnedInstructions: normalizeTextField(candidate.pinnedInstructions),
     storyNotes: normalizeTextField(candidate.storyNotes),
     sceneIntent: normalizeTextField(candidate.sceneIntent),

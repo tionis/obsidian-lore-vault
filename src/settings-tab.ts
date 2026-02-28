@@ -690,6 +690,20 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         });
       }));
 
+    new Setting(containerEl)
+      .setName('Story Steering Extraction Sanitization')
+      .setDesc('Strict filters lorebook-like profile facts from LLM extraction proposals. Off keeps raw extracted content.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          strict: 'Strict (Recommended)',
+          off: 'Off (Raw Extraction)'
+        })
+        .setValue(this.plugin.settings.storySteering.extractionSanitization)
+        .onChange(async value => {
+          this.plugin.settings.storySteering.extractionSanitization = value === 'off' ? 'off' : 'strict';
+          await this.persistSettings();
+        }));
+
     containerEl.createEl('h3', { text: 'Writing Completion' });
     containerEl.createEl('p', {
       text: 'Configure LLM generation for "Continue Story with Context".'

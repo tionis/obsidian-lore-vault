@@ -92,6 +92,7 @@ export interface LoreBook {
 }
 
 export type PromptLayerPlacement = 'system' | 'pre_history' | 'pre_response';
+export type StorySteeringExtractionSanitization = 'strict' | 'off';
 
 export interface PromptLayerUsage {
   layer: string;
@@ -342,6 +343,7 @@ export interface ConverterSettings {
   };
   storySteering: {
     folder: string;
+    extractionSanitization: StorySteeringExtractionSanitization;
   };
   textCommands: {
     autoAcceptEdits: boolean;
@@ -475,7 +477,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     maxMessages: 80
   },
   storySteering: {
-    folder: 'LoreVault/steering'
+    folder: 'LoreVault/steering',
+    extractionSanitization: 'strict'
   },
   textCommands: {
     autoAcceptEdits: false,

@@ -144,7 +144,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
     },
     storySteering: {
       folder: 'LoreVault/steering',
-      ...(overrides.storySteering ?? {})
+      ...(overrides.storySteering ?? {}),
+      extractionSanitization: overrides.storySteering?.extractionSanitization ?? 'strict'
     },
     textCommands: {
       autoAcceptEdits: false,

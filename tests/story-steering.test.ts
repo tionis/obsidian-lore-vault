@@ -126,6 +126,13 @@ test('story steering extraction parser accepts plain json and fenced json payloa
   assert.deepEqual(fenced.openLoops, ['Loop C', 'Loop D']);
 });
 
+test('story steering extraction parser keeps raw values before optional sanitization', () => {
+  const parsed = parseStorySteeringExtractionResponse(JSON.stringify({
+    pinnedInstructions: 'Baalthasar is an ancient dark elven archmage.'
+  }));
+  assert.equal(parsed.pinnedInstructions, 'Baalthasar is an ancient dark elven archmage.');
+});
+
 test('story steering extraction sanitization removes lorebook-like profile facts', () => {
   const sanitized = sanitizeStorySteeringExtractionState({
     pinnedInstructions: 'Baalthasar is an ancient dark elven archmage.',

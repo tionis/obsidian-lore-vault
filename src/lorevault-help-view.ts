@@ -217,7 +217,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Chat folder and Story Steering folder.',
         'Retrieval controls: graph hops/decay, backlink expansion, fallback policy (`off|auto|always`), body-lift settings.',
         'Text Commands: prompt folder, default context toggle, auto-accept.',
-        'Cost Tracking: usage ledger path and optional budget warnings.'
+        'Cost Tracking: usage ledger path, pricing overrides, and optional budget alerts (daily/session/operation/model/scope).'
       ]
     });
 

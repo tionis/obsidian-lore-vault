@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import type { UsageCostSource } from './cost-utils';
+import type { UsageCostSource, UsagePricingSource } from './cost-utils';
 
 export interface UsageLedgerEntry {
   id: string;
@@ -13,6 +13,11 @@ export interface UsageLedgerEntry {
   reportedCostUsd: number | null;
   estimatedCostUsd: number | null;
   costSource: UsageCostSource;
+  pricingSource: UsagePricingSource;
+  inputCostPerMillionUsd: number | null;
+  outputCostPerMillionUsd: number | null;
+  pricingRule: string | null;
+  pricingSnapshotAt: number | null;
   metadata: {[key: string]: unknown};
 }
 
@@ -44,6 +49,14 @@ function normalizeMoney(value: unknown): number | null {
     return null;
   }
   return parsed;
+}
+
+function normalizeTimestamp(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
 }
 
 function normalizeMetadata(value: unknown): {[key: string]: unknown} {
@@ -80,6 +93,11 @@ function buildEntryId(entry: Omit<UsageLedgerEntry, 'id'>): string {
     reportedCostUsd: entry.reportedCostUsd,
     estimatedCostUsd: entry.estimatedCostUsd,
     costSource: entry.costSource,
+    pricingSource: entry.pricingSource,
+    inputCostPerMillionUsd: entry.inputCostPerMillionUsd,
+    outputCostPerMillionUsd: entry.outputCostPerMillionUsd,
+    pricingRule: entry.pricingRule,
+    pricingSnapshotAt: entry.pricingSnapshotAt,
     metadata: entry.metadata
   });
   return fnv1a32(key);
@@ -184,6 +202,15 @@ export class UsageLedgerStore {
         const costSource: UsageCostSource = costSourceValue === 'provider_reported' || costSourceValue === 'estimated'
           ? costSourceValue
           : 'unknown';
+        const pricingSourceValue = String((rawEntry as UsageLedgerEntry).pricingSource ?? '').trim();
+        const pricingSource: UsagePricingSource = (
+          pricingSourceValue === 'provider_reported' ||
+          pricingSourceValue === 'model_override' ||
+          pricingSourceValue === 'default_rates'
+        )
+          ? pricingSourceValue
+          : 'none';
+        const pricingRuleValue = String((rawEntry as UsageLedgerEntry).pricingRule ?? '').trim();
 
         const withoutId: Omit<UsageLedgerEntry, 'id'> = {
           timestamp,
@@ -196,6 +223,11 @@ export class UsageLedgerStore {
           reportedCostUsd: normalizeMoney((rawEntry as UsageLedgerEntry).reportedCostUsd),
           estimatedCostUsd: normalizeMoney((rawEntry as UsageLedgerEntry).estimatedCostUsd),
           costSource,
+          pricingSource,
+          inputCostPerMillionUsd: normalizeMoney((rawEntry as UsageLedgerEntry).inputCostPerMillionUsd),
+          outputCostPerMillionUsd: normalizeMoney((rawEntry as UsageLedgerEntry).outputCostPerMillionUsd),
+          pricingRule: pricingRuleValue || null,
+          pricingSnapshotAt: normalizeTimestamp((rawEntry as UsageLedgerEntry).pricingSnapshotAt),
           metadata: normalizeMetadata((rawEntry as UsageLedgerEntry).metadata)
         };
 
@@ -231,6 +263,17 @@ export class UsageLedgerStore {
       costSource: entry.costSource === 'provider_reported' || entry.costSource === 'estimated'
         ? entry.costSource
         : 'unknown',
+      pricingSource: (
+        entry.pricingSource === 'provider_reported' ||
+        entry.pricingSource === 'model_override' ||
+        entry.pricingSource === 'default_rates'
+      )
+        ? entry.pricingSource
+        : 'none',
+      inputCostPerMillionUsd: normalizeMoney(entry.inputCostPerMillionUsd),
+      outputCostPerMillionUsd: normalizeMoney(entry.outputCostPerMillionUsd),
+      pricingRule: (entry.pricingRule ?? '').toString().trim() || null,
+      pricingSnapshotAt: normalizeTimestamp(entry.pricingSnapshotAt),
       metadata: normalizeMetadata(entry.metadata)
     };
 

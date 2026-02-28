@@ -379,6 +379,17 @@ export interface ConverterSettings {
     reportOutputDir: string;
     dailyBudgetUsd: number;
     sessionBudgetUsd: number;
+    modelPricingOverrides: Array<{
+      provider: string;
+      modelPattern: string;
+      inputCostPerMillionUsd: number;
+      outputCostPerMillionUsd: number;
+      updatedAt: number;
+      source: 'manual' | 'provider_sync';
+    }>;
+    budgetByOperationUsd: {[operation: string]: number};
+    budgetByModelUsd: {[providerModel: string]: number};
+    budgetByScopeUsd: {[scope: string]: number};
   };
   completion: {
     enabled: boolean;
@@ -512,7 +523,11 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     defaultOutputCostPerMillionUsd: 0,
     reportOutputDir: '.obsidian/plugins/lore-vault/reports',
     dailyBudgetUsd: 0,
-    sessionBudgetUsd: 0
+    sessionBudgetUsd: 0,
+    modelPricingOverrides: [],
+    budgetByOperationUsd: {},
+    budgetByModelUsd: {},
+    budgetByScopeUsd: {}
   },
   completion: {
     enabled: false,

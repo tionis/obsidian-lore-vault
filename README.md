@@ -268,7 +268,7 @@ Behavior:
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
-Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`.
+Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`, with pricing provenance and optional budgets by operation/model/scope.
 Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
 
 ## Text Commands

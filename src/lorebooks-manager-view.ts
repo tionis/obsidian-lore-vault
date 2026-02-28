@@ -41,7 +41,7 @@ function formatUsd(value: number): string {
 }
 
 function formatCostSummary(label: string, totals: UsageLedgerTotals): string {
-  return `${label}: ${totals.requests} req | tokens ${formatTokenValue(totals.totalTokens)} | known ${formatUsd(totals.costUsdKnown)} | unknown ${totals.unknownCostCount}`;
+  return `${label}: ${totals.requests} req | tokens ${formatTokenValue(totals.totalTokens)} | known ${formatUsd(totals.costUsdKnown)} (provider ${formatUsd(totals.providerReportedCostUsd)}, estimated ${formatUsd(totals.estimatedOnlyCostUsd)}) | unknown ${totals.unknownCostCount}`;
 }
 
 function formatLayerUsageRow(layer: PromptLayerUsage): string {
@@ -360,10 +360,34 @@ export class LorebooksManagerView extends ItemView {
       const modelList = details.createEl('ul');
       for (const item of snapshot.byModel.slice(0, 8)) {
         modelList.createEl('li', {
-          text: `${item.key}: ${item.requests} req | ${formatTokenValue(item.totalTokens)} tokens | ${formatUsd(item.costUsdKnown)}`
+          text: `${item.key}: ${item.requests} req | ${formatTokenValue(item.totalTokens)} tokens | ${formatUsd(item.costUsdKnown)} | provider ${formatUsd(item.providerReportedCostUsd)} | estimated ${formatUsd(item.estimatedOnlyCostUsd)}`
         });
       }
       if (snapshot.byModel.length === 0) {
+        details.createEl('p', { text: '(none)' });
+      }
+
+      const scopeHeading = details.createEl('h4', { text: 'By Scope' });
+      scopeHeading.addClass('lorevault-manager-subheading');
+      const scopeList = details.createEl('ul');
+      for (const item of snapshot.byScope.slice(0, 8)) {
+        scopeList.createEl('li', {
+          text: `${item.key}: ${item.requests} req | ${formatTokenValue(item.totalTokens)} tokens | ${formatUsd(item.costUsdKnown)}`
+        });
+      }
+      if (snapshot.byScope.length === 0) {
+        details.createEl('p', { text: '(none)' });
+      }
+
+      const sourceHeading = details.createEl('h4', { text: 'By Cost Source' });
+      sourceHeading.addClass('lorevault-manager-subheading');
+      const sourceList = details.createEl('ul');
+      for (const item of snapshot.byCostSource) {
+        sourceList.createEl('li', {
+          text: `${item.key}: ${item.requests} req | known ${formatUsd(item.costUsdKnown)} | unknown ${item.unknownCostCount}`
+        });
+      }
+      if (snapshot.byCostSource.length === 0) {
         details.createEl('p', { text: '(none)' });
       }
     } catch (error) {

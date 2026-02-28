@@ -351,3 +351,59 @@ test('structured_merge prefers existing summary section over frontmatter fallbac
   assert.match(result.pages[0].content, /## Summary\n\nSection summary takes precedence\./);
   assert.equal(result.pages[0].content.includes('Legacy fallback summary.'), false);
 });
+
+test('story delta preview surfaces update conflicts for high-churn replacements', async () => {
+  const result = await buildStoryDeltaPlan({
+    storyMarkdown: '# Chapter\nA comprehensive rewrite of the tower record.',
+    newNoteFolder: 'wiki',
+    defaultTagsRaw: 'wiki',
+    lorebookScopes: ['story/main'],
+    tagPrefix: 'lorebook',
+    updatePolicy: 'structured_merge',
+    maxChunkChars: 500,
+    maxSummaryChars: 220,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    lowConfidenceThreshold: 0.5,
+    existingPages: [
+      {
+        path: 'wiki/old-tower.md',
+        content: [
+          '---',
+          'title: "Old Tower"',
+          'pageKey: "location/old-tower"',
+          '---',
+          '',
+          '## Summary',
+          '',
+          'Old summary text.',
+          '',
+          '## Overview',
+          '',
+          'Old detail text.',
+          ''
+        ].join('\n')
+      }
+    ],
+    callModel: async () => JSON.stringify({
+      operations: [
+        {
+          pageKey: 'location/old-tower',
+          title: 'Old Tower',
+          summary: 'Rewritten tower summary.',
+          keywords: ['tower'],
+          aliases: [],
+          content: '## Overview\n\nCompletely rewritten tower details with new canon state.',
+          confidence: 0.93,
+          rationale: 'Canonical correction.'
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.conflicts.length, 1);
+  assert.equal(result.conflicts[0].id, 'update:wiki/old-tower.md');
+  assert.equal(result.conflicts[0].path, 'wiki/old-tower.md');
+  assert.ok(result.conflicts[0].diffAddedLines > 0);
+  assert.ok(result.conflicts[0].diffRemovedLines > 0);
+});

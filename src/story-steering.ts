@@ -16,7 +16,8 @@ import {
   normalizeVaultRelativePath
 } from './vault-path-utils';
 
-export type StorySteeringScopeType = 'global' | 'thread' | 'chapter' | 'note';
+export type StorySteeringCanonicalScopeType = 'global' | 'story' | 'chapter' | 'note';
+export type StorySteeringScopeType = StorySteeringCanonicalScopeType | 'thread';
 
 export interface StorySteeringScope {
   type: StorySteeringScopeType;
@@ -80,6 +81,16 @@ const LIST_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'a
 
 const NOTE_SCOPE_PREFIX = 'note:';
 const STORY_STEERING_NOTE_ID_FRONTMATTER_KEY = 'lvNoteId';
+
+export function normalizeStorySteeringScopeType(value: string | null | undefined): StorySteeringCanonicalScopeType {
+  if (value === 'story' || value === 'thread') {
+    return 'story';
+  }
+  if (value === 'chapter' || value === 'note') {
+    return value;
+  }
+  return 'global';
+}
 
 function normalizeTextField(value: unknown): string {
   if (typeof value !== 'string') {
@@ -317,11 +328,12 @@ function escapeYamlString(value: string): string {
 }
 
 export function stringifyStorySteeringMarkdown(scope: StorySteeringScope, state: StorySteeringState): string {
+  const scopeType = normalizeStorySteeringScopeType(scope.type);
   const normalized = normalizeStorySteeringState(state);
   return [
     '---',
     'type: lorevault-steering',
-    `scopeType: ${scope.type}`,
+    `scopeType: ${scopeType}`,
     `scopeKey: "${escapeYamlString(scope.key)}"`,
     '---',
     '# LoreVault Steering',
@@ -388,19 +400,23 @@ function buildScopedFilename(key: string, fallbackPrefix: string): string {
 
 export function buildStorySteeringFilePath(folderPath: string, scope: StorySteeringScope): string {
   const root = normalizeVaultRelativePath(folderPath);
+  const canonicalType = normalizeStorySteeringScopeType(scope.type);
   const key = normalizeScopeKey(scope.key);
-  if (scope.type === 'global') {
+  if (canonicalType === 'global') {
     return joinVaultPath(root, 'global.md');
   }
 
   if (!key) {
-    throw new Error(`Scope key is required for ${scope.type} steering scope.`);
+    throw new Error(`Scope key is required for ${canonicalType} steering scope.`);
   }
 
   if (scope.type === 'thread') {
     return joinVaultPath(root, 'thread', buildScopedFilename(key, 'thread'));
   }
-  if (scope.type === 'chapter') {
+  if (canonicalType === 'story') {
+    return joinVaultPath(root, 'story', buildScopedFilename(key, 'story'));
+  }
+  if (canonicalType === 'chapter') {
     return joinVaultPath(root, 'chapter', buildScopedFilename(key, 'chapter'));
   }
   return joinVaultPath(root, 'note', buildScopedFilename(key, 'note'));
@@ -435,7 +451,7 @@ function resolveNoteId(frontmatter: FrontmatterData): string {
   return normalizeSteeringId(normalizeFrontmatterString(frontmatter, 'lvNoteId', 'lorevaultNoteId'));
 }
 
-function resolveThreadKey(frontmatter: FrontmatterData): string {
+function resolveStoryKey(frontmatter: FrontmatterData): string {
   return normalizeFrontmatterString(frontmatter, 'lvStoryId', 'storyId', 'threadId', 'thread', 'story', 'lvThread');
 }
 
@@ -443,9 +459,9 @@ function resolveChapterValue(frontmatter: FrontmatterData): string {
   return normalizeFrontmatterString(frontmatter, 'lvChapterId', 'chapterId', 'chapter');
 }
 
-function buildChapterKey(threadKey: string, noteScopeKey: string, chapterValue: string): string {
-  if (threadKey) {
-    return `${threadKey}::chapter:${chapterValue}`;
+function buildChapterKey(storyKey: string, noteScopeKey: string, chapterValue: string): string {
+  if (storyKey) {
+    return `${storyKey}::chapter:${chapterValue}`;
   }
   return `${noteScopeKey}::chapter:${chapterValue}`;
 }
@@ -470,24 +486,25 @@ export function buildStorySteeringScopeResolutions(
   frontmatter: FrontmatterData,
   noteId: string
 ): StorySteeringScopeResolution[] {
+  const normalizedFrontmatter = normalizeFrontmatter(frontmatter);
   const normalizedPath = normalizeVaultPath(filePath);
   const { key: noteScopeKey, legacyKey: noteLegacyKey } = buildNoteScopeKey(normalizedPath, noteId);
   const scopes: StorySteeringScopeResolution[] = [{
     scope: { type: 'global', key: 'global' },
     legacyScopes: []
   }];
-  const threadKey = resolveThreadKey(frontmatter);
-  if (threadKey) {
+  const storyKey = resolveStoryKey(normalizedFrontmatter);
+  if (storyKey) {
     scopes.push({
-      scope: { type: 'thread', key: threadKey },
-      legacyScopes: []
+      scope: { type: 'story', key: storyKey },
+      legacyScopes: [{ type: 'thread', key: storyKey }]
     });
   }
 
-  const chapterValue = resolveChapterValue(frontmatter);
+  const chapterValue = resolveChapterValue(normalizedFrontmatter);
   if (chapterValue) {
-    const chapterScopeKey = buildChapterKey(threadKey, noteScopeKey, chapterValue);
-    const legacyChapterKey = buildChapterKey(threadKey, noteLegacyKey, chapterValue);
+    const chapterScopeKey = buildChapterKey(storyKey, noteScopeKey, chapterValue);
+    const legacyChapterKey = buildChapterKey(storyKey, noteLegacyKey, chapterValue);
     const legacyScopes = chapterScopeKey !== legacyChapterKey
       ? [{ type: 'chapter' as const, key: legacyChapterKey }]
       : [];
@@ -511,6 +528,28 @@ export function buildStorySteeringScopeResolutions(
     legacyScopes: noteLegacyScopes
   });
   return scopes;
+}
+
+function toPrimaryScope(scope: StorySteeringScope): StorySteeringScope {
+  return {
+    type: normalizeStorySteeringScopeType(scope.type),
+    key: scope.key
+  };
+}
+
+function buildScopeResolutionWithAliases(scope: StorySteeringScope): StorySteeringScopeResolution {
+  const primaryScope = toPrimaryScope(scope);
+  const legacyScopes: StorySteeringScope[] = [];
+  if (primaryScope.type === 'story') {
+    legacyScopes.push({
+      type: 'thread',
+      key: primaryScope.key
+    });
+  }
+  return {
+    scope: primaryScope,
+    legacyScopes
+  };
 }
 
 export class StorySteeringStore {
@@ -625,17 +664,14 @@ export class StorySteeringStore {
   }
 
   async loadScope(scope: StorySteeringScope): Promise<StorySteeringState> {
-    const path = this.resolveScopePath(scope);
-    const state = await this.readScopeByPath(path);
-    if (!state) {
-      return createEmptyStorySteeringState();
-    }
-    return state;
+    const loaded = await this.loadScopeWithFallbacks(buildScopeResolutionWithAliases(scope));
+    return loaded.state;
   }
 
   async saveScope(scope: StorySteeringScope, state: StorySteeringState): Promise<string> {
-    const path = this.resolveScopePath(scope);
-    const markdown = stringifyStorySteeringMarkdown(scope, state);
+    const primaryScope = toPrimaryScope(scope);
+    const path = this.resolveScopePath(primaryScope);
+    const markdown = stringifyStorySteeringMarkdown(primaryScope, state);
     await ensureParentVaultFolderForFile(this.app, path);
     await this.app.vault.adapter.write(path, markdown);
     return path;

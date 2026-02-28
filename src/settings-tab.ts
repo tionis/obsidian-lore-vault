@@ -634,6 +634,38 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         });
       }));
 
+    new Setting(containerEl)
+      .setName('Export Freshness Policy')
+      .setDesc('Controls canonical export freshness. manual: only explicit Build/Export. on_build: refresh only when build commands run. background_debounced: auto-rebuild impacted scopes after vault edits.')
+      .addDropdown(dropdown => dropdown
+        .addOptions({
+          manual: 'manual',
+          on_build: 'on_build',
+          background_debounced: 'background_debounced'
+        })
+        .setValue(this.plugin.settings.sqlite.exportFreshnessPolicy ?? 'on_build')
+        .onChange(async value => {
+          if (value === 'manual' || value === 'background_debounced') {
+            this.plugin.settings.sqlite.exportFreshnessPolicy = value;
+          } else {
+            this.plugin.settings.sqlite.exportFreshnessPolicy = 'on_build';
+          }
+          await this.persistSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Background Export Debounce (ms)')
+      .setDesc('Used only for background_debounced policy. LoreVault waits this long after edits before rebuilding impacted scopes.')
+      .addText(text => text
+        .setValue(String(this.plugin.settings.sqlite.backgroundDebounceMs ?? 1800))
+        .onChange(async value => {
+          const parsed = Math.floor(Number(value));
+          if (Number.isFinite(parsed)) {
+            this.plugin.settings.sqlite.backgroundDebounceMs = Math.max(400, Math.min(30000, parsed));
+            await this.persistSettings();
+          }
+        }));
+
     containerEl.createEl('h3', { text: 'Story Chat' });
 
     let chatFolderInput: TextComponent | null = null;

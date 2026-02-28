@@ -214,6 +214,13 @@ SQLite path behavior:
 
 Output build fails fast if path collisions are detected.
 
+Export freshness policy (`LoreVault Settings -> SQLite`):
+
+- `manual`: only explicit build actions update exports
+- `on_build` (default): exports update when build commands/buttons run
+- `background_debounced`: vault edits queue impacted-scope rebuilds after debounce delay
+- manager scope cards display per-scope `Last canonical export` timestamp
+
 ## Companion Publishing Contract (Phase 10.5)
 
 For downstream publishing tools/plugins:
@@ -578,7 +585,13 @@ Current merge policy (default):
 - story delta can use inline markdown or load source markdown from a story note path
 - story delta selects existing notes from one or more chosen lorebook scopes
 - story delta preview includes per-change dry-run diff snippets (`+`/`-` line summary + collapsed preview block)
-- story delta apply supports per-change approval checkboxes and `Apply Selected`
+- story delta preview includes conflict-review rows for update churn with quick decisions (`accept`, `reject`, `keep_both`)
+- story delta preview includes conflict counters and filter controls (`all`, `pending`, `accept`, `reject`, `keep_both`)
+- story delta apply persists per-conflict decisions from preview:
+  - `accept`: apply planned update
+  - `reject`: skip write for that page
+  - `keep_both`: keep existing note and write a deterministic companion `*.lorevault-proposed.md`
+- story delta apply still supports per-page approval checkboxes and `Apply Selected`
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope
@@ -597,8 +610,9 @@ Capabilities:
 - lorebook contents panel with `world_info` entries (keywords, trigger parameters, collapsible content)
 - quality audit panel:
   - per-entry risk score (duplicate-like similarity, thin content, missing keywords)
+  - similarity-mode banner (`embeddings + heuristics` vs `heuristics only`)
   - embedding-driven nearest-neighbor similarity hints when embeddings are available
-  - per-row actions (`Open`, `Generate Keywords` for missing-keyword notes)
+  - per-row actions (`Open Entry`, `Open Similar`, `Open Pair`, `Generate Keywords`)
   - bulk keyword generation across selected missing-keyword rows
   - keyword generation opens a review step before writing frontmatter
 

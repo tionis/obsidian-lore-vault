@@ -886,6 +886,20 @@
   padding: 8px;
 }
 
+.lorevault-story-delta-conflict-section {
+  margin-top: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.lorevault-story-delta-conflict-row {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-secondary);
+}
+
 .lorevault-story-delta-change-header {
   display: flex;
   align-items: flex-start;

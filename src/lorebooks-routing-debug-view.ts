@@ -1,10 +1,9 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { ScopeContextPack, trimContentWithEllipsis } from './context-query';
-import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, ScopeSummary } from './lorebooks-manager-data';
 import { normalizeScope } from './lorebook-scoping';
-import { buildQualityAuditRows } from './quality-audit';
+import { buildQualityAuditRows, describeQualityAuditSimilarityMode } from './quality-audit';
 
 export const LOREVAULT_ROUTING_DEBUG_VIEW_TYPE = 'lorevault-routing-debug-view';
 
@@ -340,7 +339,14 @@ export class LorebooksRoutingDebugView extends ItemView {
 
     section.createEl('p', {
       cls: 'lorevault-routing-subtle',
-      text: 'Use this to spot missing keywords, duplicate-like notes, and thin content. Duplicate/similarity signals combine heuristics with embedding neighbors when embeddings are available.'
+      text: 'Use this to spot missing keywords, duplicate-like notes, and thin content.'
+    });
+    section.createEl('p', {
+      cls: 'lorevault-routing-subtle',
+      text: describeQualityAuditSimilarityMode({
+        ragChunks: pack.ragChunks,
+        ragChunkEmbeddings: pack.ragChunkEmbeddings
+      })
     });
 
     const actionablePaths = missing.map(row => row.path).filter(Boolean);
@@ -466,7 +472,7 @@ export class LorebooksRoutingDebugView extends ItemView {
     setIcon(icon, 'binary');
     titleRow.createEl('h2', { text: 'LoreVault Lorebook Auditor' });
 
-    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
+    const notes = this.plugin.getCachedLorebookMetadata();
     const summaries = buildScopeSummaries(notes, this.plugin.settings);
     if (summaries.length === 0) {
       contentEl.createEl('p', { text: 'No lorebook scopes found.' });

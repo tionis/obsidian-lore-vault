@@ -14,7 +14,7 @@ import {
 
 test('story steering markdown round-trips deterministic sections', () => {
   const scope: StorySteeringScope = {
-    type: 'thread',
+    type: 'story',
     key: 'chronicles-main'
   };
   const state = {
@@ -99,7 +99,11 @@ test('story steering merge combines layered text and list state deterministicall
 });
 
 test('story steering file paths are scoped and deterministic', () => {
-  const threadPath = buildStorySteeringFilePath('LoreVault/steering', {
+  const storyPath = buildStorySteeringFilePath('LoreVault/steering', {
+    type: 'story',
+    key: 'chronicles-main'
+  });
+  const legacyThreadPath = buildStorySteeringFilePath('LoreVault/steering', {
     type: 'thread',
     key: 'chronicles-main'
   });
@@ -112,7 +116,8 @@ test('story steering file paths are scoped and deterministic', () => {
     key: 'global'
   });
 
-  assert.match(threadPath, /^LoreVault\/steering\/thread\/chronicles-main-[a-f0-9]{10}\.md$/);
+  assert.match(storyPath, /^LoreVault\/steering\/story\/chronicles-main-[a-f0-9]{10}\.md$/);
+  assert.match(legacyThreadPath, /^LoreVault\/steering\/thread\/chronicles-main-[a-f0-9]{10}\.md$/);
   assert.match(notePath, /^LoreVault\/steering\/note\/ch07\.md-[a-f0-9]{10}\.md$/);
   assert.equal(globalPath, 'LoreVault/steering/global.md');
 });
@@ -195,6 +200,24 @@ test('story steering scope resolutions use stable note-id keys with legacy path 
   assert.deepEqual(noteResolution?.legacyScopes, [{
     type: 'note',
     key: 'stories/ch07.md'
+  }]);
+});
+
+test('story scope resolution uses canonical story scope with legacy thread alias', () => {
+  const resolutions = buildStorySteeringScopeResolutions(
+    'stories/ch07.md',
+    {
+      storyId: 'chronicles-main'
+    },
+    'lvn-abc123'
+  );
+
+  const storyResolution = resolutions.find(item => item.scope.type === 'story');
+  assert.ok(storyResolution);
+  assert.equal(storyResolution?.scope.key, 'chronicles-main');
+  assert.deepEqual(storyResolution?.legacyScopes, [{
+    type: 'thread',
+    key: 'chronicles-main'
   }]);
 });
 

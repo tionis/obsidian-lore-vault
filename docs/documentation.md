@@ -43,7 +43,7 @@ When you run **Build Active Lorebook Scope** or **Build/Export Scope**:
 4. Include notes as canonical lore entries (unless `retrieval: none`)
 5. Build wikilink graph for `world_info` entries
 6. Compute deterministic `order`
-7. Build canonical SQLite pack (`world_info`, fallback docs/chunks/embeddings)
+7. Build canonical SQLite pack (`world_info`, fallback docs/chunks/embeddings, source-note metadata, note-level embeddings)
 8. Export scoped `world_info` JSON + scoped fallback markdown
 
 ## Tag Scoping
@@ -225,6 +225,8 @@ For downstream publishing tools/plugins:
   - `rag_documents`
   - `rag_chunks`
   - `rag_chunk_embeddings`
+  - `source_notes`
+  - `note_embeddings`
 - Deterministic order guarantees:
   - `world_info_entries`: `order_value DESC, uid ASC`
   - `rag_documents`: `path ASC, title ASC, uid ASC`
@@ -235,14 +237,9 @@ For downstream publishing tools/plugins:
 
 SQLite pack metadata:
 
-- counts and generation metadata are stored in `meta` table:
-  - `schema_version`
-  - `scope`
-  - `generated_at`
-  - `world_info_entries_count`
-  - `rag_documents_count`
-  - `rag_chunks_count`
-  - `rag_chunk_embeddings_count`
+- counts, build metadata, deterministic signatures, and settings snapshots are stored in `meta` table
+- schema is documented in:
+  - `docs/sqlite-pack-schema.md`
 
 This contract lets a companion publishing plugin select tags/pages/assets independently without changing LoreVault core behavior.
 
@@ -778,4 +775,5 @@ Rules:
 
 ## Technical Deep-Dive
 
-For implementation-level details (module boundaries, SQLite metadata schema, retrieval internals, story-thread resolution), see `docs/technical-reference.md`.
+For implementation-level details (module boundaries, retrieval internals, story-thread resolution), see `docs/technical-reference.md`.
+For canonical SQLite schema/tables/meta keys, see `docs/sqlite-pack-schema.md`.

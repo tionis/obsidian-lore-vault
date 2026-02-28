@@ -98,6 +98,16 @@ interface AppLike {
   vault: VaultAdapterLike;
 }
 
+function isPathAlreadyExistsError(error: unknown): boolean {
+  const maybe = error as { code?: string; message?: string };
+  const code = typeof maybe?.code === 'string' ? maybe.code.toUpperCase() : '';
+  if (code === 'EEXIST') {
+    return true;
+  }
+  const message = typeof maybe?.message === 'string' ? maybe.message.toLowerCase() : String(error ?? '').toLowerCase();
+  return message.includes('already exists');
+}
+
 export async function ensureVaultFolderExists(app: AppLike, folderPath: string): Promise<void> {
   const normalizedParts = normalizeVaultPath(folderPath)
     .split('/')
@@ -113,7 +123,21 @@ export async function ensureVaultFolderExists(app: AppLike, folderPath: string):
     current = current ? `${current}/${part}` : part;
     const existing = app.vault.getAbstractFileByPath(current);
     if (!existing) {
-      await app.vault.createFolder(current);
+      try {
+        await app.vault.createFolder(current);
+      } catch (error) {
+        if (!isPathAlreadyExistsError(error)) {
+          throw error;
+        }
+      }
+
+      const createdOrExisting = app.vault.getAbstractFileByPath(current);
+      if (createdOrExisting) {
+        const maybeFolderLike = createdOrExisting as { children?: unknown };
+        if (!('children' in maybeFolderLike)) {
+          throw new Error(`Expected folder at "${current}" but found a file.`);
+        }
+      }
       continue;
     }
 

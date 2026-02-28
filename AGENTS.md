@@ -189,8 +189,9 @@ For any behavior or UX change, agents must update docs in the same change set:
 1. `README.md` for user-visible behavior changes
 2. `docs/documentation.md` for detailed functional behavior
 3. `docs/technical-reference.md` for architecture/contracts/code-level behavior
-4. `docs/installation-guide.md` when setup, commands, or settings change
-5. `docs/todo.md` when roadmap/phase status changes
+4. `docs/sqlite-pack-schema.md` when canonical pack schema/tables/meta keys change
+5. `docs/installation-guide.md` when setup, commands, or settings change
+6. `docs/todo.md` when roadmap/phase status changes
 
 If the change affects in-app guidance, agents must also update embedded help:
 

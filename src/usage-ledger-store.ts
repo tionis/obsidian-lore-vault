@@ -114,6 +114,16 @@ export class UsageLedgerStore {
     return normalized.slice(0, index);
   }
 
+  private isPathAlreadyExistsError(error: unknown): boolean {
+    const maybe = error as { code?: string; message?: string };
+    const code = typeof maybe?.code === 'string' ? maybe.code.toUpperCase() : '';
+    if (code === 'EEXIST') {
+      return true;
+    }
+    const message = typeof maybe?.message === 'string' ? maybe.message.toLowerCase() : String(error ?? '').toLowerCase();
+    return message.includes('already exists');
+  }
+
   private async ensureDirectory(pathValue: string): Promise<void> {
     const normalizedParts = pathValue
       .split('/')
@@ -128,7 +138,13 @@ export class UsageLedgerStore {
       current = current ? `${current}/${part}` : part;
       const exists = await this.app.vault.adapter.exists(current);
       if (!exists) {
-        await this.app.vault.adapter.mkdir(current);
+        try {
+          await this.app.vault.adapter.mkdir(current);
+        } catch (error) {
+          if (!this.isPathAlreadyExistsError(error)) {
+            throw error;
+          }
+        }
       }
     }
   }

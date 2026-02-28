@@ -16,11 +16,13 @@
     "isolatedModules": false
   },
   "include": [
+    "src/**/*.d.ts",
     "src/models.ts",
     "src/graph-analyzer.ts",
     "src/link-target-index.ts",
     "src/frontmatter-utils.ts",
     "src/context-query.ts",
+    "src/scope-pack-metadata.ts",
     "src/lorebook-scoping.ts",
     "src/lorebooks-manager-data.ts",
     "src/retrieval-routing.ts",

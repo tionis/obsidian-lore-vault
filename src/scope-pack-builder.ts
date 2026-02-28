@@ -5,6 +5,7 @@ import { GraphAnalyzer } from './graph-analyzer';
 import { ProgressBar } from './progress-bar';
 import { EmbeddingService } from './embedding-service';
 import { chunkRagDocuments } from './rag-chunker';
+import { buildNoteEmbeddings, buildScopePackMetadata, ScopePackBuildContext } from './scope-pack-metadata';
 
 function cloneSettings(settings: ConverterSettings): ConverterSettings {
   return {
@@ -15,9 +16,16 @@ function cloneSettings(settings: ConverterSettings): ConverterSettings {
     defaultEntry: { ...settings.defaultEntry },
     sqlite: { ...settings.sqlite },
     embeddings: { ...settings.embeddings },
-    retrieval: { ...settings.retrieval },
+    retrieval: {
+      ...settings.retrieval,
+      toolCalls: { ...settings.retrieval.toolCalls }
+    },
     summaries: { ...settings.summaries },
-    completion: { ...settings.completion }
+    completion: {
+      ...settings.completion,
+      layerPlacement: { ...settings.completion.layerPlacement },
+      presets: settings.completion.presets.map(preset => ({ ...preset }))
+    }
   };
 }
 
@@ -44,7 +52,8 @@ export async function buildScopePack(
   files: TFile[],
   buildAllScopes: boolean,
   embeddingService: EmbeddingService | null,
-  progress?: ProgressBar
+  progress?: ProgressBar,
+  buildContext?: ScopePackBuildContext
 ): Promise<ScopePackBuildResult> {
   const scopedSettings = cloneSettings(settings);
   scopedSettings.tagScoping.activeScope = scope;
@@ -86,6 +95,14 @@ export async function buildScopePack(
     );
   });
 
+  const sourceNotes = [...fileProcessor.getSourceNotes()].sort((a, b) => {
+    return (
+      a.uid - b.uid ||
+      a.path.localeCompare(b.path) ||
+      a.title.localeCompare(b.title)
+    );
+  });
+
   stepper.setStatus(`Scope ${scope || '(all)'}: chunking RAG documents...`);
   const ragChunks = await chunkRagDocuments(ragDocuments, scopedSettings.embeddings);
   stepper.update();
@@ -97,17 +114,36 @@ export async function buildScopePack(
     stepper.update();
   }
 
+  const partialPack = {
+    scope,
+    ragChunks,
+    ragChunkEmbeddings
+  } as Pick<ScopePack, 'scope' | 'ragChunks' | 'ragChunkEmbeddings'>;
+  const noteEmbeddings = buildNoteEmbeddings(partialPack);
+  const metadata = buildScopePackMetadata(
+    scopedSettings,
+    scope,
+    buildAllScopes,
+    files.length,
+    sourceNotes.length,
+    fileProcessor.getRootUid(),
+    buildContext
+  );
+
   return {
     scopedSettings,
     worldInfoBodyByUid: fileProcessor.getWorldInfoBodyByUid(),
     pack: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       scope,
       generatedAt: Date.now(),
+      metadata,
       worldInfoEntries,
       ragDocuments,
       ragChunks,
-      ragChunkEmbeddings
+      ragChunkEmbeddings,
+      sourceNotes,
+      noteEmbeddings
     }
   };
 }

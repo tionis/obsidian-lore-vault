@@ -259,6 +259,16 @@ export class StoryChatView extends ItemView {
     return message.versions.find(version => version.id === message.activeVersionId) ?? message.versions[0];
   }
 
+  private isPathAlreadyExistsError(error: unknown): boolean {
+    const maybe = error as { code?: string; message?: string };
+    const code = typeof maybe?.code === 'string' ? maybe.code.toUpperCase() : '';
+    if (code === 'EEXIST') {
+      return true;
+    }
+    const message = typeof maybe?.message === 'string' ? maybe.message.toLowerCase() : String(error ?? '').toLowerCase();
+    return message.includes('already exists');
+  }
+
   private async ensureFolderExists(folderPath: string): Promise<void> {
     const normalized = folderPath
       .split('/')
@@ -273,7 +283,13 @@ export class StoryChatView extends ItemView {
       current = current ? `${current}/${part}` : part;
       const existing = this.app.vault.getAbstractFileByPath(current);
       if (!existing) {
-        await this.app.vault.createFolder(current);
+        try {
+          await this.app.vault.createFolder(current);
+        } catch (error) {
+          if (!this.isPathAlreadyExistsError(error)) {
+            throw error;
+          }
+        }
       }
     }
   }

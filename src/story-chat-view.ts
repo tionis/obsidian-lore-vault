@@ -98,6 +98,9 @@ export class StoryChatView extends ItemView {
   private selectedScopes = new Set<string>();
   private useLorebookContext = true;
   private manualContext = '';
+  private pinnedInstructions = '';
+  private storyNotes = '';
+  private sceneIntent = '';
   private noteContextRefs: string[] = [];
   private messages: ConversationMessage[] = [];
   private conversationSummaries: ConversationSummary[] = [];
@@ -279,6 +282,9 @@ export class StoryChatView extends ItemView {
     this.selectedScopes = new Set(document.selectedScopes);
     this.useLorebookContext = document.useLorebookContext;
     this.manualContext = document.manualContext;
+    this.pinnedInstructions = document.pinnedInstructions;
+    this.storyNotes = document.storyNotes;
+    this.sceneIntent = document.sceneIntent;
     this.noteContextRefs = [...document.noteContextRefs];
     this.messages = document.messages.map(message => this.cloneMessage(message));
     this.editingMessageId = null;
@@ -296,6 +302,9 @@ export class StoryChatView extends ItemView {
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
       useLorebookContext: this.useLorebookContext,
       manualContext: this.manualContext,
+      pinnedInstructions: this.pinnedInstructions,
+      storyNotes: this.storyNotes,
+      sceneIntent: this.sceneIntent,
       noteContextRefs: [...this.noteContextRefs],
       messages: this.messages.map(message => this.cloneMessage(message))
     };
@@ -395,6 +404,9 @@ export class StoryChatView extends ItemView {
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
       useLorebookContext: this.useLorebookContext,
       manualContext: this.manualContext,
+      pinnedInstructions: this.pinnedInstructions,
+      storyNotes: this.storyNotes,
+      sceneIntent: this.sceneIntent,
       noteContextRefs: [...this.noteContextRefs],
       messages: sourceMessages
     };
@@ -625,6 +637,39 @@ export class StoryChatView extends ItemView {
       this.scheduleConversationSave();
     });
 
+    const steeringSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
+    steeringSection.createEl('strong', { text: 'Steering Controls' });
+
+    const pinnedInput = steeringSection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    pinnedInput.placeholder = 'Pinned instructions (stable style/constraints for this conversation).';
+    pinnedInput.value = this.pinnedInstructions;
+    pinnedInput.addEventListener('input', () => {
+      this.pinnedInstructions = pinnedInput.value;
+      this.scheduleConversationSave();
+    });
+
+    const storyNotesInput = steeringSection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    storyNotesInput.placeholder = 'Story notes (author-note style guidance for this chat).';
+    storyNotesInput.value = this.storyNotes;
+    storyNotesInput.addEventListener('input', () => {
+      this.storyNotes = storyNotesInput.value;
+      this.scheduleConversationSave();
+    });
+
+    const sceneIntentInput = steeringSection.createEl('textarea', {
+      cls: 'lorevault-chat-manual-input'
+    });
+    sceneIntentInput.placeholder = 'Scene intent (what this turn/scene should accomplish).';
+    sceneIntentInput.value = this.sceneIntent;
+    sceneIntentInput.addEventListener('input', () => {
+      this.sceneIntent = sceneIntentInput.value;
+      this.scheduleConversationSave();
+    });
+
     this.renderSpecificNotesControls(controls);
   }
 
@@ -713,10 +758,10 @@ export class StoryChatView extends ItemView {
 
     const details = container.createEl('details', { cls: 'lorevault-chat-context-meta' });
     details.createEl('summary', {
-      text: `Injected context · scopes ${version.contextMeta.scopes.join(', ') || '(none)'} · notes ${version.contextMeta.specificNotePaths.length} · world_info ${version.contextMeta.worldInfoCount} · fallback ${version.contextMeta.ragCount}`
+      text: `Injected context · scopes ${version.contextMeta.scopes.join(', ') || '(none)'} · directives ${(version.contextMeta.inlineDirectiveItems ?? []).length} · notes ${version.contextMeta.specificNotePaths.length} · world_info ${version.contextMeta.worldInfoCount} · fallback ${version.contextMeta.ragCount}`
     });
     details.createEl('p', {
-      text: `Tokens: ${version.contextMeta.contextTokens} | lorebook: ${version.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${version.contextMeta.usedManualContext ? 'on' : 'off'} | specific-notes: ${version.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
+      text: `Tokens: ${version.contextMeta.contextTokens} | lorebook: ${version.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${version.contextMeta.usedManualContext ? 'on' : 'off'} | inline-directives: ${version.contextMeta.usedInlineDirectives ? 'on' : 'off'} | specific-notes: ${version.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
     });
     details.createEl('p', {
       text: `chapter-memory: ${version.contextMeta.usedChapterMemoryContext ? 'on' : 'off'} | chapters: ${(version.contextMeta.chapterMemoryItems ?? []).join(', ') || '(none)'}`
@@ -728,6 +773,21 @@ export class StoryChatView extends ItemView {
     details.createEl('p', {
       text: `unresolved note refs: ${version.contextMeta.unresolvedNoteRefs.join(', ') || '(none)'}`
     });
+    details.createEl('p', {
+      text: `inline directives: ${(version.contextMeta.inlineDirectiveItems ?? []).join(' | ') || '(none)'}`
+    });
+    if ((version.contextMeta.overflowTrace ?? []).length > 0) {
+      details.createEl('p', {
+        text: `overflow policy: ${(version.contextMeta.overflowTrace ?? []).join(' | ')}`
+      });
+    }
+    if ((version.contextMeta.layerUsage ?? []).length > 0) {
+      const layerRows = (version.contextMeta.layerUsage ?? [])
+        .map(layer => `${layer.layer}@${layer.placement} used ${layer.usedTokens}/${layer.reservedTokens} (headroom ${layer.headroomTokens})${layer.trimmed ? ` [trimmed: ${layer.trimReason ?? 'budget'}]` : ''}`);
+      details.createEl('p', {
+        text: `layer budgets: ${layerRows.join(' | ')}`
+      });
+    }
     details.createEl('p', {
       text: `world_info: ${version.contextMeta.worldInfoItems.join(', ') || '(none)'}`
     });
@@ -1126,6 +1186,9 @@ export class StoryChatView extends ItemView {
         selectedScopes: [...this.selectedScopes],
         useLorebookContext: this.useLorebookContext,
         manualContext: this.manualContext,
+        pinnedInstructions: this.pinnedInstructions,
+        storyNotes: this.storyNotes,
+        sceneIntent: this.sceneIntent,
         noteContextRefs: this.noteContextRefs,
         history: this.buildHistoryForGeneration(targetAssistantMessage.id),
         onDelta: delta => {

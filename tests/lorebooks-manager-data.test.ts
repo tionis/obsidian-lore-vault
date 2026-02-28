@@ -109,6 +109,12 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
       timeoutMs: 60000,
+      layerPlacement: {
+        pinnedInstructions: 'system',
+        storyNotes: 'pre_history',
+        sceneIntent: 'pre_response',
+        inlineDirectives: 'pre_response'
+      },
       presets: [],
       activePresetId: '',
       ...(overrides.completion ?? {})
@@ -119,6 +125,9 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',
+      pinnedInstructions: '',
+      storyNotes: '',
+      sceneIntent: '',
       noteContextRefs: [],
       messages: [],
       forkSnapshots: [],

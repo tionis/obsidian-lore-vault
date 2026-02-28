@@ -160,15 +160,19 @@ export class LorevaultHelpView extends ItemView {
         'On mobile, Continue Story is available through editor action menus (not only desktop right-click menus).',
         'A ribbon shortcut is also available for one-tap mobile continuation.',
         'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
-        'Planned (Phase 20): optional inline steering directives with strict prefix syntax (`[LV: ...]` or `<!-- LV: ... -->`).',
-        'Plain bracket notes like `[Editor Note: ...]` are not treated as control syntax.',
+        'Explicit steering layers are supported: pinned instructions, story notes, and scene intent.',
+        'Inline steering directives are supported with strict syntax (`[LV: ...]` or `<!-- LV: ... -->`) from near-cursor story context.',
+        'Plain bracket notes like `[Editor Note: ...]` are treated as normal prose and ignored as control syntax.',
+        'Directive hits are capped per turn and shown in generation/chat layer traces.',
+        'Steering layer placement is configurable in settings (`system` vs `pre-history` vs `pre-response`).',
+        'Continue Story also reads optional note frontmatter steering (`lvPinnedInstructions`, `lvStoryNotes`, `lvSceneIntent`).',
         'Writing Completion settings support reusable model presets for quick provider/model A/B testing.',
         'Optional Cost Tracking settings persist token/cost usage records for continuation, chat, and summary runs.',
         'Manager panel includes usage/cost rollups (session/day/project) with optional budget warnings.',
         'Use commands Export Usage Report (JSON/CSV) for deterministic report exports.',
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
-        'Story Chat supports per-chat scope selection, manual context, and specific-note context lists.',
-        'Assistant turns expose a layer trace so you can see which context layer contributed injected data.'
+        'Story Chat supports per-chat scope selection, manual context, specific-note context lists, and steering text fields.',
+        'Assistant turns expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.'
       ],
       actions: [
         { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }

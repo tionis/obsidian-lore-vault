@@ -239,6 +239,12 @@ Behavior:
   - fallback entries by policy (`off|auto|always`) and relevance
   - optional tool-retrieved layer for targeted entry fetches within call/token/time caps
 - applies token-budgeted context assembly
+- stages explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
+- steering layer placement is configurable (`system` | `pre-history` | `pre-response`)
+- parses strict inline directives from near-cursor story text (`[LV: ...]`, `<!-- LV: ... -->`)
+- ignores non-prefixed bracket text (for example `[Editor Note: ...]`)
+- injects inline directives as a dedicated steering layer with per-turn count/token caps
+- supports optional continuation frontmatter steering keys (`lvPinnedInstructions`, `lvStoryNotes`, `lvSceneIntent`)
 - sends context + story window to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
@@ -397,21 +403,17 @@ Current capabilities:
 - per-chat lorebook scope selection (including none)
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
+- per-chat steering fields (pinned instructions, story notes, scene intent)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
 - regenerate appends a new assistant message version; users can switch active versions
 - per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
+- per-response layer budget/overflow inspector (`reserved`, `used`, `headroom`, trim rationale)
 - chapter memory shown in layer trace indicates summary source (`section`, `frontmatter`, or `excerpt`)
 
 Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.
-
-Planned (Phase 20) inline steering shorthand:
-
-- strict-prefix directives only: `[LV: ...]` or `<!-- LV: ... -->`
-- non-prefixed bracket text like `[Editor Note: ...]` remains normal prose
-- resolved directives will appear in the context inspector as a dedicated steering layer
 
 ## Development
 

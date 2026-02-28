@@ -37,6 +37,44 @@ test('parseStoryDeltaOperations validates and sorts deterministic output', () =>
   assert.equal(operations[1].pageKey, 'location/tower');
 });
 
+test('buildStoryDeltaPlan strips inline LV directives from prompt source', async () => {
+  let capturedUserPrompt = '';
+
+  await buildStoryDeltaPlan({
+    storyMarkdown: '# Chapter\n[LV: Keep pacing brisk]\nAlice returns to the square.',
+    targetFolder: 'wiki',
+    defaultTagsRaw: '',
+    lorebookName: '',
+    tagPrefix: 'lorebook',
+    updatePolicy: 'safe_append',
+    maxChunkChars: 500,
+    maxSummaryChars: 220,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    lowConfidenceThreshold: 0.5,
+    existingPages: [],
+    callModel: async (_systemPrompt, userPrompt) => {
+      capturedUserPrompt = userPrompt;
+      return JSON.stringify({
+        operations: [
+          {
+            pageKey: 'character/alice',
+            title: 'Alice',
+            summary: 'Returns to the square.',
+            keywords: ['Alice'],
+            aliases: [],
+            content: 'Alice returns to the square.',
+            confidence: 0.9,
+            rationale: 'Directly described action.'
+          }
+        ]
+      });
+    }
+  });
+
+  assert.equal(capturedUserPrompt.includes('LV:'), false);
+});
+
 test('buildStoryDeltaPlan supports idempotent safe_append updates', async () => {
   const storyMarkdown = '# Chapter 1\nAlice returns from the tower with a sealed map.';
   const existing = {

@@ -27,6 +27,9 @@ export interface ConversationDocument {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  pinnedInstructions: string;
+  storyNotes: string;
+  sceneIntent: string;
   noteContextRefs: string[];
   messages: ConversationMessage[];
 }
@@ -53,7 +56,10 @@ export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined
     specificNotePaths: [...meta.specificNotePaths],
     unresolvedNoteRefs: [...meta.unresolvedNoteRefs],
     chapterMemoryItems: [...(meta.chapterMemoryItems ?? [])],
+    inlineDirectiveItems: [...(meta.inlineDirectiveItems ?? [])],
     layerTrace: [...(meta.layerTrace ?? [])],
+    layerUsage: (meta.layerUsage ?? []).map(layer => ({ ...layer })),
+    overflowTrace: [...(meta.overflowTrace ?? [])],
     worldInfoItems: [...meta.worldInfoItems],
     ragItems: [...meta.ragItems]
   };
@@ -70,6 +76,7 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     usedManualContext: Boolean(meta.usedManualContext),
     usedSpecificNotesContext: Boolean(meta.usedSpecificNotesContext),
     usedChapterMemoryContext: Boolean(meta.usedChapterMemoryContext),
+    usedInlineDirectives: Boolean(meta.usedInlineDirectives),
     scopes: Array.isArray(meta.scopes)
       ? meta.scopes.map(value => String(value ?? ''))
       : [],
@@ -82,8 +89,33 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     chapterMemoryItems: Array.isArray(meta.chapterMemoryItems)
       ? meta.chapterMemoryItems.map(value => String(value ?? ''))
       : [],
+    inlineDirectiveItems: Array.isArray(meta.inlineDirectiveItems)
+      ? meta.inlineDirectiveItems.map(value => String(value ?? ''))
+      : [],
     layerTrace: Array.isArray(meta.layerTrace)
       ? meta.layerTrace.map(value => String(value ?? ''))
+      : [],
+    layerUsage: Array.isArray(meta.layerUsage)
+      ? meta.layerUsage
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        .map(item => {
+          const placement = item.placement === 'system' || item.placement === 'pre_history'
+            ? item.placement
+            : 'pre_response';
+          const trimReason = typeof item.trimReason === 'string' ? item.trimReason : '';
+          return {
+            layer: String(item.layer ?? ''),
+            placement,
+            reservedTokens: Math.max(0, Math.floor(Number(item.reservedTokens ?? 0))),
+            usedTokens: Math.max(0, Math.floor(Number(item.usedTokens ?? 0))),
+            headroomTokens: Math.max(0, Math.floor(Number(item.headroomTokens ?? 0))),
+            trimmed: Boolean(item.trimmed),
+            ...(trimReason ? { trimReason } : {})
+          };
+        })
+      : [],
+    overflowTrace: Array.isArray(meta.overflowTrace)
+      ? meta.overflowTrace.map(value => String(value ?? ''))
       : [],
     contextTokens: Math.max(0, Math.floor(Number(meta.contextTokens ?? 0))),
     worldInfoCount: Math.max(0, Math.floor(Number(meta.worldInfoCount ?? 0))),
@@ -187,6 +219,9 @@ export function normalizeConversationDocument(
     selectedScopes,
     useLorebookContext: Boolean(payload.useLorebookContext ?? true),
     manualContext: typeof payload.manualContext === 'string' ? payload.manualContext : '',
+    pinnedInstructions: typeof payload.pinnedInstructions === 'string' ? payload.pinnedInstructions : '',
+    storyNotes: typeof payload.storyNotes === 'string' ? payload.storyNotes : '',
+    sceneIntent: typeof payload.sceneIntent === 'string' ? payload.sceneIntent : '',
     noteContextRefs,
     messages
   };

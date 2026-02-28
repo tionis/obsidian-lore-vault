@@ -325,6 +325,16 @@ Needed capabilities:
 To better match proven writing workflows (for example SillyTavern/NovelAI-style steering),
 LoreVault should add explicit context staging controls instead of relying on implicit prompt assembly.
 
+Current status:
+
+- inline shorthand directives are implemented for completion/chat (`[LV: ...]`, `<!-- LV: ... -->`)
+- implemented constraints: strict-prefix parsing, near-cursor scope, deterministic dedupe/order, per-turn caps, and export/import/update exclusion
+- explicit steering layers are implemented (pinned instructions, story notes, scene intent) for both Story Chat and editor continuation
+- placement policy is implemented per steering layer (`system`, `pre-history`, `pre-response`) via Writing Completion settings
+- deterministic staged reservations + overflow trimming are implemented with fixed trim order and pinned-layer protection
+- inspector traces now include per-layer token usage/headroom and overflow rationale
+- remaining work focuses on continuity-state primitives (threads/open loops/canon deltas) and richer UI-specific inspector rendering tests
+
 Planned steering primitives:
 
 - explicit steering layers:

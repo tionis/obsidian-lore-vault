@@ -907,6 +907,68 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    const placementOptions = {
+      system: 'System Prompt',
+      pre_history: 'Pre-History Block',
+      pre_response: 'Pre-Response Block'
+    };
+    this.plugin.settings.completion.layerPlacement = {
+      ...DEFAULT_SETTINGS.completion.layerPlacement,
+      ...(this.plugin.settings.completion.layerPlacement ?? {})
+    };
+
+    new Setting(containerEl)
+      .setName('Pinned Instructions Placement')
+      .setDesc('Where pinned session instructions are injected in staged prompts.')
+      .addDropdown(dropdown => dropdown
+        .addOptions(placementOptions)
+        .setValue(this.plugin.settings.completion.layerPlacement.pinnedInstructions)
+        .onChange(async value => {
+          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
+            this.plugin.settings.completion.layerPlacement.pinnedInstructions = value;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Story Notes Placement')
+      .setDesc('Where author-note style story guidance is injected.')
+      .addDropdown(dropdown => dropdown
+        .addOptions(placementOptions)
+        .setValue(this.plugin.settings.completion.layerPlacement.storyNotes)
+        .onChange(async value => {
+          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
+            this.plugin.settings.completion.layerPlacement.storyNotes = value;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Scene Intent Placement')
+      .setDesc('Where scene/chapter intent guidance is injected.')
+      .addDropdown(dropdown => dropdown
+        .addOptions(placementOptions)
+        .setValue(this.plugin.settings.completion.layerPlacement.sceneIntent)
+        .onChange(async value => {
+          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
+            this.plugin.settings.completion.layerPlacement.sceneIntent = value;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Inline Directive Placement')
+      .setDesc('Where parsed `[LV: ...]` / `<!-- LV: ... -->` directives are injected.')
+      .addDropdown(dropdown => dropdown
+        .addOptions(placementOptions)
+        .setValue(this.plugin.settings.completion.layerPlacement.inlineDirectives)
+        .onChange(async value => {
+          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
+            this.plugin.settings.completion.layerPlacement.inlineDirectives = value;
+            await this.persistSettings();
+          }
+        }));
+
     new Setting(containerEl)
       .setName('Completion Timeout (ms)')
       .setDesc('Request timeout for completion API calls.')

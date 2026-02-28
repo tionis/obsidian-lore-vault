@@ -91,16 +91,32 @@ export interface LoreBook {
   settings: LoreBookSettings;
 }
 
+export type PromptLayerPlacement = 'system' | 'pre_history' | 'pre_response';
+
+export interface PromptLayerUsage {
+  layer: string;
+  placement: PromptLayerPlacement;
+  reservedTokens: number;
+  usedTokens: number;
+  headroomTokens: number;
+  trimmed: boolean;
+  trimReason?: string;
+}
+
 export interface StoryChatContextMeta {
   usedLorebookContext: boolean;
   usedManualContext: boolean;
   usedSpecificNotesContext: boolean;
   usedChapterMemoryContext?: boolean;
+  usedInlineDirectives?: boolean;
   scopes: string[];
   specificNotePaths: string[];
   unresolvedNoteRefs: string[];
   chapterMemoryItems?: string[];
+  inlineDirectiveItems?: string[];
   layerTrace?: string[];
+  layerUsage?: PromptLayerUsage[];
+  overflowTrace?: string[];
   contextTokens: number;
   worldInfoCount: number;
   ragCount: number;
@@ -124,6 +140,9 @@ export interface StoryChatForkSnapshot {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  pinnedInstructions: string;
+  storyNotes: string;
+  sceneIntent: string;
   noteContextRefs: string[];
 }
 
@@ -279,6 +298,12 @@ export interface ConverterSettings {
     contextWindowTokens: number;
     promptReserveTokens: number;
     timeoutMs: number;
+    layerPlacement: {
+      pinnedInstructions: PromptLayerPlacement;
+      storyNotes: PromptLayerPlacement;
+      sceneIntent: PromptLayerPlacement;
+      inlineDirectives: PromptLayerPlacement;
+    };
     presets: CompletionPreset[];
     activePresetId: string;
   };
@@ -288,6 +313,9 @@ export interface ConverterSettings {
     selectedScopes: string[];
     useLorebookContext: boolean;
     manualContext: string;
+    pinnedInstructions: string;
+    storyNotes: string;
+    sceneIntent: string;
     noteContextRefs: string[];
     messages: StoryChatMessage[];
     forkSnapshots: StoryChatForkSnapshot[];
@@ -393,6 +421,12 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     contextWindowTokens: 8192,
     promptReserveTokens: 400,
     timeoutMs: 60000,
+    layerPlacement: {
+      pinnedInstructions: 'system',
+      storyNotes: 'pre_history',
+      sceneIntent: 'pre_response',
+      inlineDirectives: 'pre_response'
+    },
     presets: [],
     activePresetId: ''
   },
@@ -402,6 +436,9 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     selectedScopes: [],
     useLorebookContext: true,
     manualContext: '',
+    pinnedInstructions: '',
+    storyNotes: '',
+    sceneIntent: '',
     noteContextRefs: [],
     messages: [],
     forkSnapshots: [],

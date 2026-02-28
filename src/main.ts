@@ -5,6 +5,7 @@ import {
   ConverterSettings,
   DEFAULT_SETTINGS,
   LoreBookEntry,
+  PromptLayerPlacement,
   TextCommandPromptTemplate,
   StoryChatContextMeta,
   StoryChatForkSnapshot,
@@ -95,6 +96,34 @@ import {
 import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
 import { getVaultBasename, normalizeVaultRelativePath } from './vault-path-utils';
 import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
+import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
+import {
+  applyDeterministicOverflow,
+  estimateTextTokens,
+  PromptSegment,
+  toPromptLayerUsage,
+  trimTextForTokenBudget
+} from './prompt-staging';
+
+const INLINE_DIRECTIVE_SCAN_TOKENS = 1800;
+const INLINE_DIRECTIVE_MAX_COUNT = 6;
+const INLINE_DIRECTIVE_MAX_TOKENS = 220;
+const STEERING_RESERVE_FRACTION = 0.14;
+
+type SteeringLayerKey = 'pinned_instructions' | 'story_notes' | 'scene_intent' | 'inline_directives';
+
+interface SteeringLayerSection {
+  key: SteeringLayerKey;
+  label: string;
+  tag: string;
+  placement: PromptLayerPlacement;
+  text: string;
+  reservedTokens: number;
+  usedTokens: number;
+  trimmed: boolean;
+  trimReason?: string;
+  locked: boolean;
+}
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -126,6 +155,9 @@ export interface StoryChatTurnRequest {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  pinnedInstructions: string;
+  storyNotes: string;
+  sceneIntent: string;
   noteContextRefs: string[];
   history: StoryChatMessage[];
   onDelta: (delta: string) => void;
@@ -155,6 +187,224 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private estimateTokens(text: string): number {
     return Math.max(1, Math.ceil(text.length / 4));
+  }
+
+  private getActiveEditorTextBeforeCursor(): string {
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!markdownView) {
+      return '';
+    }
+    const editor = markdownView.editor;
+    if (!editor) {
+      return '';
+    }
+    const cursor = editor.getCursor();
+    return editor.getRange({ line: 0, ch: 0 }, cursor);
+  }
+
+  private resolveInlineDirectivesFromText(sourceText: string): {
+    directives: string[];
+    usedTokens: number;
+    foundCount: number;
+    droppedByCount: number;
+    droppedByBudget: number;
+  } {
+    const scanWindow = this.extractQueryWindow(sourceText, INLINE_DIRECTIVE_SCAN_TOKENS);
+    const foundDirectives = extractInlineLoreDirectives(scanWindow);
+    if (foundDirectives.length === 0) {
+      return {
+        directives: [],
+        usedTokens: 0,
+        foundCount: 0,
+        droppedByCount: 0,
+        droppedByBudget: 0
+      };
+    }
+
+    const directives: string[] = [];
+    let usedTokens = 0;
+    let droppedByCount = 0;
+    let droppedByBudget = 0;
+
+    for (let index = 0; index < foundDirectives.length; index += 1) {
+      const directive = foundDirectives[index];
+      if (directives.length >= INLINE_DIRECTIVE_MAX_COUNT) {
+        droppedByCount = foundDirectives.length - index;
+        break;
+      }
+
+      const directiveTokens = this.estimateTokens(directive);
+      if (usedTokens + directiveTokens > INLINE_DIRECTIVE_MAX_TOKENS) {
+        droppedByBudget += 1;
+        continue;
+      }
+
+      directives.push(directive);
+      usedTokens += directiveTokens;
+    }
+
+    return {
+      directives,
+      usedTokens,
+      foundCount: foundDirectives.length,
+      droppedByCount,
+      droppedByBudget
+    };
+  }
+
+  private resolvePromptLayerPlacement(value: unknown, fallback: PromptLayerPlacement): PromptLayerPlacement {
+    if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
+      return value;
+    }
+    return fallback;
+  }
+
+  private getCompletionLayerPlacementConfig(): ConverterSettings['completion']['layerPlacement'] {
+    const configured = this.settings.completion.layerPlacement ?? DEFAULT_SETTINGS.completion.layerPlacement;
+    return {
+      pinnedInstructions: this.resolvePromptLayerPlacement(
+        configured.pinnedInstructions,
+        DEFAULT_SETTINGS.completion.layerPlacement.pinnedInstructions
+      ),
+      storyNotes: this.resolvePromptLayerPlacement(
+        configured.storyNotes,
+        DEFAULT_SETTINGS.completion.layerPlacement.storyNotes
+      ),
+      sceneIntent: this.resolvePromptLayerPlacement(
+        configured.sceneIntent,
+        DEFAULT_SETTINGS.completion.layerPlacement.sceneIntent
+      ),
+      inlineDirectives: this.resolvePromptLayerPlacement(
+        configured.inlineDirectives,
+        DEFAULT_SETTINGS.completion.layerPlacement.inlineDirectives
+      )
+    };
+  }
+
+  private createSteeringSections(args: {
+    maxInputTokens: number;
+    pinnedInstructions: string;
+    storyNotes: string;
+    sceneIntent: string;
+    inlineDirectives: string[];
+  }): SteeringLayerSection[] {
+    const placements = this.getCompletionLayerPlacementConfig();
+    const steeringReserve = Math.max(
+      160,
+      Math.min(24000, Math.floor(args.maxInputTokens * STEERING_RESERVE_FRACTION))
+    );
+    const inlineText = args.inlineDirectives
+      .map((directive, index) => `${index + 1}. ${directive}`)
+      .join('\n');
+
+    const layerSpecs: Array<{
+      key: SteeringLayerKey;
+      label: string;
+      tag: string;
+      placement: PromptLayerPlacement;
+      text: string;
+      reserveFraction: number;
+      locked: boolean;
+    }> = [
+      {
+        key: 'pinned_instructions',
+        label: 'Pinned Instructions',
+        tag: 'pinned_session_instructions',
+        placement: placements.pinnedInstructions,
+        text: args.pinnedInstructions,
+        reserveFraction: 0.4,
+        locked: true
+      },
+      {
+        key: 'story_notes',
+        label: 'Story Notes',
+        tag: 'story_author_notes',
+        placement: placements.storyNotes,
+        text: args.storyNotes,
+        reserveFraction: 0.24,
+        locked: false
+      },
+      {
+        key: 'scene_intent',
+        label: 'Scene Intent',
+        tag: 'scene_intent',
+        placement: placements.sceneIntent,
+        text: args.sceneIntent,
+        reserveFraction: 0.18,
+        locked: false
+      },
+      {
+        key: 'inline_directives',
+        label: 'Inline Directives',
+        tag: 'inline_story_directives',
+        placement: placements.inlineDirectives,
+        text: inlineText,
+        reserveFraction: 0.18,
+        locked: false
+      }
+    ];
+
+    return layerSpecs.map(spec => {
+      const reservedTokens = Math.max(48, Math.floor(steeringReserve * spec.reserveFraction));
+      const normalizedText = spec.text.trim();
+      const trimmedText = trimTextForTokenBudget(normalizedText, reservedTokens, 'head');
+      const rawTokens = estimateTextTokens(normalizedText);
+      const usedTokens = estimateTextTokens(trimmedText);
+      return {
+        key: spec.key,
+        label: spec.label,
+        tag: spec.tag,
+        placement: spec.placement,
+        text: trimmedText,
+        reservedTokens,
+        usedTokens,
+        trimmed: rawTokens > usedTokens,
+        trimReason: rawTokens > usedTokens ? `reservation (${rawTokens} -> ${usedTokens})` : undefined,
+        locked: spec.locked
+      };
+    });
+  }
+
+  private renderSteeringPlacement(
+    sections: SteeringLayerSection[],
+    placement: PromptLayerPlacement
+  ): string {
+    return sections
+      .filter(section => section.placement === placement && section.text.trim().length > 0)
+      .map(section => [
+        `<${section.tag}>`,
+        section.text,
+        `</${section.tag}>`
+      ].join('\n'))
+      .join('\n\n');
+  }
+
+  private resolveSteeringFromFrontmatter(file: TFile | null): {
+    pinnedInstructions: string;
+    storyNotes: string;
+    sceneIntent: string;
+  } {
+    if (!file) {
+      return {
+        pinnedInstructions: '',
+        storyNotes: '',
+        sceneIntent: ''
+      };
+    }
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return {
+      pinnedInstructions: asString(
+        getFrontmatterValue(frontmatter, 'lvPinnedInstructions', 'lvPinned', 'pinnedInstructions', 'pinned')
+      ) ?? '',
+      storyNotes: asString(
+        getFrontmatterValue(frontmatter, 'lvStoryNotes', 'lvStoryNote', 'storyNotes', 'authorNote')
+      ) ?? '',
+      sceneIntent: asString(
+        getFrontmatterValue(frontmatter, 'lvSceneIntent', 'sceneIntent', 'chapterIntent')
+      ) ?? ''
+    };
   }
 
   private trimTextToTokenBudget(text: string, tokenBudget: number): string {
@@ -667,7 +917,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         specificNotePaths: [...message.contextMeta.specificNotePaths],
         unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
         chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
+        inlineDirectiveItems: [...(message.contextMeta.inlineDirectiveItems ?? [])],
         layerTrace: [...(message.contextMeta.layerTrace ?? [])],
+        layerUsage: [...(message.contextMeta.layerUsage ?? []).map(layer => ({ ...layer }))],
+        overflowTrace: [...(message.contextMeta.overflowTrace ?? [])],
         worldInfoItems: [...message.contextMeta.worldInfoItems],
         ragItems: [...message.contextMeta.ragItems]
       } : undefined
@@ -687,7 +940,10 @@ export default class LoreBookConverterPlugin extends Plugin {
           specificNotePaths: [...message.contextMeta.specificNotePaths],
           unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
           chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
+          inlineDirectiveItems: [...(message.contextMeta.inlineDirectiveItems ?? [])],
           layerTrace: [...(message.contextMeta.layerTrace ?? [])],
+          layerUsage: [...(message.contextMeta.layerUsage ?? []).map(layer => ({ ...layer }))],
+          overflowTrace: [...(message.contextMeta.overflowTrace ?? [])],
           worldInfoItems: [...message.contextMeta.worldInfoItems],
           ragItems: [...message.contextMeta.ragItems]
         } : undefined
@@ -890,7 +1146,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       const raw = await this.app.vault.cachedRead(file);
-      const body = stripFrontmatter(raw).trim();
+      const body = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
       if (!body) {
         continue;
       }
@@ -1040,7 +1296,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       asStringArray(getFrontmatterValue(frontmatter, 'keywords', 'key'))
     );
     const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary')) ?? '';
-    const bodyWithSummary = stripFrontmatter(raw).trim();
+    const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
     const resolvedSummary = resolveNoteSummary(bodyWithSummary, frontmatterSummary)?.text ?? '';
     const bodyText = stripSummarySectionFromBody(bodyWithSummary).trim();
     if (!bodyText) {
@@ -1278,7 +1534,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const raw = await this.app.vault.cachedRead(file);
-    const bodyWithSummary = stripFrontmatter(raw).trim();
+    const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
     const bodyText = stripSummarySectionFromBody(bodyWithSummary);
     if (!bodyText) {
       throw new Error('Note body is empty.');
@@ -1404,7 +1660,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
     const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary'));
     const raw = await this.app.vault.cachedRead(file);
-    const bodyWithSummary = stripFrontmatter(raw).trim();
+    const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
     return Boolean(resolveNoteSummary(bodyWithSummary, frontmatterSummary));
   }
 
@@ -1526,8 +1782,40 @@ export default class LoreBookConverterPlugin extends Plugin {
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
+    const activeEditorTextBeforeCursor = this.getActiveEditorTextBeforeCursor();
+    const inlineDirectiveResolution = this.resolveInlineDirectivesFromText(activeEditorTextBeforeCursor);
+    const inlineDirectives = inlineDirectiveResolution.directives;
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
-    const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
+    const steeringSections = this.createSteeringSections({
+      maxInputTokens,
+      pinnedInstructions: request.pinnedInstructions,
+      storyNotes: request.storyNotes,
+      sceneIntent: request.sceneIntent,
+      inlineDirectives
+    });
+    const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
+    const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
+    const preResponseSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_response');
+    const effectiveSystemPrompt = systemSteeringMarkdown
+      ? [
+        completion.systemPrompt,
+        '',
+        '<lorevault_steering_system>',
+        systemSteeringMarkdown,
+        '</lorevault_steering_system>'
+      ].join('\n')
+      : completion.systemPrompt;
+    const instructionOverhead = this.estimateTokens(effectiveSystemPrompt) + 180;
+    const steeringSystemTokens = steeringSections
+      .filter(section => section.placement === 'system')
+      .reduce((sum, section) => sum + section.usedTokens, 0);
+    const steeringPreHistoryTokens = steeringSections
+      .filter(section => section.placement === 'pre_history')
+      .reduce((sum, section) => sum + section.usedTokens, 0);
+    const steeringPreResponseTokens = steeringSections
+      .filter(section => section.placement === 'pre_response')
+      .reduce((sum, section) => sum + section.usedTokens, 0);
+    const steeringNonSystemTokens = steeringPreHistoryTokens + steeringPreResponseTokens;
     const historyTokenBudget = Math.max(900, Math.min(24000, Math.floor(maxInputTokens * 0.22)));
     const historyMessageCap = Math.max(8, Math.min(this.settings.storyChat.maxMessages, Math.floor(maxInputTokens / 1800)));
     const chatHistory = this.buildChatHistorySnippet(request.history, historyTokenBudget, historyMessageCap);
@@ -1539,7 +1827,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const manualContextTokens = manualContext ? this.estimateTokens(manualContext) : 0;
     const remainingAfterPrompt = Math.max(
       64,
-      maxInputTokens - completion.promptReserveTokens - instructionOverhead - manualContextTokens - chatHistoryTokens
+      maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - manualContextTokens - chatHistoryTokens
     );
 
     const useSpecificNotesContext = noteContextRefs.length > 0;
@@ -1560,13 +1848,14 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     let chapterMemoryMarkdown = '';
     let chapterMemoryTokens = 0;
+    let chapterMemoryBudget = 0;
     let chapterMemoryItems: string[] = [];
     let chapterMemoryLayerTrace: string[] = [];
     const activeStoryFile = this.app.workspace.getActiveFile();
     if (activeStoryFile) {
       const remainingAfterSpecificNotes = Math.max(0, remainingAfterPrompt - specificNotesTokens);
       if (remainingAfterSpecificNotes > 96) {
-        const chapterMemoryBudget = useLorebookContext
+        chapterMemoryBudget = useLorebookContext
           ? Math.min(700, Math.max(96, Math.floor(remainingAfterSpecificNotes * 0.25)))
           : Math.min(900, Math.max(96, Math.floor(remainingAfterSpecificNotes * 0.45)));
         const chapterMemory = await this.buildChapterMemoryContext(activeStoryFile, chapterMemoryBudget);
@@ -1584,6 +1873,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     let contexts: AssembledContext[] = [];
     let usedContextTokens = 0;
+    let lorebookContextBudget = 0;
     if (useLorebookContext) {
       let contextBudget = Math.max(
         64,
@@ -1592,6 +1882,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           Math.max(this.settings.defaultLoreBook.tokenBudget, Math.floor(availableForLorebookContext * 0.9))
         )
       );
+      lorebookContextBudget = contextBudget;
 
       for (let attempt = 0; attempt < 4; attempt += 1) {
         contexts = [];
@@ -1617,32 +1908,29 @@ export default class LoreBookConverterPlugin extends Plugin {
           break;
         }
         contextBudget = nextBudget;
+        lorebookContextBudget = contextBudget;
       }
     }
 
     const contextMarkdown = contexts.map(context => context.markdown).join('\n\n---\n\n');
     let toolContextMarkdown = '';
-    let toolContextTokens = 0;
+    let toolContextBudget = 0;
     let toolContextItems: string[] = [];
     let toolContextLayerTrace: string[] = [];
     if (useLorebookContext) {
       const remainingAfterLorebook = Math.max(0, availableForLorebookContext - usedContextTokens);
       if (remainingAfterLorebook > 96) {
-        const toolContextBudget = Math.min(700, Math.max(96, Math.floor(remainingAfterLorebook * 0.5)));
+        toolContextBudget = Math.min(700, Math.max(96, Math.floor(remainingAfterLorebook * 0.5)));
         const toolContext = await this.buildToolHooksContext(
           querySeed || request.userMessage,
           selectedScopes,
           toolContextBudget
         );
         toolContextMarkdown = toolContext.markdown;
-        toolContextTokens = toolContext.usedTokens;
         toolContextItems = toolContext.selectedItems;
         toolContextLayerTrace = toolContext.layerTrace;
       }
     }
-    const combinedLoreContextMarkdown = [contextMarkdown, toolContextMarkdown]
-      .filter(section => section.trim().length > 0)
-      .join('\n\n---\n\n');
     const worldInfoItems = contexts
       .flatMap(context => context.worldInfo.slice(0, 6).map(item => item.entry.comment))
       .slice(0, 12);
@@ -1653,37 +1941,244 @@ export default class LoreBookConverterPlugin extends Plugin {
     const totalRagCount = contexts.reduce((sum, context) => sum + context.rag.length, 0);
     const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
     const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
+    const inlineDirectiveSection = steeringSections.find(section => section.key === 'inline_directives');
+    const inlineDirectiveTokens = inlineDirectiveSection?.usedTokens ?? 0;
+    const resolvedInlineDirectiveItems = inlineDirectiveSection?.text
+      ? inlineDirectiveSection.text
+        .split('\n')
+        .map(line => line.replace(/^\d+\.\s*/, '').trim())
+        .filter(Boolean)
+      : [];
+    const reservedByPlacement = (placement: PromptLayerPlacement): number => steeringSections
+      .filter(section => section.placement === placement)
+      .reduce((sum, section) => sum + section.reservedTokens, 0);
+    const trimmedByPlacement = (placement: PromptLayerPlacement): boolean => steeringSections
+      .some(section => section.placement === placement && section.trimmed);
+    const preHistorySteeringReserved = reservedByPlacement('pre_history');
+    const preResponseSteeringReserved = reservedByPlacement('pre_response');
+    const inlineDirectiveDiagnostics = [
+      `${resolvedInlineDirectiveItems.length}/${inlineDirectiveResolution.foundCount} active`,
+      `~${inlineDirectiveTokens} tokens`
+    ];
+    if (inlineDirectiveResolution.droppedByCount > 0) {
+      inlineDirectiveDiagnostics.push(`dropped_by_count=${inlineDirectiveResolution.droppedByCount}`);
+    }
+    if (inlineDirectiveResolution.droppedByBudget > 0) {
+      inlineDirectiveDiagnostics.push(`dropped_by_budget=${inlineDirectiveResolution.droppedByBudget}`);
+    }
+    if (inlineDirectiveSection?.trimmed) {
+      inlineDirectiveDiagnostics.push('trimmed_to_reservation');
+    }
+
+    const promptSegments: PromptSegment[] = [
+      {
+        key: 'pre_history_steering',
+        label: 'Steering (pre-history)',
+        content: preHistorySteeringMarkdown,
+        reservedTokens: preHistorySteeringReserved,
+        placement: 'pre_history',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
+        key: 'chat_history',
+        label: 'Chat History',
+        content: chatHistory,
+        reservedTokens: historyTokenBudget,
+        placement: 'pre_history',
+        trimMode: 'tail',
+        minTokens: 0
+      },
+      {
+        key: 'manual_context',
+        label: 'Manual Context',
+        content: manualContext,
+        reservedTokens: manualContextBudget,
+        placement: 'pre_response',
+        trimMode: 'tail',
+        minTokens: 0
+      },
+      {
+        key: 'specific_notes_context',
+        label: 'Specific Notes',
+        content: specificNotesContextMarkdown,
+        reservedTokens: Math.max(0, noteContextBudget),
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
+        key: 'chapter_memory_context',
+        label: 'Chapter Memory',
+        content: chapterMemoryMarkdown,
+        reservedTokens: Math.max(0, chapterMemoryBudget),
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
+        key: 'tool_retrieval_context',
+        label: 'Tool Retrieval',
+        content: toolContextMarkdown,
+        reservedTokens: Math.max(0, toolContextBudget),
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
+        key: 'lorebook_context',
+        label: 'Lorebook Context',
+        content: contextMarkdown,
+        reservedTokens: Math.max(0, lorebookContextBudget),
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
+        key: 'pre_response_steering',
+        label: 'Steering (pre-response)',
+        content: preResponseSteeringMarkdown,
+        reservedTokens: preResponseSteeringReserved,
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
+        key: 'user_message',
+        label: 'User Message',
+        content: request.userMessage.trim(),
+        reservedTokens: Math.max(32, this.estimateTokens(request.userMessage.trim())),
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: Math.max(16, Math.floor(this.estimateTokens(request.userMessage.trim()) * 0.55)),
+        locked: true
+      }
+    ];
+    const userPromptBudget = Math.max(
+      256,
+      maxInputTokens - completion.promptReserveTokens - instructionOverhead
+    );
+    const overflowResult = applyDeterministicOverflow(
+      promptSegments,
+      userPromptBudget,
+      [
+        'tool_retrieval_context',
+        'lorebook_context',
+        'chapter_memory_context',
+        'specific_notes_context',
+        'manual_context',
+        'chat_history',
+        'pre_response_steering',
+        'pre_history_steering'
+      ]
+    );
+    const promptSegmentsByKey = new Map(overflowResult.segments.map(segment => [segment.key, segment]));
+    const chatHistoryForPrompt = promptSegmentsByKey.get('chat_history')?.content ?? '';
+    const manualContextForPrompt = promptSegmentsByKey.get('manual_context')?.content ?? '';
+    const specificNotesForPrompt = promptSegmentsByKey.get('specific_notes_context')?.content ?? '';
+    const chapterMemoryForPrompt = promptSegmentsByKey.get('chapter_memory_context')?.content ?? '';
+    const toolContextForPrompt = promptSegmentsByKey.get('tool_retrieval_context')?.content ?? '';
+    const loreContextForPrompt = promptSegmentsByKey.get('lorebook_context')?.content ?? '';
+    const preHistorySteeringForPrompt = promptSegmentsByKey.get('pre_history_steering')?.content ?? '';
+    const preResponseSteeringForPrompt = promptSegmentsByKey.get('pre_response_steering')?.content ?? '';
+    const userMessageForPrompt = promptSegmentsByKey.get('user_message')?.content ?? request.userMessage.trim();
+    const chatHistoryPromptTokens = estimateTextTokens(chatHistoryForPrompt);
+    const manualContextPromptTokens = estimateTextTokens(manualContextForPrompt);
+    const specificNotesPromptTokens = estimateTextTokens(specificNotesForPrompt);
+    const chapterMemoryPromptTokens = estimateTextTokens(chapterMemoryForPrompt);
+    const toolContextPromptTokens = estimateTextTokens(toolContextForPrompt);
+    const loreContextPromptTokens = estimateTextTokens(loreContextForPrompt);
+    const steeringPreHistoryPromptTokens = estimateTextTokens(preHistorySteeringForPrompt);
+    const steeringPreResponsePromptTokens = estimateTextTokens(preResponseSteeringForPrompt);
+    const steeringNonSystemPromptTokens = steeringPreHistoryPromptTokens + steeringPreResponsePromptTokens;
+    const combinedLoreContextMarkdown = [loreContextForPrompt, toolContextForPrompt]
+      .filter(section => section.trim().length > 0)
+      .join('\n\n---\n\n');
+    const contextTokensUsed = loreContextPromptTokens
+      + toolContextPromptTokens
+      + manualContextPromptTokens
+      + specificNotesPromptTokens
+      + chapterMemoryPromptTokens
+      + chatHistoryPromptTokens
+      + steeringNonSystemPromptTokens;
+    const contextRemainingTokens = Math.max(
+      0,
+      maxInputTokens - completion.promptReserveTokens - instructionOverhead - contextTokensUsed
+    );
+
     const layerTrace: string[] = [];
-    layerTrace.push(`local_window: chat_history ~${chatHistoryTokens} tokens`);
-    if (manualContextTokens > 0) {
-      layerTrace.push(`manual_context: ~${manualContextTokens} tokens`);
+    layerTrace.push(`steering(system): ~${steeringSystemTokens} tokens`);
+    layerTrace.push(`steering(pre_history): ~${steeringPreHistoryPromptTokens} tokens`);
+    layerTrace.push(`steering(pre_response): ~${steeringPreResponsePromptTokens} tokens`);
+    layerTrace.push(`inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`);
+    layerTrace.push(`local_window: chat_history ~${chatHistoryPromptTokens} tokens`);
+    if (manualContextPromptTokens > 0) {
+      layerTrace.push(`manual_context: ~${manualContextPromptTokens} tokens`);
     }
-    if (specificNotesTokens > 0) {
-      layerTrace.push(`specific_notes: ${specificNotePaths.length} notes, ~${specificNotesTokens} tokens`);
+    if (specificNotesPromptTokens > 0) {
+      layerTrace.push(`specific_notes: ${specificNotePaths.length} notes, ~${specificNotesPromptTokens} tokens`);
     }
-    if (chapterMemoryTokens > 0) {
-      layerTrace.push(`chapter_memory: ${chapterMemoryItems.length} chapter summaries, ~${chapterMemoryTokens} tokens`);
+    if (chapterMemoryPromptTokens > 0) {
+      layerTrace.push(`chapter_memory: ${chapterMemoryItems.length} chapter summaries, ~${chapterMemoryPromptTokens} tokens`);
       layerTrace.push(...chapterMemoryLayerTrace);
     }
     if (useLorebookContext) {
-      layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${usedContextTokens} tokens`);
+      layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${loreContextPromptTokens} tokens`);
       layerTrace.push(`fallback_entries: ${totalRagCount} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} scopes enabled)`);
-      if (toolContextTokens > 0 || toolContextLayerTrace.length > 0) {
-        layerTrace.push(`tool_hooks: ${toolContextItems.length} entries, ~${toolContextTokens} tokens`);
+      if (toolContextPromptTokens > 0 || toolContextLayerTrace.length > 0) {
+        layerTrace.push(`tool_hooks: ${toolContextItems.length} entries, ~${toolContextPromptTokens} tokens`);
         layerTrace.push(...toolContextLayerTrace);
       }
     }
+    if (trimmedByPlacement('pre_history')) {
+      layerTrace.push('steering(pre_history): trimmed to reservation');
+    }
+    if (trimmedByPlacement('pre_response')) {
+      layerTrace.push('steering(pre_response): trimmed to reservation');
+    }
+    if (overflowResult.trace.length > 0) {
+      layerTrace.push(...overflowResult.trace.map(trace => `overflow_policy: ${trace}`));
+    }
+    const layerUsage = toPromptLayerUsage([
+      {
+        key: 'system_steering',
+        label: 'Steering (system)',
+        content: systemSteeringMarkdown,
+        reservedTokens: reservedByPlacement('system'),
+        placement: 'system',
+        trimMode: 'head',
+        minTokens: 0,
+        locked: true,
+        trimmed: trimmedByPlacement('system')
+      },
+      ...overflowResult.segments.filter(segment => segment.key !== 'user_message'),
+      {
+        key: 'output_reserve',
+        label: 'Output Reserve',
+        content: '',
+        reservedTokens: completion.maxOutputTokens,
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0,
+        locked: true
+      }
+    ]);
+    const overflowTrace = [...overflowResult.trace];
     const contextMeta: StoryChatContextMeta = {
       usedLorebookContext: useLorebookContext,
-      usedManualContext: manualContext.length > 0,
+      usedManualContext: manualContextForPrompt.length > 0,
       usedSpecificNotesContext: specificNotePaths.length > 0,
       usedChapterMemoryContext: chapterMemoryItems.length > 0,
+      usedInlineDirectives: resolvedInlineDirectiveItems.length > 0,
       scopes: selectedScopes,
       specificNotePaths,
       unresolvedNoteRefs,
       chapterMemoryItems,
+      inlineDirectiveItems: resolvedInlineDirectiveItems,
       layerTrace,
-      contextTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens + chatHistoryTokens,
+      layerUsage,
+      overflowTrace,
+      contextTokens: contextTokensUsed,
       worldInfoCount: totalWorldInfoCount,
       ragCount: totalRagCount,
       worldInfoItems,
@@ -1694,21 +2189,29 @@ export default class LoreBookConverterPlugin extends Plugin {
       'You are assisting with story development in a chat workflow.',
       'Answer naturally as a writing partner.',
       'Respect lore context as canon constraints when provided.',
+      preHistorySteeringForPrompt
+        ? [
+          '',
+          '<story_steering_pre_history>',
+          preHistorySteeringForPrompt,
+          '</story_steering_pre_history>'
+        ].join('\n')
+        : '',
       '',
       '<chat_history>',
-      chatHistory || '[No prior chat history.]',
+      chatHistoryForPrompt || '[No prior chat history.]',
       '</chat_history>',
       '',
       '<manual_context>',
-      manualContext || '[No manual context provided.]',
+      manualContextForPrompt || '[No manual context provided.]',
       '</manual_context>',
       '',
       '<specific_notes_context>',
-      specificNotesContextMarkdown || '[No specific notes selected.]',
+      specificNotesForPrompt || '[No specific notes selected.]',
       '</specific_notes_context>',
       '',
       '<chapter_memory_context>',
-      chapterMemoryMarkdown || '[No chapter memory available.]',
+      chapterMemoryForPrompt || '[No chapter memory available.]',
       '</chapter_memory_context>',
       '',
       '<lorevault_scopes>',
@@ -1716,15 +2219,23 @@ export default class LoreBookConverterPlugin extends Plugin {
       '</lorevault_scopes>',
       '',
       '<tool_retrieval_context>',
-      toolContextMarkdown || '[No tool-retrieved context.]',
+      toolContextForPrompt || '[No tool-retrieved context.]',
       '</tool_retrieval_context>',
       '',
       '<lorevault_context>',
       combinedLoreContextMarkdown || '[No lorebook context selected.]',
       '</lorevault_context>',
+      preResponseSteeringForPrompt
+        ? [
+          '',
+          '<story_steering_pre_response>',
+          preResponseSteeringForPrompt,
+          '</story_steering_pre_response>'
+        ].join('\n')
+        : '',
       '',
       '<user_message>',
-      request.userMessage.trim(),
+      userMessageForPrompt,
       '</user_message>'
     ].join('\n');
 
@@ -1741,8 +2252,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextWindowTokens: completion.contextWindowTokens,
       maxInputTokens,
       promptReserveTokens: completion.promptReserveTokens,
-      contextUsedTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens + chatHistoryTokens,
-      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - toolContextTokens - manualContextTokens - specificNotesTokens - chapterMemoryTokens - chatHistoryTokens),
+      contextUsedTokens: contextTokensUsed,
+      contextRemainingTokens,
       maxOutputTokens: completion.maxOutputTokens,
       worldInfoCount: contextMeta.worldInfoCount,
       ragCount: contextMeta.ragCount,
@@ -1758,7 +2269,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     let completionUsage: CompletionUsageReport | null = null;
     try {
       await requestStoryContinuationStream(completion, {
-        systemPrompt: completion.systemPrompt,
+        systemPrompt: effectiveSystemPrompt,
         userPrompt,
         onDelta: (delta: string) => {
           if (!delta) {
@@ -1790,9 +2301,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       await this.recordCompletionUsage('story_chat_turn', completionUsage, {
         scopeCount: selectedScopes.length,
         usedLorebookContext: useLorebookContext,
-        usedManualContext: manualContext.length > 0,
+        usedManualContext: manualContextForPrompt.length > 0,
         usedSpecificNotesContext: specificNotePaths.length > 0,
-        usedChapterMemoryContext: chapterMemoryItems.length > 0
+        usedChapterMemoryContext: chapterMemoryItems.length > 0,
+        inlineDirectiveCount: resolvedInlineDirectiveItems.length
       });
     }
 
@@ -2048,6 +2560,25 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     merged.completion.promptReserveTokens = Math.max(0, Math.floor(merged.completion.promptReserveTokens));
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
+    const completionLayerPlacement = merged.completion.layerPlacement ?? DEFAULT_SETTINGS.completion.layerPlacement;
+    merged.completion.layerPlacement = {
+      pinnedInstructions: this.resolvePromptLayerPlacement(
+        completionLayerPlacement.pinnedInstructions,
+        DEFAULT_SETTINGS.completion.layerPlacement.pinnedInstructions
+      ),
+      storyNotes: this.resolvePromptLayerPlacement(
+        completionLayerPlacement.storyNotes,
+        DEFAULT_SETTINGS.completion.layerPlacement.storyNotes
+      ),
+      sceneIntent: this.resolvePromptLayerPlacement(
+        completionLayerPlacement.sceneIntent,
+        DEFAULT_SETTINGS.completion.layerPlacement.sceneIntent
+      ),
+      inlineDirectives: this.resolvePromptLayerPlacement(
+        completionLayerPlacement.inlineDirectives,
+        DEFAULT_SETTINGS.completion.layerPlacement.inlineDirectives
+      )
+    };
     const rawPresets = Array.isArray(merged.completion.presets) ? merged.completion.presets : [];
     const normalizedPresets: CompletionPreset[] = [];
     for (const rawPreset of rawPresets) {
@@ -2101,6 +2632,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index);
     merged.storyChat.useLorebookContext = Boolean(merged.storyChat.useLorebookContext);
     merged.storyChat.manualContext = (merged.storyChat.manualContext ?? '').toString();
+    merged.storyChat.pinnedInstructions = (merged.storyChat.pinnedInstructions ?? '').toString();
+    merged.storyChat.storyNotes = (merged.storyChat.storyNotes ?? '').toString();
+    merged.storyChat.sceneIntent = (merged.storyChat.sceneIntent ?? '').toString();
     const noteContextRefs = Array.isArray(merged.storyChat.noteContextRefs)
       ? merged.storyChat.noteContextRefs
       : [];
@@ -2138,6 +2672,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             usedManualContext: Boolean(message.contextMeta.usedManualContext),
             usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
             usedChapterMemoryContext: Boolean(message.contextMeta.usedChapterMemoryContext),
+            usedInlineDirectives: Boolean(message.contextMeta.usedInlineDirectives),
             scopes: Array.isArray(message.contextMeta.scopes)
               ? message.contextMeta.scopes
                 .map((scope: string) => normalizeScope(scope))
@@ -2152,8 +2687,29 @@ export default class LoreBookConverterPlugin extends Plugin {
             chapterMemoryItems: Array.isArray(message.contextMeta.chapterMemoryItems)
               ? message.contextMeta.chapterMemoryItems.map((item: unknown) => String(item))
               : [],
+            inlineDirectiveItems: Array.isArray(message.contextMeta.inlineDirectiveItems)
+              ? message.contextMeta.inlineDirectiveItems.map((item: unknown) => String(item))
+              : [],
             layerTrace: Array.isArray(message.contextMeta.layerTrace)
               ? message.contextMeta.layerTrace.map((item: unknown) => String(item))
+              : [],
+            layerUsage: Array.isArray(message.contextMeta.layerUsage)
+              ? message.contextMeta.layerUsage
+                .filter((item: unknown) => Boolean(item) && typeof item === 'object')
+                .map((item: any) => ({
+                  layer: String(item.layer ?? ''),
+                  placement: this.resolvePromptLayerPlacement(item.placement, 'pre_response'),
+                  reservedTokens: Math.max(0, Math.floor(Number(item.reservedTokens ?? 0))),
+                  usedTokens: Math.max(0, Math.floor(Number(item.usedTokens ?? 0))),
+                  headroomTokens: Math.max(0, Math.floor(Number(item.headroomTokens ?? 0))),
+                  trimmed: Boolean(item.trimmed),
+                  ...(typeof item.trimReason === 'string' && item.trimReason
+                    ? { trimReason: item.trimReason }
+                    : {})
+                }))
+              : [],
+            overflowTrace: Array.isArray(message.contextMeta.overflowTrace)
+              ? message.contextMeta.overflowTrace.map((item: unknown) => String(item))
               : [],
             contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
             worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
@@ -2188,6 +2744,7 @@ export default class LoreBookConverterPlugin extends Plugin {
               usedManualContext: Boolean(message.contextMeta.usedManualContext),
               usedSpecificNotesContext: Boolean(message.contextMeta.usedSpecificNotesContext),
               usedChapterMemoryContext: Boolean(message.contextMeta.usedChapterMemoryContext),
+              usedInlineDirectives: Boolean(message.contextMeta.usedInlineDirectives),
               scopes: Array.isArray(message.contextMeta.scopes)
                 ? message.contextMeta.scopes
                   .map((scope: string) => normalizeScope(scope))
@@ -2202,8 +2759,29 @@ export default class LoreBookConverterPlugin extends Plugin {
               chapterMemoryItems: Array.isArray(message.contextMeta.chapterMemoryItems)
                 ? message.contextMeta.chapterMemoryItems.map((item: unknown) => String(item))
                 : [],
+              inlineDirectiveItems: Array.isArray(message.contextMeta.inlineDirectiveItems)
+                ? message.contextMeta.inlineDirectiveItems.map((item: unknown) => String(item))
+                : [],
               layerTrace: Array.isArray(message.contextMeta.layerTrace)
                 ? message.contextMeta.layerTrace.map((item: unknown) => String(item))
+                : [],
+              layerUsage: Array.isArray(message.contextMeta.layerUsage)
+                ? message.contextMeta.layerUsage
+                  .filter((item: unknown) => Boolean(item) && typeof item === 'object')
+                  .map((item: any) => ({
+                    layer: String(item.layer ?? ''),
+                    placement: this.resolvePromptLayerPlacement(item.placement, 'pre_response'),
+                    reservedTokens: Math.max(0, Math.floor(Number(item.reservedTokens ?? 0))),
+                    usedTokens: Math.max(0, Math.floor(Number(item.usedTokens ?? 0))),
+                    headroomTokens: Math.max(0, Math.floor(Number(item.headroomTokens ?? 0))),
+                    trimmed: Boolean(item.trimmed),
+                    ...(typeof item.trimReason === 'string' && item.trimReason
+                      ? { trimReason: item.trimReason }
+                      : {})
+                  }))
+                : [],
+              overflowTrace: Array.isArray(message.contextMeta.overflowTrace)
+                ? message.contextMeta.overflowTrace.map((item: unknown) => String(item))
                 : [],
               contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
               worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
@@ -2235,6 +2813,9 @@ export default class LoreBookConverterPlugin extends Plugin {
           selectedScopes,
           useLorebookContext: Boolean(snapshot.useLorebookContext),
           manualContext: (snapshot.manualContext ?? '').toString(),
+          pinnedInstructions: (snapshot.pinnedInstructions ?? '').toString(),
+          storyNotes: (snapshot.storyNotes ?? '').toString(),
+          sceneIntent: (snapshot.sceneIntent ?? '').toString(),
           noteContextRefs
         };
       })
@@ -3165,7 +3746,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     const editor = markdownView.editor;
     const activeFile = markdownView.file ?? this.app.workspace.getActiveFile();
     const cursor = editor.getCursor();
-    const textBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
+    const rawTextBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
+    const inlineDirectiveResolution = this.resolveInlineDirectivesFromText(rawTextBeforeCursor);
+    const inlineDirectives = inlineDirectiveResolution.directives;
+    const textBeforeCursor = stripInlineLoreDirectives(rawTextBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
     const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
     const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
@@ -3207,10 +3791,53 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
-      const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
+      const steeringFromFrontmatter = this.resolveSteeringFromFrontmatter(activeFile);
+      const steeringSections = this.createSteeringSections({
+        maxInputTokens,
+        pinnedInstructions: steeringFromFrontmatter.pinnedInstructions,
+        storyNotes: steeringFromFrontmatter.storyNotes,
+        sceneIntent: steeringFromFrontmatter.sceneIntent,
+        inlineDirectives
+      });
+      const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
+      const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
+      const preResponseSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_response');
+      const effectiveSystemPrompt = systemSteeringMarkdown
+        ? [
+          completion.systemPrompt,
+          '',
+          '<lorevault_steering_system>',
+          systemSteeringMarkdown,
+          '</lorevault_steering_system>'
+        ].join('\n')
+        : completion.systemPrompt;
+      const instructionOverhead = this.estimateTokens(effectiveSystemPrompt) + 180;
+      const steeringSystemTokens = steeringSections
+        .filter(section => section.placement === 'system')
+        .reduce((sum, section) => sum + section.usedTokens, 0);
+      const steeringPreHistoryTokens = steeringSections
+        .filter(section => section.placement === 'pre_history')
+        .reduce((sum, section) => sum + section.usedTokens, 0);
+      const steeringPreResponseTokens = steeringSections
+        .filter(section => section.placement === 'pre_response')
+        .reduce((sum, section) => sum + section.usedTokens, 0);
+      const steeringNonSystemTokens = steeringPreHistoryTokens + steeringPreResponseTokens;
+      const reservedByPlacement = (placement: PromptLayerPlacement): number => steeringSections
+        .filter(section => section.placement === placement)
+        .reduce((sum, section) => sum + section.reservedTokens, 0);
+      const trimmedByPlacement = (placement: PromptLayerPlacement): boolean => steeringSections
+        .some(section => section.placement === placement && section.trimmed);
+      const inlineDirectiveSection = steeringSections.find(section => section.key === 'inline_directives');
+      const inlineDirectiveTokens = inlineDirectiveSection?.usedTokens ?? 0;
+      const resolvedInlineDirectiveItems = inlineDirectiveSection?.text
+        ? inlineDirectiveSection.text
+          .split('\n')
+          .map(line => line.replace(/^\d+\.\s*/, '').trim())
+          .filter(Boolean)
+        : [];
       const availablePromptBudget = Math.max(
         256,
-        maxInputTokens - completion.promptReserveTokens - instructionOverhead
+        maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens
       );
       const desiredContextReserve = Math.max(1024, Math.min(32000, Math.floor(availablePromptBudget * 0.22)));
       const baselineStoryTarget = Math.max(256, Math.floor(availablePromptBudget * 0.62));
@@ -3222,7 +3849,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       const initialStoryWindow = textBeforeCursor;
       let storyWindow = this.extractStoryWindow(initialStoryWindow, storyTokenTarget);
       let storyTokens = this.estimateTokens(storyWindow);
-      let availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
+      let availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens;
 
       if (availableForContext < 128 && initialStoryWindow.trim().length > 0) {
         const reducedStoryBudget = Math.max(
@@ -3231,7 +3858,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         );
         storyWindow = this.extractStoryWindow(initialStoryWindow, reducedStoryBudget);
         storyTokens = this.estimateTokens(storyWindow);
-        availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
+        availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens;
       }
 
       let chapterMemoryMarkdown = '';
@@ -3268,7 +3895,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         estimatedInstructionTokens: instructionOverhead,
         storyTokens,
         contextRemainingTokens: Math.max(0, availableForContext),
-        contextUsedTokens: chapterMemoryTokens
+        contextUsedTokens: chapterMemoryTokens + steeringNonSystemTokens
       });
       this.setGenerationStatus(
         `retrieving | scopes ${initialScopeLabel} | ctx ${Math.max(0, availableForContext)} left`,
@@ -3293,7 +3920,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         }
 
         usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
-        remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens - usedContextTokens;
+        remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens - usedContextTokens;
         if (remainingInputTokens >= 0 || contextBudget <= 64) {
           break;
         }
@@ -3327,9 +3954,6 @@ export default class LoreBookConverterPlugin extends Plugin {
         toolContextLayerTrace = toolContext.layerTrace;
         remainingInputTokens -= toolContextTokens;
       }
-      const combinedContextMarkdown = [graphContextMarkdown, toolContextMarkdown]
-        .filter(section => section.trim().length > 0)
-        .join('\n\n---\n\n');
       const totalWorldInfo = contexts.reduce((sum, item) => sum + item.worldInfo.length, 0);
       const totalRag = contexts.reduce((sum, item) => sum + item.rag.length, 0);
       const worldInfoDetails = contexts
@@ -3340,23 +3964,149 @@ export default class LoreBookConverterPlugin extends Plugin {
         .slice(0, 8);
       const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
       const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
+      const preHistorySteeringReserved = reservedByPlacement('pre_history');
+      const preResponseSteeringReserved = reservedByPlacement('pre_response');
+      const inlineDirectiveDiagnostics = [
+        `${resolvedInlineDirectiveItems.length}/${inlineDirectiveResolution.foundCount} active`,
+        `~${inlineDirectiveTokens} tokens`
+      ];
+      if (inlineDirectiveResolution.droppedByCount > 0) {
+        inlineDirectiveDiagnostics.push(`dropped_by_count=${inlineDirectiveResolution.droppedByCount}`);
+      }
+      if (inlineDirectiveResolution.droppedByBudget > 0) {
+        inlineDirectiveDiagnostics.push(`dropped_by_budget=${inlineDirectiveResolution.droppedByBudget}`);
+      }
+      if (inlineDirectiveSection?.trimmed) {
+        inlineDirectiveDiagnostics.push('trimmed_to_reservation');
+      }
+
+      const promptSegments: PromptSegment[] = [
+        {
+          key: 'pre_history_steering',
+          label: 'Steering (pre-history)',
+          content: preHistorySteeringMarkdown,
+          reservedTokens: preHistorySteeringReserved,
+          placement: 'pre_history',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        {
+          key: 'chapter_memory_context',
+          label: 'Chapter Memory',
+          content: chapterMemoryMarkdown,
+          reservedTokens: Math.max(0, Math.floor(Math.max(0, availableForContext) * 0.3)),
+          placement: 'pre_response',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        {
+          key: 'tool_retrieval_context',
+          label: 'Tool Retrieval',
+          content: toolContextMarkdown,
+          reservedTokens: Math.max(0, Math.floor(Math.max(0, remainingInputTokens) * 0.55)),
+          placement: 'pre_response',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        {
+          key: 'lorebook_context',
+          label: 'Lorebook Context',
+          content: graphContextMarkdown,
+          reservedTokens: contextBudget,
+          placement: 'pre_response',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        {
+          key: 'pre_response_steering',
+          label: 'Steering (pre-response)',
+          content: preResponseSteeringMarkdown,
+          reservedTokens: preResponseSteeringReserved,
+          placement: 'pre_response',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        {
+          key: 'story_window',
+          label: 'Story Window',
+          content: storyWindow,
+          reservedTokens: storyTokenTarget,
+          placement: 'pre_response',
+          trimMode: 'tail',
+          minTokens: Math.max(64, Math.floor(storyTokenTarget * 0.4))
+        }
+      ];
+      const userPromptBudget = Math.max(
+        256,
+        maxInputTokens - completion.promptReserveTokens - instructionOverhead
+      );
+      const overflowResult = applyDeterministicOverflow(
+        promptSegments,
+        userPromptBudget,
+        [
+          'tool_retrieval_context',
+          'lorebook_context',
+          'chapter_memory_context',
+          'pre_response_steering',
+          'pre_history_steering',
+          'story_window'
+        ]
+      );
+      const promptSegmentsByKey = new Map(overflowResult.segments.map(segment => [segment.key, segment]));
+      const preHistorySteeringForPrompt = promptSegmentsByKey.get('pre_history_steering')?.content ?? '';
+      const chapterMemoryForPrompt = promptSegmentsByKey.get('chapter_memory_context')?.content ?? '';
+      const toolContextForPrompt = promptSegmentsByKey.get('tool_retrieval_context')?.content ?? '';
+      const loreContextForPrompt = promptSegmentsByKey.get('lorebook_context')?.content ?? '';
+      const preResponseSteeringForPrompt = promptSegmentsByKey.get('pre_response_steering')?.content ?? '';
+      const storyWindowForPrompt = promptSegmentsByKey.get('story_window')?.content ?? '';
+      const chapterMemoryPromptTokens = estimateTextTokens(chapterMemoryForPrompt);
+      const toolContextPromptTokens = estimateTextTokens(toolContextForPrompt);
+      const loreContextPromptTokens = estimateTextTokens(loreContextForPrompt);
+      const storyPromptTokens = estimateTextTokens(storyWindowForPrompt);
+      const steeringPreHistoryPromptTokens = estimateTextTokens(preHistorySteeringForPrompt);
+      const steeringPreResponsePromptTokens = estimateTextTokens(preResponseSteeringForPrompt);
+      const steeringNonSystemPromptTokens = steeringPreHistoryPromptTokens + steeringPreResponsePromptTokens;
+      const contextUsedPromptTokens = loreContextPromptTokens
+        + chapterMemoryPromptTokens
+        + toolContextPromptTokens
+        + steeringNonSystemPromptTokens;
+      remainingInputTokens = Math.max(
+        0,
+        maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyPromptTokens - contextUsedPromptTokens
+      );
+      const combinedContextMarkdown = [loreContextForPrompt, toolContextForPrompt]
+        .filter(section => section.trim().length > 0)
+        .join('\n\n---\n\n');
       const contextLayerTrace: string[] = [
-        `local_window: ~${storyTokens} tokens`,
-        `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryTokens} tokens`,
+        `steering(system): ~${steeringSystemTokens} tokens`,
+        `steering(pre_history): ~${steeringPreHistoryPromptTokens} tokens`,
+        `steering(pre_response): ~${steeringPreResponsePromptTokens} tokens`,
+        `local_window: ~${storyPromptTokens} tokens`,
+        `inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`,
+        `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryPromptTokens} tokens`,
         ...chapterMemoryLayerTrace,
-        `graph_memory(world_info): ${totalWorldInfo} entries, ~${usedContextTokens} tokens`,
+        `graph_memory(world_info): ${totalWorldInfo} entries, ~${loreContextPromptTokens} tokens`,
         `fallback_entries: ${totalRag} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
-        `tool_hooks: ${toolContextItems.length} entries, ~${toolContextTokens} tokens`,
+        `tool_hooks: ${toolContextItems.length} entries, ~${toolContextPromptTokens} tokens`,
         ...toolContextLayerTrace
       ];
+      if (trimmedByPlacement('pre_history')) {
+        contextLayerTrace.push('steering(pre_history): trimmed to reservation');
+      }
+      if (trimmedByPlacement('pre_response')) {
+        contextLayerTrace.push('steering(pre_response): trimmed to reservation');
+      }
+      if (overflowResult.trace.length > 0) {
+        contextLayerTrace.push(...overflowResult.trace.map(trace => `overflow_policy: ${trace}`));
+      }
       const scopeLabel = this.renderScopeListLabel(selectedScopeLabels);
       this.updateGenerationTelemetry({
         state: 'generating',
         statusText: 'generating',
         scopes: selectedScopeLabels,
         estimatedInstructionTokens: instructionOverhead,
-        storyTokens,
-        contextUsedTokens: usedContextTokens + chapterMemoryTokens + toolContextTokens,
+        storyTokens: storyPromptTokens,
+        contextUsedTokens: contextUsedPromptTokens,
         contextRemainingTokens: Math.max(0, remainingInputTokens),
         worldInfoCount: totalWorldInfo,
         ragCount: totalRag,
@@ -3376,6 +4126,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `LoreVault generating for scopes: ${scopeLabel}`,
           `Provider: ${completion.provider} (${completion.model})`,
           `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
+          `inline directives: ${resolvedInlineDirectiveItems.join(' | ') || '(none)'}`,
           `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
           `fallback: ${ragDetails.join(', ') || '(none)'}`,
@@ -3387,23 +4138,39 @@ export default class LoreBookConverterPlugin extends Plugin {
         'Continue the story from where it currently ends.',
         'Respect the lore context as canon constraints.',
         'Output only the continuation text.',
+        preHistorySteeringForPrompt
+          ? [
+            '',
+            '<story_steering_pre_history>',
+            preHistorySteeringForPrompt,
+            '</story_steering_pre_history>'
+          ].join('\n')
+          : '',
         '',
         '<story_chapter_memory>',
-        chapterMemoryMarkdown || '[No prior chapter memory available.]',
+        chapterMemoryForPrompt || '[No prior chapter memory available.]',
         '</story_chapter_memory>',
         '',
         `<lorevault_scopes>${selectedScopeLabels.join(', ')}</lorevault_scopes>`,
         '',
         '<tool_retrieval_context>',
-        toolContextMarkdown || '[No tool-retrieved context.]',
+        toolContextForPrompt || '[No tool-retrieved context.]',
         '</tool_retrieval_context>',
         '',
         '<lorevault_context>',
         combinedContextMarkdown || '[No lorebook context selected.]',
         '</lorevault_context>',
+        preResponseSteeringForPrompt
+          ? [
+            '',
+            '<story_steering_pre_response>',
+            preResponseSteeringForPrompt,
+            '</story_steering_pre_response>'
+          ].join('\n')
+          : '',
         '',
         '<story_so_far>',
-        storyWindow || '[No story text yet. Start the scene naturally.]',
+        storyWindowForPrompt || '[No story text yet. Start the scene naturally.]',
         '</story_so_far>'
       ].join('\n');
 
@@ -3419,7 +4186,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       let completionUsage: CompletionUsageReport | null = null;
 
       await requestStoryContinuationStream(completion, {
-        systemPrompt: completion.systemPrompt,
+        systemPrompt: effectiveSystemPrompt,
         userPrompt,
         onDelta: (delta: string) => {
           if (!delta) {
@@ -3456,7 +4223,8 @@ export default class LoreBookConverterPlugin extends Plugin {
           scopeCount: selectedScopeLabels.length,
           worldInfoCount: totalWorldInfo,
           ragCount: totalRag,
-          usedChapterMemoryContext: chapterMemoryItems.length > 0
+          usedChapterMemoryContext: chapterMemoryItems.length > 0,
+          inlineDirectiveCount: resolvedInlineDirectiveItems.length
         });
       }
 
@@ -3469,7 +4237,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         state: 'idle',
         statusText: 'idle',
         scopes: selectedScopeLabels,
-        contextUsedTokens: usedContextTokens + chapterMemoryTokens + toolContextTokens,
+        contextUsedTokens: contextUsedPromptTokens,
         contextRemainingTokens: Math.max(0, remainingInputTokens),
         generatedTokens,
         worldInfoCount: totalWorldInfo,

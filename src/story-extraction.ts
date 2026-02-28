@@ -1,5 +1,6 @@
 import { normalizeVaultPath } from './vault-path-utils';
 import { upsertSummarySectionInMarkdown } from './summary-utils';
+import { stripInlineLoreDirectives } from './inline-directives';
 import {
   buildStructuredWikiBody,
   deriveWikiTitleFromPageKey,
@@ -515,7 +516,7 @@ function resolveUniquePath(
 export async function extractWikiPagesFromStory(
   options: StoryExtractionOptions
 ): Promise<StoryExtractionResult> {
-  const storyMarkdown = options.storyMarkdown.trim();
+  const storyMarkdown = stripInlineLoreDirectives(options.storyMarkdown).trim();
   if (!storyMarkdown) {
     throw new Error('Story markdown is empty.');
   }

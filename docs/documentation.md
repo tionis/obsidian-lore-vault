@@ -308,6 +308,11 @@ Settings:
 - max output tokens
 - context window tokens
 - prompt reserve tokens
+- steering layer placement for:
+  - pinned instructions
+  - story notes
+  - scene intent
+  - inline directives
 - timeout
 
 Story frontmatter scope override:
@@ -322,6 +327,12 @@ Story frontmatter scope override:
   - each selected scope is queried and combined into completion context
   - completion token budget is split across selected scopes
   - context budgets are trimmed iteratively if selected context exceeds input budget
+
+Optional frontmatter steering keys for editor continuation:
+
+- `lvPinnedInstructions` (or `lvPinned` / `pinnedInstructions`)
+- `lvStoryNotes` (or `lvStoryNote` / `storyNotes` / `authorNote`)
+- `lvSceneIntent` (or `sceneIntent` / `chapterIntent`)
 
 Long-form story metadata (new):
 
@@ -606,6 +617,7 @@ Runtime behavior:
 Query behavior:
 
 - query text source: active editor content up to cursor (last window)
+- inline directives source: strict-prefix directives in near-cursor editor window (`[LV: ...]`, `<!-- LV: ... -->`)
 - scope resolution:
   - first lorebook scope tag on active file, if present
   - otherwise configured `activeScope`
@@ -623,6 +635,8 @@ Query behavior:
     - configurable fallback policy: `off|auto|always`
 - completion:
   - builds a prompt from scope context + recent story window
+  - stages explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
+  - steering placement is configurable per layer (`system`, `pre-history`, `pre-response`)
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
   - calls configured completion provider with streaming enabled
   - inserts streamed generated continuation text at cursor
@@ -639,14 +653,17 @@ Token budgeting:
 
 - uses completion context budget (`contextWindowTokens - maxOutputTokens`) and lorebook token budget cap (`defaultLoreBook.tokenBudget`)
 - reserves headroom via `promptReserveTokens`
+- reserves deterministic per-layer slices for steering/history/retrieval/output based on configured context window
 - trims story window to keep minimum context capacity
 - splits budget between sections (`world_info` 70%, `rag` 30% by default)
 - iteratively shrinks per-scope context budget if total selected context exceeds input budget
+- runs deterministic overflow trimming in fixed layer order and records trim rationale in layer traces
 - `world_info` starts at `short` tier, then upgrades to `medium`/`full` if budget remains
 - top-scoring entries can be lifted to `full_body` using full note body when budget allows; if not, LoreVault falls back to excerpt lift
 - excerpt lift is deterministic lexical paragraph scoring and gains semantic paragraph rerank when embeddings are enabled
 - skips entries/documents that would exceed section budget and reports cutoff diagnostics
 - context block is used for generation input and is not inserted into the note
+- inline directives are parsed for steering but excluded from lore exports/summary generation/import-update pipelines
 
 Retrieval tuning settings (applies immediately to live query and generation):
 
@@ -674,6 +691,9 @@ Current behavior:
   - selected lorebook scopes
   - `Use Lorebook Context` toggle
   - manual context text
+  - pinned instructions text
+  - story notes text
+  - scene intent text
   - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
 - supports per-message actions:
@@ -689,6 +709,7 @@ Turn context assembly:
 
 - optional lorebook retrieval for selected scopes
 - optional tool-retrieved context layer (when enabled and budget allows)
+- explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
 - optional manual context block
 - optional specific-note context blocks resolved from note references
 - recent chat history window
@@ -697,17 +718,19 @@ Turn context assembly:
   - resolved specific note paths
   - unresolved note references
   - chapter memory summaries used for the turn
-  - per-layer context trace (`local_window`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_rag`, `tool_hooks`)
+  - per-layer context trace (`steering(system/pre_history/pre_response)`, `local_window`, `inline_directives`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_entries`, `tool_hooks`)
+  - per-layer usage table (`reserved`, `used`, `headroom`, trim flag/reason)
+  - overflow trace entries when staged prompt trimming occurs
   - context token estimate
   - selected `world_info` and `rag` item labels
 
-## Planned Inline Story Directives (Phase 20)
+## Inline Story Directives
 
 Goal:
 
 - provide fast in-note story steering without replacing explicit chat/story controls.
 
-Planned syntax (strict-prefix only):
+Supported syntax (strict-prefix only):
 
 - `[LV: <instruction>]`
 - `<!-- LV: <instruction> -->`
@@ -718,13 +741,10 @@ Rules:
 - plain bracket text (for example `[Editor Note: ...]` or `[Make it bigger]`) is treated as normal prose
 - directives are parsed from active-story near-cursor context only
 - directives are injected into a dedicated steering layer (not mixed into lore retrieval layers)
+- directive placement is configurable with other steering layers (`system` / `pre-history` / `pre-response`)
 - resolved directives are shown in inspector traces before/with generation output
 - directives are excluded from lorebook exports and wiki import/update extraction flows
-
-Status:
-
-- roadmap only; not implemented yet
-- tracked under Phase 20 in `docs/todo.md`
+- per-turn caps are enforced for directive count and token usage
 
 ## Technical Deep-Dive
 

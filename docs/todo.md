@@ -243,25 +243,25 @@ Reference design: `docs/planning.md`.
 
 ## Phase 22: Stabilization and Roadmap Alignment (Current)
 
-- [ ] Story-delta structured-merge conflict UX refinement:
-  - [ ] add dedicated conflict review rows with quick accept/reject/keep-both controls
-  - [ ] add conflict counters + filters in preview UI
-  - [ ] persist deterministic per-conflict override decisions into apply phase
-- [ ] Export freshness and rebuild policy:
-  - [ ] add setting: `manual` | `on_build` | `background_debounced`
-  - [ ] in background mode, debounce vault events and rebuild only impacted scopes
-  - [ ] show last successful canonical export timestamp per scope in manager UI
-- [ ] Story terminology normalization:
-  - [ ] keep compatibility alias for persisted/internal `thread` scope keys
-  - [ ] migrate user-facing labels/docs/help to `story` terminology
-  - [ ] add regression tests for `story`/`thread` alias handling
-- [ ] UI scalability and cache reuse:
-  - [ ] avoid full metadata rescan on every Story Steering render
-  - [ ] reuse shared scope metadata cache/index in manager + steering scope selectors
-  - [ ] add panel-interaction perf tests for large vaults (>1k notes)
-- [ ] Lorebook Auditor parity:
-  - [ ] document current row actions (`Open Entry`, `Open Similar`, `Open Pair`, keyword actions)
-  - [ ] add tests for duplicate/similarity actions and embeddings-present/absent messaging
+- [x] Story-delta structured-merge conflict UX refinement:
+  - [x] add dedicated conflict review rows with quick accept/reject/keep-both controls
+  - [x] add conflict counters + filters in preview UI
+  - [x] persist deterministic per-conflict override decisions into apply phase
+- [x] Export freshness and rebuild policy:
+  - [x] add setting: `manual` | `on_build` | `background_debounced`
+  - [x] in background mode, debounce vault events and rebuild only impacted scopes
+  - [x] show last successful canonical export timestamp per scope in manager UI
+- [x] Story terminology normalization:
+  - [x] keep compatibility alias for persisted/internal `thread` scope keys
+  - [x] migrate user-facing labels/docs/help to `story` terminology
+  - [x] add regression tests for `story`/`thread` alias handling
+- [x] UI scalability and cache reuse:
+  - [x] avoid full metadata rescan on every Story Steering render
+  - [x] reuse shared scope metadata cache/index in manager + steering scope selectors
+  - [x] add panel-interaction perf tests for large vaults (>1k notes)
+- [x] Lorebook Auditor parity:
+  - [x] document current row actions (`Open Entry`, `Open Similar`, `Open Pair`, keyword actions)
+  - [x] add tests for duplicate/similarity actions and embeddings-present/absent messaging
 - [ ] Advanced cost-management follow-up (far future):
   - [ ] integrate provider pricing metadata sync (OpenRouter-first)
   - [ ] store/display estimated-vs-actual cost provenance per ledger row

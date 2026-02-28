@@ -5,6 +5,7 @@ import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
 import { openVaultFolderPicker } from './folder-suggest-modal';
 import {
   buildStoryDeltaPlan,
+  StoryDeltaConflict,
   StoryDeltaExistingPageInput,
   StoryDeltaPlannedChange,
   StoryDeltaPlannedPage,
@@ -15,6 +16,53 @@ import { extractLorebookScopesFromTags, normalizeScope, shouldIncludeInScope } f
 import { normalizeVaultPath } from './vault-path-utils';
 
 export const LOREVAULT_STORY_DELTA_VIEW_TYPE = 'lorevault-story-delta-view';
+
+type StoryDeltaConflictDecision = 'pending' | 'accept' | 'reject' | 'keep_both';
+type StoryDeltaConflictFilter = 'all' | StoryDeltaConflictDecision;
+
+function buildConflictCompanionPath(path: string): string {
+  const normalized = normalizeVaultPath(path);
+  if (normalized.toLowerCase().endsWith('.md')) {
+    return `${normalized.slice(0, -3)}.lorevault-proposed.md`;
+  }
+  return `${normalized}.lorevault-proposed.md`;
+}
+
+function buildConflictCompanionContent(
+  page: StoryDeltaPlannedPage,
+  conflict: StoryDeltaConflict,
+  sourcePath: string
+): string {
+  const existing = (page.previousContent ?? '').trim();
+  const proposed = (page.content ?? '').trim();
+  const lines: string[] = [
+    '---',
+    'type: lorevault-conflict-proposal',
+    `sourcePath: ${JSON.stringify(page.path)}`,
+    `storyDeltaSource: ${JSON.stringify(sourcePath || '(inline markdown)')}`,
+    `conflictId: ${JSON.stringify(conflict.id)}`,
+    '---',
+    `# Proposed Update for ${page.path}`,
+    '',
+    `## Conflict Summary`,
+    '',
+    `${conflict.summary}`,
+    '',
+    '## Existing Content Snapshot',
+    '',
+    '```markdown',
+    existing || '(empty)',
+    '```',
+    '',
+    '## Proposed Content Snapshot',
+    '',
+    '```markdown',
+    proposed || '(empty)',
+    '```',
+    ''
+  ];
+  return lines.join('\n');
+}
 
 export class LorevaultStoryDeltaView extends ItemView {
   private plugin: LoreBookConverterPlugin;
@@ -34,6 +82,8 @@ export class LorevaultStoryDeltaView extends ItemView {
   private applyStatus = '';
   private lastPreview: StoryDeltaResult | null = null;
   private approvedPaths = new Set<string>();
+  private conflictDecisions = new Map<string, StoryDeltaConflictDecision>();
+  private conflictFilter: StoryDeltaConflictFilter = 'all';
   private lastExistingPageCount = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
@@ -187,25 +237,7 @@ export class LorevaultStoryDeltaView extends ItemView {
   }
 
   private getAvailableLorebookScopes(): string[] {
-    const prefix = this.plugin.settings.tagScoping.tagPrefix;
-    const scopes = new Set<string>();
-    const activeScope = normalizeScope(this.plugin.settings.tagScoping.activeScope);
-    if (activeScope) {
-      scopes.add(activeScope);
-    }
-
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      const cache = this.app.metadataCache.getFileCache(file);
-      const tags = cache ? (getAllTags(cache) ?? []) : [];
-      for (const scope of extractLorebookScopesFromTags(tags, prefix)) {
-        const normalized = normalizeScope(scope);
-        if (normalized) {
-          scopes.add(normalized);
-        }
-      }
-    }
-
-    return [...scopes].sort((left, right) => left.localeCompare(right));
+    return this.plugin.getCachedLorebookScopes();
   }
 
   private getSelectedPages(): StoryDeltaPlannedPage[] {
@@ -213,6 +245,87 @@ export class LorevaultStoryDeltaView extends ItemView {
       return [];
     }
     return this.lastPreview.pages.filter(page => this.approvedPaths.has(page.path));
+  }
+
+  private getConflicts(): StoryDeltaConflict[] {
+    return this.lastPreview?.conflicts ?? [];
+  }
+
+  private getConflictDecision(conflictId: string): StoryDeltaConflictDecision {
+    return this.conflictDecisions.get(conflictId) ?? 'pending';
+  }
+
+  private setConflictDecision(conflictId: string, decision: StoryDeltaConflictDecision): void {
+    this.conflictDecisions.set(conflictId, decision);
+    this.render();
+  }
+
+  private setAllConflictDecisions(decision: StoryDeltaConflictDecision): void {
+    for (const conflict of this.getConflicts()) {
+      this.conflictDecisions.set(conflict.id, decision);
+    }
+    this.render();
+  }
+
+  private getConflictCounts(conflicts: StoryDeltaConflict[]): Record<StoryDeltaConflictDecision, number> {
+    const counts: Record<StoryDeltaConflictDecision, number> = {
+      pending: 0,
+      accept: 0,
+      reject: 0,
+      keep_both: 0
+    };
+    for (const conflict of conflicts) {
+      const decision = this.getConflictDecision(conflict.id);
+      counts[decision] += 1;
+    }
+    return counts;
+  }
+
+  private getFilteredConflicts(conflicts: StoryDeltaConflict[]): StoryDeltaConflict[] {
+    if (this.conflictFilter === 'all') {
+      return conflicts;
+    }
+    return conflicts.filter(conflict => this.getConflictDecision(conflict.id) === this.conflictFilter);
+  }
+
+  private resolveSelectedApplyPages(selected: StoryDeltaPlannedPage[]): ImportedWikiPage[] {
+    const pagesByPath = new Map(selected.map(page => [page.path, page]));
+    const conflictByPath = new Map(this.getConflicts().map(conflict => [conflict.path, conflict]));
+    const sourcePath = normalizeVaultPath(this.sourceStoryNotePath.trim());
+    const writes: ImportedWikiPage[] = [];
+    let uidCounter = 0;
+
+    for (const page of selected) {
+      const conflict = conflictByPath.get(page.path);
+      const decision = conflict ? this.getConflictDecision(conflict.id) : 'accept';
+      if (conflict && decision === 'reject') {
+        continue;
+      }
+      if (conflict && decision === 'keep_both') {
+        const companionPath = buildConflictCompanionPath(page.path);
+        const companionContent = buildConflictCompanionContent(page, conflict, sourcePath);
+        writes.push({
+          path: companionPath,
+          content: companionContent,
+          uid: uidCounter
+        });
+        uidCounter += 1;
+        continue;
+      }
+
+      const resolved = pagesByPath.get(page.path);
+      if (!resolved) {
+        continue;
+      }
+      writes.push({
+        path: resolved.path,
+        content: resolved.content,
+        uid: uidCounter
+      });
+      uidCounter += 1;
+    }
+
+    return writes;
   }
 
   private setAllApprovals(value: boolean): void {
@@ -277,10 +390,17 @@ export class LorevaultStoryDeltaView extends ItemView {
 
       this.lastPreview = result;
       this.approvedPaths = new Set(result.pages.map(page => page.path));
+      const nextDecisions = new Map<string, StoryDeltaConflictDecision>();
+      for (const conflict of result.conflicts) {
+        nextDecisions.set(conflict.id, this.conflictDecisions.get(conflict.id) ?? 'pending');
+      }
+      this.conflictDecisions = nextDecisions;
+      this.conflictFilter = 'all';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Story delta preview failed:', error);
       this.lastPreview = null;
+      this.conflictDecisions = new Map<string, StoryDeltaConflictDecision>();
       this.previewError = message;
       new Notice(`Story delta preview failed: ${message}`);
     } finally {
@@ -302,13 +422,15 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
 
     try {
-      const pages: ImportedWikiPage[] = selected.map((page, index) => ({
-        path: page.path,
-        content: page.content,
-        uid: index
-      }));
+      const pages = this.resolveSelectedApplyPages(selected);
+      if (pages.length === 0) {
+        new Notice('No writes selected after conflict decisions (all selected conflicts were rejected).');
+        return;
+      }
       const applied = await applyImportedWikiPages(this.app, pages);
-      this.applyStatus = `Applied ${selected.length} selected change(s): ${applied.created} created, ${applied.updated} updated.`;
+      const conflicts = this.getConflicts();
+      const counts = this.getConflictCounts(conflicts);
+      this.applyStatus = `Applied ${pages.length} write(s): ${applied.created} created, ${applied.updated} updated. Conflicts -> accept ${counts.accept}, reject ${counts.reject}, keep_both ${counts.keep_both}, pending ${counts.pending}.`;
       new Notice(`Story delta applied: ${applied.created} created, ${applied.updated} updated.`);
       this.render();
     } catch (error) {
@@ -323,6 +445,8 @@ export class LorevaultStoryDeltaView extends ItemView {
   private clearPreview(): void {
     this.lastPreview = null;
     this.approvedPaths = new Set<string>();
+    this.conflictDecisions = new Map<string, StoryDeltaConflictDecision>();
+    this.conflictFilter = 'all';
     this.previewError = '';
     this.applyStatus = '';
     this.lastExistingPageCount = 0;
@@ -365,6 +489,77 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
   }
 
+  private renderConflictReview(container: HTMLElement, conflicts: StoryDeltaConflict[]): void {
+    if (conflicts.length === 0) {
+      return;
+    }
+
+    const section = container.createDiv({ cls: 'lorevault-story-delta-conflict-section' });
+    section.createEl('h4', { text: 'Conflict Review' });
+    const counts = this.getConflictCounts(conflicts);
+    section.createEl('p', {
+      cls: 'lorevault-routing-subtle',
+      text: `Conflicts: ${conflicts.length} | pending ${counts.pending} | accept ${counts.accept} | reject ${counts.reject} | keep_both ${counts.keep_both}`
+    });
+
+    const controls = section.createDiv({ cls: 'lorevault-import-actions' });
+    const filterSelect = controls.createEl('select');
+    const filterOptions: Array<{value: StoryDeltaConflictFilter; label: string}> = [
+      { value: 'all', label: 'All Conflicts' },
+      { value: 'pending', label: 'Pending' },
+      { value: 'accept', label: 'Accept' },
+      { value: 'reject', label: 'Reject' },
+      { value: 'keep_both', label: 'Keep Both' }
+    ];
+    for (const option of filterOptions) {
+      const el = filterSelect.createEl('option');
+      el.value = option.value;
+      el.text = option.label;
+    }
+    filterSelect.value = this.conflictFilter;
+    filterSelect.addEventListener('change', () => {
+      const value = filterSelect.value as StoryDeltaConflictFilter;
+      this.conflictFilter = value;
+      this.render();
+    });
+
+    const acceptAllButton = controls.createEl('button', { text: 'Accept All' });
+    acceptAllButton.addEventListener('click', () => this.setAllConflictDecisions('accept'));
+    const rejectAllButton = controls.createEl('button', { text: 'Reject All' });
+    rejectAllButton.addEventListener('click', () => this.setAllConflictDecisions('reject'));
+    const keepAllButton = controls.createEl('button', { text: 'Keep Both All' });
+    keepAllButton.addEventListener('click', () => this.setAllConflictDecisions('keep_both'));
+
+    const filtered = this.getFilteredConflicts(conflicts);
+    if (filtered.length === 0) {
+      section.createEl('p', { text: 'No conflicts match the current filter.' });
+      return;
+    }
+
+    const list = section.createDiv({ cls: 'lorevault-story-delta-change-list' });
+    for (const conflict of filtered) {
+      const row = list.createDiv({ cls: 'lorevault-story-delta-conflict-row' });
+      const decision = this.getConflictDecision(conflict.id);
+      row.createEl('p', {
+        text: `[${conflict.severity}] ${conflict.path} | ${conflict.summary} | decision=${decision}`
+      });
+      row.createEl('p', {
+        cls: 'lorevault-routing-subtle',
+        text: `${conflict.title || conflict.pageKey} | +${conflict.diffAddedLines} -${conflict.diffRemovedLines}`
+      });
+      const actions = row.createDiv({ cls: 'lorevault-import-actions' });
+      const accept = actions.createEl('button', { text: decision === 'accept' ? 'Accepted' : 'Accept' });
+      accept.disabled = decision === 'accept';
+      accept.addEventListener('click', () => this.setConflictDecision(conflict.id, 'accept'));
+      const reject = actions.createEl('button', { text: decision === 'reject' ? 'Rejected' : 'Reject' });
+      reject.disabled = decision === 'reject';
+      reject.addEventListener('click', () => this.setConflictDecision(conflict.id, 'reject'));
+      const keepBoth = actions.createEl('button', { text: decision === 'keep_both' ? 'Keeping Both' : 'Keep Both' });
+      keepBoth.disabled = decision === 'keep_both';
+      keepBoth.addEventListener('click', () => this.setConflictDecision(conflict.id, 'keep_both'));
+    }
+  }
+
   private renderPreviewOutput(container: HTMLElement): void {
     if (this.running) {
       container.createEl('p', { text: 'Running story delta preview...' });
@@ -386,9 +581,10 @@ export class LorevaultStoryDeltaView extends ItemView {
     const selectedCount = this.getSelectedPages().length;
     const createCount = this.lastPreview.pages.filter(page => page.action === 'create').length;
     const updateCount = this.lastPreview.pages.filter(page => page.action === 'update').length;
+    const conflictCount = this.lastPreview.conflicts.length;
 
     container.createEl('p', {
-      text: `Preview complete: ${this.lastPreview.pages.length} write(s) (${createCount} create, ${updateCount} update), ${this.lastPreview.skippedLowConfidence} low-confidence skipped. Selected for apply: ${selectedCount}.`
+      text: `Preview complete: ${this.lastPreview.pages.length} write(s) (${createCount} create, ${updateCount} update), ${conflictCount} conflict(s), ${this.lastPreview.skippedLowConfidence} low-confidence skipped. Selected for apply: ${selectedCount}.`
     });
     if (this.lastExistingPageCount > 0) {
       const scopes = this.getNormalizedSelectedScopes();
@@ -407,6 +603,8 @@ export class LorevaultStoryDeltaView extends ItemView {
 
     const selectNoneButton = selectionActions.createEl('button', { text: 'Select None' });
     selectNoneButton.addEventListener('click', () => this.setAllApprovals(false));
+
+    this.renderConflictReview(container, this.lastPreview.conflicts);
 
     const chunkDetails = container.createEl('details');
     chunkDetails.createEl('summary', { text: 'Chunk Diagnostics' });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildQualityAuditRows } from '../src/quality-audit';
+import { buildQualityAuditRows, describeQualityAuditSimilarityMode } from '../src/quality-audit';
 import { LoreBookEntry, RagChunk, RagChunkEmbedding, RagDocument } from '../src/models';
 
 function entry(uid: number, comment: string, key: string[], content: string): LoreBookEntry {
@@ -77,6 +77,8 @@ test('buildQualityAuditRows marks missing keywords and duplicate-like entries', 
   const duplicate = rows.find(row => row.uid === 2);
   assert.ok(duplicate);
   assert.equal(duplicate?.canGenerateKeywords, true);
+  assert.equal(Boolean(duplicate?.path), true);
+  assert.equal(Boolean(duplicate?.bestSimilarPath), true);
   assert.ok((duplicate?.reasons ?? []).some(reason => {
     const lowered = reason.toLowerCase();
     return lowered.includes('similar') || lowered.includes('duplicate');
@@ -86,4 +88,18 @@ test('buildQualityAuditRows marks missing keywords and duplicate-like entries', 
   assert.ok(sparse);
   assert.ok((sparse?.reasons ?? []).some(reason => reason.toLowerCase().includes('missing explicit keywords')));
   assert.ok((sparse?.reasons ?? []).some(reason => reason.toLowerCase().includes('very short')));
+});
+
+test('quality audit similarity mode message reflects embeddings presence', () => {
+  const withEmbeddings = describeQualityAuditSimilarityMode({
+    ragChunks: [{ chunkId: 'c1', docUid: 1, scope: 's', path: 'p', title: 't', chunkIndex: 0, heading: '', text: 'x', textHash: 'h', tokenEstimate: 1, startOffset: 0, endOffset: 1 }],
+    ragChunkEmbeddings: [{ chunkId: 'c1', provider: 'p', model: 'm', dimensions: 1, vector: [1], cacheKey: 'k', createdAt: 1 }]
+  });
+  assert.match(withEmbeddings, /embeddings \+ heuristics/i);
+
+  const heuristicsOnly = describeQualityAuditSimilarityMode({
+    ragChunks: [{ chunkId: 'c1', docUid: 1, scope: 's', path: 'p', title: 't', chunkIndex: 0, heading: '', text: 'x', textHash: 'h', tokenEstimate: 1, startOffset: 0, endOffset: 1 }],
+    ragChunkEmbeddings: []
+  });
+  assert.match(heuristicsOnly, /heuristics only/i);
 });

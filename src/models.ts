@@ -334,6 +334,9 @@ export interface ConverterSettings {
   sqlite: {
     enabled: boolean;
     outputPath: string;
+    exportFreshnessPolicy?: 'manual' | 'on_build' | 'background_debounced';
+    backgroundDebounceMs?: number;
+    lastCanonicalExportByScope?: {[scope: string]: number};
   };
   embeddings: {
     enabled: boolean;
@@ -464,7 +467,10 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   },
   sqlite: {
     enabled: true,
-    outputPath: 'lorebooks/'
+    outputPath: 'lorebooks/',
+    exportFreshnessPolicy: 'on_build',
+    backgroundDebounceMs: 1800,
+    lastCanonicalExportByScope: {}
   },
   embeddings: {
     enabled: false,

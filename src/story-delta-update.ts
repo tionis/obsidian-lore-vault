@@ -58,9 +58,24 @@ export interface StoryDeltaPlannedChange {
   diffTruncated: boolean;
 }
 
+export type StoryDeltaConflictSeverity = 'low' | 'medium' | 'high';
+
+export interface StoryDeltaConflict {
+  id: string;
+  path: string;
+  pageKey: string;
+  title: string;
+  action: 'update';
+  severity: StoryDeltaConflictSeverity;
+  summary: string;
+  diffAddedLines: number;
+  diffRemovedLines: number;
+}
+
 export interface StoryDeltaResult {
   pages: StoryDeltaPlannedPage[];
   changes: StoryDeltaPlannedChange[];
+  conflicts: StoryDeltaConflict[];
   chunks: StoryExtractionChunkResult[];
   warnings: string[];
   skippedLowConfidence: number;
@@ -716,6 +731,44 @@ function buildDiffPreview(
   return buildUpdateDiffPreview(previousContent, nextContent);
 }
 
+function resolveConflictSeverity(addedLines: number, removedLines: number): StoryDeltaConflictSeverity {
+  const churn = Math.max(addedLines, removedLines);
+  if (churn >= 40) {
+    return 'high';
+  }
+  if (churn >= 16) {
+    return 'medium';
+  }
+  return 'low';
+}
+
+function buildPlannedConflicts(changes: StoryDeltaPlannedChange[]): StoryDeltaConflict[] {
+  const conflicts: StoryDeltaConflict[] = [];
+  for (const change of changes) {
+    if (change.action !== 'update') {
+      continue;
+    }
+    if (change.diffAddedLines <= 0 || change.diffRemovedLines <= 0) {
+      continue;
+    }
+    conflicts.push({
+      id: `update:${change.path}`,
+      path: change.path,
+      pageKey: change.pageKey,
+      title: change.title,
+      action: 'update',
+      severity: resolveConflictSeverity(change.diffAddedLines, change.diffRemovedLines),
+      summary: `Replaces ${change.diffRemovedLines} line(s) with ${change.diffAddedLines} line(s).`,
+      diffAddedLines: change.diffAddedLines,
+      diffRemovedLines: change.diffRemovedLines
+    });
+  }
+  return conflicts.sort((left, right) => (
+    left.path.localeCompare(right.path) ||
+    left.pageKey.localeCompare(right.pageKey)
+  ));
+}
+
 function normalizeBlockKey(value: string): string {
   return value
     .replace(/\r\n?/g, '\n')
@@ -1046,10 +1099,12 @@ export async function buildStoryDeltaPlan(
 
   pages.sort((left, right) => left.path.localeCompare(right.path));
   changes.sort((left, right) => left.path.localeCompare(right.path));
+  const conflicts = buildPlannedConflicts(changes);
 
   return {
     pages,
     changes,
+    conflicts,
     chunks: chunkResults,
     warnings,
     skippedLowConfidence

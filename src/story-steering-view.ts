@@ -1,11 +1,12 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
-import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { normalizeScope } from './lorebook-scoping';
 import { StorySteeringReviewModal, StorySteeringReviewResult } from './story-steering-review-modal';
 import {
   createEmptyStorySteeringState,
+  normalizeStorySteeringScopeType,
   normalizeStorySteeringState,
+  StorySteeringCanonicalScopeType,
   StorySteeringEffectiveState,
   StorySteeringScope,
   StorySteeringScopeType,
@@ -15,10 +16,7 @@ import {
 export const LOREVAULT_STORY_STEERING_VIEW_TYPE = 'lorevault-story-steering-view';
 
 function formatScopeTypeLabel(type: StorySteeringScopeType): string {
-  if (type === 'thread') {
-    return 'story';
-  }
-  return type;
+  return normalizeStorySteeringScopeType(type);
 }
 
 function formatScope(scope: StorySteeringScope): string {
@@ -27,7 +25,7 @@ function formatScope(scope: StorySteeringScope): string {
 
 export class StorySteeringView extends ItemView {
   private plugin: LoreBookConverterPlugin;
-  private selectedScopeType: StorySteeringScopeType = 'note';
+  private selectedScopeType: StorySteeringCanonicalScopeType = 'note';
   private selectedScopeKey = '';
   private state: StorySteeringState = createEmptyStorySteeringState();
   private isLoading = false;
@@ -54,7 +52,7 @@ export class StorySteeringView extends ItemView {
 
   async onOpen(): Promise<void> {
     const suggested = await this.plugin.getSuggestedStorySteeringScope('note');
-    this.selectedScopeType = suggested.type;
+    this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
     this.selectedScopeKey = suggested.key;
     await this.loadSelectedScope();
     await this.render();
@@ -181,26 +179,12 @@ export class StorySteeringView extends ItemView {
   }
 
   private getAvailableLorebookScopes(): string[] {
-    const scopes = new Set<string>();
-    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
-    for (const note of notes) {
-      for (const scope of note.scopes) {
-        const normalized = normalizeScope(scope);
-        if (normalized) {
-          scopes.add(normalized);
-        }
-      }
-    }
-    const activeScope = normalizeScope(this.plugin.settings.tagScoping.activeScope);
-    if (activeScope) {
-      scopes.add(activeScope);
-    }
-    return [...scopes].sort((left, right) => left.localeCompare(right));
+    return this.plugin.getCachedLorebookScopes();
   }
 
   private getSelectedScope(): StorySteeringScope {
     return {
-      type: this.selectedScopeType,
+      type: normalizeStorySteeringScopeType(this.selectedScopeType),
       key: this.selectedScopeType === 'global' ? 'global' : this.selectedScopeKey.trim()
     };
   }
@@ -267,7 +251,7 @@ export class StorySteeringView extends ItemView {
       const scopeTypeRow = scopeSection.createDiv({ cls: 'lorevault-chat-scope-row' });
       scopeTypeRow.createEl('label', { text: 'Scope Type' });
       const scopeTypeSelect = scopeTypeRow.createEl('select', { cls: 'dropdown' });
-      const scopeOptions: StorySteeringScopeType[] = ['global', 'thread', 'chapter', 'note'];
+      const scopeOptions: StorySteeringCanonicalScopeType[] = ['global', 'story', 'chapter', 'note'];
       for (const option of scopeOptions) {
         const element = scopeTypeSelect.createEl('option');
         element.value = option;
@@ -275,7 +259,7 @@ export class StorySteeringView extends ItemView {
       }
       scopeTypeSelect.value = this.selectedScopeType;
       scopeTypeSelect.addEventListener('change', () => {
-        const next = scopeTypeSelect.value as StorySteeringScopeType;
+        const next = normalizeStorySteeringScopeType(scopeTypeSelect.value as StorySteeringScopeType);
         this.selectedScopeType = next;
         if (next === 'global') {
           this.selectedScopeKey = 'global';
@@ -287,7 +271,7 @@ export class StorySteeringView extends ItemView {
       scopeKeyRow.createEl('label', { text: 'Scope Key' });
       const scopeKeyInput = scopeKeyRow.createEl('input', { type: 'text' });
       scopeKeyInput.disabled = this.selectedScopeType === 'global';
-      scopeKeyInput.placeholder = this.selectedScopeType === 'thread'
+      scopeKeyInput.placeholder = this.selectedScopeType === 'story'
         ? 'story key (for example chronicles-main)'
         : this.selectedScopeType === 'chapter'
           ? 'chapter scope key (for example chronicles-main::chapter:7)'
@@ -304,7 +288,7 @@ export class StorySteeringView extends ItemView {
         void (async () => {
           try {
             const suggested = await this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType);
-            this.selectedScopeType = suggested.type;
+            this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
             this.selectedScopeKey = suggested.key;
             await this.render();
           } catch (error) {

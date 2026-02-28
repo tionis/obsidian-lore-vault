@@ -27,6 +27,15 @@ export interface QualityAuditInput {
   worldInfoBodyByUid?: {[key: number]: string};
 }
 
+export function describeQualityAuditSimilarityMode(input: Pick<QualityAuditInput, 'ragChunks' | 'ragChunkEmbeddings'>): string {
+  const chunkCount = Math.max(0, input.ragChunks.length);
+  const embeddingCount = Math.max(0, input.ragChunkEmbeddings.length);
+  if (embeddingCount > 0 && chunkCount > 0) {
+    return `Similarity signals: embeddings + heuristics (${embeddingCount} embedded chunks)`;
+  }
+  return `Similarity signals: heuristics only (embeddings unavailable for this scope)`;
+}
+
 function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }

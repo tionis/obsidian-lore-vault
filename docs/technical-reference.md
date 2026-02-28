@@ -33,13 +33,17 @@ This document is the implementation-level reference for core architecture and ru
   - note-backed conversation persistence
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
-  - scope-based steering storage (`global`/`thread`/`chapter`/`note`)
+  - scope-based steering storage (`global`/`story`/`chapter`/`note`)
+  - compatibility alias for legacy `thread` scope files/keys
   - per-scope `activeLorebooks` list used as primary scope selection source for continuation
   - move-safe scope linking via `lvNoteId` frontmatter IDs
   - legacy path-keyed note/chapter scope migration to ID-keyed scope files
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
   - markdown-backed steering note parse/serialize
   - effective-layer merge for chat/continuation prompt assembly
+- `src/lorebook-scope-cache.ts`
+  - shared metadata/scope cache reused by manager/steering/auditor UI
+  - explicit invalidation on vault and settings mutations
 - `src/story-steering-review-modal.ts`
   - review/edit approval modal for LLM-proposed steering extraction updates
 - `src/lorebooks-routing-debug-view.ts`
@@ -97,10 +101,12 @@ This document is the implementation-level reference for core architecture and ru
   - iterative merge pipeline and final page rendering
 - `src/lorevault-story-delta-view.ts`
   - story delta update panel (`Apply Story Delta to Existing Wiki`) with preview/apply flow
+  - conflict review rows + decision persistence (`accept`/`reject`/`keep_both`)
 - `src/story-delta-update.ts`
   - deterministic chunked delta extraction
   - low-confidence gating
   - existing page matching and idempotent merge planning
+  - deterministic conflict extraction from update diff churn
 
 ## Export Pipeline Contract
 
@@ -114,6 +120,7 @@ Storage contract:
 
 - SQLite export/read paths are vault-relative and use Obsidian adapter binary IO.
 - Absolute filesystem export paths are intentionally rejected.
+- export freshness policy supports `manual`, `on_build`, and `background_debounced` with impacted-scope rebuild queueing in background mode.
 
 Canonicality:
 

@@ -1,4 +1,15 @@
-import { MarkdownView, Plugin, Notice, TFile, addIcon, getAllTags, Menu, Editor, MarkdownFileInfo } from 'obsidian';
+import {
+  MarkdownView,
+  Plugin,
+  Notice,
+  TAbstractFile,
+  TFile,
+  addIcon,
+  getAllTags,
+  Menu,
+  Editor,
+  MarkdownFileInfo
+} from 'obsidian';
 import {
   ContinuitySelection,
   cloneDefaultTextCommandPromptTemplates,
@@ -17,7 +28,12 @@ import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
 import { LoreBookExporter } from './lorebook-exporter'; 
 import { LoreBookConverterSettingTab } from './settings-tab';
-import { extractLorebookScopesFromTags, normalizeScope, normalizeTagPrefix } from './lorebook-scoping';
+import {
+  extractLorebookScopesFromTags,
+  normalizeScope,
+  normalizeTagPrefix,
+  shouldIncludeInScope
+} from './lorebook-scoping';
 import { RagExporter } from './rag-exporter';
 import { LOREVAULT_MANAGER_VIEW_TYPE, LorebooksManagerView } from './lorebooks-manager-view';
 import {
@@ -88,7 +104,7 @@ import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text
 import { TextCommandReviewModal } from './text-command-review-modal';
 import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
-import { buildScopeSummaries } from './lorebooks-manager-data';
+import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
 import { UsageLedgerStore } from './usage-ledger-store';
 import { estimateUsageCostUsd } from './cost-utils';
 import {
@@ -101,6 +117,7 @@ import { getVaultBasename, normalizeVaultPath, normalizeVaultRelativePath } from
 import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
 import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
 import {
+  normalizeStorySteeringScopeType,
   normalizeStorySteeringState,
   parseStorySteeringExtractionResponse,
   sanitizeStorySteeringExtractionState,
@@ -117,6 +134,7 @@ import {
   toPromptLayerUsage,
   trimTextForTokenBudget
 } from './prompt-staging';
+import { LorebookScopeCache } from './lorebook-scope-cache';
 
 const INLINE_DIRECTIVE_SCAN_TOKENS = 1800;
 const INLINE_DIRECTIVE_MAX_COUNT = 6;
@@ -193,11 +211,19 @@ export interface StoryChatTurnResult {
 
 export type StorySteeringExtractionSource = 'active_note' | 'story_window';
 
+interface ConvertToLorebookOptions {
+  silentSuccessNotice?: boolean;
+  suppressErrorNotice?: boolean;
+  deferViewRefresh?: boolean;
+  quietProgress?: boolean;
+}
+
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
   private usageLedgerStore!: UsageLedgerStore;
   private storySteeringStore!: StorySteeringStore;
+  private lorebookScopeCache!: LorebookScopeCache;
   private readonly sessionStartedAt = Date.now();
   private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
@@ -206,6 +232,10 @@ export default class LoreBookConverterPlugin extends Plugin {
   private generationStatusLevel: 'idle' | 'busy' | 'error' = 'idle';
   private generationTelemetry: GenerationTelemetry = this.createDefaultGenerationTelemetry();
   private managerRefreshTimer: number | null = null;
+  private exportScopeIndexByPath: Map<string, string[]> = new Map();
+  private exportRebuildTimer: number | null = null;
+  private exportRebuildInFlight = false;
+  private pendingExportScopes = new Set<string>();
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
@@ -1074,6 +1104,210 @@ export default class LoreBookConverterPlugin extends Plugin {
     return [...scopes].sort((a, b) => a.localeCompare(b));
   }
 
+  private invalidateLorebookScopeCache(): void {
+    this.lorebookScopeCache?.invalidate();
+  }
+
+  public getCachedLorebookMetadata(): LorebookNoteMetadata[] {
+    return this.lorebookScopeCache.getNotes();
+  }
+
+  public getCachedLorebookScopes(): string[] {
+    return this.lorebookScopeCache.getScopes();
+  }
+
+  private normalizeExportScopeList(scopes: string[]): string[] {
+    const normalized = scopes
+      .map(scope => normalizeScope(scope))
+      .filter(Boolean);
+    return [...new Set(normalized)].sort((left, right) => left.localeCompare(right));
+  }
+
+  private getScopeTimestampKey(scope: string): string {
+    const normalized = normalizeScope(scope);
+    return normalized || '__all__';
+  }
+
+  public getScopeLastCanonicalExportTimestamp(scope: string): number {
+    const key = this.getScopeTimestampKey(scope);
+    return Math.max(0, Number(this.settings.sqlite.lastCanonicalExportByScope?.[key] ?? 0));
+  }
+
+  private recordScopeCanonicalExport(scope: string, timestamp: number): boolean {
+    if (!this.settings.sqlite.lastCanonicalExportByScope) {
+      this.settings.sqlite.lastCanonicalExportByScope = {};
+    }
+    const key = this.getScopeTimestampKey(scope);
+    const nextTimestamp = Math.max(0, Math.floor(timestamp));
+    const current = Math.max(0, Number(this.settings.sqlite.lastCanonicalExportByScope[key] ?? 0));
+    if (current === nextTimestamp) {
+      return false;
+    }
+    this.settings.sqlite.lastCanonicalExportByScope[key] = nextTimestamp;
+    return true;
+  }
+
+  private getExportFreshnessPolicy(): 'manual' | 'on_build' | 'background_debounced' {
+    const value = this.settings.sqlite.exportFreshnessPolicy;
+    if (value === 'manual' || value === 'background_debounced') {
+      return value;
+    }
+    return 'on_build';
+  }
+
+  private getBackgroundExportDebounceMs(): number {
+    const configured = Math.floor(Number(
+      this.settings.sqlite.backgroundDebounceMs ?? DEFAULT_SETTINGS.sqlite.backgroundDebounceMs ?? 1800
+    ));
+    if (!Number.isFinite(configured)) {
+      return 1800;
+    }
+    return Math.max(400, Math.min(30000, configured));
+  }
+
+  private getLorebookScopesForFile(file: TFile | null): string[] {
+    if (!(file instanceof TFile) || !file.path.toLowerCase().endsWith('.md')) {
+      return [];
+    }
+    const cache = this.app.metadataCache.getFileCache(file);
+    const tags = cache ? (getAllTags(cache) ?? []) : [];
+    return this.normalizeExportScopeList(
+      extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix)
+    );
+  }
+
+  private ensureExportScopeIndex(): void {
+    if (this.exportScopeIndexByPath.size > 0) {
+      return;
+    }
+    const metadata = this.getCachedLorebookMetadata();
+    this.exportScopeIndexByPath = new Map(
+      metadata.map(item => [item.path, this.normalizeExportScopeList(item.scopes)])
+    );
+  }
+
+  private collectImpactedScopesForChange(
+    file: TAbstractFile | null,
+    oldPath?: string
+  ): string[] {
+    this.ensureExportScopeIndex();
+
+    const currentPath = file?.path ?? '';
+    const normalizedOldPath = (oldPath ?? '').trim();
+    const oldIsMarkdown = normalizedOldPath.toLowerCase().endsWith('.md');
+    const currentIsMarkdown = currentPath.toLowerCase().endsWith('.md');
+
+    if (!oldIsMarkdown && !currentIsMarkdown) {
+      return [];
+    }
+
+    const previousScopes = oldIsMarkdown
+      ? (this.exportScopeIndexByPath.get(normalizedOldPath) ?? [])
+      : (currentIsMarkdown ? (this.exportScopeIndexByPath.get(currentPath) ?? []) : []);
+    const nextScopes = this.getLorebookScopesForFile(file instanceof TFile ? file : null);
+
+    if (oldIsMarkdown && normalizedOldPath !== currentPath) {
+      this.exportScopeIndexByPath.delete(normalizedOldPath);
+    }
+    if (currentIsMarkdown) {
+      if (nextScopes.length > 0) {
+        this.exportScopeIndexByPath.set(currentPath, nextScopes);
+      } else {
+        this.exportScopeIndexByPath.delete(currentPath);
+      }
+    }
+
+    const impacted = new Set<string>();
+    for (const scope of [...previousScopes, ...nextScopes]) {
+      const normalized = normalizeScope(scope);
+      if (!normalized) {
+        continue;
+      }
+      impacted.add(normalized);
+      if (this.settings.tagScoping.membershipMode === 'cascade') {
+        const parts = normalized.split('/');
+        for (let index = parts.length - 1; index >= 1; index -= 1) {
+          impacted.add(parts.slice(0, index).join('/'));
+        }
+      }
+    }
+
+    const activeScope = normalizeScope(this.settings.tagScoping.activeScope);
+    if (activeScope) {
+      const couldImpactActive = (
+        shouldIncludeInScope(
+          previousScopes,
+          activeScope,
+          this.settings.tagScoping.membershipMode,
+          this.settings.tagScoping.includeUntagged
+        ) ||
+        shouldIncludeInScope(
+          nextScopes,
+          activeScope,
+          this.settings.tagScoping.membershipMode,
+          this.settings.tagScoping.includeUntagged
+        )
+      );
+      if (couldImpactActive) {
+        impacted.add(activeScope);
+      }
+    }
+
+    return [...impacted].sort((left, right) => left.localeCompare(right));
+  }
+
+  private queueBackgroundScopeRebuild(scopes: string[]): void {
+    if (this.getExportFreshnessPolicy() !== 'background_debounced') {
+      return;
+    }
+    const normalized = this.normalizeExportScopeList(scopes);
+    if (normalized.length === 0) {
+      return;
+    }
+    for (const scope of normalized) {
+      this.pendingExportScopes.add(scope);
+    }
+    if (this.exportRebuildTimer !== null) {
+      window.clearTimeout(this.exportRebuildTimer);
+    }
+    this.exportRebuildTimer = window.setTimeout(() => {
+      this.exportRebuildTimer = null;
+      void this.flushBackgroundScopeRebuilds();
+    }, this.getBackgroundExportDebounceMs());
+  }
+
+  private async flushBackgroundScopeRebuilds(): Promise<void> {
+    if (this.exportRebuildInFlight) {
+      return;
+    }
+    const scopes = [...this.pendingExportScopes].sort((left, right) => left.localeCompare(right));
+    this.pendingExportScopes.clear();
+    if (scopes.length === 0) {
+      return;
+    }
+
+    this.exportRebuildInFlight = true;
+    try {
+      for (const scope of scopes) {
+        await this.convertToLorebook(scope, {
+          silentSuccessNotice: true,
+          suppressErrorNotice: true,
+          deferViewRefresh: true,
+          quietProgress: true
+        });
+      }
+    } finally {
+      this.exportRebuildInFlight = false;
+      this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
+      this.refreshStoryChatViews();
+      if (this.pendingExportScopes.size > 0) {
+        void this.flushBackgroundScopeRebuilds();
+      }
+    }
+  }
+
   private createMessageId(prefix: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
@@ -1083,9 +1317,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (fromIndex.length > 0) {
       return [...fromIndex].sort((a, b) => a.localeCompare(b));
     }
-
-    const files = this.app.vault.getMarkdownFiles();
-    return this.discoverAllScopes(files);
+    return this.getCachedLorebookScopes();
   }
 
   private mergeSteeringText(...values: string[]): string {
@@ -1107,25 +1339,26 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   public async getSuggestedStorySteeringScope(type: StorySteeringScopeType): Promise<StorySteeringScope> {
-    if (type === 'global') {
+    const requestedType = normalizeStorySteeringScopeType(type);
+    if (requestedType === 'global') {
       return { type: 'global', key: 'global' };
     }
 
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       return {
-        type,
+        type: requestedType,
         key: ''
       };
     }
 
     const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile);
-    const matched = scopeChain.find(scope => scope.type === type);
+    const matched = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === requestedType);
     if (matched) {
       return matched;
     }
 
-    if (type === 'note') {
+    if (requestedType === 'note') {
       return {
         type: 'note',
         key: normalizeVaultPath(activeFile.path)
@@ -1133,7 +1366,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     return {
-      type,
+      type: requestedType,
       key: ''
     };
   }
@@ -2914,6 +3147,35 @@ export default class LoreBookConverterPlugin extends Plugin {
       console.warn(`Invalid sqlite output path "${merged.sqlite.outputPath}". Falling back to default.`);
       merged.sqlite.outputPath = DEFAULT_SETTINGS.sqlite.outputPath;
     }
+    merged.sqlite.exportFreshnessPolicy = (
+      merged.sqlite.exportFreshnessPolicy === 'manual' ||
+      merged.sqlite.exportFreshnessPolicy === 'background_debounced'
+    )
+      ? merged.sqlite.exportFreshnessPolicy
+      : 'on_build';
+    merged.sqlite.backgroundDebounceMs = Math.max(
+      400,
+      Math.min(
+        30000,
+        Math.floor(Number(merged.sqlite.backgroundDebounceMs ?? DEFAULT_SETTINGS.sqlite.backgroundDebounceMs ?? 1800))
+      )
+    );
+    const exportMap = merged.sqlite.lastCanonicalExportByScope && typeof merged.sqlite.lastCanonicalExportByScope === 'object'
+      ? merged.sqlite.lastCanonicalExportByScope
+      : {};
+    const normalizedExportMap: {[scope: string]: number} = {};
+    for (const [scopeKey, rawValue] of Object.entries(exportMap)) {
+      const key = scopeKey === '__all__' ? '__all__' : (normalizeScope(scopeKey) || '');
+      if (!key) {
+        continue;
+      }
+      const timestamp = Math.max(0, Math.floor(Number(rawValue)));
+      if (!Number.isFinite(timestamp) || timestamp <= 0) {
+        continue;
+      }
+      normalizedExportMap[key] = timestamp;
+    }
+    merged.sqlite.lastCanonicalExportByScope = normalizedExportMap;
 
     merged.embeddings.enabled = Boolean(merged.embeddings.enabled);
     merged.embeddings.provider = (
@@ -3406,6 +3668,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       () => this.settings
     );
     this.chapterSummaryStore = new ChapterSummaryStore(this.app);
+    this.lorebookScopeCache = new LorebookScopeCache({
+      computeNotes: () => collectLorebookNoteMetadata(this.app, this.settings),
+      getActiveScope: () => this.settings.tagScoping.activeScope
+    });
+    this.exportScopeIndexByPath = new Map(
+      this.getCachedLorebookMetadata()
+        .map(item => [item.path, this.normalizeExportScopeList(item.scopes)])
+    );
     this.registerView(LOREVAULT_MANAGER_VIEW_TYPE, leaf => new LorebooksManagerView(leaf, this));
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
@@ -3716,6 +3986,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.handleVaultMutationForExports(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -3726,6 +3997,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('modify', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.handleVaultMutationForExports(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -3736,6 +4008,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.handleVaultMutationForExports(file, file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -3747,6 +4020,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.chapterSummaryStore.invalidatePath(oldPath);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.handleVaultMutationForExports(file, oldPath);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
@@ -3777,6 +4051,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       window.clearTimeout(this.managerRefreshTimer);
       this.managerRefreshTimer = null;
     }
+    if (this.exportRebuildTimer !== null) {
+      window.clearTimeout(this.exportRebuildTimer);
+      this.exportRebuildTimer = null;
+    }
     this.generationStatusEl = null;
   }
 
@@ -3784,6 +4062,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
     await super.saveData(this.settings);
     this.syncUsageLedgerStorePath();
+    this.invalidateLorebookScopeCache();
+    this.exportScopeIndexByPath = new Map(
+      this.getCachedLorebookMetadata()
+        .map(item => [item.path, this.normalizeExportScopeList(item.scopes)])
+    );
     void this.usageLedgerStore.initialize().catch(error => {
       console.error('Failed to initialize usage ledger store:', error);
     });
@@ -3820,6 +4103,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       return info.file ?? this.app.workspace.getActiveFile();
     }
     return info.file ?? this.app.workspace.getActiveFile();
+  }
+
+  private handleVaultMutationForExports(file: TAbstractFile | null, oldPath?: string): void {
+    this.invalidateLorebookScopeCache();
+    const impactedScopes = this.collectImpactedScopesForChange(file, oldPath);
+    this.queueBackgroundScopeRebuild(impactedScopes);
   }
 
   private noteBelongsToLorebookScope(file: TFile): boolean {
@@ -5003,7 +5292,12 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   // This is the main conversion function
-  async convertToLorebook(scopeOverride?: string) {
+  async convertToLorebook(scopeOverride?: string, options?: ConvertToLorebookOptions): Promise<boolean> {
+    const silentSuccessNotice = options?.silentSuccessNotice === true;
+    const suppressErrorNotice = options?.suppressErrorNotice === true;
+    const deferViewRefresh = options?.deferViewRefresh === true;
+    const quietProgress = options?.quietProgress === true;
+
     try {
       const files = this.app.vault.getMarkdownFiles();
       const explicitScope = normalizeScope(scopeOverride ?? this.settings.tagScoping.activeScope);
@@ -5035,12 +5329,16 @@ export default class LoreBookConverterPlugin extends Plugin {
         includeSqlite: this.settings.sqlite.enabled
       });
 
+      let exportTimestampChanged = false;
+
       for (const assignment of scopeAssignments) {
         const { scope, paths } = assignment;
-        const progress = new ProgressBar(
-          files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + fallback markdown
-          `Building LoreVault scope: ${scope || '(all)'}`
-        );
+        const progress = quietProgress
+          ? null
+          : new ProgressBar(
+            files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + fallback markdown
+            `Building LoreVault scope: ${scope || '(all)'}`
+          );
 
         const scopePackResult = await buildScopePack(
           this.app,
@@ -5049,7 +5347,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           files,
           buildAllScopes,
           embeddingService,
-          progress,
+          progress ?? undefined,
           {
             pluginId: this.manifest.id,
             pluginVersion: this.manifest.version
@@ -5061,43 +5359,63 @@ export default class LoreBookConverterPlugin extends Plugin {
         let ragDocuments = scopePackResult.pack.ragDocuments;
 
         if (this.settings.sqlite.enabled) {
-          progress.setStatus(`Scope ${scope || '(all)'}: exporting canonical SQLite pack...`);
+          progress?.setStatus(`Scope ${scope || '(all)'}: exporting canonical SQLite pack...`);
           await sqliteExporter.exportScopePack(scopePackResult.pack, paths.sqlitePath);
-          progress.update();
+          progress?.update();
 
-          progress.setStatus(`Scope ${scope || '(all)'}: reading exports from SQLite pack...`);
+          progress?.setStatus(`Scope ${scope || '(all)'}: reading exports from SQLite pack...`);
           const readPack = await sqliteReader.readScopePack(paths.sqlitePath);
           worldInfoEntries = readPack.worldInfoEntries;
           ragDocuments = readPack.ragDocuments;
-          progress.update();
+          progress?.update();
         }
 
-        progress.setStatus(`Scope ${scope || '(all)'}: exporting world_info JSON...`);
+        progress?.setStatus(`Scope ${scope || '(all)'}: exporting world_info JSON...`);
         await worldInfoExporter.exportLoreBookJson(
           this.mapEntriesByUid(worldInfoEntries),
           paths.worldInfoPath,
           scopedSettings
         );
-        progress.update();
+        progress?.update();
 
-        progress.setStatus(`Scope ${scope || '(all)'}: exporting fallback markdown...`);
+        progress?.setStatus(`Scope ${scope || '(all)'}: exporting fallback markdown...`);
         await ragExporter.exportRagMarkdown(ragDocuments, paths.ragPath, scope || '(all)');
-        progress.update();
+        progress?.update();
 
-        progress.success(
+        exportTimestampChanged = this.recordScopeCanonicalExport(scope, Date.now()) || exportTimestampChanged;
+
+        progress?.success(
           `Scope ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} fallback docs.`
         );
       }
 
-      new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+      if (exportTimestampChanged) {
+        await super.saveData(this.settings);
+      }
+
+      if (!silentSuccessNotice) {
+        new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+      }
       this.liveContextIndex.requestFullRefresh();
-      this.refreshManagerViews();
-      this.refreshRoutingDebugViews();
-      this.refreshQuerySimulationViews();
-      this.refreshStoryChatViews();
+      this.invalidateLorebookScopeCache();
+      this.exportScopeIndexByPath = new Map(
+        this.getCachedLorebookMetadata()
+          .map(item => [item.path, this.normalizeExportScopeList(item.scopes)])
+      );
+      if (!deferViewRefresh) {
+        this.refreshManagerViews();
+        this.refreshRoutingDebugViews();
+        this.refreshQuerySimulationViews();
+        this.refreshStoryChatViews();
+      }
+      return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error('Conversion failed:', error);
-      new Notice(`Conversion failed: ${error.message}`);
+      if (!suppressErrorNotice) {
+        new Notice(`Conversion failed: ${message}`);
+      }
+      return false;
     }
   }
 }

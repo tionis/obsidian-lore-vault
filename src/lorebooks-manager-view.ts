@@ -1,6 +1,5 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
-import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { ScopeSummary, buildScopeSummaries } from './lorebooks-manager-data';
 import { UsageLedgerTotals } from './usage-ledger-report';
 import { PromptLayerUsage } from './models';
@@ -21,6 +20,17 @@ function formatSecondsAgo(timestamp: number): string {
   }
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   return `${seconds}s ago`;
+}
+
+function formatDateTime(timestamp: number): string {
+  if (!timestamp) {
+    return '-';
+  }
+  try {
+    return new Date(timestamp).toLocaleString();
+  } catch {
+    return '-';
+  }
 }
 
 function formatUsd(value: number): string {
@@ -107,6 +117,12 @@ export class LorebooksManagerView extends ItemView {
     });
     stats.addClass('lorevault-manager-stats');
 
+    const lastExport = this.plugin.getScopeLastCanonicalExportTimestamp(summary.scope);
+    card.createEl('p', {
+      cls: 'lorevault-manager-generation-stats',
+      text: `Last canonical export: ${formatDateTime(lastExport)} (${formatSecondsAgo(lastExport)})`
+    });
+
     if (summary.warnings.length > 0) {
       const warningList = card.createEl('ul', { cls: 'lorevault-manager-warnings' });
       for (const warning of summary.warnings) {
@@ -122,9 +138,13 @@ export class LorebooksManagerView extends ItemView {
     buildButton.addClass('mod-cta');
     buildButton.addEventListener('click', async () => {
       try {
-        await this.plugin.convertToLorebook(summary.scope);
-        new Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
-        this.render();
+        const success = await this.plugin.convertToLorebook(summary.scope, {
+          silentSuccessNotice: true
+        });
+        if (success) {
+          new Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
+          this.render();
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(`Scope build failed: ${message}`);
@@ -385,7 +405,7 @@ export class LorebooksManagerView extends ItemView {
     this.renderGenerationSection(contentEl);
     await this.renderCostSection(contentEl, renderVersion);
 
-    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
+    const notes = this.plugin.getCachedLorebookMetadata();
     const summaries = buildScopeSummaries(notes, this.plugin.settings);
 
     if (summaries.length === 0) {

@@ -417,6 +417,7 @@ Planned (Phase 20) inline steering shorthand:
 
 ```bash
 npm install
+npm run check:mobile-runtime
 npm run build
 npm test
 ```

@@ -2,7 +2,7 @@
 
 Reference design: `docs/planning.md`.
 
-## Status Snapshot (2026-02-27)
+## Status Snapshot (2026-02-28)
 
 - Completed foundations: Phases 0-12 (including 8/9 hardening + auto-summary).
 - Story Chat foundation is implemented (Phase 10 core UX done).
@@ -16,12 +16,16 @@ Reference design: `docs/planning.md`.
 - Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).
 - Phase 18 quality audit foundation is complete (risk scoring + missing-keyword actions + LLM keyword generation).
 - Phase 19 mobile compatibility migration is complete (adapter-based export/cache IO + vault-relative path contract + manifest flip).
-- Current priority is refining structured-merge conflict UX.
+- Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order
 
 1. Refine structured-merge conflict UX.
-2. Add story steering controls and context staging inspector.
+2. Add export freshness controls (manual vs background auto-rebuild).
+3. Finish story terminology migration (`thread` -> `story`) in internals/docs with compatibility aliases.
+4. Reduce full-vault rescans in manager/steering rendering paths.
+5. Close Lorebook Auditor parity gaps (actions/docs/tests).
+6. Plan advanced cost-management follow-up (OpenRouter pricing sync + estimated/actual provenance).
 
 ## Completed Foundations (Historical)
 
@@ -228,14 +232,40 @@ Reference design: `docs/planning.md`.
   - [x] keep sync hash path for deterministic hot paths until pipeline async refactor is complete
   - [x] remove sync hashing fallback only after all runtime call sites are async-compatible
 
-## Phase 21: Scope-Based Story Steering Workspace (In Progress)
+## Phase 21: Scope-Based Story Steering Workspace (Complete)
 
 - [x] Add dedicated Story Steering panel with editable steering sections.
 - [x] Persist steering state as markdown notes under configurable steering folder.
-- [x] Support scope layers without mandatory `storyId` (`global` -> optional `thread` -> optional `chapter` -> `note`).
+- [x] Support scope layers without mandatory `storyId` (`global` -> optional `story` [compat alias: `thread`] -> optional `chapter` -> `note`).
 - [x] Merge scoped steering into Continue Story and Story Chat prompt assembly.
 - [x] Expose steering panel via command palette, manager toolbar, and in-plugin help actions.
 - [x] Add LLM-assisted extraction actions (proposal + review) to populate/update steering sections from story text.
+
+## Phase 22: Stabilization and Roadmap Alignment (Current)
+
+- [ ] Story-delta structured-merge conflict UX refinement:
+  - [ ] add dedicated conflict review rows with quick accept/reject/keep-both controls
+  - [ ] add conflict counters + filters in preview UI
+  - [ ] persist deterministic per-conflict override decisions into apply phase
+- [ ] Export freshness and rebuild policy:
+  - [ ] add setting: `manual` | `on_build` | `background_debounced`
+  - [ ] in background mode, debounce vault events and rebuild only impacted scopes
+  - [ ] show last successful canonical export timestamp per scope in manager UI
+- [ ] Story terminology normalization:
+  - [ ] keep compatibility alias for persisted/internal `thread` scope keys
+  - [ ] migrate user-facing labels/docs/help to `story` terminology
+  - [ ] add regression tests for `story`/`thread` alias handling
+- [ ] UI scalability and cache reuse:
+  - [ ] avoid full metadata rescan on every Story Steering render
+  - [ ] reuse shared scope metadata cache/index in manager + steering scope selectors
+  - [ ] add panel-interaction perf tests for large vaults (>1k notes)
+- [ ] Lorebook Auditor parity:
+  - [ ] document current row actions (`Open Entry`, `Open Similar`, `Open Pair`, keyword actions)
+  - [ ] add tests for duplicate/similarity actions and embeddings-present/absent messaging
+- [ ] Advanced cost-management follow-up (far future):
+  - [ ] integrate provider pricing metadata sync (OpenRouter-first)
+  - [ ] store/display estimated-vs-actual cost provenance per ledger row
+  - [ ] add budget policies/alerts by operation/model/scope
 
 ## Default Decisions (2026-02-27)
 
@@ -244,7 +274,7 @@ These are the current implementation defaults unless explicitly changed later.
 - [x] Embedding fallback scope: global setting first; per-lorebook overrides are a future extension.
 - [x] Seed-confidence threshold: keep default auto-fallback threshold at `120`.
 - [x] Graph expansion inputs: wikilinks-first; explicit relation-field expansion is future optional work.
-- [x] Chat lorebook selection persistence: per-chat thread (conversation note) as source of truth.
+- [x] Chat lorebook selection persistence: per-chat story conversation note as source of truth.
 - [x] Chapter ordering precedence: explicit `chapter` index first, then prev/next edges, then deterministic path tie-breaks.
 - [x] Chapter summary granularity default: chapter-level summaries (scene-level split is optional future enhancement).
 - [x] Scope tags support: Obsidian tag system as-is (frontmatter tags + body tags), no custom body parsing.

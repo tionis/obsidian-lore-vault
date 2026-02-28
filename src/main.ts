@@ -101,6 +101,8 @@ import { getVaultBasename, normalizeVaultPath, normalizeVaultRelativePath } from
 import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
 import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
 import {
+  normalizeStorySteeringState,
+  parseStorySteeringExtractionResponse,
   StorySteeringEffectiveState,
   StorySteeringScope,
   StorySteeringScopeType,
@@ -187,6 +189,8 @@ export interface StoryChatTurnResult {
   assistantText: string;
   contextMeta: StoryChatContextMeta;
 }
+
+export type StorySteeringExtractionSource = 'active_note' | 'story_window';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
@@ -1139,6 +1143,101 @@ export default class LoreBookConverterPlugin extends Plugin {
   public async resolveEffectiveStorySteeringForActiveNote(): Promise<StorySteeringEffectiveState> {
     const activeFile = this.app.workspace.getActiveFile();
     return this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
+  }
+
+  public async extractStorySteeringProposal(
+    source: StorySteeringExtractionSource,
+    currentState: StorySteeringState
+  ): Promise<{
+    proposal: StorySteeringState;
+    notePath: string;
+    sourceLabel: string;
+    sourceChars: number;
+  }> {
+    if (!this.settings.completion.enabled) {
+      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings -> Writing Completion.');
+    }
+    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+      throw new Error('Missing completion API key. Configure it under LoreVault Settings -> Writing Completion.');
+    }
+
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      throw new Error('No active markdown note.');
+    }
+
+    const raw = await this.app.vault.cachedRead(activeFile);
+    const noteBody = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+    const editorWindow = this.getActiveEditorTextBeforeCursor().trim();
+
+    let sourceText = '';
+    let sourceLabel = '';
+    if (source === 'active_note') {
+      sourceText = noteBody;
+      sourceLabel = 'Active note body';
+    } else {
+      sourceText = editorWindow || noteBody;
+      sourceLabel = editorWindow ? 'Story window near cursor' : 'Story window near cursor (fallback to note body)';
+    }
+
+    if (!sourceText) {
+      throw new Error('Active note content is empty.');
+    }
+
+    const completion = this.settings.completion;
+    const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+    const sourceTokenBudget = Math.max(800, Math.min(64000, Math.floor(maxInputTokens * 0.6)));
+    const truncatedSource = source === 'story_window'
+      ? this.extractStoryWindow(sourceText, sourceTokenBudget)
+      : this.trimTextHeadToTokenBudget(sourceText, sourceTokenBudget);
+
+    const normalizedCurrent = normalizeStorySteeringState(currentState);
+    const systemPrompt = [
+      'You are a writing assistant extracting structured story steering state.',
+      'Return JSON only. No markdown, no prose, no reasoning.',
+      'Output exactly one object with keys:',
+      'pinnedInstructions, storyNotes, sceneIntent, plotThreads, openLoops, canonDeltas.',
+      'Use strings for text fields and arrays of strings for list fields.',
+      'Keep entries concise and actionable for story generation guidance.',
+      'If the source does not provide evidence for a field, preserve the existing value.'
+    ].join('\n');
+    const userPrompt = [
+      `Source mode: ${sourceLabel}`,
+      '',
+      '<existing_steering_json>',
+      JSON.stringify(normalizedCurrent, null, 2),
+      '</existing_steering_json>',
+      '',
+      '<story_source>',
+      truncatedSource,
+      '</story_source>',
+      '',
+      'Return JSON with the required keys only.'
+    ].join('\n');
+
+    let usageReport: CompletionUsageReport | null = null;
+    const rawResponse = await requestStoryContinuation(completion, {
+      systemPrompt,
+      userPrompt,
+      onUsage: usage => {
+        usageReport = usage;
+      }
+    });
+
+    if (usageReport) {
+      await this.recordCompletionUsage('story_steering_extract', usageReport, {
+        notePath: activeFile.path,
+        source
+      });
+    }
+
+    const parsed = parseStorySteeringExtractionResponse(rawResponse);
+    return {
+      proposal: parsed,
+      notePath: activeFile.path,
+      sourceLabel,
+      sourceChars: truncatedSource.length
+    };
   }
 
   public getStoryChatMessages(): StoryChatMessage[] {

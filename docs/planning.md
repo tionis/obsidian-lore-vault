@@ -338,7 +338,10 @@ Current status:
   - dedicated Story Steering panel
   - markdown-backed scoped steering notes (`global`, optional `thread`, optional `chapter`, `note`)
   - merged with chat/continuation steering assembly without mandatory `storyId`
-- remaining work focuses on LLM-assisted extraction/update actions with preview/approval
+- LLM-assisted extraction actions are implemented in the Story Steering panel:
+  - extract from active note or story window
+  - review/edit modal before applying to panel state
+  - explicit manual save step to persist scope note updates
 
 Planned steering primitives:
 

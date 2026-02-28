@@ -36,6 +36,8 @@ This document is the implementation-level reference for core architecture and ru
   - scope-based steering storage (`global`/`thread`/`chapter`/`note`)
   - markdown-backed steering note parse/serialize
   - effective-layer merge for chat/continuation prompt assembly
+- `src/story-steering-review-modal.ts`
+  - review/edit approval modal for LLM-proposed steering extraction updates
 - `src/lorebooks-routing-debug-view.ts`
   - scope inclusion/routing diagnostics
   - world_info content inspection

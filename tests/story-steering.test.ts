@@ -4,6 +4,7 @@ import {
   buildStorySteeringFilePath,
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
+  parseStorySteeringExtractionResponse,
   parseStorySteeringMarkdown,
   StorySteeringScope,
   stringifyStorySteeringMarkdown
@@ -93,4 +94,32 @@ test('story steering file paths are scoped and deterministic', () => {
   assert.match(threadPath, /^LoreVault\/steering\/thread\/chronicles-main-[a-f0-9]{10}\.md$/);
   assert.match(notePath, /^LoreVault\/steering\/note\/ch07\.md-[a-f0-9]{10}\.md$/);
   assert.equal(globalPath, 'LoreVault/steering/global.md');
+});
+
+test('story steering extraction parser accepts plain json and fenced json payloads', () => {
+  const plain = parseStorySteeringExtractionResponse(JSON.stringify({
+    pinnedInstructions: 'Keep tone bleak.',
+    storyNotes: 'Focus on aftermath.',
+    sceneIntent: 'End with unresolved threat.',
+    plotThreads: ['Thread A', 'Thread B'],
+    openLoops: ['Loop A'],
+    canonDeltas: ['Delta A']
+  }));
+  assert.equal(plain.pinnedInstructions, 'Keep tone bleak.');
+  assert.deepEqual(plain.plotThreads, ['Thread A', 'Thread B']);
+
+  const fenced = parseStorySteeringExtractionResponse([
+    '```json',
+    '{',
+    '  "state": {',
+    '    "pinnedInstructions": "Keep tense consistent.",',
+    '    "plotThreads": ["Thread C"],',
+    '    "openLoops": "1. Loop C\\n- Loop D"',
+    '  }',
+    '}',
+    '```'
+  ].join('\n'));
+  assert.equal(fenced.pinnedInstructions, 'Keep tense consistent.');
+  assert.deepEqual(fenced.plotThreads, ['Thread C']);
+  assert.deepEqual(fenced.openLoops, ['Loop C', 'Loop D']);
 });

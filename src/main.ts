@@ -3160,10 +3160,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       void this.buildActiveScopeExport();
     });
 
-    this.addRibbonIcon('book-open-text', 'Continue Story with Context', () => {
-      void this.continueStoryWithContext();
-    });
-
     this.addRibbonIcon('lorevault-manager', 'Open LoreVault Manager', () => {
       void this.openLorebooksManagerView();
     });

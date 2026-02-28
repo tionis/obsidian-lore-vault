@@ -220,6 +220,61 @@ function parseExtractionList(value: unknown): string[] {
   return [];
 }
 
+function looksLikeLorebookFact(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (/\b(who|what|where|when|why|how)\b/.test(normalized) && normalized.includes('?')) {
+    return false;
+  }
+
+  if (/\b(keep|focus|avoid|ensure|escalate|resolve|foreshadow|tone|voice|pacing|intent|goal|constraint|must|should|do not|don't)\b/.test(normalized)) {
+    return false;
+  }
+
+  if (/\b(appearance|looks|hair|eyes|height|weight|age|born|birth|backstory|biography|personality|occupation|species|race|nation|kingdom|city|worldbuilding|magic system)\b/.test(normalized)) {
+    return true;
+  }
+
+  const simpleIdentity = normalized.replace(/[.!?]+$/g, '').trim();
+  if (/^[a-z0-9 _'"-]{2,80}\s+is\s+(a|an)\s+[a-z0-9 _'"-]{2,120}$/i.test(simpleIdentity)) {
+    return true;
+  }
+
+  return false;
+}
+
+function sanitizeExtractionTextField(value: string): string {
+  if (!value) {
+    return '';
+  }
+  const paragraphs = value
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  const filtered = paragraphs.filter(item => !looksLikeLorebookFact(item));
+  return filtered.join('\n\n').trim();
+}
+
+function sanitizeExtractionListField(values: string[]): string[] {
+  return normalizeListField(values.filter(item => !looksLikeLorebookFact(item)));
+}
+
+export function sanitizeStorySteeringExtractionState(state: StorySteeringState): StorySteeringState {
+  const normalized = normalizeStorySteeringState(state);
+  return normalizeStorySteeringState({
+    pinnedInstructions: sanitizeExtractionTextField(normalized.pinnedInstructions),
+    storyNotes: sanitizeExtractionTextField(normalized.storyNotes),
+    sceneIntent: sanitizeExtractionTextField(normalized.sceneIntent),
+    plotThreads: sanitizeExtractionListField(normalized.plotThreads),
+    openLoops: sanitizeExtractionListField(normalized.openLoops),
+    canonDeltas: sanitizeExtractionListField(normalized.canonDeltas)
+  });
+}
+
 export function parseStorySteeringExtractionResponse(raw: string): StorySteeringState {
   const payload = extractJsonPayload(raw);
   if (!payload || typeof payload !== 'object') {
@@ -231,7 +286,7 @@ export function parseStorySteeringExtractionResponse(raw: string): StorySteering
     ? (objectPayload.state as {[key: string]: unknown})
     : objectPayload;
 
-  return normalizeStorySteeringState({
+  return sanitizeStorySteeringExtractionState({
     pinnedInstructions: normalizeTextField(candidate.pinnedInstructions),
     storyNotes: normalizeTextField(candidate.storyNotes),
     sceneIntent: normalizeTextField(candidate.sceneIntent),

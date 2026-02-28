@@ -1200,6 +1200,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       'pinnedInstructions, storyNotes, sceneIntent, plotThreads, openLoops, canonDeltas.',
       'Use strings for text fields and arrays of strings for list fields.',
       'Keep entries concise and actionable for story generation guidance.',
+      'Do NOT restate encyclopedic lore that belongs in lorebook entries.',
+      'Exclude static character bios, world/location descriptions, appearance/personality summaries, and backstory recaps.',
+      'Only keep writer-control guidance, active plot pressure, unresolved questions, and recent canon changes that matter for next generation.',
       'If the source does not provide evidence for a field, preserve the existing value.'
     ].join('\n');
     const userPrompt = [

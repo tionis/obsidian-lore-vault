@@ -7,6 +7,7 @@ import {
   mergeStorySteeringStates,
   parseStorySteeringExtractionResponse,
   parseStorySteeringMarkdown,
+  sanitizeStorySteeringExtractionState,
   StorySteeringScope,
   stringifyStorySteeringMarkdown
 } from '../src/story-steering';
@@ -123,6 +124,33 @@ test('story steering extraction parser accepts plain json and fenced json payloa
   assert.equal(fenced.pinnedInstructions, 'Keep tense consistent.');
   assert.deepEqual(fenced.plotThreads, ['Thread C']);
   assert.deepEqual(fenced.openLoops, ['Loop C', 'Loop D']);
+});
+
+test('story steering extraction sanitization removes lorebook-like profile facts', () => {
+  const sanitized = sanitizeStorySteeringExtractionState({
+    pinnedInstructions: 'Baalthasar is an ancient dark elven archmage.',
+    storyNotes: 'Focus on escalating tension and keep dialogue concise.',
+    sceneIntent: 'Ari is a young courier.',
+    plotThreads: [
+      'Who sabotaged the bridge?',
+      'Baalthasar is a dark elf mage.'
+    ],
+    openLoops: [
+      'What is the envoy hiding?',
+      'The city is a massive floating metropolis.'
+    ],
+    canonDeltas: [
+      'Ari now knows the true sigil sequence.',
+      'Baalthasar is an archmage.'
+    ]
+  });
+
+  assert.equal(sanitized.pinnedInstructions, '');
+  assert.equal(sanitized.sceneIntent, '');
+  assert.equal(sanitized.storyNotes, 'Focus on escalating tension and keep dialogue concise.');
+  assert.deepEqual(sanitized.plotThreads, ['Who sabotaged the bridge?']);
+  assert.deepEqual(sanitized.openLoops, ['What is the envoy hiding?']);
+  assert.deepEqual(sanitized.canonDeltas, ['Ari now knows the true sigil sequence.']);
 });
 
 test('story steering scope resolutions use stable note-id keys with legacy path alias', () => {

@@ -232,6 +232,37 @@ function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function findSentenceBoundaryCut(text: string, maxChars: number): number | null {
+  const bounded = text.slice(0, maxChars + 1);
+  const minCut = Math.max(48, Math.floor(maxChars * 0.55));
+  const sentenceBoundary = /[.!?。！？…]+(?:["')\]]+)?(?=\s|$)/g;
+  let match: RegExpExecArray | null = sentenceBoundary.exec(bounded);
+  let bestEnd: number | null = null;
+  while (match) {
+    if (match.index + match[0].length >= minCut) {
+      bestEnd = match.index + match[0].length;
+    }
+    match = sentenceBoundary.exec(bounded);
+  }
+  return bestEnd;
+}
+
+export function trimContentWithEllipsis(text: string, maxChars: number): string {
+  const cleaned = text.trim();
+  if (cleaned.length <= maxChars) {
+    return cleaned;
+  }
+
+  const sentenceCut = findSentenceBoundaryCut(cleaned, maxChars);
+  if (sentenceCut !== null) {
+    return `${cleaned.slice(0, sentenceCut).trimEnd()}\n...`;
+  }
+
+  const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
+  const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
+  return `${cleaned.slice(0, cut).trimEnd()}\n...`;
+}
+
 function computeContentTierContent(content: string, tier: WorldInfoContentTier): string {
   const cleaned = content.trim();
   if (!cleaned) {
@@ -247,19 +278,7 @@ function computeContentTierContent(content: string, tier: WorldInfoContentTier):
     return cleaned;
   }
 
-  const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
-  const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
-  return `${cleaned.slice(0, cut).trimEnd()}\n...`;
-}
-
-function trimContentWithEllipsis(text: string, maxChars: number): string {
-  const cleaned = text.trim();
-  if (cleaned.length <= maxChars) {
-    return cleaned;
-  }
-  const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
-  const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
-  return `${cleaned.slice(0, cut).trimEnd()}\n...`;
+  return trimContentWithEllipsis(cleaned, maxChars);
 }
 
 function buildQueryFocusedBodyExcerpt(

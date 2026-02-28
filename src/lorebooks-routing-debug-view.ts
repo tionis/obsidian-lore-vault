@@ -1,6 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
-import { ScopeContextPack } from './context-query';
+import { ScopeContextPack, trimContentWithEllipsis } from './context-query';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, ScopeSummary } from './lorebooks-manager-data';
 import { normalizeScope } from './lorebook-scoping';
@@ -34,13 +34,7 @@ function estimateTokens(text: string): number {
 }
 
 function trimTierContent(text: string, maxChars: number): string {
-  const cleaned = text.trim();
-  if (cleaned.length <= maxChars) {
-    return cleaned;
-  }
-  const boundary = cleaned.slice(0, maxChars + 1).lastIndexOf(' ');
-  const cut = boundary >= Math.floor(maxChars * 0.6) ? boundary : maxChars;
-  return `${cleaned.slice(0, cut).trimEnd()}\n...`;
+  return trimContentWithEllipsis(text, maxChars);
 }
 
 function computeTierContent(content: string, tier: 'short' | 'medium' | 'full'): string {
@@ -346,7 +340,7 @@ export class LorebooksRoutingDebugView extends ItemView {
 
     section.createEl('p', {
       cls: 'lorevault-routing-subtle',
-      text: 'Use this to spot missing keywords, duplicate-like notes, and thin content. Generate keyword suggestions directly for missing-keyword entries.'
+      text: 'Use this to spot missing keywords, duplicate-like notes, and thin content. Duplicate/similarity signals combine heuristics with embedding neighbors when embeddings are available.'
     });
 
     const actionablePaths = missing.map(row => row.path).filter(Boolean);
@@ -419,16 +413,32 @@ export class LorebooksRoutingDebugView extends ItemView {
       tr.createEl('td', { text: `${row.keywordCount}` });
       tr.createEl('td', {
         text: row.bestSimilarUid !== null
-          ? `UID ${row.bestSimilarUid} (${row.bestSimilarScore.toFixed(3)})`
+          ? `${row.bestSimilarTitle ?? `UID ${row.bestSimilarUid}`} (${row.bestSimilarScore.toFixed(3)})`
           : '-'
       });
-      tr.createEl('td', { text: row.reasons.join(' | ') || '(none)' });
+      const reasonsCell = tr.createEl('td');
+      reasonsCell.setText(row.reasons.join(' | ') || '(none)');
 
       const actionsCell = tr.createEl('td');
       if (row.path) {
-        const openButton = actionsCell.createEl('button', { text: 'Open' });
+        const openButton = actionsCell.createEl('button', { text: 'Open Entry' });
         openButton.addEventListener('click', () => {
           void this.app.workspace.openLinkText(row.path, '', true);
+        });
+      }
+
+      if (row.bestSimilarPath) {
+        const openSimilarButton = actionsCell.createEl('button', { text: 'Open Similar' });
+        openSimilarButton.addEventListener('click', () => {
+          void this.app.workspace.openLinkText(row.bestSimilarPath, '', true);
+        });
+      }
+
+      if (row.path && row.bestSimilarPath) {
+        const openPairButton = actionsCell.createEl('button', { text: 'Open Pair' });
+        openPairButton.addEventListener('click', () => {
+          void this.app.workspace.openLinkText(row.path, '', true);
+          void this.app.workspace.openLinkText(row.bestSimilarPath, '', true);
         });
       }
 

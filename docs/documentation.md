@@ -347,12 +347,12 @@ Optional frontmatter steering keys for editor continuation:
 
 Long-form story metadata (new):
 
-- `storyId`: stable story thread identifier
+- `storyId`: stable story identifier
 - `chapter`: chapter/scene index (numeric)
 - `chapterTitle`: optional chapter display title
 - `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
 - `nextChapter`: optional links/paths to following chapter notes
-- `lvStoryId` (optional): Story Steering thread scope key override
+- `lvStoryId` (optional): Story Steering story scope key override
 - `lvChapterId` (optional): Story Steering chapter scope value override
 - `lvNoteId` (auto-managed): stable note identifier used for move-safe Story Steering note/chapter scope links
 
@@ -370,7 +370,7 @@ Story Steering extraction behavior:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
 
-When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
+When running `Continue Story with Context`, LoreVault resolves a deterministic story sequence for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 

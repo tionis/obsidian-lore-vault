@@ -830,6 +830,43 @@
   gap: 8px;
 }
 
+.lorevault-import-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-import-review-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.lorevault-import-review-item code {
+  overflow-wrap: anywhere;
+}
+
+.lorevault-steering-lorebook-row code {
+  flex: 1;
+}
+
+.lorevault-steering-remove-button {
+  margin-left: 8px;
+  padding: 2px 8px;
+  min-height: 24px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-error, var(--color-red));
+}
+
+.lorevault-steering-lorebook-select {
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
 .lorevault-import-output {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;

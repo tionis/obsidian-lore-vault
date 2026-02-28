@@ -11,6 +11,7 @@
         "test:compile": "rm -rf .test-dist && tsc -p tsconfig.tests.json",
         "test": "npm run test:compile && node --test .test-dist/tests/*.test.js",
         "profile:large-vault": "npm run test:compile && node .test-dist/tests/profile-large-vault.js",
+        "release:version": "node scripts/release-version.mjs",
         "version": "node version-bump.mjs && git add manifest.json versions.json"
     },
     "keywords": [

@@ -452,6 +452,20 @@ npm run build
 npm test
 ```
 
+Release automation (maintainers):
+
+```bash
+npm run release:version -- 0.0.8
+```
+
+Behavior:
+
+- requires target version `x.y.z` and validates it is greater than `manifest.json` `version`
+- updates `manifest.json` `version`
+- adds `<version>: <minAppVersion>` to `versions.json`
+- commits as `release <version>`, tags `<version>`, and pushes branch + tag (`git push origin main <version>` by default)
+- supports `--dry-run`, `--remote`, `--branch`, and `--allow-dirty`
+
 See:
 
 - `docs/approach.md`

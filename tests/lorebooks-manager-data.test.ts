@@ -88,14 +88,17 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       ...(overrides.summaries ?? {})
     },
     costTracking: {
-      enabled: false,
-      ledgerPath: '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
-      defaultInputCostPerMillionUsd: 0,
-      defaultOutputCostPerMillionUsd: 0,
-      reportOutputDir: '.obsidian/plugins/lore-vault/reports',
-      dailyBudgetUsd: 0,
-      sessionBudgetUsd: 0,
-      ...(overrides.costTracking ?? {})
+      enabled: overrides.costTracking?.enabled ?? false,
+      ledgerPath: overrides.costTracking?.ledgerPath ?? '.obsidian/plugins/lore-vault/cache/usage-ledger.json',
+      defaultInputCostPerMillionUsd: overrides.costTracking?.defaultInputCostPerMillionUsd ?? 0,
+      defaultOutputCostPerMillionUsd: overrides.costTracking?.defaultOutputCostPerMillionUsd ?? 0,
+      reportOutputDir: overrides.costTracking?.reportOutputDir ?? '.obsidian/plugins/lore-vault/reports',
+      dailyBudgetUsd: overrides.costTracking?.dailyBudgetUsd ?? 0,
+      sessionBudgetUsd: overrides.costTracking?.sessionBudgetUsd ?? 0,
+      modelPricingOverrides: overrides.costTracking?.modelPricingOverrides ?? [],
+      budgetByOperationUsd: overrides.costTracking?.budgetByOperationUsd ?? {},
+      budgetByModelUsd: overrides.costTracking?.budgetByModelUsd ?? {},
+      budgetByScopeUsd: overrides.costTracking?.budgetByScopeUsd ?? {}
     },
     completion: {
       enabled: false,

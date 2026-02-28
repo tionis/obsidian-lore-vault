@@ -418,6 +418,7 @@ Implemented scope:
 - usage metadata recorded when provider response includes token usage fields
 - optional ledger persistence (`settings.costTracking.enabled`)
 - fallback USD estimation via configured per-million token rates
+- optional per-model pricing overrides (`provider + wildcard model pattern`)
 - manager panel usage/cost monitor (session/day/project totals + warnings + top breakdowns)
 - usage report export commands:
   - `Export Usage Report (JSON)`
@@ -432,13 +433,24 @@ Core contracts:
   - `provider_reported`
   - `estimated`
   - `unknown`
+- pricing provenance is explicit per record:
+  - `pricingSource` (`provider_reported` | `model_override` | `default_rates` | `none`)
+  - `pricingRule` (matched override/default rule label)
+  - `pricingSnapshotAt` (normalized timestamp when rate snapshot was taken)
+- effective estimate rates are stored per row:
+  - `inputCostPerMillionUsd`
+  - `outputCostPerMillionUsd`
 - day rollups use UTC day boundaries
+- report warnings support budgets at:
+  - global day/session
+  - operation
+  - provider:model
+  - lorebook scope
 - report CSV row ordering is deterministic (`timestamp ASC`, `id ASC`)
 
 Current non-goals in this phase:
 
 - provider pricing auto-sync
-- per-scope spend attribution heuristics beyond stored metadata dimensions
 
 ## Phase 14 Import/Extraction (Current Progress)
 

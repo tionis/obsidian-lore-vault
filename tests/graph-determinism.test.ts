@@ -129,7 +129,11 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       defaultOutputCostPerMillionUsd: 0,
       reportOutputDir: '.obsidian/plugins/lore-vault/reports',
       dailyBudgetUsd: 0,
-      sessionBudgetUsd: 0
+      sessionBudgetUsd: 0,
+      modelPricingOverrides: [],
+      budgetByOperationUsd: {},
+      budgetByModelUsd: {},
+      budgetByScopeUsd: {}
     },
     completion: {
       enabled: false,

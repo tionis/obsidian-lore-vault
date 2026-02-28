@@ -465,7 +465,8 @@ Current implemented scope:
 - records are written to a local usage ledger JSON file
 - cost calculation uses:
   - provider-reported cost when available
-  - fallback estimate from configured input/output USD-per-1M rates
+  - model-specific pricing overrides when configured
+  - fallback estimate from configured default input/output USD-per-1M rates
   - `unknown` when neither is available
 
 Settings:
@@ -474,9 +475,13 @@ Settings:
 - `Usage Ledger Path`
 - `Default Input Cost / 1M Tokens (USD)`
 - `Default Output Cost / 1M Tokens (USD)`
+- `Model Pricing Overrides` (`provider | model-pattern | input | output`)
 - `Usage Report Output Directory`
 - `Daily Budget Warning (USD)`
 - `Session Budget Warning (USD)`
+- `Budget by Operation (USD)`
+- `Budget by Model (USD)`
+- `Budget by Scope (USD)`
 
 Ledger default path:
 
@@ -489,6 +494,8 @@ Each record contains deterministic fields:
 - provider/model
 - prompt/completion/total tokens
 - reported/estimated cost and cost source
+- pricing provenance (`pricingSource`, `pricingRule`, `pricingSnapshotAt`)
+- effective rates used for estimation (`inputCostPerMillionUsd`, `outputCostPerMillionUsd`)
 - operation metadata
 
 Report exports:
@@ -497,7 +504,7 @@ Report exports:
 - `Export Usage Report (CSV)`
 
 JSON export includes snapshot totals + full ledger entries.
-CSV export includes deterministic row order and metadata JSON column.
+CSV export includes deterministic row order, pricing provenance columns, and metadata JSON column.
 
 ## LoreVault Manager UI
 
@@ -519,8 +526,9 @@ Capabilities:
   - selected `world_info` and `rag` items used for the active/last run
 - usage/cost monitor details:
   - session/day/project totals (requests/tokens/known cost/unknown cost count)
-  - budget warnings from configured daily/session limits
-- top breakdown lists by operation and model
+  - known cost split (`provider_reported` vs `estimated`)
+  - budget warnings from configured daily/session/operation/model/scope limits
+- top breakdown lists by operation, model, scope, and cost source
 
 ## Inbound Wiki Import and Story Extraction (Phase 14)
 

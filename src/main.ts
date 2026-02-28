@@ -106,7 +106,7 @@ import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal'
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
 import { UsageLedgerStore } from './usage-ledger-store';
-import { estimateUsageCostUsd } from './cost-utils';
+import { estimateUsageCostUsdWithRateSelection } from './cost-utils';
 import {
   buildUsageLedgerReportSnapshot,
   serializeUsageLedgerEntriesCsv,
@@ -622,6 +622,146 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.usageLedgerStore.setFilePath(this.resolveUsageLedgerPath());
   }
 
+  private wildcardPatternMatch(pattern: string, value: string): boolean {
+    const trimmedPattern = pattern.trim();
+    if (!trimmedPattern || trimmedPattern === '*') {
+      return true;
+    }
+    const escaped = trimmedPattern
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+    return regex.test(value.trim());
+  }
+
+  private resolveModelPricingOverride(provider: string, model: string): ConverterSettings['costTracking']['modelPricingOverrides'][number] | null {
+    const overrides = Array.isArray(this.settings.costTracking.modelPricingOverrides)
+      ? this.settings.costTracking.modelPricingOverrides
+      : [];
+    const normalizedProvider = provider.trim().toLowerCase();
+    const normalizedModel = model.trim().toLowerCase();
+    const matches = overrides
+      .filter(override => {
+        const overrideProvider = (override.provider ?? '').toString().trim().toLowerCase();
+        const providerMatches = !overrideProvider || overrideProvider === '*' || overrideProvider === normalizedProvider;
+        if (!providerMatches) {
+          return false;
+        }
+        return this.wildcardPatternMatch((override.modelPattern ?? '').toString(), normalizedModel);
+      })
+      .sort((left, right) => (
+        ((right.modelPattern ?? '').toString().length - (left.modelPattern ?? '').toString().length) ||
+        (Math.floor(Number(right.updatedAt ?? 0)) - Math.floor(Number(left.updatedAt ?? 0)))
+      ));
+    return matches[0] ?? null;
+  }
+
+  private resolveCostRateSelection(provider: string, model: string): {
+    inputCostPerMillionUsd: number;
+    outputCostPerMillionUsd: number;
+    source: 'model_override' | 'default_rates' | 'none';
+    rule?: string;
+    snapshotAt?: number | null;
+  } {
+    const matchedOverride = this.resolveModelPricingOverride(provider, model);
+    if (matchedOverride) {
+      return {
+        inputCostPerMillionUsd: Number(matchedOverride.inputCostPerMillionUsd ?? 0),
+        outputCostPerMillionUsd: Number(matchedOverride.outputCostPerMillionUsd ?? 0),
+        source: 'model_override',
+        rule: `${matchedOverride.provider}:${matchedOverride.modelPattern}`,
+        snapshotAt: Number(matchedOverride.updatedAt ?? 0)
+      };
+    }
+
+    const defaultInput = Number(this.settings.costTracking.defaultInputCostPerMillionUsd);
+    const defaultOutput = Number(this.settings.costTracking.defaultOutputCostPerMillionUsd);
+    if (
+      (Number.isFinite(defaultInput) && defaultInput > 0) ||
+      (Number.isFinite(defaultOutput) && defaultOutput > 0)
+    ) {
+      return {
+        inputCostPerMillionUsd: defaultInput,
+        outputCostPerMillionUsd: defaultOutput,
+        source: 'default_rates',
+        rule: 'settings.default_rates',
+        snapshotAt: Date.now()
+      };
+    }
+
+    return {
+      inputCostPerMillionUsd: 0,
+      outputCostPerMillionUsd: 0,
+      source: 'none',
+      rule: 'settings.none',
+      snapshotAt: null
+    };
+  }
+
+  private resolveNoteScopesForUsage(notePath: string): string[] {
+    const normalizedPath = normalizeVaultPath(notePath);
+    const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+    if (!(file instanceof TFile)) {
+      return [];
+    }
+    const cache = this.app.metadataCache.getFileCache(file);
+    const tags = cache ? (getAllTags(cache) ?? []) : [];
+    return this.normalizeExportScopeList(
+      extractLorebookScopesFromTags(tags, this.settings.tagScoping.tagPrefix)
+    );
+  }
+
+  private enrichUsageMetadata(metadata: {[key: string]: unknown}): {[key: string]: unknown} {
+    const base = { ...metadata };
+    const resolvedScopes = new Set<string>();
+
+    if (Array.isArray(base.scopes)) {
+      for (const item of base.scopes) {
+        const normalized = normalizeScope(String(item ?? ''));
+        if (normalized) {
+          resolvedScopes.add(normalized);
+        }
+      }
+    } else if (typeof base.scope === 'string') {
+      const normalized = normalizeScope(base.scope);
+      if (normalized) {
+        resolvedScopes.add(normalized);
+      }
+    }
+
+    if (typeof base.notePath === 'string' && base.notePath.trim()) {
+      const noteScopes = this.resolveNoteScopesForUsage(base.notePath);
+      for (const scope of noteScopes) {
+        resolvedScopes.add(scope);
+      }
+    }
+
+    const sortedScopes = [...resolvedScopes].sort((left, right) => left.localeCompare(right));
+    if (sortedScopes.length > 0) {
+      base.scopes = sortedScopes;
+      base.scope = sortedScopes[0];
+      base.scopeCount = sortedScopes.length;
+    }
+
+    return base;
+  }
+
+  private normalizeBudgetMap(input: {[key: string]: number} | undefined): {[key: string]: number} {
+    const normalized: {[key: string]: number} = {};
+    if (!input || typeof input !== 'object') {
+      return normalized;
+    }
+    for (const [key, value] of Object.entries(input)) {
+      const cleanedKey = key.trim();
+      const cleanedValue = Number(value);
+      if (!cleanedKey || !Number.isFinite(cleanedValue) || cleanedValue <= 0) {
+        continue;
+      }
+      normalized[cleanedKey] = cleanedValue;
+    }
+    return normalized;
+  }
+
   private async recordCompletionUsage(
     operation: string,
     usage: CompletionUsageReport,
@@ -631,13 +771,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const cost = estimateUsageCostUsd(
+    const rateSelection = this.resolveCostRateSelection(usage.provider, usage.model);
+    const cost = estimateUsageCostUsdWithRateSelection(
       usage.promptTokens,
       usage.completionTokens,
-      this.settings.costTracking.defaultInputCostPerMillionUsd,
-      this.settings.costTracking.defaultOutputCostPerMillionUsd,
+      rateSelection,
       usage.reportedCostUsd
     );
+    const enrichedMetadata = this.enrichUsageMetadata(metadata);
 
     try {
       await this.usageLedgerStore.append({
@@ -651,7 +792,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         reportedCostUsd: cost.reportedCostUsd,
         estimatedCostUsd: cost.estimatedCostUsd,
         costSource: cost.source,
-        metadata
+        pricingSource: cost.pricingSource,
+        inputCostPerMillionUsd: cost.inputCostPerMillionUsd,
+        outputCostPerMillionUsd: cost.outputCostPerMillionUsd,
+        pricingRule: cost.pricingRule,
+        pricingSnapshotAt: cost.pricingSnapshotAt,
+        metadata: enrichedMetadata
       });
     } catch (error) {
       console.error('Failed to record usage entry:', error);
@@ -716,7 +862,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       nowMs,
       sessionStartAt: this.sessionStartedAt,
       dailyBudgetUsd: this.settings.costTracking.dailyBudgetUsd,
-      sessionBudgetUsd: this.settings.costTracking.sessionBudgetUsd
+      sessionBudgetUsd: this.settings.costTracking.sessionBudgetUsd,
+      budgetByOperationUsd: this.normalizeBudgetMap(this.settings.costTracking.budgetByOperationUsd),
+      budgetByModelUsd: this.normalizeBudgetMap(this.settings.costTracking.budgetByModelUsd),
+      budgetByScopeUsd: this.normalizeBudgetMap(this.settings.costTracking.budgetByScopeUsd)
     });
   }
 
@@ -2987,6 +3136,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (completionUsage) {
       await this.recordCompletionUsage('story_chat_turn', completionUsage, {
         scopeCount: selectedScopes.length,
+        scopes: selectedScopes,
         usedLorebookContext: useLorebookContext,
         usedManualContext: manualContextForPrompt.length > 0,
         usedContinuityState: continuityForPrompt.length > 0,
@@ -3274,6 +3424,76 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.costTracking.sessionBudgetUsd = Number.isFinite(sessionBudget) && sessionBudget >= 0
       ? sessionBudget
       : DEFAULT_SETTINGS.costTracking.sessionBudgetUsd;
+    const rawPricingOverrides = Array.isArray(merged.costTracking.modelPricingOverrides)
+      ? merged.costTracking.modelPricingOverrides
+      : [];
+    const normalizedPricingOverrides: ConverterSettings['costTracking']['modelPricingOverrides'] = [];
+    for (const rawOverride of rawPricingOverrides) {
+      if (!rawOverride || typeof rawOverride !== 'object') {
+        continue;
+      }
+      const provider = (rawOverride.provider ?? '*').toString().trim().toLowerCase() || '*';
+      const modelPattern = (rawOverride.modelPattern ?? '').toString().trim();
+      if (!modelPattern) {
+        continue;
+      }
+      const inputOverride = Number(rawOverride.inputCostPerMillionUsd);
+      const outputOverride = Number(rawOverride.outputCostPerMillionUsd);
+      const inputCostPerMillionUsd = Number.isFinite(inputOverride) && inputOverride >= 0 ? inputOverride : 0;
+      const outputCostPerMillionUsd = Number.isFinite(outputOverride) && outputOverride >= 0 ? outputOverride : 0;
+      const updatedAt = Math.max(0, Math.floor(Number(rawOverride.updatedAt ?? 0)));
+      normalizedPricingOverrides.push({
+        provider,
+        modelPattern,
+        inputCostPerMillionUsd,
+        outputCostPerMillionUsd,
+        updatedAt,
+        source: rawOverride.source === 'provider_sync' ? 'provider_sync' : 'manual'
+      });
+    }
+    merged.costTracking.modelPricingOverrides = normalizedPricingOverrides
+      .sort((left, right) => (
+        left.provider.localeCompare(right.provider) ||
+        left.modelPattern.localeCompare(right.modelPattern)
+      ));
+
+    const normalizeBudgetObject = (
+      rawMap: unknown,
+      keyTransform?: (key: string) => string
+    ): {[key: string]: number} => {
+      if (!rawMap || typeof rawMap !== 'object' || Array.isArray(rawMap)) {
+        return {};
+      }
+      const normalized: {[key: string]: number} = {};
+      for (const [rawKey, rawValue] of Object.entries(rawMap as {[key: string]: unknown})) {
+        const transformed = keyTransform ? keyTransform(rawKey) : rawKey.trim();
+        if (!transformed) {
+          continue;
+        }
+        const parsed = Number(rawValue);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          continue;
+        }
+        normalized[transformed] = parsed;
+      }
+      return normalized;
+    };
+
+    merged.costTracking.budgetByOperationUsd = normalizeBudgetObject(merged.costTracking.budgetByOperationUsd);
+    merged.costTracking.budgetByModelUsd = normalizeBudgetObject(
+      merged.costTracking.budgetByModelUsd,
+      key => key.trim().toLowerCase()
+    );
+    merged.costTracking.budgetByScopeUsd = normalizeBudgetObject(
+      merged.costTracking.budgetByScopeUsd,
+      key => {
+        const trimmed = key.trim();
+        if (trimmed === '(none)') {
+          return '(none)';
+        }
+        return normalizeScope(trimmed) || '';
+      }
+    );
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (
@@ -4593,7 +4813,8 @@ export default class LoreBookConverterPlugin extends Plugin {
             includeLorebookContext: selection.includeLorebookContext,
             worldInfoCount,
             ragCount,
-            scopeCount: scopeLabels.length
+            scopeCount: scopeLabels.length,
+            scopes: scopeLabels
           });
         }
       });
@@ -5227,6 +5448,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (completionUsage) {
         await this.recordCompletionUsage('editor_continuation', completionUsage, {
           scopeCount: selectedScopeLabels.length,
+          scopes: selectedScopeLabels,
           worldInfoCount: totalWorldInfo,
           ragCount: totalRag,
           usedChapterMemoryContext: chapterMemoryItems.length > 0,

@@ -29,13 +29,13 @@ Current execution sequence:
 3. complete user-facing terminology migration (`thread` -> `story`) with compatibility aliases
 4. reduce full-vault rescans in panel rendering paths via shared scope metadata cache/index
 5. close Lorebook Auditor parity gaps (duplicate actions docs/tests)
-6. keep advanced cost management as far-future (provider integration dependent)
+6. keep provider pricing sync and reconciliation as far-future (integration dependent)
 7. continue long-tail hardening/performance work on large vaults
 
 Priority note:
 
 - core retrieval/chat foundations are in place; current work is stabilization and UX consistency
-- advanced cost management (provider pricing sync and richer budgeting UX) remains far-future and requires tighter OpenRouter usage/pricing integration
+- advanced provider pricing sync/reconciliation remains far-future and requires tighter OpenRouter usage/pricing integration
 - story/wiki import and update foundations are implemented; remaining work is merge UX and operator control polish
 
 ## Scope Boundaries
@@ -194,7 +194,8 @@ Add optional cost estimation/tracking to make API spend easier to plan and audit
 
 Constraints:
 
-- implemented scope includes usage hooks, deterministic ledger, manager rollups/warnings, and JSON/CSV report export
+- implemented scope includes usage hooks, deterministic ledger, pricing provenance, manager rollups/warnings, and JSON/CSV report export
+- implemented scope includes configurable budget warnings for operation/model/scope dimensions
 - remaining advanced work is far-future (after core retrieval/memory architecture stabilizes)
 - prioritize OpenRouter integration first for usage + pricing metadata
 - keep behavior deterministic for stored usage/cost records
@@ -442,6 +443,34 @@ Non-primary, opt-in layers:
 - embedding fallback retrieval when graph/entity confidence is low
 - tool-call retrieval during generation/chat (`search_entries`, `expand_neighbors`, `get_entry`)
 - intermediary summary generation for oversized contexts with explicit traceability
+
+## Future: Retrieval Quality Scoring and Tuning
+
+Goal:
+
+- quantify retrieval quality and optimize tunables with reproducible evaluation, not anecdotal tuning
+
+Planned approach:
+
+1. build deterministic benchmark fixtures:
+   - `query -> relevant note ids`
+   - optional explicit non-relevant ids for precision/noise checks
+2. compute composite quality score per run:
+   - ranking quality (`nDCG@k`)
+   - coverage (`Recall@k`)
+   - routing precision (`world_info` vs fallback decisions)
+   - token-efficiency penalties (context bloat/noise)
+3. run parameter sweeps over retrieval tunables:
+   - graph expansion (`maxGraphHops`, `graphHopDecay`, backlink boost)
+   - fallback behavior (`off|auto|always`, threshold)
+   - budget/body-lift thresholds and ratios
+4. select candidates with held-out benchmark validation to limit overfitting
+5. keep output deterministic and explainable (score breakdown + selected config + run seed)
+
+Notes:
+
+- begin with grid/random search; add Bayesian optimization only when tunable dimensionality justifies it
+- this remains offline/operator tooling first, not an always-on runtime auto-tuner
 
 ## Constraints
 

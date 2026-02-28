@@ -7,6 +7,7 @@ test('estimateUsageCostUsd prefers provider-reported cost', () => {
   assert.equal(result.source, 'provider_reported');
   assert.equal(result.reportedCostUsd, 0.0042);
   assert.equal(result.estimatedCostUsd, 0.0042);
+  assert.equal(result.pricingSource, 'provider_reported');
 });
 
 test('estimateUsageCostUsd computes fallback estimate from token rates', () => {
@@ -14,6 +15,9 @@ test('estimateUsageCostUsd computes fallback estimate from token rates', () => {
   assert.equal(result.source, 'estimated');
   assert.equal(result.reportedCostUsd, null);
   assert.equal(result.estimatedCostUsd, 0.004);
+  assert.equal(result.pricingSource, 'default_rates');
+  assert.equal(result.inputCostPerMillionUsd, 2);
+  assert.equal(result.outputCostPerMillionUsd, 4);
 });
 
 test('estimateUsageCostUsd returns unknown when no rates and no provider cost', () => {
@@ -21,4 +25,5 @@ test('estimateUsageCostUsd returns unknown when no rates and no provider cost', 
   assert.equal(result.source, 'unknown');
   assert.equal(result.reportedCostUsd, null);
   assert.equal(result.estimatedCostUsd, null);
+  assert.equal(result.pricingSource, 'none');
 });

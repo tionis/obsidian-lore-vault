@@ -264,8 +264,14 @@ Reference design: `docs/planning.md`.
   - [x] add tests for duplicate/similarity actions and embeddings-present/absent messaging
 - [ ] Advanced cost-management follow-up (far future):
   - [ ] integrate provider pricing metadata sync (OpenRouter-first)
-  - [ ] store/display estimated-vs-actual cost provenance per ledger row
-  - [ ] add budget policies/alerts by operation/model/scope
+  - [x] store/display estimated-vs-actual cost provenance per ledger row
+  - [x] add budget policies/alerts by operation/model/scope
+- [ ] Retrieval quality optimization follow-up (future):
+  - [ ] add deterministic retrieval benchmark fixtures (`query -> relevant note ids`, optional negative ids)
+  - [ ] add retrieval quality score (`nDCG@k`, `Recall@k`, routing precision, token-efficiency penalties)
+  - [ ] add parameter-sweep runner across retrieval tunables (graph hops/decay, fallback threshold/policy, budget ratios, body-lift thresholds, backlink boosts)
+  - [ ] support random/Bayesian search mode for high-dimensional sweeps
+  - [ ] require held-out benchmark split and report overfitting risk in results output
 
 ## Default Decisions (2026-02-27)
 

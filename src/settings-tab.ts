@@ -11,6 +11,7 @@ import {
 import LoreBookConverterPlugin from './main';
 import {
   CompletionPreset,
+  ConverterSettings,
   DEFAULT_SETTINGS
 } from './models';
 
@@ -193,6 +194,99 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       .trim()
       .replace(/\\/g, '/')
       .replace(/\/+$/, '');
+  }
+
+  private parseBudgetMapInput(raw: string): {[key: string]: number} {
+    const normalized: {[key: string]: number} = {};
+    const lines = raw
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .filter(line => !line.startsWith('#'));
+    for (const line of lines) {
+      const separatorIndex = line.includes('=')
+        ? line.indexOf('=')
+        : line.indexOf(':');
+      if (separatorIndex <= 0 || separatorIndex === line.length - 1) {
+        throw new Error(`Invalid budget line "${line}". Use key=value.`);
+      }
+      const key = line.slice(0, separatorIndex).trim();
+      const value = Number(line.slice(separatorIndex + 1).trim());
+      if (!key || !Number.isFinite(value) || value <= 0) {
+        throw new Error(`Invalid budget value for "${key || line}".`);
+      }
+      normalized[key] = value;
+    }
+    return normalized;
+  }
+
+  private formatBudgetMapInput(value: {[key: string]: number} | undefined): string {
+    if (!value || typeof value !== 'object') {
+      return '';
+    }
+    return Object.entries(value)
+      .filter(([key, amount]) => key.trim().length > 0 && Number.isFinite(amount) && amount > 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, amount]) => `${key} = ${amount}`)
+      .join('\n');
+  }
+
+  private parseModelPricingOverridesInput(raw: string): ConverterSettings['costTracking']['modelPricingOverrides'] {
+    const entries: ConverterSettings['costTracking']['modelPricingOverrides'] = [];
+    const lines = raw
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .filter(line => !line.startsWith('#'));
+    for (const line of lines) {
+      const parts = line.split('|').map(part => part.trim());
+      if (parts.length !== 4) {
+        throw new Error(`Invalid pricing override line "${line}". Use provider | model-pattern | input | output.`);
+      }
+      const [providerRaw, modelPatternRaw, inputRaw, outputRaw] = parts;
+      const provider = providerRaw.toLowerCase() || '*';
+      const modelPattern = modelPatternRaw;
+      const inputCostPerMillionUsd = Number(inputRaw);
+      const outputCostPerMillionUsd = Number(outputRaw);
+      if (!modelPattern) {
+        throw new Error(`Missing model pattern in "${line}".`);
+      }
+      if (!Number.isFinite(inputCostPerMillionUsd) || inputCostPerMillionUsd < 0) {
+        throw new Error(`Invalid input cost in "${line}".`);
+      }
+      if (!Number.isFinite(outputCostPerMillionUsd) || outputCostPerMillionUsd < 0) {
+        throw new Error(`Invalid output cost in "${line}".`);
+      }
+      entries.push({
+        provider,
+        modelPattern,
+        inputCostPerMillionUsd,
+        outputCostPerMillionUsd,
+        updatedAt: Date.now(),
+        source: 'manual'
+      });
+    }
+    return entries.sort((left, right) => (
+      left.provider.localeCompare(right.provider) ||
+      left.modelPattern.localeCompare(right.modelPattern)
+    ));
+  }
+
+  private formatModelPricingOverridesInput(
+    value: ConverterSettings['costTracking']['modelPricingOverrides'] | undefined
+  ): string {
+    if (!Array.isArray(value) || value.length === 0) {
+      return '';
+    }
+    return [...value]
+      .sort((left, right) => (
+        left.provider.localeCompare(right.provider) ||
+        left.modelPattern.localeCompare(right.modelPattern)
+      ))
+      .map(item => `${item.provider} | ${item.modelPattern} | ${item.inputCostPerMillionUsd} | ${item.outputCostPerMillionUsd}`)
+      .join('\n');
   }
 
   private async persistSettings(): Promise<void> {
@@ -1376,6 +1470,117 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           if (!Number.isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.costTracking.sessionBudgetUsd = numValue;
             await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    let pricingOverridesDraft = this.formatModelPricingOverridesInput(
+      this.plugin.settings.costTracking.modelPricingOverrides
+    );
+    new Setting(containerEl)
+      .setName('Model Pricing Overrides')
+      .setDesc('Optional manual pricing overrides. One per line: provider | model-pattern | inputUSDper1M | outputUSDper1M. Use * for provider wildcard.')
+      .addTextArea(text => {
+        text.inputEl.rows = 4;
+        text
+          .setPlaceholder('openrouter | z-ai/glm-5 | 0.6 | 2.2')
+          .setValue(pricingOverridesDraft)
+          .onChange(value => {
+            pricingOverridesDraft = value;
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Apply')
+        .onClick(async () => {
+          try {
+            this.plugin.settings.costTracking.modelPricingOverrides = this.parseModelPricingOverridesInput(pricingOverridesDraft);
+            await this.plugin.saveData(this.plugin.settings);
+            new Notice('Applied model pricing overrides.');
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Invalid pricing overrides: ${message}`);
+          }
+        }));
+
+    let operationBudgetDraft = this.formatBudgetMapInput(this.plugin.settings.costTracking.budgetByOperationUsd);
+    new Setting(containerEl)
+      .setName('Budget by Operation (USD)')
+      .setDesc('Optional operation-level budgets. One per line: operation=value (for example story_chat_turn=2.5).')
+      .addTextArea(text => {
+        text.inputEl.rows = 3;
+        text
+          .setPlaceholder('story_chat_turn = 2.5')
+          .setValue(operationBudgetDraft)
+          .onChange(value => {
+            operationBudgetDraft = value;
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Apply')
+        .onClick(async () => {
+          try {
+            this.plugin.settings.costTracking.budgetByOperationUsd = this.parseBudgetMapInput(operationBudgetDraft);
+            await this.plugin.saveData(this.plugin.settings);
+            new Notice('Applied operation budgets.');
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Invalid operation budgets: ${message}`);
+          }
+        }));
+
+    let modelBudgetDraft = this.formatBudgetMapInput(this.plugin.settings.costTracking.budgetByModelUsd);
+    new Setting(containerEl)
+      .setName('Budget by Model (USD)')
+      .setDesc('Optional model-level budgets. One per line: provider:model=value (for example openrouter:z-ai/glm-5=4).')
+      .addTextArea(text => {
+        text.inputEl.rows = 3;
+        text
+          .setPlaceholder('openrouter:z-ai/glm-5 = 4')
+          .setValue(modelBudgetDraft)
+          .onChange(value => {
+            modelBudgetDraft = value;
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Apply')
+        .onClick(async () => {
+          try {
+            const parsed = this.parseBudgetMapInput(modelBudgetDraft);
+            const normalized: {[key: string]: number} = {};
+            for (const [key, value] of Object.entries(parsed)) {
+              normalized[key.toLowerCase()] = value;
+            }
+            this.plugin.settings.costTracking.budgetByModelUsd = normalized;
+            await this.plugin.saveData(this.plugin.settings);
+            new Notice('Applied model budgets.');
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Invalid model budgets: ${message}`);
+          }
+        }));
+
+    let scopeBudgetDraft = this.formatBudgetMapInput(this.plugin.settings.costTracking.budgetByScopeUsd);
+    new Setting(containerEl)
+      .setName('Budget by Scope (USD)')
+      .setDesc('Optional lorebook-scope budgets. One per line: scope=value (for example universe/main=3.5).')
+      .addTextArea(text => {
+        text.inputEl.rows = 3;
+        text
+          .setPlaceholder('universe/main = 3.5')
+          .setValue(scopeBudgetDraft)
+          .onChange(value => {
+            scopeBudgetDraft = value;
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Apply')
+        .onClick(async () => {
+          try {
+            this.plugin.settings.costTracking.budgetByScopeUsd = this.parseBudgetMapInput(scopeBudgetDraft);
+            await this.plugin.saveData(this.plugin.settings);
+            new Notice('Applied scope budgets.');
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Invalid scope budgets: ${message}`);
           }
         }));
 

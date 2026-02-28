@@ -50,6 +50,11 @@ test('UsageLedgerStore appends deterministic sorted entries', async () => {
     reportedCostUsd: null,
     estimatedCostUsd: 0.001,
     costSource: 'estimated',
+    pricingSource: 'default_rates',
+    inputCostPerMillionUsd: 1,
+    outputCostPerMillionUsd: 2,
+    pricingRule: 'settings.default_rates',
+    pricingSnapshotAt: 1700000000000,
     metadata: {
       scopeCount: 2
     }
@@ -66,6 +71,11 @@ test('UsageLedgerStore appends deterministic sorted entries', async () => {
     reportedCostUsd: 0.0002,
     estimatedCostUsd: 0.0002,
     costSource: 'provider_reported',
+    pricingSource: 'provider_reported',
+    inputCostPerMillionUsd: null,
+    outputCostPerMillionUsd: null,
+    pricingRule: null,
+    pricingSnapshotAt: null,
     metadata: {
       notePath: 'notes/a.md'
     }

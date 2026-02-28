@@ -157,8 +157,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Generation and Chat', {
       bullets: [
         'Continue Story with Context streams generated text into the active editor at the cursor.',
-        'On mobile, Continue Story is available through editor action menus (not only desktop right-click menus).',
-        'A ribbon shortcut is also available for one-tap mobile continuation.',
+        'Continue Story is available from editor context menus on desktop and mobile.',
         'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
         'Explicit steering layers are supported: pinned instructions, story notes, and scene intent.',
         'Inline steering directives are supported with strict syntax (`[LV: ...]` or `<!-- LV: ... -->`) from near-cursor story context.',

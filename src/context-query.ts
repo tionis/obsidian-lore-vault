@@ -830,8 +830,10 @@ export function assembleScopeContext(
   const worldInfoRatio = Math.min(0.95, Math.max(0.05, options.worldInfoBudgetRatio ?? 0.7));
   const worldInfoBudget = Math.max(0, Math.floor(tokenBudget * worldInfoRatio));
   const ragBudget = Math.max(0, tokenBudget - worldInfoBudget);
-  const maxWorldInfoEntries = options.maxWorldInfoEntries ?? 8;
-  const maxRagDocuments = options.maxRagDocuments ?? 6;
+  const scaledMaxWorldInfoEntries = Math.max(8, Math.min(80, Math.floor(tokenBudget / 900)));
+  const scaledMaxRagDocuments = Math.max(6, Math.min(48, Math.floor(tokenBudget / 1800)));
+  const maxWorldInfoEntries = options.maxWorldInfoEntries ?? scaledMaxWorldInfoEntries;
+  const maxRagDocuments = options.maxRagDocuments ?? scaledMaxRagDocuments;
   const maxGraphHops = Math.max(0, Math.min(3, Math.floor(options.maxGraphHops ?? 2)));
   const graphHopDecay = Math.max(0.2, Math.min(0.9, Number(options.graphHopDecay ?? 0.55)));
   const includeBacklinksInGraphExpansion = options.includeBacklinksInGraphExpansion ?? false;

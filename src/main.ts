@@ -94,6 +94,7 @@ import {
 } from './usage-ledger-report';
 import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
 import { getVaultBasename, normalizeVaultRelativePath } from './vault-path-utils';
+import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
 
 export interface GenerationTelemetry {
   state: 'idle' | 'preparing' | 'retrieving' | 'generating' | 'error';
@@ -745,19 +746,25 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized.includes('aborted') || normalized.includes('cancelled');
   }
 
-  private buildChatHistorySnippet(history: StoryChatMessage[]): string {
+  private buildChatHistorySnippet(
+    history: StoryChatMessage[],
+    tokenBudget = 900,
+    maxMessages = 8
+  ): string {
     if (history.length === 0) {
       return '';
     }
 
-    const recent = history.slice(-8);
+    const boundedMessageCount = Math.max(1, Math.floor(maxMessages));
+    const recent = history.slice(-boundedMessageCount);
     const rendered = recent.map(message => {
       const label = message.role === 'assistant' ? 'Assistant' : 'User';
       const body = message.content.trim();
       return `${label}: ${body}`;
     }).join('\n\n');
 
-    return this.trimTextToTokenBudget(rendered, 900);
+    const normalizedBudget = Math.max(128, Math.floor(tokenBudget));
+    return this.trimTextToTokenBudget(rendered, normalizedBudget);
   }
 
   private normalizeNoteContextRef(rawRef: string): string {
@@ -1516,20 +1523,23 @@ export default class LoreBookConverterPlugin extends Plugin {
       ? request.selectedScopes.map(scope => normalizeScope(scope)).filter(Boolean)
       : [];
     const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
-    const manualContext = request.manualContext.trim();
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
-    const chatHistory = this.buildChatHistorySnippet(request.history);
-    const querySeed = [request.userMessage, chatHistory].filter(Boolean).join('\n');
-    const chatHistoryTokens = chatHistory ? this.estimateTokens(chatHistory) : 0;
-
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
+    const historyTokenBudget = Math.max(900, Math.min(24000, Math.floor(maxInputTokens * 0.22)));
+    const historyMessageCap = Math.max(8, Math.min(this.settings.storyChat.maxMessages, Math.floor(maxInputTokens / 1800)));
+    const chatHistory = this.buildChatHistorySnippet(request.history, historyTokenBudget, historyMessageCap);
+    const chatHistoryTokens = chatHistory ? this.estimateTokens(chatHistory) : 0;
+    const querySeed = [request.userMessage, chatHistory].filter(Boolean).join('\n');
+    const manualShare = request.useLorebookContext && selectedScopes.length > 0 ? 0.35 : 0.7;
+    const manualContextBudget = Math.max(128, Math.min(64000, Math.floor(maxInputTokens * manualShare)));
+    const manualContext = this.trimTextToTokenBudget(request.manualContext.trim(), manualContextBudget);
     const manualContextTokens = manualContext ? this.estimateTokens(manualContext) : 0;
     const remainingAfterPrompt = Math.max(
       64,
-      maxInputTokens - completion.promptReserveTokens - instructionOverhead - manualContextTokens
+      maxInputTokens - completion.promptReserveTokens - instructionOverhead - manualContextTokens - chatHistoryTokens
     );
 
     const useSpecificNotesContext = noteContextRefs.length > 0;
@@ -1575,18 +1585,25 @@ export default class LoreBookConverterPlugin extends Plugin {
     let contexts: AssembledContext[] = [];
     let usedContextTokens = 0;
     if (useLorebookContext) {
-      let contextBudget = Math.min(
-        this.settings.defaultLoreBook.tokenBudget,
-        Math.max(64, availableForLorebookContext)
+      let contextBudget = Math.max(
+        64,
+        Math.min(
+          availableForLorebookContext,
+          Math.max(this.settings.defaultLoreBook.tokenBudget, Math.floor(availableForLorebookContext * 0.9))
+        )
       );
 
       for (let attempt = 0; attempt < 4; attempt += 1) {
         contexts = [];
         const perScopeBudget = Math.max(64, Math.floor(contextBudget / selectedScopes.length));
+        const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
+        const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
         for (const scope of selectedScopes) {
           contexts.push(await this.liveContextIndex.query({
             queryText: querySeed || request.userMessage,
-            tokenBudget: perScopeBudget
+            tokenBudget: perScopeBudget,
+            maxWorldInfoEntries: perScopeWorldInfoLimit,
+            maxRagDocuments: perScopeRagLimit
           }, scope));
         }
 
@@ -1666,7 +1683,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       unresolvedNoteRefs,
       chapterMemoryItems,
       layerTrace,
-      contextTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
+      contextTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens + chatHistoryTokens,
       worldInfoCount: totalWorldInfoCount,
       ragCount: totalRagCount,
       worldInfoItems,
@@ -1724,8 +1741,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextWindowTokens: completion.contextWindowTokens,
       maxInputTokens,
       promptReserveTokens: completion.promptReserveTokens,
-      contextUsedTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens,
-      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - toolContextTokens - manualContextTokens - specificNotesTokens - chapterMemoryTokens),
+      contextUsedTokens: usedContextTokens + toolContextTokens + manualContextTokens + specificNotesTokens + chapterMemoryTokens + chatHistoryTokens,
+      contextRemainingTokens: Math.max(0, maxInputTokens - completion.promptReserveTokens - instructionOverhead - usedContextTokens - toolContextTokens - manualContextTokens - specificNotesTokens - chapterMemoryTokens - chatHistoryTokens),
       maxOutputTokens: completion.maxOutputTokens,
       worldInfoCount: contextMeta.worldInfoCount,
       ragCount: contextMeta.ragCount,
@@ -2763,30 +2780,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     await this.convertToLorebook(scope);
   }
 
-  private extractQueryWindow(text: string): string {
-    const normalized = text.trim();
-    if (!normalized) {
-      return '';
-    }
-
-    const maxChars = 5000;
-    if (normalized.length <= maxChars) {
-      return normalized;
-    }
-    return normalized.slice(normalized.length - maxChars);
+  private extractQueryWindow(text: string, tokenBudget: number): string {
+    return extractAdaptiveQueryWindow(text, tokenBudget);
   }
 
-  private extractStoryWindow(text: string): string {
-    const normalized = text.trim();
-    if (!normalized) {
-      return '';
-    }
-
-    const maxChars = 12000;
-    if (normalized.length <= maxChars) {
-      return normalized;
-    }
-    return normalized.slice(normalized.length - maxChars);
+  private extractStoryWindow(text: string, tokenBudget: number): string {
+    return extractAdaptiveStoryWindow(text, tokenBudget);
   }
 
   private sanitizeTextCommandPromptId(value: string, fallbackIndex: number): string {
@@ -3153,9 +3152,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const activeFile = markdownView.file ?? this.app.workspace.getActiveFile();
     const cursor = editor.getCursor();
     const textBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
-    const queryText = this.extractQueryWindow(textBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
-    const scopedQuery = queryText || fallbackQuery;
     const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
     const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
     const scopesToQuery = frontmatterScopes.length > 0
@@ -3196,24 +3193,29 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
-      const initialStoryWindow = this.extractStoryWindow(textBeforeCursor);
       const instructionOverhead = this.estimateTokens(completion.systemPrompt) + 180;
-      const baselineStoryTarget = Math.max(256, Math.floor(maxInputTokens * 0.45));
-      const maxStoryTokensForContext = Math.max(
-        64,
-        maxInputTokens - completion.promptReserveTokens - instructionOverhead - 128
+      const availablePromptBudget = Math.max(
+        256,
+        maxInputTokens - completion.promptReserveTokens - instructionOverhead
       );
+      const desiredContextReserve = Math.max(1024, Math.min(32000, Math.floor(availablePromptBudget * 0.22)));
+      const baselineStoryTarget = Math.max(256, Math.floor(availablePromptBudget * 0.62));
+      const maxStoryTokensForContext = Math.max(64, availablePromptBudget - desiredContextReserve);
       const storyTokenTarget = Math.max(64, Math.min(baselineStoryTarget, maxStoryTokensForContext));
-      let storyWindow = this.trimTextToTokenBudget(initialStoryWindow, storyTokenTarget);
+      const queryTokenTarget = Math.max(900, Math.min(40000, Math.floor(maxInputTokens * 0.22)));
+      const queryText = this.extractQueryWindow(textBeforeCursor, queryTokenTarget);
+      const scopedQuery = queryText || fallbackQuery;
+      const initialStoryWindow = textBeforeCursor;
+      let storyWindow = this.extractStoryWindow(initialStoryWindow, storyTokenTarget);
       let storyTokens = this.estimateTokens(storyWindow);
       let availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
 
       if (availableForContext < 128 && initialStoryWindow.trim().length > 0) {
         const reducedStoryBudget = Math.max(
           64,
-          maxInputTokens - completion.promptReserveTokens - instructionOverhead - 96
+          availablePromptBudget - Math.max(512, Math.min(12000, Math.floor(availablePromptBudget * 0.12)))
         );
-        storyWindow = this.trimTextToTokenBudget(initialStoryWindow, reducedStoryBudget);
+        storyWindow = this.extractStoryWindow(initialStoryWindow, reducedStoryBudget);
         storyTokens = this.estimateTokens(storyWindow);
         availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - storyTokens;
       }
@@ -3236,9 +3238,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
       availableForContext = Math.max(64, availableForContext);
 
-      let contextBudget = Math.min(
-        this.settings.defaultLoreBook.tokenBudget,
-        Math.max(64, availableForContext)
+      let contextBudget = Math.max(
+        64,
+        Math.min(
+          availableForContext,
+          Math.max(this.settings.defaultLoreBook.tokenBudget, Math.floor(availableForContext * 0.92))
+        )
       );
       this.updateGenerationTelemetry({
         state: 'retrieving',
@@ -3261,11 +3266,15 @@ export default class LoreBookConverterPlugin extends Plugin {
       let usedContextTokens = 0;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const perScopeBudget = Math.max(64, Math.floor(contextBudget / Math.max(1, targetScopes.length)));
+        const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
+        const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
         contexts = [];
         for (const scope of targetScopes) {
           contexts.push(await this.liveContextIndex.query({
             queryText: scopedQuery,
-            tokenBudget: perScopeBudget
+            tokenBudget: perScopeBudget,
+            maxWorldInfoEntries: perScopeWorldInfoLimit,
+            maxRagDocuments: perScopeRagLimit
           }, scope));
         }
 

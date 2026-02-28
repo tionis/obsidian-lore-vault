@@ -159,7 +159,9 @@ test('buildStoryDeltaPlan enforces low-confidence gating and deterministic creat
   assert.equal(result.pages[0].action, 'create');
   assert.equal(result.pages[0].path, 'wiki/location-old-tower.md');
   assert.equal(/^summary:/m.test(result.pages[0].content), false);
+  assert.match(result.pages[0].content, /^# Old Tower$/m);
   assert.match(result.pages[0].content, /## Summary\n\nMain fortified location\./);
+  assert.match(result.pages[0].content, /## Overview\n\nReinforced with new defenses\./);
   assert.equal(result.skippedLowConfidence, 1);
   assert.match(result.pages[0].content, /lorebook\/story\/main/);
   assert.equal(result.pages[0].diff.removedLines, 0);

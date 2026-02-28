@@ -1,5 +1,10 @@
 import { normalizeVaultPath } from './vault-path-utils';
 import { upsertSummarySectionInMarkdown } from './summary-utils';
+import {
+  buildStructuredWikiBody,
+  deriveWikiTitleFromPageKey,
+  sanitizeWikiTitle
+} from './wiki-markdown-format';
 
 export interface StoryExtractionChunk {
   index: number;
@@ -306,9 +311,11 @@ export function parseStoryExtractionOperations(
     if (!resolvedKey) {
       continue;
     }
+    const fallbackTitle = deriveWikiTitleFromPageKey(resolvedKey);
+    const sanitizedTitle = sanitizeWikiTitle(title, fallbackTitle);
     operations.push({
       pageKey: resolvedKey,
-      title: title || resolvedKey,
+      title: sanitizedTitle,
       summary,
       keywords,
       aliases,
@@ -409,6 +416,9 @@ function buildExtractionPrompts(
     `Return at most ${Math.max(1, Math.floor(options.maxOperationsPerChunk))} operations.`,
     'Prefer stable pageKey reuse when existing state already has a matching page.',
     'Focus on durable entities, places, factions, concepts, and state changes.',
+    'Title must be canonical note title only. Do not prefix title with type labels like "Character:", "Location:", or "Faction:".',
+    'Content must be markdown body only (no frontmatter, no top-level # title heading).',
+    'Prefer sectioned markdown with ## headings (for example ## Backstory, ## Overview, ## Relationships, ## Timeline).',
     'Do not invent facts outside the chunk.'
   ].join('\n');
 
@@ -435,8 +445,12 @@ function buildPageContent(
   tags: string[],
   maxSummaryChars: number
 ): string {
+  const resolvedTitle = sanitizeWikiTitle(
+    page.title || '',
+    deriveWikiTitleFromPageKey(page.pageKey || page.title)
+  );
   const lines: string[] = ['---'];
-  lines.push(`title: ${JSON.stringify(page.title || page.pageKey)}`);
+  lines.push(`title: ${JSON.stringify(resolvedTitle)}`);
   if (page.aliases.length > 0) {
     lines.push('aliases:');
     for (const alias of page.aliases) {
@@ -455,16 +469,24 @@ function buildPageContent(
       lines.push(`  - ${JSON.stringify(tag)}`);
     }
   }
-  const summary = mergeSummary('', page.summary, maxSummaryChars);
+  const rawBody = page.contentBlocks.length > 0
+    ? page.contentBlocks.join('\n\n---\n\n').trim()
+    : '(no extracted content)';
+  const structuredBody = buildStructuredWikiBody(
+    resolvedTitle,
+    page.pageKey,
+    rawBody,
+    '(no extracted content)'
+  );
+  let summary = mergeSummary('', page.summary, maxSummaryChars);
+  if (!summary && page.contentBlocks.length > 0) {
+    summary = buildSummary(page.contentBlocks.join(' '), maxSummaryChars);
+  }
   lines.push(`sourceType: "story_extraction"`);
   lines.push(`pageKey: ${JSON.stringify(page.pageKey)}`);
   lines.push('---');
 
-  const body = page.contentBlocks.length > 0
-    ? page.contentBlocks.join('\n\n---\n\n')
-    : '(no extracted content)';
-
-  const baseContent = [...lines, '', body.trim(), ''].join('\n');
+  const baseContent = [...lines, '', structuredBody.trim(), ''].join('\n');
   if (!summary) {
     return baseContent;
   }
@@ -529,13 +551,17 @@ export async function extractWikiPagesFromStory(
         }
         const existing = pagesByKey.get(key) ?? {
           pageKey: key,
-          title: operation.title || key,
+          title: sanitizeWikiTitle(operation.title || '', deriveWikiTitleFromPageKey(key)),
           summary: '',
           keywords: [],
           aliases: [],
           contentBlocks: []
         };
-        existing.title = existing.title || operation.title || key;
+        if (operation.title) {
+          existing.title = sanitizeWikiTitle(operation.title, existing.title || deriveWikiTitleFromPageKey(key));
+        } else if (!existing.title) {
+          existing.title = deriveWikiTitleFromPageKey(key);
+        }
         existing.summary = mergeSummary(existing.summary, operation.summary, options.maxSummaryChars);
         existing.keywords = uniqueStrings([...existing.keywords, ...operation.keywords]);
         existing.aliases = uniqueStrings([...existing.aliases, ...operation.aliases]);

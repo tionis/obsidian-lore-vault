@@ -357,6 +357,8 @@ Story extraction behavior:
 - deterministic safe-merge policy (`summary` merge + keyword/alias union + unique content block append)
 - target folder can be selected by path or `Browse` picker
 - generated/updated page summaries are written into note `## Summary` sections
+- generated pages use structured note layout: top `# Title`, then `## Summary`, then sectioned body (`## Backstory`/`## Overview`/`## Details` based on page key)
+- extraction/update title sanitization strips type-label prefixes like `Character:` / `Location:` / `Faction:` from display titles
 - preview first, then explicit apply to write pages
 
 Story delta behavior (Phase 15 foundation):

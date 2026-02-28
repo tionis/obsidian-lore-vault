@@ -498,6 +498,11 @@ Implemented now:
   - iterative existing-page state injection between chunks
   - deterministic safe-merge policy
   - preview before apply writes
+  - extracted page layout normalization:
+    - top `# Title` heading
+    - `## Summary` section insertion
+    - sectioned body (`## Backstory`/`## Overview`/`## Details` inferred from page key)
+  - title sanitization removes type-label prefixes from display title (for example `Character:` / `Location:` / `Faction:`)
 
 Current mapping for imported notes:
 

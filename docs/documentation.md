@@ -177,6 +177,21 @@ npm test
 npm run profile:large-vault
 ```
 
+Release command (maintainers):
+
+```bash
+npm run release:version -- 0.0.8
+```
+
+Release behavior:
+
+- validates target version is strict `x.y.z` and greater than current `manifest.json` version
+- updates `manifest.json` and `versions.json` deterministically
+- creates commit `release <version>`
+- creates tag `<version>`
+- pushes branch + tag (`origin main <version>` by default)
+- supports `--dry-run`, `--remote`, `--branch`, and `--allow-dirty`
+
 Fixture coverage includes:
 
 - graph-order determinism

@@ -586,6 +586,31 @@ Mobile runtime safety gate:
 - `npm run check:mobile-runtime` fails if `src/` imports Node core modules (`node:*`, `fs`, `path`, `crypto`, etc.)
 - CI/release workflows run this guard before build/test
 
+## Release Version Automation
+
+Repo release command:
+
+```bash
+npm run release:version -- <x.y.z>
+```
+
+Implementation: `scripts/release-version.mjs`
+
+Contract:
+
+- validates strict semver (`x.y.z`) and enforces target version > `manifest.json` current version
+- requires current branch to match target push branch (default `main`)
+- checks for existing tag conflicts before mutating files
+- updates `manifest.json` `version` and appends deterministic sorted `versions.json` entry
+- runs `git add manifest.json versions.json`
+- creates commit message `release <version>`
+- creates tag `<version>`
+- pushes both branch and tag in one command (`git push origin main <version>` by default)
+- supports guarded operation flags:
+  - `--dry-run` for no-write preview (no file or git mutations)
+  - `--remote`, `--branch` for non-default upstream targets
+  - `--allow-dirty` to bypass clean-working-tree enforcement
+
 ## Large-Vault Profiling
 
 Use the deterministic profiling command for synthetic large-vault baselines:

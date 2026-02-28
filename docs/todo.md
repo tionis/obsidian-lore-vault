@@ -284,6 +284,9 @@ Reference design: `docs/planning.md`.
   - [x] expose editor menu stop action while generation is active
 - [x] Text command canon consistency default prompt update:
   - [x] bias default template toward lorebook factual consistency constraints
+- [x] Repository release automation:
+  - [x] add versioned release command that validates monotonic semver bump against `manifest.json`
+  - [x] update `manifest.json` + `versions.json`, commit/tag, and push branch + tag with configurable remote/branch
 - [ ] Advanced cost-management follow-up (far future):
   - [ ] integrate provider pricing metadata sync (OpenRouter-first)
   - [x] store/display estimated-vs-actual cost provenance per ledger row

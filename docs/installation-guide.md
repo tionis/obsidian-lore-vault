@@ -232,6 +232,14 @@ Since this is a manual installation, you'll need to manually update the plugin w
 2. Replace the files in your `.obsidian/plugins/lore-vault/` directory
 3. Restart Obsidian
 
+Maintainer release command (repository workflow):
+
+```bash
+npm run release:version -- 0.0.8
+```
+
+This command validates version progression, updates `manifest.json`/`versions.json`, creates commit `release 0.0.8`, tags `0.0.8`, and pushes branch + tag to `origin main` by default.
+
 ## Need Help?
 
 If you encounter any issues with installation or usage, please:

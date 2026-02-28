@@ -456,6 +456,11 @@ Any behavior change in these areas must be accompanied by:
 - docs updates (`README.md`, `docs/documentation.md`, this file)
 - roadmap/todo adjustment when applicable
 
+Mobile runtime safety gate:
+
+- `npm run check:mobile-runtime` fails if `src/` imports Node core modules (`node:*`, `fs`, `path`, `crypto`, etc.)
+- CI/release workflows run this guard before build/test
+
 ## Large-Vault Profiling
 
 Use the deterministic profiling command for synthetic large-vault baselines:

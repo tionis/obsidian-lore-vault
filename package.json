@@ -6,6 +6,7 @@
     "scripts": {
         "dev": "node esbuild.config.mjs",
         "lint": "eslint src tests --ext .ts",
+        "check:mobile-runtime": "node scripts/check-mobile-runtime.mjs",
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
         "test:compile": "rm -rf .test-dist && tsc -p tsconfig.tests.json",
         "test": "npm run test:compile && node --test .test-dist/tests/*.test.js",

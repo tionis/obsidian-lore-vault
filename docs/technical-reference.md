@@ -522,7 +522,7 @@ Explorer surface:
 - command: `Open LLM Operation Log Explorer`
 - view type: `lorevault-operation-log-view`
 - reads/parses the configured JSONL path, shows malformed line diagnostics, and supports text/status/kind filters
-- per-entry inspection includes request payload, attempt payloads/responses/errors, final output text, and normalized record JSON
+- per-entry inspection includes parsed request message/tool sections (newline-preserving textboxes), attempt payloads/responses/errors, final output text, and normalized record JSON
 
 ## Phase 14 Import/Extraction (Current Progress)
 

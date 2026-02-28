@@ -1003,6 +1003,12 @@
   font-size: 12px;
 }
 
+.lorevault-operation-log-entry-summary > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .lorevault-operation-log-status-ok {
   color: var(--color-green);
 }
@@ -1014,13 +1020,31 @@
 .lorevault-operation-log-json {
   margin: 6px 0;
   max-height: 320px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   padding: 8px;
   background: var(--background-secondary);
   font-size: 11px;
   line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lorevault-operation-log-textbox {
+  width: 100%;
+  margin: 6px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-secondary);
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  line-height: 1.35;
+  resize: vertical;
+  min-height: 96px;
+  box-sizing: border-box;
 }
 
 @media (max-width: 900px) {

@@ -21,6 +21,7 @@ Reference design: `docs/planning.md`.
 ## Active Execution Order
 
 1. Refine structured-merge conflict UX.
+2. Add story steering controls and context staging inspector.
 
 ## Completed Foundations (Historical)
 
@@ -184,6 +185,46 @@ Reference design: `docs/planning.md`.
 - [x] Enforce vault-relative export paths in settings normalization/path resolution (absolute paths rejected).
 - [x] Add mobile-focused regression tests for deterministic export paths and adapter IO.
 - [x] Validate mobile QA matrix and flip `manifest.json isDesktopOnly` to `false`.
+
+## Phase 20: Story Steering and Context Staging
+
+- [ ] Add explicit steering layers for completion/chat assembly:
+  - [ ] pinned session instructions (goal/style/constraints)
+  - [ ] per-story notes (author-note style)
+  - [ ] scene/chapter intent block
+- [ ] Add optional inline directive steering shorthand:
+  - [ ] support strict-prefix directives only (`[LV: ...]` and `<!-- LV: ... -->`)
+  - [ ] parse directives from active story note near-cursor window only
+  - [ ] ignore non-prefixed bracket text (for example `[Editor Note: ...]`) by default
+  - [ ] preserve deterministic directive order and dedupe behavior
+- [ ] Add inline-directive safety and visibility rules:
+  - [ ] show resolved directives in context inspector as a separate steering layer
+  - [ ] exclude directives from lore exports, summary extraction, and wiki import/update pipelines
+  - [ ] enforce per-turn directive count/token caps
+- [ ] Add configurable placement policy per layer (`system` vs pre-history vs pre-assistant context).
+- [ ] Add deterministic per-layer token reservations with visible headroom:
+  - [ ] reserve budget slices for system/steering/history/retrieval/output
+  - [ ] scale reservations against configured model context window
+- [ ] Add deterministic overflow policy:
+  - [ ] trim/compress in fixed order by layer priority
+  - [ ] never silently drop pinned steering blocks
+- [ ] Extend generation inspector with full prompt-staging visibility:
+  - [ ] rendered layer order
+  - [ ] token usage per layer
+  - [ ] trims/compressions and rationale
+- [ ] Add continuity-state tracking primitives for long-form drafting:
+  - [ ] active plot threads
+  - [ ] unresolved commitments/open loops
+  - [ ] recent canon/fact deltas
+  - [ ] selectable inclusion in generation context
+- [ ] Add tests for deterministic layer ordering, budget partitioning, and overflow behavior.
+- [ ] Add fixtures covering large-context models (for example `200k`) to verify scaling logic.
+- [ ] Add tests for inline directive parsing/exclusion/ordering and inspector visibility.
+- [ ] Add gradual async hashing migration plan (WebCrypto-backed):
+  - [ ] add async hash helper surface (`sha256HexAsync`) and dual-path tests
+  - [ ] migrate async-safe call sites first (non-hot-path cache/index operations)
+  - [ ] keep sync hash path for deterministic hot paths until pipeline async refactor is complete
+  - [ ] remove sync hashing fallback only after all runtime call sites are async-compatible
 
 ## Default Decisions (2026-02-27)
 

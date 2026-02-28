@@ -2291,6 +2291,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       void this.buildActiveScopeExport();
     });
 
+    this.addRibbonIcon('book-open-text', 'Continue Story with Context', () => {
+      void this.continueStoryWithContext();
+    });
+
     this.addRibbonIcon('lorevault-manager', 'Open LoreVault Manager', () => {
       void this.openLorebooksManagerView();
     });
@@ -2381,6 +2385,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Continue Story with Context',
       callback: async () => {
         await this.continueStoryWithContext();
+      },
+      editorCheckCallback: (checking: boolean) => {
+        const hasActiveMarkdown = Boolean(this.app.workspace.getActiveViewOfType(MarkdownView));
+        if (!hasActiveMarkdown) {
+          return false;
+        }
+        if (!checking) {
+          void this.continueStoryWithContext();
+        }
+        return true;
       }
     });
 

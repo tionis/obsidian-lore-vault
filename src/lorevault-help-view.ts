@@ -173,8 +173,28 @@ export class LorevaultHelpView extends ItemView {
         'Use commands Export Usage Report (JSON/CSV) for deterministic report exports.',
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
         'Story Chat supports per-chat scope selection, manual context, specific-note context lists, steering text fields, and continuity controls.',
-        'Assistant turns expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.'
+        'Story Chat assistant-turn details expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.',
+        'Manager -> Generation Monitor -> Selected Context Items shows inline directives, continuity state, prompt-layer usage, overflow policy decisions, and selected retrieval items.',
+        'Writing Completion settings expose steering layer placement controls for pinned/story/scene/directive layers.'
       ],
+      codeSample: [
+        '---',
+        'lvPinnedInstructions: Keep tense in past tense and avoid omniscient POV.',
+        'lvStoryNotes: Current chapter should escalate interpersonal tension.',
+        'lvSceneIntent: End with a hard decision and unresolved threat.',
+        'lvPlotThreads:',
+        '  - The northern seal keeps weakening each night.',
+        '  - The envoy might be a disguised agent.',
+        'lvOpenLoops:',
+        '  - Who sabotaged the skybridge anchors?',
+        'lvCanonDeltas:',
+        '  - Ari now knows the true sigil sequence.',
+        '---',
+        '',
+        'Text near cursor can include directives:',
+        '[LV: Keep dialogue concise and subtext-heavy.]',
+        '<!-- LV: Do not resolve the envoy reveal in this scene. -->'
+      ].join('\n'),
       actions: [
         { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }
       ]

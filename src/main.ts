@@ -7,6 +7,7 @@ import {
   DEFAULT_SETTINGS,
   LoreBookEntry,
   PromptLayerPlacement,
+  PromptLayerUsage,
   TextCommandPromptTemplate,
   StoryChatContextMeta,
   StoryChatForkSnapshot,
@@ -147,6 +148,12 @@ export interface GenerationTelemetry {
   ragCount: number;
   worldInfoItems: string[];
   ragItems: string[];
+  inlineDirectiveItems: string[];
+  continuityPlotThreads: string[];
+  continuityOpenLoops: string[];
+  continuityCanonDeltas: string[];
+  layerUsage: PromptLayerUsage[];
+  overflowTrace: string[];
   contextLayerTrace: string[];
   lastError: string;
 }
@@ -545,6 +552,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       ragCount: 0,
       worldInfoItems: [],
       ragItems: [],
+      inlineDirectiveItems: [],
+      continuityPlotThreads: [],
+      continuityOpenLoops: [],
+      continuityCanonDeltas: [],
+      layerUsage: [],
+      overflowTrace: [],
       contextLayerTrace: [],
       lastError: ''
     };
@@ -682,6 +695,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       scopes: [...this.generationTelemetry.scopes],
       worldInfoItems: [...this.generationTelemetry.worldInfoItems],
       ragItems: [...this.generationTelemetry.ragItems],
+      inlineDirectiveItems: [...this.generationTelemetry.inlineDirectiveItems],
+      continuityPlotThreads: [...this.generationTelemetry.continuityPlotThreads],
+      continuityOpenLoops: [...this.generationTelemetry.continuityOpenLoops],
+      continuityCanonDeltas: [...this.generationTelemetry.continuityCanonDeltas],
+      layerUsage: [...this.generationTelemetry.layerUsage.map(layer => ({ ...layer }))],
+      overflowTrace: [...this.generationTelemetry.overflowTrace],
       contextLayerTrace: [...this.generationTelemetry.contextLayerTrace]
     };
   }
@@ -714,6 +733,24 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     if (update.ragItems) {
       next.ragItems = [...update.ragItems];
+    }
+    if (update.inlineDirectiveItems) {
+      next.inlineDirectiveItems = [...update.inlineDirectiveItems];
+    }
+    if (update.continuityPlotThreads) {
+      next.continuityPlotThreads = [...update.continuityPlotThreads];
+    }
+    if (update.continuityOpenLoops) {
+      next.continuityOpenLoops = [...update.continuityOpenLoops];
+    }
+    if (update.continuityCanonDeltas) {
+      next.continuityCanonDeltas = [...update.continuityCanonDeltas];
+    }
+    if (update.layerUsage) {
+      next.layerUsage = [...update.layerUsage.map(layer => ({ ...layer }))];
+    }
+    if (update.overflowTrace) {
+      next.overflowTrace = [...update.overflowTrace];
     }
     if (update.contextLayerTrace) {
       next.contextLayerTrace = [...update.contextLayerTrace];
@@ -756,6 +793,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       ragCount: 0,
       worldInfoItems: [],
       ragItems: [],
+      inlineDirectiveItems: [],
+      continuityPlotThreads: [],
+      continuityOpenLoops: [],
+      continuityCanonDeltas: [],
+      layerUsage: [],
+      overflowTrace: [],
       contextLayerTrace: []
     });
     this.setGenerationStatus('idle', 'idle');
@@ -2402,6 +2445,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       ragCount: contextMeta.ragCount,
       worldInfoItems,
       ragItems,
+      inlineDirectiveItems: resolvedInlineDirectiveItems,
+      continuityPlotThreads: contextMeta.continuityPlotThreads ?? [],
+      continuityOpenLoops: contextMeta.continuityOpenLoops ?? [],
+      continuityCanonDeltas: contextMeta.continuityCanonDeltas ?? [],
+      layerUsage: contextMeta.layerUsage ?? [],
+      overflowTrace: contextMeta.overflowTrace ?? [],
       contextLayerTrace: contextMeta.layerTrace ?? [],
       lastError: ''
     });
@@ -2486,6 +2535,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       ragCount: contextMeta.ragCount,
       worldInfoItems: contextMeta.worldInfoItems,
       ragItems: contextMeta.ragItems,
+      inlineDirectiveItems: resolvedInlineDirectiveItems,
+      continuityPlotThreads: contextMeta.continuityPlotThreads ?? [],
+      continuityOpenLoops: contextMeta.continuityOpenLoops ?? [],
+      continuityCanonDeltas: contextMeta.continuityCanonDeltas ?? [],
+      layerUsage: contextMeta.layerUsage ?? [],
+      overflowTrace: contextMeta.overflowTrace ?? [],
       contextLayerTrace: contextMeta.layerTrace ?? [],
       lastError: ''
     });
@@ -4354,6 +4409,18 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (overflowResult.trace.length > 0) {
         contextLayerTrace.push(...overflowResult.trace.map(trace => `overflow_policy: ${trace}`));
       }
+      const layerUsage = toPromptLayerUsage([
+        {
+          key: 'system_steering',
+          label: 'Steering (system)',
+          content: systemSteeringMarkdown,
+          reservedTokens: reservedByPlacement('system'),
+          placement: 'system',
+          trimMode: 'head',
+          minTokens: 0
+        },
+        ...overflowResult.segments
+      ]);
       const scopeLabel = this.renderScopeListLabel(selectedScopeLabels);
       this.updateGenerationTelemetry({
         state: 'generating',
@@ -4367,6 +4434,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         ragCount: totalRag,
         worldInfoItems: worldInfoDetails,
         ragItems: ragDetails,
+        inlineDirectiveItems: resolvedInlineDirectiveItems,
+        continuityPlotThreads: continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads : [],
+        continuityOpenLoops: continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops : [],
+        continuityCanonDeltas: continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas : [],
+        layerUsage,
+        overflowTrace: [...overflowResult.trace],
         contextLayerTrace,
         generatedTokens: 0,
         lastError: ''
@@ -4509,6 +4582,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         ragCount: totalRag,
         worldInfoItems: worldInfoDetails,
         ragItems: ragDetails,
+        inlineDirectiveItems: resolvedInlineDirectiveItems,
+        continuityPlotThreads: continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads : [],
+        continuityOpenLoops: continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops : [],
+        continuityCanonDeltas: continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas : [],
+        layerUsage,
+        overflowTrace: [...overflowResult.trace],
         contextLayerTrace,
         lastError: ''
       });

@@ -674,6 +674,11 @@ export class StoryChatView extends ItemView {
 
     const steeringSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
     steeringSection.createEl('strong', { text: 'Steering Controls' });
+    steeringSection.createEl('p', {
+      text: 'These layers are injected before retrieval context. Placement is configured in Settings -> Writing Completion.'
+    });
+
+    steeringSection.createEl('label', { text: 'Pinned Instructions' });
 
     const pinnedInput = steeringSection.createEl('textarea', {
       cls: 'lorevault-chat-manual-input'
@@ -685,6 +690,8 @@ export class StoryChatView extends ItemView {
       this.scheduleConversationSave();
     });
 
+    steeringSection.createEl('label', { text: 'Story Notes' });
+
     const storyNotesInput = steeringSection.createEl('textarea', {
       cls: 'lorevault-chat-manual-input'
     });
@@ -694,6 +701,8 @@ export class StoryChatView extends ItemView {
       this.storyNotes = storyNotesInput.value;
       this.scheduleConversationSave();
     });
+
+    steeringSection.createEl('label', { text: 'Scene Intent' });
 
     const sceneIntentInput = steeringSection.createEl('textarea', {
       cls: 'lorevault-chat-manual-input'
@@ -707,6 +716,9 @@ export class StoryChatView extends ItemView {
 
     const continuitySection = controls.createDiv({ cls: 'lorevault-chat-manual' });
     continuitySection.createEl('strong', { text: 'Continuity State' });
+    continuitySection.createEl('p', {
+      text: 'One item per line. Toggle categories on/off for this conversation.'
+    });
 
     const continuityToggleRow = continuitySection.createDiv({ cls: 'lorevault-chat-scope-list' });
     const plotToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
@@ -736,6 +748,8 @@ export class StoryChatView extends ItemView {
     });
     canonToggleRow.createEl('label', { text: 'Include Recent Canon Deltas' });
 
+    continuitySection.createEl('label', { text: 'Active Plot Threads' });
+
     const plotThreadsInput = continuitySection.createEl('textarea', {
       cls: 'lorevault-chat-manual-input'
     });
@@ -746,6 +760,8 @@ export class StoryChatView extends ItemView {
       this.scheduleConversationSave();
     });
 
+    continuitySection.createEl('label', { text: 'Unresolved Commitments / Open Loops' });
+
     const openLoopsInput = continuitySection.createEl('textarea', {
       cls: 'lorevault-chat-manual-input'
     });
@@ -755,6 +771,8 @@ export class StoryChatView extends ItemView {
       this.continuityOpenLoops = this.parseMultilineList(openLoopsInput.value);
       this.scheduleConversationSave();
     });
+
+    continuitySection.createEl('label', { text: 'Recent Canon / Fact Deltas' });
 
     const canonDeltasInput = continuitySection.createEl('textarea', {
       cls: 'lorevault-chat-manual-input'

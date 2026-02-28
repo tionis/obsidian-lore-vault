@@ -3,6 +3,7 @@ import LoreBookConverterPlugin from './main';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { ScopeSummary, buildScopeSummaries } from './lorebooks-manager-data';
 import { UsageLedgerTotals } from './usage-ledger-report';
+import { PromptLayerUsage } from './models';
 
 export const LOREVAULT_MANAGER_VIEW_TYPE = 'lorevault-manager-view';
 
@@ -31,6 +32,10 @@ function formatUsd(value: number): string {
 
 function formatCostSummary(label: string, totals: UsageLedgerTotals): string {
   return `${label}: ${totals.requests} req | tokens ${formatTokenValue(totals.totalTokens)} | known ${formatUsd(totals.costUsdKnown)} | unknown ${totals.unknownCostCount}`;
+}
+
+function formatLayerUsageRow(layer: PromptLayerUsage): string {
+  return `${layer.layer}@${layer.placement}: ${formatTokenValue(layer.usedTokens)}/${formatTokenValue(layer.reservedTokens)} (headroom ${formatTokenValue(layer.headroomTokens)})${layer.trimmed ? ` [trimmed: ${layer.trimReason ?? 'budget'}]` : ''}`;
 }
 
 export class LorebooksManagerView extends ItemView {
@@ -190,6 +195,51 @@ export class LorebooksManagerView extends ItemView {
       const ragList = details.createEl('ul');
       for (const item of telemetry.ragItems) {
         ragList.createEl('li', { text: item });
+      }
+    }
+
+    const steeringHeading = details.createEl('h4', { text: 'inline directives' });
+    steeringHeading.addClass('lorevault-manager-subheading');
+    if (telemetry.inlineDirectiveItems.length === 0) {
+      details.createEl('p', { text: '(none)' });
+    } else {
+      const directiveList = details.createEl('ul');
+      for (const item of telemetry.inlineDirectiveItems) {
+        directiveList.createEl('li', { text: item });
+      }
+    }
+
+    const continuityHeading = details.createEl('h4', { text: 'continuity state' });
+    continuityHeading.addClass('lorevault-manager-subheading');
+    details.createEl('p', {
+      text: `plot threads: ${telemetry.continuityPlotThreads.join(' | ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `open loops: ${telemetry.continuityOpenLoops.join(' | ') || '(none)'}`
+    });
+    details.createEl('p', {
+      text: `canon deltas: ${telemetry.continuityCanonDeltas.join(' | ') || '(none)'}`
+    });
+
+    const layerUsageHeading = details.createEl('h4', { text: 'prompt layer usage' });
+    layerUsageHeading.addClass('lorevault-manager-subheading');
+    if (telemetry.layerUsage.length === 0) {
+      details.createEl('p', { text: '(none)' });
+    } else {
+      const layerUsageList = details.createEl('ul');
+      for (const layer of telemetry.layerUsage) {
+        layerUsageList.createEl('li', { text: formatLayerUsageRow(layer) });
+      }
+    }
+
+    const overflowHeading = details.createEl('h4', { text: 'overflow policy decisions' });
+    overflowHeading.addClass('lorevault-manager-subheading');
+    if (telemetry.overflowTrace.length === 0) {
+      details.createEl('p', { text: '(none)' });
+    } else {
+      const overflowList = details.createEl('ul');
+      for (const item of telemetry.overflowTrace) {
+        overflowList.createEl('li', { text: item });
       }
     }
 

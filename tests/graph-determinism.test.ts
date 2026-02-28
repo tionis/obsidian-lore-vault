@@ -175,7 +175,8 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       maxMessages: 80
     },
     storySteering: {
-      folder: 'LoreVault/steering'
+      folder: 'LoreVault/steering',
+      extractionSanitization: 'strict'
     },
     textCommands: {
       autoAcceptEdits: false,

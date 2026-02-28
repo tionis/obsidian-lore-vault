@@ -356,7 +356,9 @@ Long-form story metadata (new):
 Story Steering extraction behavior:
 
 - extraction focuses on control metadata (instructions, intent, active threads/loops/deltas)
-- LoreVault filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
+- optional sanitization mode controls filtering:
+  - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
+  - `off`: keeps raw extracted content
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.

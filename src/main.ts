@@ -103,6 +103,7 @@ import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline
 import {
   normalizeStorySteeringState,
   parseStorySteeringExtractionResponse,
+  sanitizeStorySteeringExtractionState,
   StorySteeringEffectiveState,
   StorySteeringScope,
   StorySteeringScopeType,
@@ -1237,8 +1238,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const parsed = parseStorySteeringExtractionResponse(rawResponse);
+    const proposal = this.settings.storySteering.extractionSanitization === 'off'
+      ? normalizeStorySteeringState(parsed)
+      : sanitizeStorySteeringExtractionState(parsed);
     return {
-      proposal: parsed,
+      proposal,
       notePath: activeFile.path,
       sourceLabel,
       sourceChars: truncatedSource.length
@@ -3123,6 +3127,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       console.warn(`Invalid story steering folder "${merged.storySteering.folder}". Falling back to default.`);
       merged.storySteering.folder = DEFAULT_SETTINGS.storySteering.folder;
     }
+    const extractionSanitization = (merged.storySteering.extractionSanitization ?? '').toString().trim().toLowerCase();
+    merged.storySteering.extractionSanitization = extractionSanitization === 'off'
+      ? 'off'
+      : DEFAULT_SETTINGS.storySteering.extractionSanitization;
 
     merged.textCommands.autoAcceptEdits = Boolean(merged.textCommands.autoAcceptEdits);
     merged.textCommands.defaultIncludeLorebookContext = Boolean(merged.textCommands.defaultIncludeLorebookContext);

@@ -177,6 +177,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Steering uses move-safe note IDs (`lvNoteId`) in frontmatter; missing IDs are auto-generated when scope resolution runs.',
         'Continue Story and Story Chat merge scoped steering with note/chat/frontmatter steering at generation time.',
         'Story Steering panel can extract proposed steering from active note text or near-cursor story window via LLM, then opens a review modal before apply.',
+        'Story Steering extraction sanitization is configurable in settings (`strict` default, or `off` for raw extraction output).',
         'Manager -> Generation Monitor -> Selected Context Items shows inline directives, continuity state, prompt-layer usage, overflow policy decisions, and selected retrieval items.',
         'Writing Completion settings expose steering layer placement controls for pinned/story/scene/directive layers.'
       ],

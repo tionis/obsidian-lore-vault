@@ -32,6 +32,7 @@ export class StorySteeringView extends ItemView {
   private extractionInFlight = false;
   private extractionSource: 'active_note' | 'story_window' | null = null;
   private extractionAbortController: AbortController | null = null;
+  private extractionInstruction = '';
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -96,7 +97,12 @@ export class StorySteeringView extends ItemView {
     await this.render();
 
     try {
-      const proposal = await this.plugin.extractStorySteeringProposal(source, this.state, controller.signal);
+      const proposal = await this.plugin.extractStorySteeringProposal(
+        source,
+        this.state,
+        this.extractionInstruction,
+        controller.signal
+      );
       const review = await this.reviewExtraction(
         proposal.sourceLabel,
         proposal.notePath,
@@ -434,7 +440,16 @@ export class StorySteeringView extends ItemView {
       const extractionSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
       extractionSection.createEl('h3', { text: 'LLM Assistance' });
       extractionSection.createEl('p', {
-        text: 'Extract proposed steering from story text, review/edit in a modal, then optionally save.'
+        text: 'Update steering from story text, review/edit in a modal, then optionally save.'
+      });
+      extractionSection.createEl('label', { text: 'Optional Update Prompt' });
+      const extractionPromptInput = extractionSection.createEl('textarea', {
+        cls: 'lorevault-chat-manual-input'
+      });
+      extractionPromptInput.placeholder = 'Optional: tell the LLM what should change in steering (for example "tighten pacing guidance and add unresolved political threads").';
+      extractionPromptInput.value = this.extractionInstruction;
+      extractionPromptInput.addEventListener('input', () => {
+        this.extractionInstruction = extractionPromptInput.value.trim();
       });
       if (this.extractionInFlight) {
         const label = this.extractionSource === 'active_note'
@@ -450,8 +465,8 @@ export class StorySteeringView extends ItemView {
       const extractionActions = extractionSection.createDiv({ cls: 'lorevault-help-actions' });
       const extractNoteButton = extractionActions.createEl('button', {
         text: this.extractionInFlight && this.extractionSource === 'active_note'
-          ? 'Extracting...'
-          : 'Extract from Active Note'
+          ? 'Updating...'
+          : 'Update from Active Note'
       });
       extractNoteButton.disabled = this.extractionInFlight;
       extractNoteButton.addEventListener('click', () => {
@@ -459,8 +474,8 @@ export class StorySteeringView extends ItemView {
       });
       const extractWindowButton = extractionActions.createEl('button', {
         text: this.extractionInFlight && this.extractionSource === 'story_window'
-          ? 'Extracting...'
-          : 'Extract from Story Window'
+          ? 'Updating...'
+          : 'Update from Story Window'
       });
       extractWindowButton.disabled = this.extractionInFlight;
       extractWindowButton.addEventListener('click', () => {

@@ -100,6 +100,9 @@ If you prefer to build the plugin from source:
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - Optional: create model presets and select an active completion preset for quick A/B comparison
+   - Optional: configure Story Chat tool calling (`Enable Story Chat Tool Calls`, call/token/time limits, optional write-action gate)
+   - Optional: enable LLM Operation Log (full request/response debug logs), choose log path and retention
+   - Optional: open `LLM Operation Log Explorer` from settings (or command palette) to inspect/search captured calls in-plugin
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
@@ -129,10 +132,13 @@ If you prefer to build the plugin from source:
    - Optional: define story scopes in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
+   - If needed, stop an active run with command `Stop Active Generation` (also available in editor menu while running)
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - Story Steering writes/uses `lvNoteId` in frontmatter for move-safe note/chapter scope links (auto-generated when needed)
+   - Story Steering LLM assistance supports optional update prompts so you can request targeted steering changes before review/save
+   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads without leaving Obsidian
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
 5. **Open embedded help**
@@ -169,11 +175,12 @@ If you prefer to build the plugin from source:
    - Select lorebook scopes to use (or disable lorebook context for manual-only chat)
    - Optional: add manual context text in the panel
    - Optional: add specific note references using `Add Note` or `Add Active`; remove list items as needed
+   - Optional: enable Story Chat tool calls in settings to allow bounded lorebook/story/steering tools during chat turns
    - Send prompts and watch streamed responses
    - Use message actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
    - Use message version selectors to switch between regenerated assistant variants
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
-   - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, and tool-hook layer traces
+   - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, retrieval tool-hook traces, and chat agent tool call/write traces
 
 9. **Import Existing Lorebook JSON (Phase 14)**
   - Run command `Import SillyTavern Lorebook`

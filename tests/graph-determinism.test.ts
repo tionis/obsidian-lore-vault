@@ -135,6 +135,11 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       budgetByModelUsd: {},
       budgetByScopeUsd: {}
     },
+    operationLog: {
+      enabled: false,
+      path: '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
+      maxEntries: 400
+    },
     completion: {
       enabled: false,
       provider: 'openrouter',
@@ -176,7 +181,14 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       noteContextRefs: [],
       messages: [],
       forkSnapshots: [],
-      maxMessages: 80
+      maxMessages: 80,
+      toolCalls: {
+        enabled: false,
+        maxCallsPerTurn: 6,
+        maxResultTokensPerTurn: 2400,
+        maxPlanningTimeMs: 10000,
+        allowWriteActions: false
+      }
     },
     storySteering: {
       folder: 'LoreVault/steering',

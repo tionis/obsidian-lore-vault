@@ -339,8 +339,12 @@ Current status:
   - merged with chat/continuation steering assembly without mandatory `storyId`
 - LLM-assisted extraction actions are implemented in the Story Steering panel:
   - extract from active note or story window
+  - optional per-run update prompt to steer what should change
+  - existing steering state is treated as baseline; missing evidence preserves prior values
   - review/edit modal before applying to panel state
   - explicit manual save step to persist scope note updates
+- story text completion now supports explicit stop control (`Stop Active Generation` command + editor-menu stop while running)
+- optional operation log captures full LLM request/response payloads for completion and planner calls
 
 Planned steering primitives:
 
@@ -442,6 +446,7 @@ Non-primary, opt-in layers:
 
 - embedding fallback retrieval when graph/entity confidence is low
 - tool-call retrieval during generation/chat (`search_entries`, `expand_neighbors`, `get_entry`)
+- Story Chat agent tool loop for bounded lorebook/story/steering reads and optional write actions (`search_lorebook_entries`, `get_lorebook_entry`, `search_story_notes`, `read_story_note`, `get_steering_scope`, optional writes)
 - intermediary summary generation for oversized contexts with explicit traceability
 
 ## Future: Retrieval Quality Scoring and Tuning

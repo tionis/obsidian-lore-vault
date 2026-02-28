@@ -788,6 +788,65 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         });
       }));
 
+    new Setting(containerEl)
+      .setName('Enable Story Chat Tool Calls')
+      .setDesc('Allow Story Chat to run bounded LLM tool calls for lorebook lookup and linked-story/steering access before final response generation.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.storyChat.toolCalls.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.storyChat.toolCalls.enabled = value;
+          await this.persistSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Story Chat Tool Calls Per Turn')
+      .setDesc('Hard cap on Story Chat tool calls per turn (1-16).')
+      .addText(text => text
+        .setValue(this.plugin.settings.storyChat.toolCalls.maxCallsPerTurn.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 1 && numValue <= 16) {
+            this.plugin.settings.storyChat.toolCalls.maxCallsPerTurn = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Story Chat Tool Result Token Cap')
+      .setDesc('Hard cap for accumulated Story Chat tool result payload tokens per turn.')
+      .addText(text => text
+        .setValue(this.plugin.settings.storyChat.toolCalls.maxResultTokensPerTurn.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 128) {
+            this.plugin.settings.storyChat.toolCalls.maxResultTokensPerTurn = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Story Chat Tool Planning Time Cap (ms)')
+      .setDesc('Maximum planner-loop time budget for Story Chat tool execution per turn.')
+      .addText(text => text
+        .setValue(this.plugin.settings.storyChat.toolCalls.maxPlanningTimeMs.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 500) {
+            this.plugin.settings.storyChat.toolCalls.maxPlanningTimeMs = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Allow Story Chat Tool Write Actions')
+      .setDesc('Allow tool actions that write to steering notes or create lorebook notes. Writes are still blocked unless the current user turn explicitly asks for an edit/create action.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.storyChat.toolCalls.allowWriteActions)
+        .onChange(async (value) => {
+          this.plugin.settings.storyChat.toolCalls.allowWriteActions = value;
+          await this.persistSettings();
+        }));
+
     containerEl.createEl('h3', { text: 'Story Steering' });
 
     let steeringFolderInput: TextComponent | null = null;
@@ -818,7 +877,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Story Steering Extraction Sanitization')
-      .setDesc('Strict filters lorebook-like profile facts from LLM extraction proposals. Off keeps raw extracted content.')
+      .setDesc('Strict filters lorebook-like profile facts from LLM steering update proposals. Off keeps raw extracted content.')
       .addDropdown(dropdown => dropdown
         .addOptions({
           strict: 'Strict (Recommended)',
@@ -1582,6 +1641,52 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Invalid scope budgets: ${message}`);
           }
+        }));
+
+    containerEl.createEl('h3', { text: 'LLM Operation Log' });
+
+    new Setting(containerEl)
+      .setName('Enable LLM Operation Log')
+      .setDesc('Persist full LLM request/response content for debugging. Includes full prompts, tool planner messages, and model outputs.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.operationLog.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.operationLog.enabled = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('LLM Operation Log Path')
+      .setDesc('Vault-relative JSONL file path for operation logs. One JSON object per line.')
+      .addText(text => text
+        .setPlaceholder('.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl')
+        .setValue(this.plugin.settings.operationLog.path)
+        .onChange(async (value) => {
+          const normalized = this.normalizePathInput(value);
+          this.plugin.settings.operationLog.path = normalized || DEFAULT_SETTINGS.operationLog.path;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
+      .setName('LLM Operation Log Max Entries')
+      .setDesc('Maximum number of recent log entries kept in the log file (oldest entries are trimmed).')
+      .addText(text => text
+        .setValue(this.plugin.settings.operationLog.maxEntries.toString())
+        .onChange(async (value) => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 20) {
+            this.plugin.settings.operationLog.maxEntries = numValue;
+            await this.plugin.saveData(this.plugin.settings);
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Open LLM Operation Log Explorer')
+      .setDesc('Open the built-in panel to browse and inspect captured LLM operations.')
+      .addButton(button => button
+        .setButtonText('Open Explorer')
+        .onClick(() => {
+          void this.plugin.openOperationLogView();
         }));
 
     containerEl.createEl('h3', { text: 'Embeddings & Semantic RAG' });

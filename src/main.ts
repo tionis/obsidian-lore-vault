@@ -47,6 +47,10 @@ import {
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LOREVAULT_STORY_STEERING_VIEW_TYPE, StorySteeringView } from './story-steering-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
+import {
+  LOREVAULT_OPERATION_LOG_VIEW_TYPE,
+  LorevaultOperationLogView
+} from './lorevault-operation-log-view';
 import { LOREVAULT_IMPORT_VIEW_TYPE, LorevaultImportView } from './lorevault-import-view';
 import {
   LOREVAULT_STORY_EXTRACT_VIEW_TYPE,
@@ -60,7 +64,11 @@ import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
 import { EmbeddingService } from './embedding-service';
 import {
+  CompletionOperationLogRecord,
+  CompletionToolDefinition,
+  CompletionToolPlannerMessage,
   CompletionUsageReport,
+  createCompletionToolPlanner,
   createCompletionRetrievalToolPlanner,
   requestStoryContinuation,
   requestStoryContinuationStream
@@ -113,7 +121,13 @@ import {
   UsageLedgerReportSnapshot
 } from './usage-ledger-report';
 import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
-import { getVaultBasename, normalizeVaultPath, normalizeVaultRelativePath } from './vault-path-utils';
+import {
+  ensureParentVaultFolderForFile,
+  getVaultBasename,
+  joinVaultPath,
+  normalizeVaultPath,
+  normalizeVaultRelativePath
+} from './vault-path-utils';
 import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
 import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
 import {
@@ -209,6 +223,40 @@ export interface StoryChatTurnResult {
   contextMeta: StoryChatContextMeta;
 }
 
+type StoryChatAgentToolName =
+  | 'search_lorebook_entries'
+  | 'get_lorebook_entry'
+  | 'search_story_notes'
+  | 'read_story_note'
+  | 'get_steering_scope'
+  | 'update_steering_scope'
+  | 'create_lorebook_entry_note';
+
+interface StoryChatAgentToolCall {
+  id: string;
+  name: StoryChatAgentToolName;
+  argumentsJson: string;
+}
+
+interface StoryChatAgentToolExecutionResult {
+  ok: boolean;
+  payload: Record<string, unknown>;
+  estimatedTokens: number;
+  trace: string;
+  isWrite: boolean;
+  callSummary: string;
+  writeSummary?: string;
+  contextSnippet?: string;
+}
+
+interface StoryChatAgentToolRunResult {
+  markdown: string;
+  usedTokens: number;
+  trace: string[];
+  callSummaries: string[];
+  writeSummaries: string[];
+}
+
 export type StorySteeringExtractionSource = 'active_note' | 'story_window';
 
 interface ConvertToLorebookOptions {
@@ -236,9 +284,57 @@ export default class LoreBookConverterPlugin extends Plugin {
   private exportRebuildTimer: number | null = null;
   private exportRebuildInFlight = false;
   private pendingExportScopes = new Set<string>();
+  private operationLogWriteQueue: Promise<void> = Promise.resolve();
+  private operationLogViewRefreshTimer: number | null = null;
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
+  }
+
+  public getOperationLogPath(): string {
+    const raw = (this.settings.operationLog.path ?? '')
+      .toString()
+      .trim()
+      .replace(/\\/g, '/');
+    return raw || DEFAULT_SETTINGS.operationLog.path;
+  }
+
+  public async appendCompletionOperationLog(record: CompletionOperationLogRecord): Promise<void> {
+    if (!this.settings.operationLog.enabled) {
+      return;
+    }
+
+    const path = this.getOperationLogPath();
+    const maxEntries = Math.max(20, Math.min(5000, Math.floor(Number(this.settings.operationLog.maxEntries) || DEFAULT_SETTINGS.operationLog.maxEntries)));
+    const serialized = JSON.stringify(record);
+
+    this.operationLogWriteQueue = this.operationLogWriteQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await ensureParentVaultFolderForFile(this.app, path);
+          const exists = await this.app.vault.adapter.exists(path);
+          let lines: string[] = [];
+          if (exists) {
+            const current = await this.app.vault.adapter.read(path);
+            lines = current
+              .replace(/\r\n?/g, '\n')
+              .split('\n')
+              .map(line => line.trim())
+              .filter(Boolean);
+          }
+          lines.push(serialized);
+          if (lines.length > maxEntries) {
+            lines = lines.slice(lines.length - maxEntries);
+          }
+          await this.app.vault.adapter.write(path, `${lines.join('\n')}\n`);
+        } catch (error) {
+          console.warn('LoreVault: Failed to persist operation log entry:', error);
+        }
+      });
+
+    await this.operationLogWriteQueue;
+    this.queueOperationLogViewRefresh();
   }
 
   private estimateTokens(text: string): number {
@@ -1075,6 +1171,25 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshOperationLogViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_OPERATION_LOG_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorevaultOperationLogView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
+  private queueOperationLogViewRefresh(): void {
+    if (this.operationLogViewRefreshTimer !== null) {
+      return;
+    }
+    this.operationLogViewRefreshTimer = window.setTimeout(() => {
+      this.operationLogViewRefreshTimer = null;
+      this.refreshOperationLogViews();
+    }, 220);
+  }
+
   async openLorebooksManagerView(): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_MANAGER_VIEW_TYPE)[0];
 
@@ -1177,6 +1292,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultHelpView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openOperationLogView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_OPERATION_LOG_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_OPERATION_LOG_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultOperationLogView) {
       leaf.view.refresh();
     }
   }
@@ -1547,6 +1679,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   public async extractStorySteeringProposal(
     source: StorySteeringExtractionSource,
     currentState: StorySteeringState,
+    updateInstruction = '',
     abortSignal?: AbortSignal
   ): Promise<{
     proposal: StorySteeringState;
@@ -1592,20 +1725,31 @@ export default class LoreBookConverterPlugin extends Plugin {
       : this.trimTextHeadToTokenBudget(sourceText, sourceTokenBudget);
 
     const normalizedCurrent = normalizeStorySteeringState(currentState);
+    const normalizedUpdateInstruction = updateInstruction.trim();
     const systemPrompt = [
-      'You are a writing assistant extracting structured story steering state.',
+      'You are a writing assistant updating structured story steering state.',
       'Return JSON only. No markdown, no prose, no reasoning.',
       'Output exactly one object with keys:',
       'pinnedInstructions, storyNotes, sceneIntent, plotThreads, openLoops, canonDeltas.',
       'Use strings for text fields and arrays of strings for list fields.',
+      'Treat existing steering JSON as the baseline state and update it to reflect current story state.',
       'Keep entries concise and actionable for story generation guidance.',
       'Do NOT restate encyclopedic lore that belongs in lorebook entries.',
       'Exclude static character bios, world/location descriptions, appearance/personality summaries, and backstory recaps.',
       'Only keep writer-control guidance, active plot pressure, unresolved questions, and recent canon changes that matter for next generation.',
+      'If optional update instructions are provided, prioritize them while preserving valid existing constraints.',
       'If the source does not provide evidence for a field, preserve the existing value.'
     ].join('\n');
     const userPrompt = [
       `Source mode: ${sourceLabel}`,
+      normalizedUpdateInstruction
+        ? [
+          '',
+          '<update_request>',
+          normalizedUpdateInstruction,
+          '</update_request>'
+        ].join('\n')
+        : '',
       '',
       '<existing_steering_json>',
       JSON.stringify(normalizedCurrent, null, 2),
@@ -1622,7 +1766,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     const rawResponse = await requestStoryContinuation(completion, {
       systemPrompt,
       userPrompt,
+      operationName: 'story_steering_extract',
       abortSignal,
+      onOperationLog: record => this.appendCompletionOperationLog(record),
       onUsage: usage => {
         usageReport = usage;
       }
@@ -1666,6 +1812,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         layerTrace: [...(message.contextMeta.layerTrace ?? [])],
         layerUsage: [...(message.contextMeta.layerUsage ?? []).map(layer => ({ ...layer }))],
         overflowTrace: [...(message.contextMeta.overflowTrace ?? [])],
+        chatToolTrace: [...(message.contextMeta.chatToolTrace ?? [])],
+        chatToolCalls: [...(message.contextMeta.chatToolCalls ?? [])],
+        chatToolWrites: [...(message.contextMeta.chatToolWrites ?? [])],
         worldInfoItems: [...message.contextMeta.worldInfoItems],
         ragItems: [...message.contextMeta.ragItems]
       } : undefined
@@ -1705,6 +1854,9 @@ export default class LoreBookConverterPlugin extends Plugin {
           layerTrace: [...(message.contextMeta.layerTrace ?? [])],
           layerUsage: [...(message.contextMeta.layerUsage ?? []).map(layer => ({ ...layer }))],
           overflowTrace: [...(message.contextMeta.overflowTrace ?? [])],
+          chatToolTrace: [...(message.contextMeta.chatToolTrace ?? [])],
+          chatToolCalls: [...(message.contextMeta.chatToolCalls ?? [])],
+          chatToolWrites: [...(message.contextMeta.chatToolWrites ?? [])],
           worldInfoItems: [...message.contextMeta.worldInfoItems],
           ragItems: [...message.contextMeta.ragItems]
         } : undefined
@@ -1960,7 +2112,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       };
     }
 
-    const planner = createCompletionRetrievalToolPlanner(this.settings.completion);
+    const planner = createCompletionRetrievalToolPlanner(this.settings.completion, {
+      operationName: 'retrieval_tool_hooks',
+      onOperationLog: record => this.appendCompletionOperationLog(record)
+    });
     if (!planner) {
       return {
         markdown: '',
@@ -2003,6 +2158,991 @@ export default class LoreBookConverterPlugin extends Plugin {
       usedTokens: result.usedTokens,
       selectedItems: result.selectedItems,
       layerTrace: result.trace
+    };
+  }
+
+  private parseToolJsonObject(raw: string): Record<string, unknown> {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return {};
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  private parseToolStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return uniqueStrings(
+        value
+          .map(item => (typeof item === 'string' ? item : String(item ?? '')))
+          .map(item => item.trim())
+          .filter(Boolean)
+      );
+    }
+    if (typeof value === 'string') {
+      return uniqueStrings(
+        value
+          .replace(/\r\n?/g, '\n')
+          .split('\n')
+          .map(item => item.trim())
+          .filter(Boolean)
+      );
+    }
+    return [];
+  }
+
+  private normalizeToolLimit(value: unknown, fallback: number, min: number, max: number): number {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.max(min, Math.min(max, parsed));
+  }
+
+  private tokenizeStoryChatToolQuery(value: string): string[] {
+    const tokens = value.trim().toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu);
+    if (!tokens) {
+      return [];
+    }
+    return [...new Set(tokens)];
+  }
+
+  private scoreLorebookEntryForStoryChatTool(entry: LoreBookEntry, queryTokens: string[]): number {
+    if (queryTokens.length === 0) {
+      return 0;
+    }
+    const title = (entry.comment || '').toLowerCase();
+    const keywordText = uniqueStrings([...entry.key, ...entry.keysecondary])
+      .join(' ')
+      .toLowerCase();
+    const content = (entry.content || '').toLowerCase();
+    let score = 0;
+    for (const token of queryTokens) {
+      if (title.includes(token)) {
+        score += 8;
+      }
+      if (keywordText.includes(token)) {
+        score += 6;
+      }
+      if (content.includes(token)) {
+        score += 2;
+      }
+    }
+    return score;
+  }
+
+  private sanitizeStoryChatToolFileStem(value: string): string {
+    const trimmed = value.trim().toLowerCase();
+    const collapsed = trimmed.replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return collapsed || 'entry';
+  }
+
+  private hasExplicitStoryChatWriteIntent(userMessage: string): boolean {
+    const normalized = userMessage.toLowerCase();
+    const action = /\b(update|edit|revise|rewrite|modify|change|set|save|write|create|add|append|patch|adjust)\b/.test(normalized);
+    const target = /\b(steering|note|entry|lorebook|scope|plot thread|open loop|canon delta|fact)\b/.test(normalized);
+    return action && target;
+  }
+
+  private buildStoryChatAgentToolDefinitions(args: {
+    allowLorebook: boolean;
+    allowStoryNotes: boolean;
+    allowSteering: boolean;
+    allowWriteActions: boolean;
+  }): CompletionToolDefinition[] {
+    const definitions: CompletionToolDefinition[] = [];
+    if (args.allowLorebook) {
+      definitions.push({
+        type: 'function',
+        function: {
+          name: 'search_lorebook_entries',
+          description: 'Search selected lorebook entries by query text.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              scope: { type: 'string' },
+              limit: { type: 'integer', minimum: 1, maximum: 20 }
+            },
+            required: ['query']
+          }
+        }
+      });
+      definitions.push({
+        type: 'function',
+        function: {
+          name: 'get_lorebook_entry',
+          description: 'Read one lorebook entry by uid and optional scope.',
+          parameters: {
+            type: 'object',
+            properties: {
+              uid: { type: 'integer' },
+              scope: { type: 'string' },
+              contentChars: { type: 'integer', minimum: 120, maximum: 5000 }
+            },
+            required: ['uid']
+          }
+        }
+      });
+    }
+
+    if (args.allowStoryNotes) {
+      definitions.push({
+        type: 'function',
+        function: {
+          name: 'search_story_notes',
+          description: 'Search linked story/manual-selected notes by query text.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string' },
+              limit: { type: 'integer', minimum: 1, maximum: 20 }
+            },
+            required: ['query']
+          }
+        }
+      });
+      definitions.push({
+        type: 'function',
+        function: {
+          name: 'read_story_note',
+          description: 'Read one linked story/manual-selected note by exact vault path.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              maxChars: { type: 'integer', minimum: 200, maximum: 6000 }
+            },
+            required: ['path']
+          }
+        }
+      });
+    }
+
+    if (args.allowSteering) {
+      definitions.push({
+        type: 'function',
+        function: {
+          name: 'get_steering_scope',
+          description: 'Read a steering scope from allowed linked scopes (global/story/chapter/note).',
+          parameters: {
+            type: 'object',
+            properties: {
+              scopeType: { type: 'string' },
+              scopeKey: { type: 'string' }
+            }
+          }
+        }
+      });
+    }
+
+    if (args.allowWriteActions) {
+      definitions.push({
+        type: 'function',
+        function: {
+          name: 'update_steering_scope',
+          description: 'Update an allowed steering scope with partial state fields.',
+          parameters: {
+            type: 'object',
+            properties: {
+              scopeType: { type: 'string' },
+              scopeKey: { type: 'string' },
+              state: {
+                type: 'object',
+                properties: {
+                  pinnedInstructions: { type: 'string' },
+                  storyNotes: { type: 'string' },
+                  sceneIntent: { type: 'string' },
+                  activeLorebooks: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ]
+                  },
+                  plotThreads: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ]
+                  },
+                  openLoops: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ]
+                  },
+                  canonDeltas: {
+                    oneOf: [
+                      { type: 'array', items: { type: 'string' } },
+                      { type: 'string' }
+                    ]
+                  }
+                }
+              }
+            },
+            required: ['state']
+          }
+        }
+      });
+
+      if (args.allowLorebook) {
+        definitions.push({
+          type: 'function',
+          function: {
+            name: 'create_lorebook_entry_note',
+            description: 'Create a new lorebook-tagged note in one of the selected lorebook scopes.',
+            parameters: {
+              type: 'object',
+              properties: {
+                scope: { type: 'string' },
+                title: { type: 'string' },
+                content: { type: 'string' },
+                keywords: {
+                  oneOf: [
+                    { type: 'array', items: { type: 'string' } },
+                    { type: 'string' }
+                  ]
+                },
+                aliases: {
+                  oneOf: [
+                    { type: 'array', items: { type: 'string' } },
+                    { type: 'string' }
+                  ]
+                },
+                summary: { type: 'string' },
+                retrieval: { type: 'string' }
+              },
+              required: ['scope', 'title', 'content']
+            }
+          }
+        });
+      }
+    }
+
+    return definitions;
+  }
+
+  private async runStoryChatAgentTools(args: {
+    userMessage: string;
+    historySnippet: string;
+    selectedScopes: string[];
+    useLorebookContext: boolean;
+    specificNotePaths: string[];
+    activeStoryFile: TFile | null;
+    tokenBudget: number;
+    abortSignal?: AbortSignal;
+  }): Promise<StoryChatAgentToolRunResult> {
+    if (!this.settings.storyChat.toolCalls.enabled || args.tokenBudget <= 0) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        trace: [],
+        callSummaries: [],
+        writeSummaries: []
+      };
+    }
+
+    const planner = createCompletionToolPlanner(this.settings.completion, {
+      operationName: 'story_chat_agent_tools',
+      onOperationLog: record => this.appendCompletionOperationLog(record)
+    });
+    if (!planner) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        trace: ['story_chat_tools: provider does not support tool calls'],
+        callSummaries: [],
+        writeSummaries: []
+      };
+    }
+
+    const lorebookScopes = args.useLorebookContext
+      ? args.selectedScopes
+        .map(scope => normalizeScope(scope))
+        .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index)
+      : [];
+    const lorebookScopeSet = new Set<string>(lorebookScopes);
+    const allowLorebook = lorebookScopes.length > 0;
+
+    const lorebookEntriesByScope = new Map<string, LoreBookEntry[]>();
+    for (const scope of lorebookScopes) {
+      const pack = await this.liveContextIndex.getScopePack(scope);
+      lorebookEntriesByScope.set(
+        pack.scope,
+        [...pack.worldInfoEntries].sort((left, right) => right.order - left.order || left.uid - right.uid)
+      );
+    }
+
+    const allowedStoryPaths = new Set<string>();
+    for (const path of args.specificNotePaths) {
+      const normalized = normalizeVaultPath(path);
+      if (normalized) {
+        allowedStoryPaths.add(normalized);
+      }
+    }
+    if (args.activeStoryFile) {
+      allowedStoryPaths.add(normalizeVaultPath(args.activeStoryFile.path));
+      const nodes = this.collectStoryThreadNodes();
+      const resolution = resolveStoryThread(nodes, args.activeStoryFile.path);
+      if (resolution) {
+        for (const path of resolution.orderedPaths) {
+          const normalized = normalizeVaultPath(path);
+          if (normalized) {
+            allowedStoryPaths.add(normalized);
+          }
+        }
+      }
+    }
+
+    const allowedStoryFiles = [...allowedStoryPaths]
+      .map(path => this.app.vault.getAbstractFileByPath(path))
+      .filter((file): file is TFile => file instanceof TFile)
+      .sort((left, right) => left.path.localeCompare(right.path));
+    const allowedStoryFileMap = new Map<string, TFile>(
+      allowedStoryFiles.map(file => [normalizeVaultPath(file.path), file])
+    );
+    const allowStoryNotes = allowedStoryFiles.length > 0;
+
+    const steeringScopes = await this.storySteeringStore.getScopeChainForFile(args.activeStoryFile);
+    const allowedSteeringByKey = new Map<string, StorySteeringScope>();
+    for (const scope of steeringScopes) {
+      const canonicalType = normalizeStorySteeringScopeType(scope.type);
+      const key = canonicalType === 'global' ? 'global' : scope.key;
+      allowedSteeringByKey.set(`${canonicalType}::${key}`, {
+        type: canonicalType,
+        key
+      });
+    }
+    if (!allowedSteeringByKey.has('global::global')) {
+      allowedSteeringByKey.set('global::global', { type: 'global', key: 'global' });
+    }
+
+    const writeIntent = this.hasExplicitStoryChatWriteIntent(args.userMessage);
+    const allowWriteActions = this.settings.storyChat.toolCalls.allowWriteActions && writeIntent;
+
+    const toolDefinitions = this.buildStoryChatAgentToolDefinitions({
+      allowLorebook,
+      allowStoryNotes,
+      allowSteering: allowedSteeringByKey.size > 0,
+      allowWriteActions
+    });
+
+    if (toolDefinitions.length === 0) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        trace: ['story_chat_tools: no accessible tool surfaces for this turn'],
+        callSummaries: [],
+        writeSummaries: []
+      };
+    }
+
+    const storyBodyCache = new Map<string, string>();
+    const readStoryBody = async (file: TFile): Promise<string> => {
+      const key = normalizeVaultPath(file.path);
+      const cached = storyBodyCache.get(key);
+      if (typeof cached === 'string') {
+        return cached;
+      }
+      const raw = await this.app.vault.cachedRead(file);
+      const body = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+      storyBodyCache.set(key, body);
+      return body;
+    };
+
+    const parseScopeFromArgs = (payload: Record<string, unknown>): StorySteeringScope | null => {
+      const scopeTypeRaw = typeof payload.scopeType === 'string' ? payload.scopeType : 'global';
+      const canonicalType = normalizeStorySteeringScopeType(scopeTypeRaw);
+      const scopeKey = canonicalType === 'global'
+        ? 'global'
+        : (typeof payload.scopeKey === 'string' ? payload.scopeKey.trim() : '');
+      const resolvedKey = `${canonicalType}::${canonicalType === 'global' ? 'global' : scopeKey}`;
+      return allowedSteeringByKey.get(resolvedKey) ?? null;
+    };
+
+    const buildErrorResult = (toolName: StoryChatAgentToolName, reason: string): StoryChatAgentToolExecutionResult => {
+      const payload = {
+        ok: false,
+        error: reason
+      };
+      return {
+        ok: false,
+        payload,
+        estimatedTokens: this.estimateTokens(JSON.stringify(payload)),
+        trace: `${toolName}: error (${reason})`,
+        isWrite: false,
+        callSummary: `${toolName}: error`
+      };
+    };
+
+    const executeToolCall = async (call: StoryChatAgentToolCall): Promise<StoryChatAgentToolExecutionResult> => {
+      const payload = this.parseToolJsonObject(call.argumentsJson);
+      const toolName = call.name;
+
+      if (toolName === 'search_lorebook_entries') {
+        if (!allowLorebook) {
+          return buildErrorResult(toolName, 'Lorebook tools are unavailable because no lorebook scopes are selected.');
+        }
+        const query = typeof payload.query === 'string' ? payload.query.trim() : '';
+        if (!query) {
+          return buildErrorResult(toolName, 'query is required');
+        }
+        const queryTokens = this.tokenizeStoryChatToolQuery(query);
+        const requestedScopeRaw = typeof payload.scope === 'string' ? normalizeScope(payload.scope) : '';
+        const requestedScope = requestedScopeRaw && lorebookScopeSet.has(requestedScopeRaw) ? requestedScopeRaw : '';
+        const limit = this.normalizeToolLimit(payload.limit, 6, 1, 20);
+        const rows: Array<{uid: number; scope: string; title: string; score: number}> = [];
+        const scopes = requestedScope ? [requestedScope] : [...lorebookEntriesByScope.keys()];
+        for (const scope of scopes) {
+          const entries = lorebookEntriesByScope.get(scope) ?? [];
+          for (const entry of entries) {
+            const score = this.scoreLorebookEntryForStoryChatTool(entry, queryTokens);
+            if (score <= 0) {
+              continue;
+            }
+            rows.push({
+              uid: entry.uid,
+              scope,
+              title: entry.comment,
+              score
+            });
+          }
+        }
+        rows.sort((left, right) => right.score - left.score || left.scope.localeCompare(right.scope) || left.uid - right.uid);
+        const results = rows.slice(0, limit).map(item => ({
+          uid: item.uid,
+          scope: item.scope,
+          title: item.title,
+          score: item.score
+        }));
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          results
+        };
+        const contextSnippet = results.length > 0
+          ? [
+            '### Agent Tool: Lorebook Search',
+            ...results.map(item => `- [${item.scope}] uid ${item.uid}: ${item.title}`)
+          ].join('\n')
+          : '### Agent Tool: Lorebook Search\n- No matching entries found.';
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: query="${query}" -> ${results.length} hit(s)`,
+          isWrite: false,
+          callSummary: `${toolName}: ${results.length} hit(s)`,
+          contextSnippet
+        };
+      }
+
+      if (toolName === 'get_lorebook_entry') {
+        if (!allowLorebook) {
+          return buildErrorResult(toolName, 'Lorebook tools are unavailable because no lorebook scopes are selected.');
+        }
+        const uid = Math.floor(Number(payload.uid));
+        if (!Number.isFinite(uid)) {
+          return buildErrorResult(toolName, 'uid is required');
+        }
+        const requestedScopeRaw = typeof payload.scope === 'string' ? normalizeScope(payload.scope) : '';
+        const requestedScope = requestedScopeRaw && lorebookScopeSet.has(requestedScopeRaw) ? requestedScopeRaw : '';
+        const contentChars = this.normalizeToolLimit(payload.contentChars, 1400, 120, 5000);
+        const candidates: Array<{scope: string; entry: LoreBookEntry}> = [];
+        const scopes = requestedScope ? [requestedScope] : [...lorebookEntriesByScope.keys()];
+        for (const scope of scopes) {
+          const entries = lorebookEntriesByScope.get(scope) ?? [];
+          for (const entry of entries) {
+            if (entry.uid === uid) {
+              candidates.push({ scope, entry });
+            }
+          }
+        }
+        if (candidates.length === 0) {
+          return buildErrorResult(toolName, `Entry uid ${uid} was not found in allowed scopes.`);
+        }
+        if (candidates.length > 1 && !requestedScope) {
+          const scopes = uniqueStrings(candidates.map(item => item.scope));
+          return buildErrorResult(toolName, `Entry uid ${uid} is ambiguous across scopes: ${scopes.join(', ')}. Specify scope.`);
+        }
+        const selected = candidates.sort((left, right) => left.scope.localeCompare(right.scope))[0];
+        const snippet = selected.entry.content.length > contentChars
+          ? `${selected.entry.content.slice(0, contentChars)}...`
+          : selected.entry.content;
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          entry: {
+            uid: selected.entry.uid,
+            scope: selected.scope,
+            title: selected.entry.comment,
+            keywords: selected.entry.key,
+            aliases: selected.entry.keysecondary,
+            content: snippet
+          }
+        };
+        const contextSnippet = [
+          `### Agent Tool: Lorebook Entry [${selected.scope}]`,
+          `Title: ${selected.entry.comment} (uid ${selected.entry.uid})`,
+          `Keywords: ${selected.entry.key.join(', ') || '(none)'}`,
+          '',
+          snippet
+        ].join('\n');
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: uid ${selected.entry.uid} from ${selected.scope}`,
+          isWrite: false,
+          callSummary: `${toolName}: ${selected.entry.comment}`,
+          contextSnippet
+        };
+      }
+
+      if (toolName === 'search_story_notes') {
+        if (!allowStoryNotes) {
+          return buildErrorResult(toolName, 'No linked story/manual-selected notes are available for this chat turn.');
+        }
+        const query = typeof payload.query === 'string' ? payload.query.trim() : '';
+        if (!query) {
+          return buildErrorResult(toolName, 'query is required');
+        }
+        const tokens = this.tokenizeStoryChatToolQuery(query);
+        const limit = this.normalizeToolLimit(payload.limit, 5, 1, 20);
+        const rows: Array<{path: string; title: string; score: number; snippet: string}> = [];
+        for (const file of allowedStoryFiles) {
+          const body = await readStoryBody(file);
+          const lowerBody = body.toLowerCase();
+          const lowerTitle = file.basename.toLowerCase();
+          let score = 0;
+          for (const token of tokens) {
+            if (lowerTitle.includes(token)) {
+              score += 8;
+            }
+            if (lowerBody.includes(token)) {
+              score += 2;
+            }
+          }
+          if (score <= 0) {
+            continue;
+          }
+          const snippet = body.slice(0, 240).trim();
+          rows.push({
+            path: normalizeVaultPath(file.path),
+            title: file.basename,
+            score,
+            snippet
+          });
+        }
+        rows.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+        const results = rows.slice(0, limit);
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          results: results.map(item => ({
+            path: item.path,
+            title: item.title,
+            score: item.score
+          }))
+        };
+        const contextSnippet = results.length > 0
+          ? [
+            '### Agent Tool: Story Note Search',
+            ...results.map(item => `- ${item.title} (\`${item.path}\`)`),
+            '',
+            results[0].snippet
+          ].join('\n')
+          : '### Agent Tool: Story Note Search\n- No matching linked story notes found.';
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: query="${query}" -> ${results.length} hit(s)`,
+          isWrite: false,
+          callSummary: `${toolName}: ${results.length} hit(s)`,
+          contextSnippet
+        };
+      }
+
+      if (toolName === 'read_story_note') {
+        if (!allowStoryNotes) {
+          return buildErrorResult(toolName, 'No linked story/manual-selected notes are available for this chat turn.');
+        }
+        const path = typeof payload.path === 'string' ? normalizeVaultPath(payload.path) : '';
+        if (!path) {
+          return buildErrorResult(toolName, 'path is required');
+        }
+        const file = allowedStoryFileMap.get(path);
+        if (!file) {
+          return buildErrorResult(toolName, `Path "${path}" is outside linked-story/manual-selected note access.`);
+        }
+        const maxChars = this.normalizeToolLimit(payload.maxChars, 1800, 200, 6000);
+        const body = await readStoryBody(file);
+        const content = body.length > maxChars ? `${body.slice(0, maxChars)}...` : body;
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          note: {
+            path,
+            title: file.basename,
+            content
+          }
+        };
+        const contextSnippet = [
+          `### Agent Tool: Story Note \`${path}\``,
+          '',
+          content
+        ].join('\n');
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: read ${path}`,
+          isWrite: false,
+          callSummary: `${toolName}: ${file.basename}`,
+          contextSnippet
+        };
+      }
+
+      if (toolName === 'get_steering_scope') {
+        const scope = parseScopeFromArgs(payload);
+        if (!scope) {
+          return buildErrorResult(
+            toolName,
+            `Scope is not allowed. Allowed scopes: ${[...allowedSteeringByKey.keys()].join(', ')}`
+          );
+        }
+        const state = await this.loadStorySteeringScope(scope);
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          scope,
+          state
+        };
+        const contextSnippet = [
+          `### Agent Tool: Steering Scope ${scope.type}:${scope.key}`,
+          '```json',
+          JSON.stringify(state, null, 2),
+          '```'
+        ].join('\n');
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: ${scope.type}:${scope.key}`,
+          isWrite: false,
+          callSummary: `${toolName}: ${scope.type}:${scope.key}`,
+          contextSnippet
+        };
+      }
+
+      if (toolName === 'update_steering_scope') {
+        if (!allowWriteActions) {
+          return buildErrorResult(toolName, 'Write tools are disabled for this turn.');
+        }
+        const scope = parseScopeFromArgs(payload);
+        if (!scope) {
+          return buildErrorResult(
+            toolName,
+            `Scope is not allowed. Allowed scopes: ${[...allowedSteeringByKey.keys()].join(', ')}`
+          );
+        }
+        const rawState = payload.state && typeof payload.state === 'object' && !Array.isArray(payload.state)
+          ? payload.state as Record<string, unknown>
+          : null;
+        if (!rawState) {
+          return buildErrorResult(toolName, 'state object is required');
+        }
+        const existing = await this.loadStorySteeringScope(scope);
+        const updated = normalizeStorySteeringState({
+          pinnedInstructions: typeof rawState.pinnedInstructions === 'string'
+            ? rawState.pinnedInstructions
+            : existing.pinnedInstructions,
+          storyNotes: typeof rawState.storyNotes === 'string'
+            ? rawState.storyNotes
+            : existing.storyNotes,
+          sceneIntent: typeof rawState.sceneIntent === 'string'
+            ? rawState.sceneIntent
+            : existing.sceneIntent,
+          activeLorebooks: Object.prototype.hasOwnProperty.call(rawState, 'activeLorebooks')
+            ? this.parseToolStringArray(rawState.activeLorebooks)
+            : existing.activeLorebooks,
+          plotThreads: Object.prototype.hasOwnProperty.call(rawState, 'plotThreads')
+            ? this.parseToolStringArray(rawState.plotThreads)
+            : existing.plotThreads,
+          openLoops: Object.prototype.hasOwnProperty.call(rawState, 'openLoops')
+            ? this.parseToolStringArray(rawState.openLoops)
+            : existing.openLoops,
+          canonDeltas: Object.prototype.hasOwnProperty.call(rawState, 'canonDeltas')
+            ? this.parseToolStringArray(rawState.canonDeltas)
+            : existing.canonDeltas
+        });
+        const path = await this.saveStorySteeringScope(scope, updated);
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          scope,
+          path,
+          state: updated
+        };
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: updated ${scope.type}:${scope.key}`,
+          isWrite: true,
+          callSummary: `${toolName}: ${scope.type}:${scope.key}`,
+          writeSummary: `updated steering ${scope.type}:${scope.key}`
+        };
+      }
+
+      if (toolName === 'create_lorebook_entry_note') {
+        if (!allowWriteActions) {
+          return buildErrorResult(toolName, 'Write tools are disabled for this turn.');
+        }
+        if (!allowLorebook) {
+          return buildErrorResult(toolName, 'No lorebook scopes are selected for this chat turn.');
+        }
+        const scope = typeof payload.scope === 'string' ? normalizeScope(payload.scope) : '';
+        if (!scope || !lorebookScopeSet.has(scope)) {
+          return buildErrorResult(toolName, `scope must be one of selected scopes: ${[...lorebookScopeSet].join(', ')}`);
+        }
+        const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+        const content = typeof payload.content === 'string' ? payload.content.trim() : '';
+        if (!title || !content) {
+          return buildErrorResult(toolName, 'title and content are required');
+        }
+        const keywords = this.parseToolStringArray(payload.keywords);
+        const aliases = this.parseToolStringArray(payload.aliases);
+        const summary = typeof payload.summary === 'string' ? payload.summary.trim() : '';
+        const retrieval = typeof payload.retrieval === 'string' ? payload.retrieval.trim().toLowerCase() : 'auto';
+        const retrievalMode = (
+          retrieval === 'world_info' ||
+          retrieval === 'rag' ||
+          retrieval === 'both' ||
+          retrieval === 'none'
+        ) ? retrieval : 'auto';
+        const scopeFolder = scope
+          .split('/')
+          .map(part => this.sanitizeStoryChatToolFileStem(part))
+          .join('/');
+        const baseFolder = joinVaultPath('LoreVault', 'agentic-lorebook-notes', scopeFolder);
+        const stem = this.sanitizeStoryChatToolFileStem(title);
+        let filePath = joinVaultPath(baseFolder, `${stem}.md`);
+        let suffix = 2;
+        while (await this.app.vault.adapter.exists(filePath)) {
+          filePath = joinVaultPath(baseFolder, `${stem}-${suffix}.md`);
+          suffix += 1;
+        }
+        const escapeYaml = (value: string): string => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const tagValue = `${this.settings.tagScoping.tagPrefix}/${scope}`;
+        const lines: string[] = [
+          '---',
+          `title: "${escapeYaml(title)}"`,
+          'tags:',
+          `  - ${tagValue}`,
+          `retrieval: ${retrievalMode}`
+        ];
+        if (keywords.length > 0) {
+          lines.push('keywords:');
+          for (const keyword of keywords) {
+            lines.push(`  - "${escapeYaml(keyword)}"`);
+          }
+        }
+        if (aliases.length > 0) {
+          lines.push('aliases:');
+          for (const alias of aliases) {
+            lines.push(`  - "${escapeYaml(alias)}"`);
+          }
+        }
+        if (summary) {
+          lines.push(`summary: "${escapeYaml(summary)}"`);
+        }
+        lines.push('---', `# ${title}`, '', content, '');
+        const markdown = lines.join('\n');
+        await ensureParentVaultFolderForFile(this.app, filePath);
+        await this.app.vault.adapter.write(filePath, markdown);
+        const resultPayload: Record<string, unknown> = {
+          ok: true,
+          created: {
+            path: filePath,
+            scope,
+            title
+          }
+        };
+        return {
+          ok: true,
+          payload: resultPayload,
+          estimatedTokens: this.estimateTokens(JSON.stringify(resultPayload)),
+          trace: `${toolName}: created ${filePath}`,
+          isWrite: true,
+          callSummary: `${toolName}: ${title}`,
+          writeSummary: `created lorebook note ${filePath}`
+        };
+      }
+
+      return buildErrorResult(toolName, 'Unsupported tool name.');
+    };
+
+    const supportedNames = new Set<StoryChatAgentToolName>([
+      'search_lorebook_entries',
+      'get_lorebook_entry',
+      'search_story_notes',
+      'read_story_note',
+      'get_steering_scope',
+      'update_steering_scope',
+      'create_lorebook_entry_note'
+    ]);
+    const messages: CompletionToolPlannerMessage[] = [
+      {
+        role: 'system',
+        content: [
+          'You are LoreVault Story Chat tool planner.',
+          'Use tools to gather exact facts or update state only when needed.',
+          'Respect hard boundaries:',
+          '- lorebook tools: selected lorebook scopes only',
+          '- story note tools: linked story/manual-selected note paths only',
+          '- steering tools: allowed scope chain only',
+          'Never call write tools unless the user explicitly asks for updates/creation in this turn.',
+          'When enough tool data is available, stop issuing tool calls.'
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: [
+          `Latest user message:\n${args.userMessage.trim() || '(empty)'}`,
+          '',
+          `Recent chat history snippet:\n${args.historySnippet.trim() || '(none)'}`,
+          '',
+          `Selected lorebook scopes: ${lorebookScopes.length > 0 ? lorebookScopes.join(', ') : '(none)'}`,
+          `Linked/manual note paths (${allowedStoryFiles.length}): ${
+            allowedStoryFiles.slice(0, 8).map(file => file.path).join(', ') || '(none)'
+          }`,
+          `Allowed steering scopes: ${[...allowedSteeringByKey.keys()].join(', ')}`,
+          `Write tools enabled for this turn: ${allowWriteActions ? 'yes' : 'no'}`
+        ].join('\n')
+      }
+    ];
+
+    const maxCalls = this.normalizeToolLimit(this.settings.storyChat.toolCalls.maxCallsPerTurn, 6, 1, 16);
+    const maxResultTokens = this.normalizeToolLimit(this.settings.storyChat.toolCalls.maxResultTokensPerTurn, 2400, 128, 12000);
+    const maxPlanningTimeMs = this.normalizeToolLimit(this.settings.storyChat.toolCalls.maxPlanningTimeMs, 10000, 500, 120000);
+    const maxContextTokens = Math.max(64, Math.floor(args.tokenBudget));
+    const startedAt = Date.now();
+    let usedResultTokens = 0;
+    let executedCalls = 0;
+    let stopReason = 'completed';
+    const trace: string[] = [];
+    const callSummaries: string[] = [];
+    const writeSummaries: string[] = [];
+    const contextSections: string[] = [];
+
+    while (executedCalls < maxCalls) {
+      if (args.abortSignal?.aborted) {
+        stopReason = 'aborted';
+        break;
+      }
+      const elapsed = Date.now() - startedAt;
+      const timeLeft = maxPlanningTimeMs - elapsed;
+      if (timeLeft <= 0) {
+        stopReason = 'time_limit';
+        break;
+      }
+
+      let plannerResponse: { assistantText: string; toolCalls: Array<{id: string; name: string; argumentsJson: string}>; finishReason: string };
+      try {
+        plannerResponse = await planner({
+          messages,
+          toolDefinitions,
+          timeoutMs: timeLeft,
+          abortSignal: args.abortSignal
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        trace.push(`story_chat_tools: planner error (${message})`);
+        stopReason = 'planner_error';
+        break;
+      }
+
+      const toolCalls = plannerResponse.toolCalls
+        .map(call => ({
+          id: call.id,
+          name: call.name as StoryChatAgentToolName,
+          argumentsJson: call.argumentsJson
+        }))
+        .filter(call => supportedNames.has(call.name));
+      if (toolCalls.length === 0) {
+        trace.push(`story_chat_tools: planner stop (${plannerResponse.finishReason || 'no_tool_calls'})`);
+        break;
+      }
+
+      messages.push({
+        role: 'assistant',
+        content: plannerResponse.assistantText || '',
+        toolCalls: toolCalls.map(call => ({
+          id: call.id,
+          name: call.name,
+          argumentsJson: call.argumentsJson
+        }))
+      });
+
+      for (const call of toolCalls) {
+        if (executedCalls >= maxCalls) {
+          stopReason = 'call_limit';
+          break;
+        }
+        const execution = await executeToolCall(call);
+        const serializedPayload = JSON.stringify(execution.payload);
+        const resultTokens = Math.max(execution.estimatedTokens, this.estimateTokens(serializedPayload));
+        if (usedResultTokens + resultTokens > maxResultTokens) {
+          stopReason = 'result_token_limit';
+          break;
+        }
+
+        usedResultTokens += resultTokens;
+        executedCalls += 1;
+        trace.push(`${execution.trace} (~${resultTokens} tokens)`);
+        callSummaries.push(execution.callSummary);
+        if (execution.writeSummary) {
+          writeSummaries.push(execution.writeSummary);
+        }
+        if (execution.contextSnippet) {
+          contextSections.push(execution.contextSnippet);
+        }
+
+        messages.push({
+          role: 'tool',
+          content: serializedPayload,
+          toolCallId: call.id,
+          toolName: call.name
+        });
+      }
+
+      if (stopReason === 'call_limit' || stopReason === 'result_token_limit') {
+        break;
+      }
+    }
+
+    let usedTokens = 0;
+    const finalSections: string[] = [];
+    for (const section of contextSections) {
+      const sectionTokens = this.estimateTokens(section);
+      if (usedTokens + sectionTokens > maxContextTokens) {
+        break;
+      }
+      usedTokens += sectionTokens;
+      finalSections.push(section);
+    }
+
+    const markdown = finalSections.join('\n\n---\n\n');
+    trace.unshift(`story_chat_tools: ${executedCalls} call(s), stop=${stopReason}, write_tools=${allowWriteActions ? 'on' : 'off'}`);
+    if (!writeIntent && this.settings.storyChat.toolCalls.allowWriteActions) {
+      trace.push('story_chat_tools: write tools disabled (no explicit user write intent detected)');
+    }
+
+    return {
+      markdown,
+      usedTokens,
+      trace,
+      callSummaries,
+      writeSummaries
     };
   }
 
@@ -2074,6 +3214,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     const responseText = await requestStoryContinuation(this.settings.completion, {
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
+      operationName: 'keywords_generate',
+      onOperationLog: record => this.appendCompletionOperationLog(record),
       onUsage: usage => {
         usageReport = usage;
       }
@@ -2311,6 +3453,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     const rawSummary = await requestStoryContinuation(this.settings.completion, {
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
+      operationName: mode === 'chapter' ? 'summary_chapter' : 'summary_world_info',
+      onOperationLog: record => this.appendCompletionOperationLog(record),
       onUsage: usage => {
         usageReport = usage;
       }
@@ -2717,6 +3861,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     let toolContextBudget = 0;
     let toolContextItems: string[] = [];
     let toolContextLayerTrace: string[] = [];
+    let toolContextTokens = 0;
     if (useLorebookContext) {
       const remainingAfterLorebook = Math.max(0, availableForLorebookContext - usedContextTokens);
       if (remainingAfterLorebook > 96) {
@@ -2727,9 +3872,38 @@ export default class LoreBookConverterPlugin extends Plugin {
           toolContextBudget
         );
         toolContextMarkdown = toolContext.markdown;
+        toolContextTokens = toolContext.usedTokens;
         toolContextItems = toolContext.selectedItems;
         toolContextLayerTrace = toolContext.layerTrace;
       }
+    }
+    let chatAgentToolContextMarkdown = '';
+    let chatAgentToolContextBudget = 0;
+    let chatAgentToolContextTrace: string[] = [];
+    let chatAgentToolCallSummaries: string[] = [];
+    let chatAgentToolWriteSummaries: string[] = [];
+    const remainingAfterToolRetrieval = Math.max(
+      0,
+      availableForLorebookContext - usedContextTokens - toolContextTokens
+    );
+    if (remainingAfterToolRetrieval > 96) {
+      chatAgentToolContextBudget = Math.min(
+        900,
+        Math.max(96, Math.floor(remainingAfterToolRetrieval * 0.55))
+      );
+      const chatAgentTools = await this.runStoryChatAgentTools({
+        userMessage: request.userMessage,
+        historySnippet: chatHistory,
+        selectedScopes,
+        useLorebookContext,
+        specificNotePaths,
+        activeStoryFile,
+        tokenBudget: chatAgentToolContextBudget
+      });
+      chatAgentToolContextMarkdown = chatAgentTools.markdown;
+      chatAgentToolContextTrace = chatAgentTools.trace;
+      chatAgentToolCallSummaries = chatAgentTools.callSummaries;
+      chatAgentToolWriteSummaries = chatAgentTools.writeSummaries;
     }
     const worldInfoItems = contexts
       .flatMap(context => context.worldInfo.slice(0, 6).map(item => item.entry.comment))
@@ -2827,6 +4001,15 @@ export default class LoreBookConverterPlugin extends Plugin {
         minTokens: 0
       },
       {
+        key: 'agent_tool_context',
+        label: 'Agent Tool Context',
+        content: chatAgentToolContextMarkdown,
+        reservedTokens: Math.max(0, chatAgentToolContextBudget),
+        placement: 'pre_response',
+        trimMode: 'head',
+        minTokens: 0
+      },
+      {
         key: 'tool_retrieval_context',
         label: 'Tool Retrieval',
         content: toolContextMarkdown,
@@ -2872,6 +4055,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       promptSegments,
       userPromptBudget,
       [
+        'agent_tool_context',
         'tool_retrieval_context',
         'lorebook_context',
         'chapter_memory_context',
@@ -2889,6 +4073,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const continuityForPrompt = promptSegmentsByKey.get('continuity_state')?.content ?? '';
     const specificNotesForPrompt = promptSegmentsByKey.get('specific_notes_context')?.content ?? '';
     const chapterMemoryForPrompt = promptSegmentsByKey.get('chapter_memory_context')?.content ?? '';
+    const chatAgentToolContextForPrompt = promptSegmentsByKey.get('agent_tool_context')?.content ?? '';
     const toolContextForPrompt = promptSegmentsByKey.get('tool_retrieval_context')?.content ?? '';
     const loreContextForPrompt = promptSegmentsByKey.get('lorebook_context')?.content ?? '';
     const preHistorySteeringForPrompt = promptSegmentsByKey.get('pre_history_steering')?.content ?? '';
@@ -2899,15 +4084,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     const continuityPromptTokens = estimateTextTokens(continuityForPrompt);
     const specificNotesPromptTokens = estimateTextTokens(specificNotesForPrompt);
     const chapterMemoryPromptTokens = estimateTextTokens(chapterMemoryForPrompt);
+    const chatAgentToolContextPromptTokens = estimateTextTokens(chatAgentToolContextForPrompt);
     const toolContextPromptTokens = estimateTextTokens(toolContextForPrompt);
     const loreContextPromptTokens = estimateTextTokens(loreContextForPrompt);
     const steeringPreHistoryPromptTokens = estimateTextTokens(preHistorySteeringForPrompt);
     const steeringPreResponsePromptTokens = estimateTextTokens(preResponseSteeringForPrompt);
     const steeringNonSystemPromptTokens = steeringPreHistoryPromptTokens + steeringPreResponsePromptTokens;
-    const combinedLoreContextMarkdown = [loreContextForPrompt, toolContextForPrompt]
+    const combinedLoreContextMarkdown = [loreContextForPrompt, chatAgentToolContextForPrompt, toolContextForPrompt]
       .filter(section => section.trim().length > 0)
       .join('\n\n---\n\n');
     const contextTokensUsed = loreContextPromptTokens
+      + chatAgentToolContextPromptTokens
       + toolContextPromptTokens
       + manualContextPromptTokens
       + continuityPromptTokens
@@ -2938,6 +4125,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (chapterMemoryPromptTokens > 0) {
       layerTrace.push(`chapter_memory: ${chapterMemoryItems.length} chapter summaries, ~${chapterMemoryPromptTokens} tokens`);
       layerTrace.push(...chapterMemoryLayerTrace);
+    }
+    if (chatAgentToolContextPromptTokens > 0 || chatAgentToolContextTrace.length > 0 || chatAgentToolCallSummaries.length > 0) {
+      layerTrace.push(`agent_tools: ${chatAgentToolCallSummaries.length} call(s), writes ${chatAgentToolWriteSummaries.length}, ~${chatAgentToolContextPromptTokens} tokens`);
+      if (chatAgentToolCallSummaries.length > 0) {
+        layerTrace.push(`agent_tools_calls: ${chatAgentToolCallSummaries.join(' | ')}`);
+      }
+      if (chatAgentToolWriteSummaries.length > 0) {
+        layerTrace.push(`agent_tools_writes: ${chatAgentToolWriteSummaries.join(' | ')}`);
+      }
+      layerTrace.push(...chatAgentToolContextTrace);
     }
     if (useLorebookContext) {
       layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${loreContextPromptTokens} tokens`);
@@ -3004,6 +4201,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       layerTrace,
       layerUsage,
       overflowTrace,
+      chatToolTrace: chatAgentToolContextTrace,
+      chatToolCalls: chatAgentToolCallSummaries,
+      chatToolWrites: chatAgentToolWriteSummaries,
       contextTokens: contextTokensUsed,
       worldInfoCount: totalWorldInfoCount,
       ragCount: totalRagCount,
@@ -3043,6 +4243,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       '<chapter_memory_context>',
       chapterMemoryForPrompt || '[No chapter memory available.]',
       '</chapter_memory_context>',
+      '',
+      '<agent_tool_context>',
+      chatAgentToolContextForPrompt || '[No chat agent tool context.]',
+      '</agent_tool_context>',
       '',
       '<lorevault_scopes>',
       scopeLabels.join(', '),
@@ -3107,6 +4311,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       await requestStoryContinuationStream(completion, {
         systemPrompt: effectiveSystemPrompt,
         userPrompt,
+        operationName: 'story_chat_turn',
+        onOperationLog: record => this.appendCompletionOperationLog(record),
         onDelta: (delta: string) => {
           if (!delta) {
             return;
@@ -3240,13 +4446,21 @@ export default class LoreBookConverterPlugin extends Plugin {
         ...DEFAULT_SETTINGS.costTracking,
         ...(data?.costTracking ?? {})
       },
+      operationLog: {
+        ...DEFAULT_SETTINGS.operationLog,
+        ...(data?.operationLog ?? {})
+      },
       completion: {
         ...DEFAULT_SETTINGS.completion,
         ...(data?.completion ?? {})
       },
       storyChat: {
         ...DEFAULT_SETTINGS.storyChat,
-        ...(data?.storyChat ?? {})
+        ...(data?.storyChat ?? {}),
+        toolCalls: {
+          ...DEFAULT_SETTINGS.storyChat.toolCalls,
+          ...(data?.storyChat?.toolCalls ?? {})
+        }
       },
       storySteering: {
         ...DEFAULT_SETTINGS.storySteering,
@@ -3495,6 +4709,22 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     );
 
+    merged.operationLog.enabled = Boolean(merged.operationLog.enabled);
+    const operationLogPath = (merged.operationLog.path ?? '')
+      .toString()
+      .trim()
+      .replace(/\\/g, '/');
+    try {
+      merged.operationLog.path = normalizeVaultRelativePath(operationLogPath || DEFAULT_SETTINGS.operationLog.path);
+    } catch {
+      console.warn(`Invalid operation log path "${merged.operationLog.path}". Falling back to default.`);
+      merged.operationLog.path = DEFAULT_SETTINGS.operationLog.path;
+    }
+    merged.operationLog.maxEntries = Math.max(
+      20,
+      Math.min(5000, Math.floor(Number(merged.operationLog.maxEntries ?? DEFAULT_SETTINGS.operationLog.maxEntries)))
+    );
+
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (
       merged.completion.provider === 'ollama' ||
@@ -3618,6 +4848,20 @@ export default class LoreBookConverterPlugin extends Plugin {
       .map(ref => normalizeLinkTarget(String(ref ?? '')))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     merged.storyChat.maxMessages = Math.max(10, Math.floor(merged.storyChat.maxMessages || DEFAULT_SETTINGS.storyChat.maxMessages));
+    merged.storyChat.toolCalls.enabled = Boolean(merged.storyChat.toolCalls.enabled);
+    merged.storyChat.toolCalls.maxCallsPerTurn = Math.max(
+      1,
+      Math.min(16, Math.floor(Number(merged.storyChat.toolCalls.maxCallsPerTurn)))
+    );
+    merged.storyChat.toolCalls.maxResultTokensPerTurn = Math.max(
+      128,
+      Math.min(12000, Math.floor(Number(merged.storyChat.toolCalls.maxResultTokensPerTurn)))
+    );
+    merged.storyChat.toolCalls.maxPlanningTimeMs = Math.max(
+      500,
+      Math.min(120000, Math.floor(Number(merged.storyChat.toolCalls.maxPlanningTimeMs)))
+    );
+    merged.storyChat.toolCalls.allowWriteActions = Boolean(merged.storyChat.toolCalls.allowWriteActions);
 
     const mergedSteeringFolder = (merged.storySteering.folder ?? '').toString().trim().replace(/\\/g, '/');
     try {
@@ -3718,6 +4962,15 @@ export default class LoreBookConverterPlugin extends Plugin {
             overflowTrace: Array.isArray(message.contextMeta.overflowTrace)
               ? message.contextMeta.overflowTrace.map((item: unknown) => String(item))
               : [],
+            chatToolTrace: Array.isArray(message.contextMeta.chatToolTrace)
+              ? message.contextMeta.chatToolTrace.map((item: unknown) => String(item))
+              : [],
+            chatToolCalls: Array.isArray(message.contextMeta.chatToolCalls)
+              ? message.contextMeta.chatToolCalls.map((item: unknown) => String(item))
+              : [],
+            chatToolWrites: Array.isArray(message.contextMeta.chatToolWrites)
+              ? message.contextMeta.chatToolWrites.map((item: unknown) => String(item))
+              : [],
             contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
             worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
             ragCount: Math.max(0, Math.floor(message.contextMeta.ragCount ?? 0)),
@@ -3806,6 +5059,15 @@ export default class LoreBookConverterPlugin extends Plugin {
                 : [],
               overflowTrace: Array.isArray(message.contextMeta.overflowTrace)
                 ? message.contextMeta.overflowTrace.map((item: unknown) => String(item))
+                : [],
+              chatToolTrace: Array.isArray(message.contextMeta.chatToolTrace)
+                ? message.contextMeta.chatToolTrace.map((item: unknown) => String(item))
+                : [],
+              chatToolCalls: Array.isArray(message.contextMeta.chatToolCalls)
+                ? message.contextMeta.chatToolCalls.map((item: unknown) => String(item))
+                : [],
+              chatToolWrites: Array.isArray(message.contextMeta.chatToolWrites)
+                ? message.contextMeta.chatToolWrites.map((item: unknown) => String(item))
                 : [],
               contextTokens: Math.max(0, Math.floor(message.contextMeta.contextTokens ?? 0)),
               worldInfoCount: Math.max(0, Math.floor(message.contextMeta.worldInfoCount ?? 0)),
@@ -3902,6 +5164,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
     this.registerView(LOREVAULT_STORY_STEERING_VIEW_TYPE, leaf => new StorySteeringView(leaf, this));
     this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
+    this.registerView(LOREVAULT_OPERATION_LOG_VIEW_TYPE, leaf => new LorevaultOperationLogView(leaf, this));
     this.registerView(LOREVAULT_IMPORT_VIEW_TYPE, leaf => new LorevaultImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
     this.registerView(LOREVAULT_STORY_DELTA_VIEW_TYPE, leaf => new LorevaultStoryDeltaView(leaf, this));
@@ -4005,6 +5268,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'open-llm-operation-log-explorer',
+      name: 'Open LLM Operation Log Explorer',
+      callback: () => {
+        void this.openOperationLogView();
+      }
+    });
+
+    this.addCommand({
       id: 'import-sillytavern-lorebook',
       name: 'Import SillyTavern Lorebook',
       callback: () => {
@@ -4043,6 +5314,20 @@ export default class LoreBookConverterPlugin extends Plugin {
           void this.continueStoryWithContext();
         }
         return true;
+      }
+    });
+
+    this.addCommand({
+      id: 'stop-active-generation',
+      name: 'Stop Active Generation',
+      callback: () => {
+        if (!this.generationInFlight) {
+          new Notice('No active LoreVault generation to stop.');
+          return;
+        }
+        this.stopActiveGeneration();
+        this.setGenerationStatus('stopping generation...', 'busy');
+        new Notice('Stopping active generation...');
       }
     });
 
@@ -4151,8 +5436,14 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       menu.addItem(item => {
         if (this.generationInFlight) {
-          item.setTitle('LoreVault: Generation Running');
-          item.setDisabled(true);
+          item
+            .setTitle('LoreVault: Stop Active Generation')
+            .setIcon('square')
+            .onClick(() => {
+              this.stopActiveGeneration();
+              this.setGenerationStatus('stopping generation...', 'busy');
+              new Notice('Stopping active generation...');
+            });
           return;
         }
 
@@ -4264,6 +5555,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_OPERATION_LOG_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_DELTA_VIEW_TYPE);
@@ -4274,6 +5566,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (this.exportRebuildTimer !== null) {
       window.clearTimeout(this.exportRebuildTimer);
       this.exportRebuildTimer = null;
+    }
+    if (this.operationLogViewRefreshTimer !== null) {
+      window.clearTimeout(this.operationLogViewRefreshTimer);
+      this.operationLogViewRefreshTimer = null;
     }
     this.generationStatusEl = null;
   }
@@ -4298,6 +5594,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.refreshStoryChatViews();
     this.refreshStorySteeringViews();
     this.refreshHelpViews();
+    this.refreshOperationLogViews();
   }
 
   private resolveScopeFromActiveFile(activeFile: TFile | null): string | undefined {
@@ -4807,6 +6104,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       revisedText = await requestStoryContinuation(completion, {
         systemPrompt: this.settings.textCommands.systemPrompt,
         userPrompt,
+        operationName: 'text_command_edit',
+        onOperationLog: record => this.appendCompletionOperationLog(record),
         onUsage: usage => {
           void this.recordCompletionUsage('text_command_edit', usage, {
             promptTemplateId: selection.promptId,
@@ -5415,6 +6714,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       await requestStoryContinuationStream(completion, {
         systemPrompt: effectiveSystemPrompt,
         userPrompt,
+        operationName: 'editor_continuation',
+        onOperationLog: record => this.appendCompletionOperationLog(record),
         onDelta: (delta: string) => {
           if (!delta) {
             return;
@@ -5491,6 +6792,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       );
       this.setGenerationStatus('idle', 'idle');
     } catch (error) {
+      if (this.isAbortLikeError(error)) {
+        this.updateGenerationTelemetry({
+          state: 'idle',
+          statusText: 'idle',
+          lastError: ''
+        });
+        this.setGenerationStatus('idle', 'idle');
+        new Notice('Story generation stopped.');
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.updateGenerationTelemetry({
         state: 'error',

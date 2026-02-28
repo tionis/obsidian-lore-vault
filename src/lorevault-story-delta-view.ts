@@ -384,7 +384,9 @@ export class LorevaultStoryDeltaView extends ItemView {
         existingPages,
         callModel: (systemPrompt, userPrompt) => requestStoryContinuation(completion, {
           systemPrompt,
-          userPrompt
+          userPrompt,
+          operationName: 'story_delta_preview',
+          onOperationLog: record => this.plugin.appendCompletionOperationLog(record)
         })
       });
 

@@ -51,7 +51,7 @@ export class StorySteeringReviewModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('lorevault-summary-modal');
-    contentEl.createEl('h2', { text: 'Story Steering Extraction Review' });
+    contentEl.createEl('h2', { text: 'Story Steering Update Review' });
     contentEl.createEl('p', {
       text: `Source: ${this.sourceLabel} | Note: ${this.notePath}`
     });

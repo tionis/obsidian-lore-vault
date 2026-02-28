@@ -16,6 +16,7 @@ import {
 import { extractLorebookScopesFromTags, shouldIncludeInScope } from './lorebook-scoping';
 import { parseRetrievalMode, resolveRetrievalTargets } from './retrieval-routing';
 import { resolveWorldInfoContent } from './summary-utils';
+import { stripInlineLoreDirectives } from './inline-directives';
 
 const SELECTIVE_LOGIC_MAP: {[key: string]: number} = {
   'or': 0,
@@ -121,10 +122,12 @@ export class FileProcessor {
       const uid = this.generateUid();
       const name = file.basename;
       const folder = file.parent ? file.parent.path : '';
-      const wikilinks = extractWikilinks(rawContent);
+      const bodyWithoutFrontmatter = stripFrontmatter(rawContent);
+      const sanitizedBody = stripInlineLoreDirectives(bodyWithoutFrontmatter);
+      const wikilinks = extractWikilinks(sanitizedBody);
       const defaultSettings = this.settings.defaultEntry;
 
-      const noteBody = stripFrontmatter(rawContent).trim();
+      const noteBody = sanitizedBody.trim();
       const summaryOverride = asString(getFrontmatterValue(frontmatter, 'summary'));
       const content = resolveWorldInfoContent(noteBody, summaryOverride);
 

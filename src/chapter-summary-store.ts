@@ -6,6 +6,7 @@ import {
   stripFrontmatter
 } from './frontmatter-utils';
 import { extractSummarySectionFromBody, stripSummarySectionFromBody } from './summary-utils';
+import { stripInlineLoreDirectives } from './inline-directives';
 
 export interface ChapterSummarySnapshot {
   text: string;
@@ -45,7 +46,7 @@ export class ChapterSummaryStore {
     }
 
     const raw = await this.app.vault.cachedRead(file);
-    const bodyWithSummarySection = stripFrontmatter(raw).trim();
+    const bodyWithSummarySection = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
     const summaryFromSection = extractSummarySectionFromBody(bodyWithSummarySection);
     if (summaryFromSection) {
       const summary: ChapterSummarySnapshot = {

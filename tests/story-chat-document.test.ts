@@ -54,6 +54,9 @@ test('normalizeConversationDocument sanitizes malformed conversation payloads', 
   assert.equal(normalized.title, 'Test Chat');
   assert.deepEqual(normalized.selectedScopes, ['universe', 'world/a']);
   assert.deepEqual(normalized.noteContextRefs, ['Characters/Alice']);
+  assert.equal(normalized.pinnedInstructions, '');
+  assert.equal(normalized.storyNotes, '');
+  assert.equal(normalized.sceneIntent, '');
   assert.equal(normalized.messages.length, 2);
   assert.equal(normalized.messages[0].role, 'assistant');
   assert.equal(normalized.messages[0].versions[0].content, '42');
@@ -74,6 +77,9 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
     selectedScopes: ['universe/core'],
     useLorebookContext: true,
     manualContext: 'Manual context',
+    pinnedInstructions: 'Keep the narration in close third person.',
+    storyNotes: 'Avoid sudden POV shifts.',
+    sceneIntent: 'Escalate conflict before chapter close.',
     noteContextRefs: ['Characters/Alice'],
     messages: [
       {
@@ -104,11 +110,24 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
               usedManualContext: false,
               usedSpecificNotesContext: true,
               usedChapterMemoryContext: false,
+              usedInlineDirectives: false,
               scopes: ['universe/core'],
               specificNotePaths: ['Characters/Alice.md'],
               unresolvedNoteRefs: [],
               chapterMemoryItems: [],
+              inlineDirectiveItems: [],
               layerTrace: [],
+              layerUsage: [
+                {
+                  layer: 'Steering (system)',
+                  placement: 'system',
+                  reservedTokens: 120,
+                  usedTokens: 62,
+                  headroomTokens: 58,
+                  trimmed: false
+                }
+              ],
+              overflowTrace: [],
               contextTokens: 320,
               worldInfoCount: 4,
               ragCount: 1,

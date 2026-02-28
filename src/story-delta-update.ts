@@ -14,6 +14,7 @@ import {
   deriveWikiTitleFromPageKey,
   sanitizeWikiTitle
 } from './wiki-markdown-format';
+import { stripInlineLoreDirectives } from './inline-directives';
 
 export type StoryDeltaUpdatePolicy = 'safe_append' | 'structured_merge';
 
@@ -899,7 +900,7 @@ function applyOperation(
 export async function buildStoryDeltaPlan(
   options: StoryDeltaUpdateOptions
 ): Promise<StoryDeltaResult> {
-  const storyMarkdown = options.storyMarkdown.trim();
+  const storyMarkdown = stripInlineLoreDirectives(options.storyMarkdown).trim();
   if (!storyMarkdown) {
     throw new Error('Story markdown is empty.');
   }

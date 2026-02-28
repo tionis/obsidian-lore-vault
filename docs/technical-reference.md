@@ -46,6 +46,12 @@ This document is the implementation-level reference for core architecture and ru
   - rolling chapter-summary cache (`## Summary` section -> frontmatter fallback -> excerpt fallback)
 - `src/summary-utils.ts`
   - summary normalization and world_info content resolution
+- `src/inline-directives.ts`
+  - strict-prefix inline directive parse/strip helpers (`[LV: ...]`, `<!-- LV: ... -->`)
+- `src/prompt-staging.ts`
+  - deterministic prompt-segment budgeting
+  - fixed-order overflow trimming with locked-layer protection
+  - per-layer usage/headroom metadata helpers
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
 - `src/hash-utils.ts`
@@ -320,37 +326,40 @@ Conversation persistence is note-backed in `storyChat.chatFolder`.
 Stored structure:
 
 - conversation metadata
+- per-conversation steering fields (pinned instructions, story notes, scene intent)
 - per-turn messages
 - message versions with active version selector
 - optional context inspector metadata on assistant versions
 
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
 
-## Planned Inline Directive Contract (Phase 20)
+## Inline Directive Contract
 
-Inline steering directives are planned as an optional shorthand layer for generation/chat.
+Inline steering directives are implemented as an optional shorthand layer for generation/chat.
 
-Accepted directive forms (planned):
+Accepted directive forms:
 
 - bracket directive: `[LV: <instruction>]`
 - html comment directive: `<!-- LV: <instruction> -->`
 
-Parser and staging constraints (planned):
+Parser and staging constraints (implemented):
 
 - only strict-prefix `LV:` directives are parsed
 - extraction scope is active story note near-cursor window (not whole-vault scans)
 - deterministic parse order follows source document order
 - stable dedupe normalization is applied before prompt staging
 - parsed directives are injected as a dedicated steering layer with inspector trace visibility
+- per-turn caps are enforced for directive count and token budget
+- directive layer placement follows configured completion placement policy (`system`, `pre_history`, `pre_response`)
 
-Exclusion constraints (planned):
+Exclusion constraints:
 
 - directive markers/content must be excluded from:
   - lorebook export artifacts
   - summary extraction/generation source text
   - story extraction and story-delta wiki update source payloads
 
-Testing contract (planned):
+Testing contract:
 
 - fixture coverage for directive parsing variants
 - deterministic ordering/dedupe assertions

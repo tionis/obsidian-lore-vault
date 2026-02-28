@@ -25,6 +25,47 @@ test('splitStoryMarkdownIntoChunks deterministically splits by heading and size'
   assert.equal(chunks[chunks.length - 1].index, chunks.length);
 });
 
+test('extractWikiPagesFromStory strips inline LV directives from prompt source', async () => {
+  const story = [
+    '# Chapter 1',
+    '[LV: Keep this tense]',
+    '',
+    'Alice enters the old tower.'
+  ].join('\n');
+
+  let capturedUserPrompt = '';
+
+  await extractWikiPagesFromStory({
+    storyMarkdown: story,
+    targetFolder: 'wiki/extracted',
+    defaultTagsRaw: '',
+    lorebookName: '',
+    tagPrefix: 'lorebook',
+    maxChunkChars: 600,
+    maxSummaryChars: 240,
+    maxOperationsPerChunk: 6,
+    maxExistingPagesInPrompt: 20,
+    callModel: async (_systemPrompt, userPrompt) => {
+      capturedUserPrompt = userPrompt;
+      return JSON.stringify({
+        operations: [
+          {
+            pageKey: 'character/alice',
+            title: 'Alice',
+            summary: 'Tower entrant.',
+            keywords: ['Alice'],
+            aliases: [],
+            content: 'Alice enters the old tower.',
+            confidence: 0.9
+          }
+        ]
+      });
+    }
+  });
+
+  assert.equal(capturedUserPrompt.includes('LV:'), false);
+});
+
 test('parseStoryExtractionOperations validates and sorts operations', () => {
   const raw = [
     '```json',

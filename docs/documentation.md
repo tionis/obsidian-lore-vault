@@ -283,6 +283,8 @@ Live query combines:
 
 Command: `Continue Story with Context`
 Also available in markdown editor right-click menu as `LoreVault: Continue Story with Context`.
+Also registered as an editor action command so it appears in mobile editor action menus.
+Also available via ribbon icon for fast mobile invocation.
 The same editor menu also exposes note-scoped summary actions when eligible:
 
 - `LoreVault: Run Text Command on Selection` (only when text selection is non-empty).
@@ -698,6 +700,31 @@ Turn context assembly:
   - per-layer context trace (`local_window`, `manual_context`, `specific_notes`, `chapter_memory`, `graph_memory`, `fallback_rag`, `tool_hooks`)
   - context token estimate
   - selected `world_info` and `rag` item labels
+
+## Planned Inline Story Directives (Phase 20)
+
+Goal:
+
+- provide fast in-note story steering without replacing explicit chat/story controls.
+
+Planned syntax (strict-prefix only):
+
+- `[LV: <instruction>]`
+- `<!-- LV: <instruction> -->`
+
+Rules:
+
+- only strict-prefix `LV:` directives are parsed for steering
+- plain bracket text (for example `[Editor Note: ...]` or `[Make it bigger]`) is treated as normal prose
+- directives are parsed from active-story near-cursor context only
+- directives are injected into a dedicated steering layer (not mixed into lore retrieval layers)
+- resolved directives are shown in inspector traces before/with generation output
+- directives are excluded from lorebook exports and wiki import/update extraction flows
+
+Status:
+
+- roadmap only; not implemented yet
+- tracked under Phase 20 in `docs/todo.md`
 
 ## Technical Deep-Dive
 

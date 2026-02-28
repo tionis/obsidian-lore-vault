@@ -48,6 +48,8 @@ This document is the implementation-level reference for core architecture and ru
   - summary normalization and world_info content resolution
 - `src/summary-review-modal.ts`
   - review/approval UI for generated summary candidates
+- `src/hash-utils.ts`
+  - deterministic hashing and identifier normalization (`@noble/hashes` based)
 - `src/quality-audit.ts`
   - deterministic per-entry risk scoring (missing keywords, thin content, embedding similarity)
 - `src/keyword-utils.ts`
@@ -323,6 +325,37 @@ Stored structure:
 - optional context inspector metadata on assistant versions
 
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
+
+## Planned Inline Directive Contract (Phase 20)
+
+Inline steering directives are planned as an optional shorthand layer for generation/chat.
+
+Accepted directive forms (planned):
+
+- bracket directive: `[LV: <instruction>]`
+- html comment directive: `<!-- LV: <instruction> -->`
+
+Parser and staging constraints (planned):
+
+- only strict-prefix `LV:` directives are parsed
+- extraction scope is active story note near-cursor window (not whole-vault scans)
+- deterministic parse order follows source document order
+- stable dedupe normalization is applied before prompt staging
+- parsed directives are injected as a dedicated steering layer with inspector trace visibility
+
+Exclusion constraints (planned):
+
+- directive markers/content must be excluded from:
+  - lorebook export artifacts
+  - summary extraction/generation source text
+  - story extraction and story-delta wiki update source payloads
+
+Testing contract (planned):
+
+- fixture coverage for directive parsing variants
+- deterministic ordering/dedupe assertions
+- inspector layer visibility assertions
+- exclusion assertions for export/import/update pipelines
 
 ## In-Plugin User Documentation
 

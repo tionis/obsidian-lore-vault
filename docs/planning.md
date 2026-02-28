@@ -320,6 +320,47 @@ Needed capabilities:
 - story-focused prompts and insert-at-cursor workflows
 - chat workflow for interactive story discussion with selectable lorebooks/manual context
 
+## Story Steering Additions (Planned)
+
+To better match proven writing workflows (for example SillyTavern/NovelAI-style steering),
+LoreVault should add explicit context staging controls instead of relying on implicit prompt assembly.
+
+Planned steering primitives:
+
+- explicit steering layers:
+  - pinned session instructions (style/tone/constraints)
+  - per-story author-note style steering
+  - scene/chapter intent block
+- optional inline shorthand directives with strict prefix:
+  - accepted syntax: `[LV: ...]` and `<!-- LV: ... -->`
+  - non-prefixed bracket notes are treated as normal prose and ignored by steering parser
+  - directives are parsed from active-story near-cursor context only
+  - directives are surfaced as an explicit inspector layer
+- configurable placement for each layer (`system`, pre-history, pre-response context)
+- deterministic token-budget partitioning per layer with clear reserves and headroom
+- deterministic overflow policy (fixed trim/compress order, no silent drop of pinned steering)
+- continuity-state layer (active threads, unresolved commitments, canon deltas)
+
+Directive safety constraints:
+
+- directive parsing must be deterministic (document order + stable dedupe)
+- directives must not leak into lore exports or wiki import/update extraction pipelines
+- directive count/tokens should be capped per turn to avoid prompt abuse/bloat
+
+Hashing migration direction (planned):
+
+- short term: use vetted cross-platform sync hashing dependency for deterministic runtime IDs/cache keys
+- medium term: add gradual async WebCrypto migration (`sha256HexAsync`) where call sites are already async
+- long term: remove sync fallback once all hash-dependent pipelines are async-compatible and benchmarked
+
+Inspector requirements for this phase:
+
+- show final assembled layer order
+- show token consumption and remaining headroom by layer
+- show exactly what was trimmed/compressed and why
+
+This work is tracked as Phase 20 in `docs/todo.md`.
+
 ## Graph-First Retrieval Strategy
 
 Primary retrieval loop:

@@ -157,7 +157,11 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Generation and Chat', {
       bullets: [
         'Continue Story with Context streams generated text into the active editor at the cursor.',
+        'On mobile, Continue Story is available through editor action menus (not only desktop right-click menus).',
+        'A ribbon shortcut is also available for one-tap mobile continuation.',
         'It assembles context in layers: local story window, chapter memory (if available), then lorebook retrieval.',
+        'Planned (Phase 20): optional inline steering directives with strict prefix syntax (`[LV: ...]` or `<!-- LV: ... -->`).',
+        'Plain bracket notes like `[Editor Note: ...]` are not treated as control syntax.',
         'Writing Completion settings support reusable model presets for quick provider/model A/B testing.',
         'Optional Cost Tracking settings persist token/cost usage records for continuation, chat, and summary runs.',
         'Manager panel includes usage/cost rollups (session/day/project) with optional budget warnings.',

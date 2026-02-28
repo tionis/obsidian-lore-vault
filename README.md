@@ -14,6 +14,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for wri
 - Optional backlink-aware graph expansion toggle for retrieval hops
 - Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
 - Optional LLM completion generation for story continuation
+- Ribbon shortcut for `Continue Story with Context` (mobile-friendly one-tap access)
 - Prompt-driven selection text commands with optional lore context and diff-based apply confirmation
 - Optional LLM summary workflows (world_info + chapter) with review/approval and in-note summary-section writes
 - Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
@@ -248,6 +249,7 @@ Behavior:
   - `LoreVault: Generate Keywords` (for lorebook-tagged notes)
   - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
   - `LoreVault: Generate Chapter Summary` (only when note has chapter/story frontmatter)
+- mobile note: `Continue Story with Context` is also registered as an editor action command for mobile editor menus.
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
@@ -404,6 +406,12 @@ Current capabilities:
 - chapter memory shown in layer trace indicates summary source (`section`, `frontmatter`, or `excerpt`)
 
 Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.
+
+Planned (Phase 20) inline steering shorthand:
+
+- strict-prefix directives only: `[LV: ...]` or `<!-- LV: ... -->`
+- non-prefixed bracket text like `[Editor Note: ...]` remains normal prose
+- resolved directives will appear in the context inspector as a dedicated steering layer
 
 ## Development
 

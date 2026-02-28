@@ -197,6 +197,13 @@ If the change affects in-app guidance, agents must also update embedded help:
 - `src/lorevault-help-view.ts`
 - relevant settings copy in `src/settings-tab.ts`
 
+If the change affects inline steering directive behavior or syntax, agents must also keep these in sync:
+
+- `docs/planning.md` (strategy and constraints)
+- `README.md` + `docs/documentation.md` (user-facing behavior and examples)
+- `docs/technical-reference.md` (parser/staging/exclusion contract)
+- `src/lorevault-help-view.ts` (in-plugin user guidance)
+
 Documentation updates must be:
 
 - explicit about new/changed defaults

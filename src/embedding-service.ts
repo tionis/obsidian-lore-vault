@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { ConverterSettings, RagChunk, RagChunkEmbedding } from './models';
-import { sha256Hex, stableJsonHash } from './hash-utils';
+import { sha256HexAsync, stableJsonHash } from './hash-utils';
 import { requestEmbeddings } from './embedding-provider';
 import { CachedEmbeddingRecord, EmbeddingCache } from './embedding-cache';
 
@@ -51,14 +51,15 @@ export class EmbeddingService {
     });
   }
 
-  private createCacheKey(textHash: string): string {
-    return sha256Hex(stableJsonHash({
+  private async createCacheKey(textHash: string): Promise<string> {
+    const stablePayload = stableJsonHash({
       provider: this.config.provider,
       model: this.config.model,
       instruction: this.config.instruction,
       chunkingSignature: this.chunkingSignature,
       textHash
-    }));
+    });
+    return sha256HexAsync(stablePayload);
   }
 
   private toEmbeddingRecord(chunk: RagChunk, cacheKey: string, vector: number[]): RagChunkEmbedding {
@@ -94,8 +95,11 @@ export class EmbeddingService {
     const results: RagChunkEmbedding[] = [];
     const pending: PendingChunk[] = [];
 
-    for (const chunk of sortedChunks) {
-      const cacheKey = this.createCacheKey(chunk.textHash);
+    const cacheKeys = await Promise.all(sortedChunks.map(chunk => this.createCacheKey(chunk.textHash)));
+
+    for (let chunkIndex = 0; chunkIndex < sortedChunks.length; chunkIndex += 1) {
+      const chunk = sortedChunks[chunkIndex];
+      const cacheKey = cacheKeys[chunkIndex];
       const cached = await this.cache.get(cacheKey);
       if (cached) {
         results.push({

@@ -21,6 +21,10 @@ import {
   parseConversationMarkdown,
   serializeConversationMarkdown
 } from './story-chat-document';
+import {
+  buildStoryChatContextInspectorLines,
+  buildStoryChatContextInspectorSummary
+} from './story-chat-context-inspector';
 
 export const LOREVAULT_STORY_CHAT_VIEW_TYPE = 'lorevault-story-chat-view';
 
@@ -849,58 +853,11 @@ export class StoryChatView extends ItemView {
     }
 
     const details = container.createEl('details', { cls: 'lorevault-chat-context-meta' });
-    details.createEl('summary', {
-      text: `Injected context · scopes ${version.contextMeta.scopes.join(', ') || '(none)'} · directives ${(version.contextMeta.inlineDirectiveItems ?? []).length} · notes ${version.contextMeta.specificNotePaths.length} · world_info ${version.contextMeta.worldInfoCount} · fallback ${version.contextMeta.ragCount}`
-    });
-    details.createEl('p', {
-      text: `Tokens: ${version.contextMeta.contextTokens} | lorebook: ${version.contextMeta.usedLorebookContext ? 'on' : 'off'} | manual: ${version.contextMeta.usedManualContext ? 'on' : 'off'} | inline-directives: ${version.contextMeta.usedInlineDirectives ? 'on' : 'off'} | specific-notes: ${version.contextMeta.usedSpecificNotesContext ? 'on' : 'off'}`
-    });
-    details.createEl('p', {
-      text: `chapter-memory: ${version.contextMeta.usedChapterMemoryContext ? 'on' : 'off'} | chapters: ${(version.contextMeta.chapterMemoryItems ?? []).join(', ') || '(none)'}`
-    });
-
-    details.createEl('p', {
-      text: `specific notes: ${version.contextMeta.specificNotePaths.join(', ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `unresolved note refs: ${version.contextMeta.unresolvedNoteRefs.join(', ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `inline directives: ${(version.contextMeta.inlineDirectiveItems ?? []).join(' | ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `continuity: ${version.contextMeta.usedContinuityState ? 'on' : 'off'} | threads ${(version.contextMeta.continuityPlotThreads ?? []).length} | open loops ${(version.contextMeta.continuityOpenLoops ?? []).length} | canon deltas ${(version.contextMeta.continuityCanonDeltas ?? []).length}`
-    });
-    details.createEl('p', {
-      text: `continuity items: threads ${(version.contextMeta.continuityPlotThreads ?? []).join(' | ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `continuity items: open loops ${(version.contextMeta.continuityOpenLoops ?? []).join(' | ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `continuity items: canon deltas ${(version.contextMeta.continuityCanonDeltas ?? []).join(' | ') || '(none)'}`
-    });
-    if ((version.contextMeta.overflowTrace ?? []).length > 0) {
-      details.createEl('p', {
-        text: `overflow policy: ${(version.contextMeta.overflowTrace ?? []).join(' | ')}`
-      });
+    details.createEl('summary', { text: buildStoryChatContextInspectorSummary(version.contextMeta) });
+    const lines = buildStoryChatContextInspectorLines(version.contextMeta);
+    for (const line of lines) {
+      details.createEl('p', { text: line });
     }
-    if ((version.contextMeta.layerUsage ?? []).length > 0) {
-      const layerRows = (version.contextMeta.layerUsage ?? [])
-        .map(layer => `${layer.layer}@${layer.placement} used ${layer.usedTokens}/${layer.reservedTokens} (headroom ${layer.headroomTokens})${layer.trimmed ? ` [trimmed: ${layer.trimReason ?? 'budget'}]` : ''}`);
-      details.createEl('p', {
-        text: `layer budgets: ${layerRows.join(' | ')}`
-      });
-    }
-    details.createEl('p', {
-      text: `world_info: ${version.contextMeta.worldInfoItems.join(', ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `fallback: ${version.contextMeta.ragItems.join(', ') || '(none)'}`
-    });
-    details.createEl('p', {
-      text: `layer trace: ${(version.contextMeta.layerTrace ?? []).join(' | ') || '(none)'}`
-    });
   }
 
   private renderMessageEditor(container: HTMLElement): void {

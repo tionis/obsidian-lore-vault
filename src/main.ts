@@ -1710,7 +1710,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       sourceLabel = 'Active note body';
     } else {
       sourceText = editorWindow || noteBody;
-      sourceLabel = editorWindow ? 'Story window near cursor' : 'Story window near cursor (fallback to note body)';
+      sourceLabel = editorWindow
+        ? 'Near-cursor editor context (text before cursor)'
+        : 'Near-cursor editor context (fallback to active note body)';
     }
 
     if (!sourceText) {
@@ -6521,7 +6523,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         },
         {
           key: 'story_window',
-          label: 'Story Window',
+          label: 'Near-Cursor Context',
           content: storyWindow,
           reservedTokens: storyTokenTarget,
           placement: 'pre_response',

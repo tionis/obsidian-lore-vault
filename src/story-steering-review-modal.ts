@@ -9,6 +9,15 @@ export interface StorySteeringReviewResult {
   state: StorySteeringState;
 }
 
+interface ComparisonFieldOptions {
+  name: string;
+  description: string;
+  currentValue: string;
+  proposedValue: string;
+  rows: number;
+  onChange: (value: string) => void;
+}
+
 function formatList(values: string[]): string {
   return values.join('\n');
 }
@@ -20,6 +29,10 @@ function parseList(value: string): string[] {
     .map(item => item.trim())
     .filter(Boolean)
     .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function normalizeComparisonValue(value: string): string {
+  return value.replace(/\r\n?/g, '\n').trim();
 }
 
 export class StorySteeringReviewModal extends Modal {
@@ -56,81 +69,93 @@ export class StorySteeringReviewModal extends Modal {
       text: `Source: ${this.sourceLabel} | Note: ${this.notePath}`
     });
 
-    const current = contentEl.createDiv({ cls: 'lorevault-summary-existing' });
-    current.createEl('h3', { text: 'Current Steering State' });
-    current.createEl('pre', {
+    contentEl.createEl('p', {
+      cls: 'lorevault-help-note',
+      text: 'Review each field below. Current values are read-only; proposed values are editable before apply.'
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Pinned Instructions',
+      description: 'Stable constraints for this steering scope.',
+      currentValue: this.existingState.pinnedInstructions,
+      proposedValue: this.draftState.pinnedInstructions,
+      rows: 4,
+      onChange: value => {
+        this.draftState.pinnedInstructions = value.trim();
+      }
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Story Notes',
+      description: 'Author-note style guidance.',
+      currentValue: this.existingState.storyNotes,
+      proposedValue: this.draftState.storyNotes,
+      rows: 4,
+      onChange: value => {
+        this.draftState.storyNotes = value.trim();
+      }
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Scene Intent',
+      description: 'Immediate scene/chapter objective.',
+      currentValue: this.existingState.sceneIntent,
+      proposedValue: this.draftState.sceneIntent,
+      rows: 3,
+      onChange: value => {
+        this.draftState.sceneIntent = value.trim();
+      }
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Active Lorebooks',
+      description: 'One lorebook scope per line (for example universe/yggdrasil).',
+      currentValue: formatList(this.existingState.activeLorebooks),
+      proposedValue: formatList(this.draftState.activeLorebooks),
+      rows: 4,
+      onChange: value => {
+        this.draftState.activeLorebooks = parseList(value);
+      }
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Active Plot Threads',
+      description: 'One item per line.',
+      currentValue: formatList(this.existingState.plotThreads),
+      proposedValue: formatList(this.draftState.plotThreads),
+      rows: 4,
+      onChange: value => {
+        this.draftState.plotThreads = parseList(value);
+      }
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Open Loops',
+      description: 'One unresolved loop per line.',
+      currentValue: formatList(this.existingState.openLoops),
+      proposedValue: formatList(this.draftState.openLoops),
+      rows: 4,
+      onChange: value => {
+        this.draftState.openLoops = parseList(value);
+      }
+    });
+
+    this.renderComparisonField(contentEl, {
+      name: 'Canon Deltas',
+      description: 'One recent fact change per line.',
+      currentValue: formatList(this.existingState.canonDeltas),
+      proposedValue: formatList(this.draftState.canonDeltas),
+      rows: 4,
+      onChange: value => {
+        this.draftState.canonDeltas = parseList(value);
+      }
+    });
+
+    const snapshotDetails = contentEl.createEl('details', { cls: 'lorevault-summary-existing' });
+    snapshotDetails.createEl('summary', { text: 'Current State Snapshot (JSON)' });
+    snapshotDetails.createEl('pre', {
       cls: 'lorevault-help-code',
       text: JSON.stringify(this.existingState, null, 2)
-    });
-
-    new Setting(contentEl)
-      .setName('Pinned Instructions')
-      .setDesc('Stable constraints for this steering scope.');
-    const pinnedInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    pinnedInput.value = this.draftState.pinnedInstructions;
-    pinnedInput.rows = 4;
-    pinnedInput.addEventListener('input', () => {
-      this.draftState.pinnedInstructions = pinnedInput.value.trim();
-    });
-
-    new Setting(contentEl)
-      .setName('Story Notes')
-      .setDesc('Author-note style guidance.');
-    const notesInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    notesInput.value = this.draftState.storyNotes;
-    notesInput.rows = 4;
-    notesInput.addEventListener('input', () => {
-      this.draftState.storyNotes = notesInput.value.trim();
-    });
-
-    new Setting(contentEl)
-      .setName('Scene Intent')
-      .setDesc('Immediate scene/chapter objective.');
-    const intentInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    intentInput.value = this.draftState.sceneIntent;
-    intentInput.rows = 3;
-    intentInput.addEventListener('input', () => {
-      this.draftState.sceneIntent = intentInput.value.trim();
-    });
-
-    new Setting(contentEl)
-      .setName('Active Lorebooks')
-      .setDesc('One lorebook scope per line (for example universe/yggdrasil).');
-    const lorebooksInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    lorebooksInput.value = formatList(this.draftState.activeLorebooks);
-    lorebooksInput.rows = 4;
-    lorebooksInput.addEventListener('input', () => {
-      this.draftState.activeLorebooks = parseList(lorebooksInput.value);
-    });
-
-    new Setting(contentEl)
-      .setName('Active Plot Threads')
-      .setDesc('One item per line.');
-    const threadsInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    threadsInput.value = formatList(this.draftState.plotThreads);
-    threadsInput.rows = 4;
-    threadsInput.addEventListener('input', () => {
-      this.draftState.plotThreads = parseList(threadsInput.value);
-    });
-
-    new Setting(contentEl)
-      .setName('Open Loops')
-      .setDesc('One unresolved loop per line.');
-    const loopsInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    loopsInput.value = formatList(this.draftState.openLoops);
-    loopsInput.rows = 4;
-    loopsInput.addEventListener('input', () => {
-      this.draftState.openLoops = parseList(loopsInput.value);
-    });
-
-    new Setting(contentEl)
-      .setName('Canon Deltas')
-      .setDesc('One recent fact change per line.');
-    const deltasInput = contentEl.createEl('textarea', { cls: 'lorevault-summary-textarea' });
-    deltasInput.value = formatList(this.draftState.canonDeltas);
-    deltasInput.rows = 4;
-    deltasInput.addEventListener('input', () => {
-      this.draftState.canonDeltas = parseList(deltasInput.value);
     });
 
     const actions = contentEl.createDiv({ cls: 'lorevault-summary-actions' });
@@ -154,6 +179,53 @@ export class StorySteeringReviewModal extends Modal {
       }
       this.finish('apply');
     });
+  }
+
+  private renderComparisonField(container: HTMLElement, options: ComparisonFieldOptions): void {
+    new Setting(container)
+      .setName(options.name)
+      .setDesc(options.description);
+
+    const field = container.createDiv({ cls: 'lorevault-steering-review-field' });
+    const changeStateEl = field.createEl('p', {
+      cls: 'lorevault-steering-review-change'
+    });
+    const columns = field.createDiv({ cls: 'lorevault-steering-review-columns' });
+
+    const currentColumn = columns.createDiv({ cls: 'lorevault-steering-review-column' });
+    currentColumn.createEl('label', { text: 'Current (read-only)' });
+    const currentInput = currentColumn.createEl('textarea', {
+      cls: 'lorevault-summary-textarea lorevault-summary-textarea-existing lorevault-steering-review-textarea'
+    });
+    currentInput.value = options.currentValue;
+    currentInput.rows = options.rows;
+    currentInput.readOnly = true;
+    currentInput.placeholder = '[Empty]';
+
+    const proposedColumn = columns.createDiv({ cls: 'lorevault-steering-review-column' });
+    proposedColumn.createEl('label', { text: 'Proposed (editable)' });
+    const proposedInput = proposedColumn.createEl('textarea', {
+      cls: 'lorevault-summary-textarea lorevault-steering-review-textarea'
+    });
+    proposedInput.value = options.proposedValue;
+    proposedInput.rows = options.rows;
+    proposedInput.placeholder = '[Empty]';
+    proposedInput.addEventListener('input', () => {
+      options.onChange(proposedInput.value);
+      updateChangeState();
+    });
+
+    const updateChangeState = (): void => {
+      const unchanged = normalizeComparisonValue(currentInput.value) === normalizeComparisonValue(proposedInput.value);
+      if (unchanged) {
+        changeStateEl.removeClass('is-changed');
+        changeStateEl.setText('No change from current value.');
+      } else {
+        changeStateEl.addClass('is-changed');
+        changeStateEl.setText('Changed from current value.');
+      }
+    };
+    updateChangeState();
   }
 
   private finish(action: 'cancel' | 'apply'): void {

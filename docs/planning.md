@@ -338,10 +338,10 @@ Current status:
   - markdown-backed scoped steering notes (`global`, optional `story` [compat alias: `thread`], optional `chapter`, `note`)
   - merged with chat/continuation steering assembly without mandatory `storyId`
 - LLM-assisted extraction actions are implemented in the Story Steering panel:
-  - extract from active note or story window
+  - extract from active note or near-cursor editor context (text-before-cursor fallback to note body)
   - optional per-run update prompt to steer what should change
   - existing steering state is treated as baseline; missing evidence preserves prior values
-  - review/edit modal before applying to panel state
+  - review/edit modal with field-level current-vs-proposed comparison before applying to panel state
   - explicit manual save step to persist scope note updates
 - story text completion now supports explicit stop control (`Stop Active Generation` command + editor-menu stop while running)
 - optional operation log captures full LLM request/response payloads for completion and planner calls

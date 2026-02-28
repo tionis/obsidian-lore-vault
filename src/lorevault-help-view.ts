@@ -139,7 +139,7 @@ export class LorevaultHelpView extends ItemView {
         'Use editor context menu: `LoreVault: Continue Story with Context`.',
         'Use command `Stop Active Generation` (or editor menu while running) to abort story text completion.',
         'Works on desktop and mobile editor menus.',
-        'Context assembly order: local story window -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
+        'Context assembly order: local near-cursor story context -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
         'Generation Monitor in Manager shows context usage, selected entries, and trim decisions.',
         'Inline directives are supported with strict syntax: `[LV: ...]` or `<!-- LV: ... -->`.'
       ],
@@ -155,6 +155,8 @@ export class LorevaultHelpView extends ItemView {
         '`Active Lorebooks` in steering notes is the primary lorebook selector for continuation.',
         'Steering layers: pinned instructions, story notes, scene intent, plot threads, open loops, canon deltas.',
         'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/save.',
+        'Steering update review now shows field-level Current vs Proposed values for manual comparison before apply.',
+        '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
         'Story Chat supports per-conversation scopes, manual context, specific note references, and fork/regenerate.',
         'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed steering scopes.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'

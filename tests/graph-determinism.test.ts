@@ -174,6 +174,9 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       forkSnapshots: [],
       maxMessages: 80
     },
+    storySteering: {
+      folder: 'LoreVault/steering'
+    },
     textCommands: {
       autoAcceptEdits: false,
       defaultIncludeLorebookContext: false,

@@ -662,6 +662,34 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         });
       }));
 
+    containerEl.createEl('h3', { text: 'Story Steering' });
+
+    let steeringFolderInput: TextComponent | null = null;
+    const steeringFolderSetting = new Setting(containerEl)
+      .setName('Story Steering Folder')
+      .setDesc('Vault folder where scope-based steering notes are stored (global/thread/chapter/note).')
+      .addText(text => {
+        steeringFolderInput = text;
+        text
+          .setPlaceholder('LoreVault/steering')
+          .setValue(this.plugin.settings.storySteering.folder)
+          .onChange(async (value) => {
+            this.plugin.settings.storySteering.folder = this.normalizePathInput(value);
+            await this.persistSettings();
+          });
+      });
+    steeringFolderSetting.addButton(button => button
+      .setButtonText('Browse')
+      .setTooltip('Pick existing folder from vault')
+      .onClick(() => {
+        this.openFolderPicker((folderPath: string) => {
+          const normalized = this.normalizePathInput(folderPath);
+          this.plugin.settings.storySteering.folder = normalized || 'LoreVault/steering';
+          steeringFolderInput?.setValue(this.plugin.settings.storySteering.folder);
+          void this.persistSettings();
+        });
+      }));
+
     containerEl.createEl('h3', { text: 'Writing Completion' });
     containerEl.createEl('p', {
       text: 'Configure LLM generation for "Continue Story with Context".'

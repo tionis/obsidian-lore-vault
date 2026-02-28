@@ -29,6 +29,7 @@ import {
   LorebooksQuerySimulationView
 } from './lorebooks-query-simulator-view';
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
+import { LOREVAULT_STORY_STEERING_VIEW_TYPE, StorySteeringView } from './story-steering-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
 import { LOREVAULT_IMPORT_VIEW_TYPE, LorevaultImportView } from './lorevault-import-view';
 import {
@@ -96,9 +97,16 @@ import {
   UsageLedgerReportSnapshot
 } from './usage-ledger-report';
 import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-utils';
-import { getVaultBasename, normalizeVaultRelativePath } from './vault-path-utils';
+import { getVaultBasename, normalizeVaultPath, normalizeVaultRelativePath } from './vault-path-utils';
 import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
 import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
+import {
+  StorySteeringEffectiveState,
+  StorySteeringScope,
+  StorySteeringScopeType,
+  StorySteeringState,
+  StorySteeringStore
+} from './story-steering';
 import {
   applyDeterministicOverflow,
   estimateTextTokens,
@@ -184,6 +192,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
   private usageLedgerStore!: UsageLedgerStore;
+  private storySteeringStore!: StorySteeringStore;
   private readonly sessionStartedAt = Date.now();
   private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
@@ -848,6 +857,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshStorySteeringViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof StorySteeringView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
   private refreshHelpViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
     for (const leaf of leaves) {
@@ -929,6 +947,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof StoryChatView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openStorySteeringView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false) ?? this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_STORY_STEERING_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof StorySteeringView) {
       leaf.view.refresh();
     }
   }
@@ -1030,6 +1065,80 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const files = this.app.vault.getMarkdownFiles();
     return this.discoverAllScopes(files);
+  }
+
+  private mergeSteeringText(...values: string[]): string {
+    return values
+      .map(value => value.trim())
+      .filter(Boolean)
+      .filter((value, index, list) => list.indexOf(value) === index)
+      .join('\n\n');
+  }
+
+  private mergeSteeringList(...values: string[][]): string[] {
+    const merged = values.flatMap(items => items.map(item => item.trim()).filter(Boolean));
+    return uniqueStrings(merged);
+  }
+
+  public getStorySteeringFolderPath(): string {
+    const normalized = (this.settings.storySteering.folder ?? '').toString().trim().replace(/\\/g, '/');
+    return normalized || DEFAULT_SETTINGS.storySteering.folder;
+  }
+
+  public getSuggestedStorySteeringScope(type: StorySteeringScopeType): StorySteeringScope {
+    if (type === 'global') {
+      return { type: 'global', key: 'global' };
+    }
+
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      return {
+        type,
+        key: ''
+      };
+    }
+
+    const scopeChain = this.storySteeringStore.getScopeChainForFile(activeFile);
+    const matched = scopeChain.find(scope => scope.type === type);
+    if (matched) {
+      return matched;
+    }
+
+    if (type === 'note') {
+      return {
+        type: 'note',
+        key: normalizeVaultPath(activeFile.path)
+      };
+    }
+
+    return {
+      type,
+      key: ''
+    };
+  }
+
+  public async loadStorySteeringScope(scope: StorySteeringScope): Promise<StorySteeringState> {
+    return this.storySteeringStore.loadScope(scope);
+  }
+
+  public async saveStorySteeringScope(scope: StorySteeringScope, state: StorySteeringState): Promise<string> {
+    return this.storySteeringStore.saveScope(scope, state);
+  }
+
+  public async openStorySteeringScopeNote(scope: StorySteeringScope): Promise<void> {
+    const existingState = await this.storySteeringStore.loadScope(scope);
+    const path = await this.storySteeringStore.saveScope(scope, existingState);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      new Notice(`Unable to open steering note at ${path}`);
+      return;
+    }
+    await this.app.workspace.getLeaf(true).openFile(file);
+  }
+
+  public async resolveEffectiveStorySteeringForActiveNote(): Promise<StorySteeringEffectiveState> {
+    const activeFile = this.app.workspace.getActiveFile();
+    return this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
   }
 
   public getStoryChatMessages(): StoryChatMessage[] {
@@ -1928,9 +2037,32 @@ export default class LoreBookConverterPlugin extends Plugin {
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
-    const continuityPlotThreads = this.normalizeContinuityItems(request.continuityPlotThreads ?? []);
-    const continuityOpenLoops = this.normalizeContinuityItems(request.continuityOpenLoops ?? []);
-    const continuityCanonDeltas = this.normalizeContinuityItems(request.continuityCanonDeltas ?? []);
+    const activeStoryFile = this.app.workspace.getActiveFile();
+    const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeStoryFile);
+    const mergedPinnedInstructions = this.mergeSteeringText(
+      scopedSteering.merged.pinnedInstructions,
+      request.pinnedInstructions
+    );
+    const mergedStoryNotes = this.mergeSteeringText(
+      scopedSteering.merged.storyNotes,
+      request.storyNotes
+    );
+    const mergedSceneIntent = this.mergeSteeringText(
+      scopedSteering.merged.sceneIntent,
+      request.sceneIntent
+    );
+    const continuityPlotThreads = this.mergeSteeringList(
+      scopedSteering.merged.plotThreads,
+      this.normalizeContinuityItems(request.continuityPlotThreads ?? [])
+    );
+    const continuityOpenLoops = this.mergeSteeringList(
+      scopedSteering.merged.openLoops,
+      this.normalizeContinuityItems(request.continuityOpenLoops ?? [])
+    );
+    const continuityCanonDeltas = this.mergeSteeringList(
+      scopedSteering.merged.canonDeltas,
+      this.normalizeContinuityItems(request.continuityCanonDeltas ?? [])
+    );
     const continuitySelection: ContinuitySelection = {
       includePlotThreads: request.continuitySelection?.includePlotThreads !== false,
       includeOpenLoops: request.continuitySelection?.includeOpenLoops !== false,
@@ -1948,9 +2080,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const steeringSections = this.createSteeringSections({
       maxInputTokens,
-      pinnedInstructions: request.pinnedInstructions,
-      storyNotes: request.storyNotes,
-      sceneIntent: request.sceneIntent,
+      pinnedInstructions: mergedPinnedInstructions,
+      storyNotes: mergedStoryNotes,
+      sceneIntent: mergedSceneIntent,
       inlineDirectives
     });
     const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
@@ -2011,7 +2143,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     let chapterMemoryBudget = 0;
     let chapterMemoryItems: string[] = [];
     let chapterMemoryLayerTrace: string[] = [];
-    const activeStoryFile = this.app.workspace.getActiveFile();
     if (activeStoryFile) {
       const remainingAfterSpecificNotes = Math.max(0, remainingAfterPrompt - specificNotesTokens);
       if (remainingAfterSpecificNotes > 96) {
@@ -2313,6 +2444,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (trimmedByPlacement('pre_response')) {
       layerTrace.push('steering(pre_response): trimmed to reservation');
     }
+    const scopedSteeringLabels = scopedSteering.layers.map(layer => `${layer.scope.type}:${layer.scope.key || 'global'}`);
+    if (scopedSteeringLabels.length > 0) {
+      layerTrace.push(`scoped_steering_layers: ${scopedSteeringLabels.join(' -> ')}`);
+    }
     if (overflowResult.trace.length > 0) {
       layerTrace.push(...overflowResult.trace.map(trace => `overflow_policy: ${trace}`));
     }
@@ -2603,6 +2738,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         ...DEFAULT_SETTINGS.storyChat,
         ...(data?.storyChat ?? {})
       },
+      storySteering: {
+        ...DEFAULT_SETTINGS.storySteering,
+        ...(data?.storySteering ?? {})
+      },
       textCommands: {
         ...DEFAULT_SETTINGS.textCommands,
         ...(data?.textCommands ?? {})
@@ -2871,6 +3010,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     merged.storyChat.maxMessages = Math.max(10, Math.floor(merged.storyChat.maxMessages || DEFAULT_SETTINGS.storyChat.maxMessages));
 
+    const mergedSteeringFolder = (merged.storySteering.folder ?? '').toString().trim().replace(/\\/g, '/');
+    try {
+      merged.storySteering.folder = normalizeVaultRelativePath(
+        mergedSteeringFolder || DEFAULT_SETTINGS.storySteering.folder
+      );
+    } catch {
+      console.warn(`Invalid story steering folder "${merged.storySteering.folder}". Falling back to default.`);
+      merged.storySteering.folder = DEFAULT_SETTINGS.storySteering.folder;
+    }
+
     merged.textCommands.autoAcceptEdits = Boolean(merged.textCommands.autoAcceptEdits);
     merged.textCommands.defaultIncludeLorebookContext = Boolean(merged.textCommands.defaultIncludeLorebookContext);
     merged.textCommands.maxContextTokens = Math.max(
@@ -3117,6 +3266,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Load the settings
     this.settings = this.mergeSettings(await this.loadData());
     this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
+    this.storySteeringStore = new StorySteeringStore(
+      this.app,
+      () => this.getStorySteeringFolderPath()
+    );
     this.liveContextIndex = new LiveContextIndex(
       this.app,
       () => this.settings
@@ -3126,6 +3279,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
+    this.registerView(LOREVAULT_STORY_STEERING_VIEW_TYPE, leaf => new StorySteeringView(leaf, this));
     this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
     this.registerView(LOREVAULT_IMPORT_VIEW_TYPE, leaf => new LorevaultImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
@@ -3210,6 +3364,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open Story Chat',
       callback: () => {
         void this.openStoryChatView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-story-steering',
+      name: 'Open Story Steering',
+      callback: () => {
+        void this.openStorySteeringView();
       }
     });
 
@@ -3427,6 +3589,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
+      this.refreshStorySteeringViews();
     }));
 
     this.registerEvent(this.app.vault.on('modify', file => {
@@ -3436,6 +3599,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
+      this.refreshStorySteeringViews();
     }));
 
     this.registerEvent(this.app.vault.on('delete', file => {
@@ -3445,6 +3609,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
+      this.refreshStorySteeringViews();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
@@ -3455,6 +3620,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshRoutingDebugViews();
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
+      this.refreshStorySteeringViews();
     }));
 
     void this.usageLedgerStore.initialize().catch(error => {
@@ -3471,6 +3637,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE);
@@ -3495,6 +3662,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.refreshRoutingDebugViews();
     this.refreshQuerySimulationViews();
     this.refreshStoryChatViews();
+    this.refreshStorySteeringViews();
     this.refreshHelpViews();
   }
 
@@ -4075,19 +4243,49 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+      const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
       const steeringFromFrontmatter = this.resolveSteeringFromFrontmatter(activeFile);
+      const mergedSteering = {
+        pinnedInstructions: this.mergeSteeringText(
+          scopedSteering.merged.pinnedInstructions,
+          steeringFromFrontmatter.pinnedInstructions
+        ),
+        storyNotes: this.mergeSteeringText(
+          scopedSteering.merged.storyNotes,
+          steeringFromFrontmatter.storyNotes
+        ),
+        sceneIntent: this.mergeSteeringText(
+          scopedSteering.merged.sceneIntent,
+          steeringFromFrontmatter.sceneIntent
+        )
+      };
       const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(activeFile);
-      const continuityMarkdown = this.buildContinuityMarkdown({
-        plotThreads: continuityFromFrontmatter.plotThreads,
-        openLoops: continuityFromFrontmatter.openLoops,
-        canonDeltas: continuityFromFrontmatter.canonDeltas,
+      const mergedContinuity = {
+        plotThreads: this.mergeSteeringList(
+          scopedSteering.merged.plotThreads,
+          continuityFromFrontmatter.plotThreads
+        ),
+        openLoops: this.mergeSteeringList(
+          scopedSteering.merged.openLoops,
+          continuityFromFrontmatter.openLoops
+        ),
+        canonDeltas: this.mergeSteeringList(
+          scopedSteering.merged.canonDeltas,
+          continuityFromFrontmatter.canonDeltas
+        ),
         selection: continuityFromFrontmatter.selection
+      };
+      const continuityMarkdown = this.buildContinuityMarkdown({
+        plotThreads: mergedContinuity.plotThreads,
+        openLoops: mergedContinuity.openLoops,
+        canonDeltas: mergedContinuity.canonDeltas,
+        selection: mergedContinuity.selection
       });
       const steeringSections = this.createSteeringSections({
         maxInputTokens,
-        pinnedInstructions: steeringFromFrontmatter.pinnedInstructions,
-        storyNotes: steeringFromFrontmatter.storyNotes,
-        sceneIntent: steeringFromFrontmatter.sceneIntent,
+        pinnedInstructions: mergedSteering.pinnedInstructions,
+        storyNotes: mergedSteering.storyNotes,
+        sceneIntent: mergedSteering.sceneIntent,
         inlineDirectives
       });
       const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
@@ -4389,7 +4587,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         `local_window: ~${storyPromptTokens} tokens`,
         `inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`,
         `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryPromptTokens} tokens`,
-        `continuity_state: threads ${continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads.length : 0}, open_loops ${continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops.length : 0}, canon_deltas ${continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas.length : 0}, ~${continuityPromptTokens} tokens`,
+        `continuity_state: threads ${mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads.length : 0}, open_loops ${mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops.length : 0}, canon_deltas ${mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas.length : 0}, ~${continuityPromptTokens} tokens`,
         ...chapterMemoryLayerTrace,
         `graph_memory(world_info): ${totalWorldInfo} entries, ~${loreContextPromptTokens} tokens`,
         `fallback_entries: ${totalRag} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
@@ -4401,6 +4599,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
       if (trimmedByPlacement('pre_response')) {
         contextLayerTrace.push('steering(pre_response): trimmed to reservation');
+      }
+      if (scopedSteering.layers.length > 0) {
+        const scopedLayerLabels = scopedSteering.layers.map(layer => `${layer.scope.type}:${layer.scope.key || 'global'}`);
+        contextLayerTrace.push(`scoped_steering_layers: ${scopedLayerLabels.join(' -> ')}`);
       }
       if (overflowResult.trace.length > 0) {
         contextLayerTrace.push(...overflowResult.trace.map(trace => `overflow_policy: ${trace}`));
@@ -4431,9 +4633,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         worldInfoItems: worldInfoDetails,
         ragItems: ragDetails,
         inlineDirectiveItems: resolvedInlineDirectiveItems,
-        continuityPlotThreads: continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads : [],
-        continuityOpenLoops: continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops : [],
-        continuityCanonDeltas: continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas : [],
+        continuityPlotThreads: mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads : [],
+        continuityOpenLoops: mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops : [],
+        continuityCanonDeltas: mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas : [],
         layerUsage,
         overflowTrace: [...overflowResult.trace],
         contextLayerTrace,
@@ -4452,7 +4654,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
           `inline directives: ${resolvedInlineDirectiveItems.join(' | ') || '(none)'}`,
           `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
-          `continuity: threads ${(continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads : []).join(' | ') || '(none)'} | open loops ${(continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops : []).join(' | ') || '(none)'} | canon deltas ${(continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas : []).join(' | ') || '(none)'}`,
+          `continuity: threads ${(mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads : []).join(' | ') || '(none)'} | open loops ${(mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops : []).join(' | ') || '(none)'} | canon deltas ${(mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas : []).join(' | ') || '(none)'}`,
           `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
           `fallback: ${ragDetails.join(', ') || '(none)'}`,
           `tool_hooks: ${toolContextItems.join(', ') || '(none)'}`,
@@ -4555,9 +4757,9 @@ export default class LoreBookConverterPlugin extends Plugin {
           usedChapterMemoryContext: chapterMemoryItems.length > 0,
           inlineDirectiveCount: resolvedInlineDirectiveItems.length,
           continuityItemCount: (
-            (continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads.length : 0)
-            + (continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops.length : 0)
-            + (continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas.length : 0)
+            (mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads.length : 0)
+            + (mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops.length : 0)
+            + (mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas.length : 0)
           )
         });
       }
@@ -4579,9 +4781,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         worldInfoItems: worldInfoDetails,
         ragItems: ragDetails,
         inlineDirectiveItems: resolvedInlineDirectiveItems,
-        continuityPlotThreads: continuityFromFrontmatter.selection.includePlotThreads ? continuityFromFrontmatter.plotThreads : [],
-        continuityOpenLoops: continuityFromFrontmatter.selection.includeOpenLoops ? continuityFromFrontmatter.openLoops : [],
-        continuityCanonDeltas: continuityFromFrontmatter.selection.includeCanonDeltas ? continuityFromFrontmatter.canonDeltas : [],
+        continuityPlotThreads: mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads : [],
+        continuityOpenLoops: mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops : [],
+        continuityCanonDeltas: mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas : [],
         layerUsage,
         overflowTrace: [...overflowResult.trace],
         contextLayerTrace,

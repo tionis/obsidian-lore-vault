@@ -173,6 +173,8 @@ export class LorevaultHelpView extends ItemView {
         'Story Chat provides persistent note-backed conversations with fork and regenerate support.',
         'Story Chat supports per-chat scope selection, manual context, specific-note context lists, steering text fields, and continuity controls.',
         'Story Chat assistant-turn details expose layer trace, per-layer token budgets/headroom, and overflow-trim rationale.',
+        'Story Steering panel stores reusable steering layers in markdown notes by scope (`global`, `thread`, `chapter`, `note`).',
+        'Continue Story and Story Chat merge scoped steering with note/chat/frontmatter steering at generation time.',
         'Manager -> Generation Monitor -> Selected Context Items shows inline directives, continuity state, prompt-layer usage, overflow policy decisions, and selected retrieval items.',
         'Writing Completion settings expose steering layer placement controls for pinned/story/scene/directive layers.'
       ],
@@ -195,7 +197,8 @@ export class LorevaultHelpView extends ItemView {
         '<!-- LV: Do not resolve the envoy reveal in this scene. -->'
       ].join('\n'),
       actions: [
-        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }
+        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() },
+        { label: 'Open Story Steering', onClick: () => void this.plugin.openStorySteeringView() }
       ]
     });
 

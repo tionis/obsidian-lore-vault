@@ -228,6 +228,15 @@ Reference design: `docs/planning.md`.
   - [x] keep sync hash path for deterministic hot paths until pipeline async refactor is complete
   - [x] remove sync hashing fallback only after all runtime call sites are async-compatible
 
+## Phase 21: Scope-Based Story Steering Workspace (In Progress)
+
+- [x] Add dedicated Story Steering panel with editable steering sections.
+- [x] Persist steering state as markdown notes under configurable steering folder.
+- [x] Support scope layers without mandatory `storyId` (`global` -> optional `thread` -> optional `chapter` -> `note`).
+- [x] Merge scoped steering into Continue Story and Story Chat prompt assembly.
+- [x] Expose steering panel via command palette, manager toolbar, and in-plugin help actions.
+- [ ] Add LLM-assisted extraction actions (proposal + review) to populate/update steering sections from story text.
+
 ## Default Decisions (2026-02-27)
 
 These are the current implementation defaults unless explicitly changed later.

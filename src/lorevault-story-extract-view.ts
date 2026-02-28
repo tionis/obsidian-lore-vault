@@ -17,6 +17,9 @@ export class LorevaultStoryExtractView extends ItemView {
   private maxOperationsPerChunk = 12;
   private maxExistingPagesInPrompt = 80;
   private running = false;
+  private runningMode: 'preview' | 'apply' | null = null;
+  private previewError = '';
+  private applyMessage = '';
   private lastPreview: StoryExtractionResult | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
@@ -61,7 +64,7 @@ export class LorevaultStoryExtractView extends ItemView {
     return true;
   }
 
-  private async runPreview(outputEl: HTMLElement): Promise<void> {
+  private async runPreview(): Promise<void> {
     if (this.running) {
       return;
     }
@@ -74,8 +77,9 @@ export class LorevaultStoryExtractView extends ItemView {
     }
 
     this.running = true;
-    outputEl.empty();
-    outputEl.createEl('p', { text: 'Running extraction preview...' });
+    this.runningMode = 'preview';
+    this.previewError = '';
+    this.applyMessage = '';
     this.render();
 
     try {
@@ -96,50 +100,35 @@ export class LorevaultStoryExtractView extends ItemView {
         })
       });
       this.lastPreview = result;
-
-      outputEl.empty();
-      outputEl.createEl('p', {
-        text: `Preview complete: ${result.pages.length} page(s), ${result.chunks.length} chunk(s).`
-      });
-      const chunkList = outputEl.createEl('ul');
-      for (const chunk of result.chunks) {
-        const warningSuffix = chunk.warnings.length > 0 ? ` | warnings: ${chunk.warnings.join('; ')}` : '';
-        chunkList.createEl('li', {
-          text: `Chunk ${chunk.chunkIndex}: ${chunk.operationCount} operation(s)${warningSuffix}`
-        });
-      }
-      if (result.warnings.length > 0) {
-        const warningList = outputEl.createEl('ul');
-        for (const warning of result.warnings) {
-          warningList.createEl('li', { text: warning });
-        }
-      }
-      const details = outputEl.createEl('details');
-      details.createEl('summary', { text: 'Planned File Paths' });
-      const list = details.createEl('ul');
-      for (const page of result.pages.slice(0, 80)) {
-        list.createEl('li', { text: page.path });
-      }
-      if (result.pages.length > 80) {
-        details.createEl('p', { text: `... ${result.pages.length - 80} more` });
-      }
+      this.previewError = '';
+      this.applyMessage = '';
+      new Notice(`Preview complete: ${result.pages.length} page(s), ${result.chunks.length} chunk(s).`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Story extraction preview failed:', error);
-      outputEl.empty();
-      outputEl.createEl('p', { text: `Preview failed: ${message}` });
+      this.lastPreview = null;
+      this.previewError = message;
       new Notice(`Story extraction preview failed: ${message}`);
     } finally {
       this.running = false;
+      this.runningMode = null;
       this.render();
     }
   }
 
-  private async applyPreview(outputEl: HTMLElement): Promise<void> {
+  private async applyPreview(): Promise<void> {
+    if (this.running) {
+      return;
+    }
     if (!this.lastPreview) {
       new Notice('Run preview before applying extracted pages.');
       return;
     }
+    this.running = true;
+    this.runningMode = 'apply';
+    this.applyMessage = '';
+    this.render();
+
     const wikiPages: ImportedWikiPage[] = this.lastPreview.pages.map((page, index) => ({
       path: page.path,
       content: page.content,
@@ -148,15 +137,81 @@ export class LorevaultStoryExtractView extends ItemView {
 
     try {
       const applied = await applyImportedWikiPages(this.app, wikiPages);
-      outputEl.createEl('p', {
-        text: `Applied: ${applied.created} created, ${applied.updated} updated.`
-      });
+      this.applyMessage = `Applied: ${applied.created} created, ${applied.updated} updated.`;
       new Notice(`Story extraction applied: ${applied.created} created, ${applied.updated} updated.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Story extraction apply failed:', error);
-      outputEl.createEl('p', { text: `Apply failed: ${message}` });
+      this.applyMessage = `Apply failed: ${message}`;
       new Notice(`Story extraction apply failed: ${message}`);
+    } finally {
+      this.running = false;
+      this.runningMode = null;
+      this.render();
+    }
+  }
+
+  private renderPreviewOutput(container: HTMLElement): void {
+    if (this.running && this.runningMode === 'preview') {
+      container.createEl('p', { text: 'Running extraction preview...' });
+      return;
+    }
+    if (this.running && this.runningMode === 'apply') {
+      container.createEl('p', { text: 'Applying extracted pages...' });
+      return;
+    }
+
+    if (this.previewError) {
+      container.createEl('p', { text: `Preview failed: ${this.previewError}` });
+      return;
+    }
+
+    if (!this.lastPreview) {
+      container.createEl('p', {
+        text: 'Run preview to inspect extracted page plan before applying writes.'
+      });
+      return;
+    }
+
+    const { lastPreview } = this;
+    container.createEl('p', {
+      text: `Preview complete: ${lastPreview.pages.length} page(s), ${lastPreview.chunks.length} chunk(s).`
+    });
+
+    if (this.applyMessage) {
+      container.createEl('p', { text: this.applyMessage });
+    }
+
+    const chunkDetails = container.createEl('details');
+    chunkDetails.createEl('summary', { text: `Chunk Summary (${lastPreview.chunks.length})` });
+    const chunkList = chunkDetails.createEl('ul');
+    for (const chunk of lastPreview.chunks) {
+      const warningSuffix = chunk.warnings.length > 0 ? ` | warnings: ${chunk.warnings.join('; ')}` : '';
+      chunkList.createEl('li', {
+        text: `Chunk ${chunk.chunkIndex}: ${chunk.operationCount} operation(s)${warningSuffix}`
+      });
+    }
+
+    if (lastPreview.warnings.length > 0) {
+      const warningDetails = container.createEl('details');
+      warningDetails.createEl('summary', { text: `Warnings (${lastPreview.warnings.length})` });
+      const warningList = warningDetails.createEl('ul');
+      for (const warning of lastPreview.warnings.slice(0, 80)) {
+        warningList.createEl('li', { text: warning });
+      }
+      if (lastPreview.warnings.length > 80) {
+        warningDetails.createEl('p', { text: `... ${lastPreview.warnings.length - 80} more warnings` });
+      }
+    }
+
+    const details = container.createEl('details');
+    details.createEl('summary', { text: `Planned File Paths (${lastPreview.pages.length})` });
+    const list = details.createEl('ul');
+    for (const page of lastPreview.pages.slice(0, 120)) {
+      list.createEl('li', { text: page.path });
+    }
+    if (lastPreview.pages.length > 120) {
+      details.createEl('p', { text: `... ${lastPreview.pages.length - 120} more` });
     }
   }
 
@@ -262,29 +317,27 @@ export class LorevaultStoryExtractView extends ItemView {
 
     const actions = contentEl.createDiv({ cls: 'lorevault-import-actions' });
     const output = contentEl.createDiv({ cls: 'lorevault-import-output' });
-    if (!this.lastPreview) {
-      output.createEl('p', {
-        text: 'Run preview to inspect extracted page plan before applying writes.'
-      });
-    }
+    this.renderPreviewOutput(output);
 
     const previewButton = actions.createEl('button', { text: this.running ? 'Preview Running...' : 'Preview Extraction' });
     previewButton.addClass('mod-cta');
     previewButton.disabled = this.running;
     previewButton.addEventListener('click', () => {
-      void this.runPreview(output);
+      void this.runPreview();
     });
 
     const applyButton = actions.createEl('button', { text: 'Apply Preview' });
     applyButton.disabled = this.running || !this.lastPreview;
     applyButton.addEventListener('click', () => {
-      void this.applyPreview(output);
+      void this.applyPreview();
     });
 
     const clearButton = actions.createEl('button', { text: 'Clear Preview' });
     clearButton.disabled = this.running || !this.lastPreview;
     clearButton.addEventListener('click', () => {
       this.lastPreview = null;
+      this.previewError = '';
+      this.applyMessage = '';
       this.render();
     });
   }

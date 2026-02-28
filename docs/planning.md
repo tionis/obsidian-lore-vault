@@ -248,6 +248,19 @@ Constraints:
 - explicit conflict strategy (append/merge/overwrite policy)
 - strict schema validation with recoverable error handling per chunk
 
+## Future: Mobile Compatibility
+
+Roadmap document:
+
+- `docs/mobile-compatibility-plan.md`
+
+Target direction:
+
+- remove Node/Electron-only filesystem dependencies from core runtime paths
+- keep deterministic output behavior between desktop and mobile
+- support vault-relative exports/cache paths on mobile
+- keep absolute-path export behavior desktop-only (with explicit UI gating)
+
 ## Story-Driven Wiki Update Workflow (Phase 15 Foundation)
 
 Current status:

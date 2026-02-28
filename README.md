@@ -27,6 +27,10 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for wri
 - Unicode-aware retrieval tokenization for non-English keywords/titles
 - Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
 
+Mobile roadmap:
+
+- see `docs/mobile-compatibility-plan.md` for phased migration to mobile-safe IO/runtime paths.
+
 ## Migration Notes
 
 - Plugin id is now `lore-vault`.

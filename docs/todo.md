@@ -169,6 +169,22 @@ Reference design: `docs/planning.md`.
 - [x] Add command/context-menu entry: `Generate Keywords (Active Note)`.
 - [x] Add deterministic keyword parsing/frontmatter upsert helpers with regression tests.
 
+## Phase 19: Mobile Compatibility
+
+- [ ] Add mobile-safe storage adapter abstraction for text/binary read/write and directory creation.
+- [ ] Migrate runtime filesystem paths away from Node `fs` in:
+  - `src/lorebook-exporter.ts`
+  - `src/rag-exporter.ts`
+  - `src/sqlite-pack-exporter.ts`
+  - `src/sqlite-pack-reader.ts`
+  - `src/embedding-cache.ts`
+  - `src/sqlite-cli.ts`
+- [ ] Replace Node `path` usage in mobile-executed code paths with vault-path utilities.
+- [ ] Gate desktop-only behaviors in settings/help (absolute output paths and related UX).
+- [ ] Add mobile-focused regression tests for deterministic export paths and adapter IO.
+- [ ] Validate mobile QA matrix and flip `manifest.json isDesktopOnly` to `false`.
+- [ ] Keep absolute filesystem export support desktop-only with explicit warning/fallback behavior.
+
 ## Default Decisions (2026-02-27)
 
 These are the current implementation defaults unless explicitly changed later.

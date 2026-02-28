@@ -353,6 +353,11 @@ Long-form story metadata (new):
 - `lvChapterId` (optional): Story Steering chapter scope value override
 - `lvNoteId` (auto-managed): stable note identifier used for move-safe Story Steering note/chapter scope links
 
+Story Steering extraction behavior:
+
+- extraction focuses on control metadata (instructions, intent, active threads/loops/deltas)
+- LoreVault filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
+
 When running `Continue Story with Context`, LoreVault resolves a deterministic story thread for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.

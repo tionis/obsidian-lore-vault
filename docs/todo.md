@@ -157,14 +157,14 @@ Reference design: `docs/planning.md`.
 - [x] Include scoped notes as unified lore entries by default (`retrieval: none` remains hard exclusion).
 - [x] Keep fallback retrieval (`off|auto|always`) as a secondary selector over the same canonical entries.
 - [x] Merge fallback-selected entries into the injected `world_info` context list.
-- [x] Add keyword-coverage diagnostics (missing explicit keyword counts/list) to routing debug and manager views.
+- [x] Add keyword-coverage diagnostics (missing explicit keyword counts/list) to Lorebook Auditor and manager views.
 - [x] Update query simulation and generation UI labels from `rag` to `fallback` where relevant.
 - [x] Add/refresh tests covering unified routing and fallback-to-world_info merge behavior.
 
 ## Phase 18: Quality Audit and Keyword Assist
 
 - [x] Add deterministic quality-audit scoring (missing keywords, thin content, duplicate-like embedding similarity).
-- [x] Add quality-audit table in Routing Debug with actionable reasons and similarity hints.
+- [x] Add quality-audit table in Lorebook Auditor with actionable reasons and similarity hints.
 - [x] Add per-entry `Generate Keywords` action for missing-keyword notes in the audit table.
 - [x] Add command/context-menu entry: `Generate Keywords (Active Note)`.
 - [x] Add deterministic keyword parsing/frontmatter upsert helpers with regression tests.

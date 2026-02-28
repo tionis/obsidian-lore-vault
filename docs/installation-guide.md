@@ -45,7 +45,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - The command palette (Ctrl+P or Cmd+P) should include:
      - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
-     - "Open LoreVault Routing Debug" (opens dedicated routing diagnostics panel)
+     - "Open LoreVault Lorebook Auditor" (opens dedicated lorebook audit panel)
      - "Open LoreVault Query Simulation" (opens dedicated retrieval simulation panel)
      - "Open Story Chat" (opens right sidebar panel)
      - "Open LoreVault Help" (opens embedded help/documentation panel)
@@ -119,8 +119,8 @@ If you prefer to build the plugin from source:
    - Use frontmatter `retrieval: none` to exclude a note from retrieval/export
    - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
    - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
-   - Use "Open LoreVault Routing Debug" for full note-level inclusion/routing diagnostics
-   - In Routing Debug, use Quality Audit to detect missing keywords and trigger per-note `Generate Keywords`
+   - Use "Open LoreVault Lorebook Auditor" for scope quality diagnostics
+   - In Lorebook Auditor, use Quality Audit to detect missing keywords and run reviewed keyword generation for one or many notes
    - Use "Open LoreVault Query Simulation" to simulate retrieval across one or multiple scopes with override knobs
    - Monitor the progress bar as your vault is converted
 
@@ -157,6 +157,7 @@ If you prefer to build the plugin from source:
    - Select text in editor
    - Right-click and run `LoreVault: Run Text Command on Selection` (or run command palette action `Run Text Command on Selection`)
    - Choose/edit prompt template and optional lorebook-context toggle
+   - Prompt templates are markdown notes from your prompt folder (`Text Command Prompt Notes Folder` in settings)
    - Review diff modal and click `Apply Edit` (unless auto-accept is enabled)
    - Configure defaults in Settings -> LoreVault -> `Text Commands`
 

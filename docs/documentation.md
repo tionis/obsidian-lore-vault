@@ -344,7 +344,7 @@ Run flow:
 
 1. select editor text
 2. open prompt modal
-  - choose prompt template from stored collection (or custom prompt)
+  - choose prompt template from prompt-note files in your configured prompt folder (or custom prompt)
   - optional per-run lorebook-context toggle
 3. LoreVault optionally retrieves scoped lore context using selected text as query
 4. LoreVault sends prompt + selected text (+ optional context) to completion provider
@@ -358,7 +358,8 @@ Settings (LoreVault -> Text Commands):
 - `Include Lorebook Context by Default`
 - `Text Command Context Token Budget`
 - `Text Command System Prompt`
-- `Text Command Prompt Collection (JSON)` with `Save Collection` and `Load Defaults`
+- `Text Command Prompt Notes Folder`
+- `Create Default Prompt Notes`
 
 ## Auto Summary Workflows (Phase 9)
 
@@ -527,29 +528,25 @@ Current merge policy (default):
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope
-  - `Inspect Routing` per scope
-  - `Open Routing Debug` (toolbar)
+  - `Open Auditor` per scope
+  - `Open Lorebook Auditor` (toolbar)
   - `Open Query Simulation` (toolbar)
 
-## Routing Debug UI
+## Lorebook Auditor UI
 
-Command: `Open LoreVault Routing Debug`
+Command: `Open LoreVault Lorebook Auditor`
 
 Capabilities:
 
-- opens a dedicated workspace view with more horizontal space for routing diagnostics
+- opens a dedicated workspace view with more horizontal space for lorebook auditing
 - scope selector for switching debug target
 - lorebook contents panel with `world_info` entries (keywords, trigger parameters, collapsible content)
 - quality audit panel:
   - per-entry risk score (duplicate-like similarity, thin content, missing keywords)
   - embedding-driven nearest-neighbor similarity hints when embeddings are available
   - per-row actions (`Open`, `Generate Keywords` for missing-keyword notes)
-- full inclusion/routing table for selected scope:
-  - note path
-  - inclusion/exclusion reason
-  - retrieval mode and keyword count
-  - resolved route
-  - detected lorebook scopes
+  - bulk keyword generation across selected missing-keyword rows
+  - keyword generation opens a review step before writing frontmatter
 
 ## Query Simulation UI
 

@@ -130,7 +130,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       defaultIncludeLorebookContext: false,
       maxContextTokens: 1400,
       systemPrompt: 'You are a precise editing assistant.',
-      prompts: [],
+      promptsFolder: 'LoreVault/prompts/text-commands',
       ...(overrides.textCommands ?? {})
     }
   };

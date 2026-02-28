@@ -102,7 +102,7 @@ export class LorevaultHelpView extends ItemView {
       ],
       actions: [
         { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() },
-        { label: 'Open Routing Debug', onClick: () => void this.plugin.openRoutingDebugView() },
+        { label: 'Open Lorebook Auditor', onClick: () => void this.plugin.openLorebookAuditorView() },
         { label: 'Open Query Simulation', onClick: () => void this.plugin.openQuerySimulationView() }
       ]
     });
@@ -145,10 +145,12 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Text Commands', {
       bullets: [
         'Select text in the editor, right-click, and run `LoreVault: Run Text Command on Selection`.',
+        'Prompt templates are markdown notes in your prompt folder and can be edited like normal notes.',
+        'Template frontmatter controls behavior (`promptKind: text_command`, `includeLorebookContext: true|false`).',
         'Pick a stored prompt template or edit a custom prompt before running.',
         'Each run can include lorebook context or operate on selected text only.',
         'Generated edits are reviewed in a diff/preview modal before apply unless auto-accept is enabled.',
-        'Manage prompt collection, context defaults, and auto-accept in Settings -> Text Commands.'
+        'Manage prompt folder path, context defaults, and auto-accept in Settings -> Text Commands.'
       ]
     });
 
@@ -195,8 +197,8 @@ export class LorevaultHelpView extends ItemView {
         'Token budgets are enforced; world_info content is tiered short -> medium -> full, with high-score body lift using full note body when budget permits.',
         'When full body does not fit, excerpt lift uses lexical scoring and (if embeddings are enabled) semantic paragraph reranking as a fallback.',
         'Use Query Simulation for multi-scope retrieval testing, fallback diagnostics, and body-lift decision traces.',
-        'Routing Debug now includes a Quality Audit table that flags missing keywords, duplicate-like entries, and thin notes.',
-        'Quality Audit rows with missing keywords include a Generate Keywords action that uses your configured LLM to update frontmatter keywords.'
+        'Lorebook Auditor includes a Quality Audit table that flags missing keywords, duplicate-like entries, and thin notes.',
+        'Keyword generation now always opens a review step before applying and supports multi-note runs from the audit table.'
       ]
     });
 

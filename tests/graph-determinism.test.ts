@@ -162,7 +162,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       defaultIncludeLorebookContext: false,
       maxContextTokens: 1400,
       systemPrompt: 'You are a precise editing assistant.',
-      prompts: []
+      promptsFolder: 'LoreVault/prompts/text-commands'
     }
   };
 }

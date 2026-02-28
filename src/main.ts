@@ -63,6 +63,7 @@ import {
 } from './story-thread-resolver';
 import * as path from 'path';
 import {
+  asBoolean,
   asString,
   asStringArray,
   FrontmatterData,
@@ -82,6 +83,7 @@ import {
 import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
 import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text-command-modal';
 import { TextCommandReviewModal } from './text-command-review-modal';
+import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries } from './lorebooks-manager-data';
 import { UsageLedgerStore } from './usage-ledger-store';
@@ -513,6 +515,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       leaf.view.setScope(scope ?? null);
       leaf.view.refresh();
     }
+  }
+
+  async openLorebookAuditorView(scope?: string): Promise<void> {
+    await this.openRoutingDebugView(scope);
   }
 
   async openQuerySimulationView(scopes?: string[]): Promise<void> {
@@ -1076,40 +1082,125 @@ export default class LoreBookConverterPlugin extends Plugin {
     await this.app.vault.modify(file, next);
   }
 
-  public async generateKeywordsForNotePath(notePath: string): Promise<void> {
-    const abstract = this.app.vault.getAbstractFileByPath(notePath);
-    if (!(abstract instanceof TFile)) {
-      throw new Error(`Note not found: ${notePath}`);
-    }
-    await this.generateKeywordsForNote(abstract);
+  private async reviewKeywordCandidates(
+    file: TFile,
+    existingKeywords: string[],
+    proposedKeywords: string[]
+  ): Promise<KeywordReviewResult> {
+    return new Promise(resolve => {
+      const modal = new KeywordReviewModal(
+        this.app,
+        file.path,
+        existingKeywords,
+        proposedKeywords,
+        resolve
+      );
+      modal.open();
+    });
   }
 
-  private async generateKeywordsForNote(file: TFile): Promise<void> {
+  private async runKeywordGenerationForFiles(
+    files: TFile[],
+    missingPaths: string[]
+  ): Promise<void> {
     if (this.generationInFlight) {
       throw new Error('Generation is already running. Wait for the current run to finish.');
     }
 
+    const totalCount = files.length + missingPaths.length;
+    if (totalCount === 0) {
+      throw new Error('No notes selected for keyword generation.');
+    }
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    let failedCount = missingPaths.length;
+    let totalAddedKeywords = 0;
+    const failureNotes: string[] = missingPaths.map(path => `not found: ${path}`);
+
     try {
       this.generationInFlight = true;
       this.generationAbortController = new AbortController();
-      this.setGenerationStatus('generating keywords', 'busy');
 
-      const result = await this.generateKeywordCandidatesForFile(file);
-      await this.applyKeywordsToNoteFrontmatter(file, result.keywords);
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const progress = `${index + 1}/${totalCount}`;
+        this.setGenerationStatus(`generating keywords ${progress}`, 'busy');
 
-      this.liveContextIndex.requestFullRefresh();
-      this.refreshManagerViews();
-      this.refreshRoutingDebugViews();
-      this.refreshQuerySimulationViews();
-      this.refreshStoryChatViews();
+        try {
+          const result = await this.generateKeywordCandidatesForFile(file);
+          const review = await this.reviewKeywordCandidates(file, result.existingKeywords, result.keywords);
+          if (review.action !== 'apply') {
+            skippedCount += 1;
+            continue;
+          }
 
-      const addedCount = Math.max(0, result.keywords.length - result.existingKeywords.length);
-      new Notice(`Updated keywords for ${file.basename} (${result.keywords.length} total, +${addedCount} added).`);
+          await this.applyKeywordsToNoteFrontmatter(file, review.keywords);
+          updatedCount += 1;
+          totalAddedKeywords += Math.max(0, review.keywords.length - result.existingKeywords.length);
+        } catch (error) {
+          failedCount += 1;
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`Keyword generation failed for ${file.path}:`, error);
+          failureNotes.push(`${file.path}: ${message}`);
+        }
+      }
     } finally {
       this.generationInFlight = false;
       this.generationAbortController = null;
       this.setGenerationStatus('idle', 'idle');
     }
+
+    if (updatedCount > 0) {
+      this.liveContextIndex.requestFullRefresh();
+      this.refreshManagerViews();
+      this.refreshRoutingDebugViews();
+      this.refreshQuerySimulationViews();
+      this.refreshStoryChatViews();
+    }
+
+    if (totalCount === 1 && updatedCount === 1 && failedCount === 0 && skippedCount === 0) {
+      const file = files[0];
+      new Notice(`Updated keywords for ${file.basename} (+${totalAddedKeywords} added).`);
+      return;
+    }
+
+    const summary = `Keyword generation finished: ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed.`;
+    if (failureNotes.length > 0) {
+      const details = failureNotes.slice(0, 3).join('\n');
+      new Notice(`${summary}\n${details}`);
+    } else {
+      new Notice(summary);
+    }
+  }
+
+  public async generateKeywordsForNotePaths(notePaths: string[]): Promise<void> {
+    const normalizedPaths = uniqueStrings(
+      notePaths
+        .map(path => (path ?? '').toString().trim())
+        .filter(Boolean)
+    );
+
+    const files: TFile[] = [];
+    const missingPaths: string[] = [];
+    for (const notePath of normalizedPaths) {
+      const abstract = this.app.vault.getAbstractFileByPath(notePath);
+      if (abstract instanceof TFile) {
+        files.push(abstract);
+      } else {
+        missingPaths.push(notePath);
+      }
+    }
+
+    await this.runKeywordGenerationForFiles(files, missingPaths);
+  }
+
+  public async generateKeywordsForNotePath(notePath: string): Promise<void> {
+    await this.generateKeywordsForNotePaths([notePath]);
+  }
+
+  private async generateKeywordsForNote(file: TFile): Promise<void> {
+    await this.runKeywordGenerationForFiles([file], []);
   }
 
   private async generateKeywordsForActiveNote(): Promise<void> {
@@ -1995,10 +2086,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       128,
       Math.min(12000, Math.floor(Number(merged.textCommands.maxContextTokens)))
     );
+    merged.textCommands.promptsFolder = ((merged.textCommands.promptsFolder ?? '')
+      .toString()
+      .trim()
+      .replace(/\\/g, '/')) || DEFAULT_SETTINGS.textCommands.promptsFolder;
     merged.textCommands.systemPrompt = (merged.textCommands.systemPrompt ?? '')
       .toString()
       .trim() || DEFAULT_SETTINGS.textCommands.systemPrompt;
-    merged.textCommands.prompts = this.normalizeTextCommandPrompts(merged.textCommands.prompts);
 
     const messages = Array.isArray(merged.storyChat.messages) ? merged.storyChat.messages : [];
     merged.storyChat.messages = messages
@@ -2199,9 +2293,9 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-routing-debug',
-      name: 'Open LoreVault Routing Debug',
+      name: 'Open LoreVault Lorebook Auditor',
       callback: () => {
-        void this.openRoutingDebugView();
+        void this.openLorebookAuditorView();
       }
     });
 
@@ -2696,34 +2790,97 @@ export default class LoreBookConverterPlugin extends Plugin {
     return `prompt-${fallbackIndex + 1}`;
   }
 
-  private normalizeTextCommandPrompts(rawPrompts: unknown): TextCommandPromptTemplate[] {
-    const source = Array.isArray(rawPrompts) ? rawPrompts : [];
-    const normalized: TextCommandPromptTemplate[] = [];
-    for (let index = 0; index < source.length; index += 1) {
-      const item = source[index];
-      if (!item || typeof item !== 'object') {
+  public getTextCommandPromptsFolder(): string {
+    return this.normalizeVaultPath(
+      this.settings.textCommands.promptsFolder,
+      DEFAULT_SETTINGS.textCommands.promptsFolder
+    );
+  }
+
+  private buildDefaultTextCommandPromptNote(template: TextCommandPromptTemplate): string {
+    return [
+      '---',
+      'type: lorevault-prompt',
+      'promptKind: text_command',
+      `title: "${template.name.replace(/"/g, '\\"')}"`,
+      `includeLorebookContext: ${template.includeLorebookContext ? 'true' : 'false'}`,
+      '---',
+      '',
+      template.prompt.trim(),
+      ''
+    ].join('\n');
+  }
+
+  public async populateDefaultTextCommandPromptNotes(): Promise<{
+    created: number;
+    skipped: number;
+    folder: string;
+  }> {
+    const folder = this.getTextCommandPromptsFolder();
+    await this.ensureVaultDirectory(folder);
+
+    let created = 0;
+    let skipped = 0;
+    const defaults = cloneDefaultTextCommandPromptTemplates();
+    for (let index = 0; index < defaults.length; index += 1) {
+      const template = defaults[index];
+      const slug = this.sanitizeTextCommandPromptId(template.name, index);
+      const path = `${folder}/${slug}.md`;
+      const exists = await this.app.vault.adapter.exists(path);
+      if (exists) {
+        skipped += 1;
         continue;
       }
-      const candidate = item as Partial<TextCommandPromptTemplate>;
-      const name = (candidate.name ?? '').toString().trim();
-      const prompt = (candidate.prompt ?? '').toString().trim();
-      if (!name || !prompt) {
+      await this.app.vault.adapter.write(path, this.buildDefaultTextCommandPromptNote(template));
+      created += 1;
+    }
+
+    return {
+      created,
+      skipped,
+      folder
+    };
+  }
+
+  public async loadTextCommandPromptTemplates(): Promise<TextCommandPromptTemplate[]> {
+    const folder = this.getTextCommandPromptsFolder();
+    const prefix = `${folder}/`;
+    const files = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.path === folder || file.path.startsWith(prefix))
+      .sort((a, b) => a.path.localeCompare(b.path));
+
+    const templates: TextCommandPromptTemplate[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const raw = await this.app.vault.cachedRead(file);
+      const prompt = stripFrontmatter(raw).trim();
+      if (!prompt) {
         continue;
       }
-      const id = this.sanitizeTextCommandPromptId(
-        typeof candidate.id === 'string' ? candidate.id : name,
-        index
-      );
-      normalized.push({
-        id,
+
+      const cache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+      const promptKind = asString(getFrontmatterValue(frontmatter, 'promptKind', 'promptType', 'kind'));
+      if (promptKind && promptKind.toLowerCase() !== 'text_command' && promptKind.toLowerCase() !== 'textcommand') {
+        continue;
+      }
+
+      const name = asString(getFrontmatterValue(frontmatter, 'title', 'name')) ?? file.basename;
+      templates.push({
+        id: this.sanitizeTextCommandPromptId(
+          asString(getFrontmatterValue(frontmatter, 'id')) ?? file.basename,
+          index
+        ),
         name,
         prompt,
-        includeLorebookContext: Boolean(candidate.includeLorebookContext)
+        includeLorebookContext: asBoolean(getFrontmatterValue(frontmatter, 'includeLorebookContext', 'include_context')) ??
+          this.settings.textCommands.defaultIncludeLorebookContext
       });
     }
 
-    const deduped = normalized
-      .filter((prompt, index, array) => array.findIndex(item => item.id === prompt.id) === index)
+    const deduped = templates
+      .filter((item, index, array) => array.findIndex(other => other.id === item.id) === index)
       .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
     if (deduped.length > 0) {
@@ -2745,8 +2902,9 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   private async promptForTextCommandSelection(selectionText: string): Promise<TextCommandPromptSelectionResult> {
+    const templates = await this.loadTextCommandPromptTemplates();
     const modal = new TextCommandPromptModal(this.app, {
-      templates: this.settings.textCommands.prompts,
+      templates,
       defaultIncludeLorebookContext: this.settings.textCommands.defaultIncludeLorebookContext,
       selectedTextPreview: this.buildTextSelectionPreview(selectionText)
     });

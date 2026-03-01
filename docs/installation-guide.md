@@ -148,7 +148,10 @@ If you prefer to build the plugin from source:
      - `Split Active Story Note into Chapter Notes`
      - `Split Active Story Note into Chapter Notes (Pick Folder)`
      - `Create Next Story Chapter`
-   - Story Writing Panel also includes `Link Author Note`, `Create Next Chapter`, and `Generate Chapter Summary` actions
+   - Story Writing Panel action groups:
+     - `Continue Story` (toggles to `Stop` during generation) + `Insert Directive`
+     - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
+     - `Generate Chapter Summary`, `Create Next Chapter`
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
@@ -182,7 +185,7 @@ If you prefer to build the plugin from source:
 
 8. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
-   - Use the conversation dropdown at the top to switch chats; use `New Chat` to create one
+   - Use `Open Conversation` to interactively switch chats; use `New Chat` to create one
    - Optional: set the conversation note folder in Settings -> LoreVault -> `Story Chat Conversation Folder`
    - Select lorebooks to use via the add/remove list (leave empty for manual-only chat)
    - Optional: add manual context text in the panel

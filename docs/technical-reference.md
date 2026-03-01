@@ -40,7 +40,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - note-level author-note storage resolved from story frontmatter `authorNote` link
   - Story Writing panel combines writing controls, generation monitor, lorebook scope controls, context-item inspection, and compact cost summary
-  - panel actions include open/create linked Author Note, interactive author-note linking, create-next chapter, rewrite Author Note, continue/stop generation, inline-directive insert, and open Story Chat
+  - panel actions are grouped: continue/stop + inline directive, author-note controls (open/create/link/rewrite), and chapter controls (summary + next chapter)
   - when an Author Note is active, panel lists linked chapters/stories
   - markdown editing remains native Obsidian note editing for Author Note content
   - single note-level author-note layer only (no global/story/chapter scope hierarchy)
@@ -442,6 +442,12 @@ Stored structure:
 - message versions with active version selector
 - optional context inspector metadata on assistant versions (including steering source resolution and agent tool traces/calls/writes)
 
+Story Chat UI behavior:
+
+- active conversation is shown as title text
+- conversation switching uses an interactive picker (`Open Conversation`) instead of an always-expanded dropdown
+- message content is rendered as markdown in-chat
+
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
 
 ## Inline Directive Contract
@@ -501,7 +507,7 @@ Implemented scope:
 - optional ledger persistence (`settings.costTracking.enabled`)
 - fallback USD estimation via configured per-million token rates
 - optional per-model pricing overrides (`provider + wildcard model pattern`)
-- manager panel usage/cost monitor (session/day/project totals + warnings + top breakdowns)
+- manager panel usage/cost monitor (session/day/week/month/project totals + warnings + top breakdowns)
 - usage report export commands:
   - `Export Usage Report (JSON)`
   - `Export Usage Report (CSV)`

@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, MarkdownRenderer, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 
 export const LOREVAULT_HELP_VIEW_TYPE = 'lorevault-help-view';
@@ -56,14 +56,15 @@ export class LorevaultHelpView extends ItemView {
     section.createEl('h3', { text: title });
     const list = section.createEl('ul');
     for (const bullet of options.bullets) {
-      list.createEl('li', { text: bullet });
+      const item = list.createEl('li');
+      void MarkdownRenderer.render(this.app, bullet, item, '', this);
     }
 
     if (options.note) {
-      section.createEl('p', {
-        cls: 'lorevault-help-note',
-        text: options.note
+      const note = section.createEl('p', {
+        cls: 'lorevault-help-note'
       });
+      void MarkdownRenderer.render(this.app, options.note, note, '', this);
     }
 
     if (options.codeSample) {
@@ -156,7 +157,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Steering is now a linked Author Note workflow: set `authorNote: [[path/to/note]]` on story notes.',
         'Author Note content is edited directly in native Obsidian notes (no separate LoreVault textarea editor).',
         'Story Writing panel combines writing actions, live generation monitor, selected lorebook controls, selected context items, and compact cost breakdown.',
-        'Story Writing actions include `Link Author Note` (interactive picker) and `Create Next Chapter`.',
+        'Story Writing actions are grouped into generation (`Continue/Stop`, `Insert Directive`), author-note controls (`Open/Create`, `Link`, `Rewrite`), and chapter controls (`Generate Chapter Summary`, `Create Next Chapter`).',
         'When an Author Note is active, Story Writing lists linked chapters/stories (chapter-ordered when frontmatter exists).',
         'Use `Open or Create Linked Author Note` to create/link an Author Note in the configured Author Note folder.',
         'Lorebook scope selection for continuation/chat is resolved from active-note frontmatter first, then Author Note frontmatter.',
@@ -167,6 +168,8 @@ export class LorevaultHelpView extends ItemView {
         '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
         'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
         'Story Chat supports per-conversation context lists for lorebooks, author notes, chapters/raw notes, plus manual context and fork/regenerate.',
+        'Story Chat conversation switching uses `Open Conversation` (interactive picker) + `New Chat`.',
+        'Story Chat message bodies are rendered as markdown.',
         'Story Chat no longer shows legacy continuity checkboxes in context controls.',
         'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update the active note-level Author Note.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'

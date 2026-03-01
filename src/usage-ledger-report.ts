@@ -23,6 +23,8 @@ export interface UsageLedgerReportSnapshot {
   totals: {
     project: UsageLedgerTotals;
     day: UsageLedgerTotals;
+    week: UsageLedgerTotals;
+    month: UsageLedgerTotals;
     session: UsageLedgerTotals;
   };
   byOperation: UsageLedgerBreakdownItem[];
@@ -94,6 +96,18 @@ function toSortedBreakdown(map: Map<string, UsageLedgerTotals>): UsageLedgerBrea
 function startOfUtcDay(nowMs: number): number {
   const now = new Date(nowMs);
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+}
+
+function startOfUtcIsoWeek(nowMs: number): number {
+  const now = new Date(nowMs);
+  const day = now.getUTCDay();
+  const offset = day === 0 ? 6 : day - 1;
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset);
+}
+
+function startOfUtcMonth(nowMs: number): number {
+  const now = new Date(nowMs);
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
 }
 
 function buildWarnings(
@@ -210,10 +224,14 @@ export function buildUsageLedgerReportSnapshot(
   options: UsageLedgerReportOptions
 ): UsageLedgerReportSnapshot {
   const dayStart = startOfUtcDay(options.nowMs);
+  const weekStart = startOfUtcIsoWeek(options.nowMs);
+  const monthStart = startOfUtcMonth(options.nowMs);
   const sessionStartAt = Math.max(0, Math.floor(options.sessionStartAt));
 
   const project = createEmptyTotals();
   const day = createEmptyTotals();
+  const week = createEmptyTotals();
+  const month = createEmptyTotals();
   const session = createEmptyTotals();
   const byOperation = new Map<string, UsageLedgerTotals>();
   const byModel = new Map<string, UsageLedgerTotals>();
@@ -228,6 +246,12 @@ export function buildUsageLedgerReportSnapshot(
     addEntryToTotals(project, entry);
     if (entry.timestamp >= dayStart) {
       addEntryToTotals(day, entry);
+    }
+    if (entry.timestamp >= weekStart) {
+      addEntryToTotals(week, entry);
+    }
+    if (entry.timestamp >= monthStart) {
+      addEntryToTotals(month, entry);
     }
     if (entry.timestamp >= sessionStartAt) {
       addEntryToTotals(session, entry);
@@ -256,6 +280,8 @@ export function buildUsageLedgerReportSnapshot(
   const totals = {
     project,
     day,
+    week,
+    month,
     session
   };
 

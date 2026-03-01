@@ -234,7 +234,7 @@ Export freshness policy (`LoreVault Settings -> SQLite`):
 - `manual`: only explicit build actions update exports
 - `on_build` (default): exports update when build commands/buttons run
 - `background_debounced`: vault edits queue impacted-scope rebuilds after debounce delay
-- manager scope cards display per-scope `Last canonical export` timestamp plus relative age in seconds (`N seconds ago`)
+- manager scope cards display per-scope `Last canonical export` timestamp plus humanized relative age (`minutes/hours/days/months ago`)
 
 ## Companion Publishing Contract (Phase 10.5)
 
@@ -570,7 +570,7 @@ Capabilities:
   - context window and token usage
   - selected `world_info` and `rag` items used for the active/last run
 - usage/cost monitor details:
-  - session/day/project totals (requests/tokens/known cost/unknown cost count)
+  - session/day/week/month/project totals (requests/tokens/known cost/unknown cost count)
   - known cost split (`provider_reported` vs `estimated`)
   - budget warnings from configured daily/session/operation/model/scope limits
 - top breakdown lists by operation, model, scope, and cost source
@@ -582,15 +582,9 @@ Command: `Open Story Writing Panel` (persistent right-side workspace panel)
 Capabilities:
 
 - active-note writing controls:
-  - `Continue Story`
-  - `Stop` active generation
-  - `Insert Directive` (`<!-- LV: ... -->`)
-  - `Open Story Chat`
-  - `Open/Create Author Note`
-  - `Link Author Note` (interactive picker)
-  - `Create Next Chapter`
-  - `Generate Chapter Summary`
-  - `Rewrite Author Note`
+  - group 1: `Continue Story` (toggles to `Stop` while generation is running), `Insert Directive` (`<!-- LV: ... -->`)
+  - group 2: `Open/Create Author Note`, `Link Author Note` (interactive picker), `Rewrite Author Note`
+  - group 3: `Generate Chapter Summary`, `Create Next Chapter`
 - Author Note workflow:
   - linked from story frontmatter `authorNote`
   - authored in native Obsidian note editor
@@ -607,7 +601,7 @@ Capabilities:
   - active scopes, token usage, output progress
   - collapsible selected context items (`world_info`, fallback items)
 - compact collapsible usage/cost summary:
-  - session/day/project totals
+  - session/day/week/month/project totals
   - warnings when configured budgets are exceeded
 
 ## Inbound Wiki Import and Story Extraction (Phase 14)
@@ -839,18 +833,21 @@ Current behavior:
 - opens a persistent workspace view (non-modal)
 - includes an in-chat generation monitor (state, scopes, token usage, output progress)
 - supports streaming send/stop controls
-- shows a conversation dropdown and supports creating new chats inline
+- shows active conversation title with inline actions:
+  - `Open Conversation` (interactive picker)
+  - `New Chat`
 - stores per-chat context controls:
   - selected lorebook scopes (add/remove list)
-  - manual context text
   - author note refs (interactive picker + remove; stored as `note:*` refs)
   - chapter/raw note refs (interactive picker + remove)
+  - manual context text
 - allows manual-context-only operation by leaving lorebook selection empty
 - supports per-message actions:
   - `Edit` past user/assistant messages
   - `Fork Here` to create a new conversation note from any turn
   - `Regenerate` on latest assistant turn (adds a new assistant version)
 - allows switching between multiple generated versions of a message; only selected version is used for future context
+- renders message content as markdown inside the chat transcript
 - persists each chat/fork as a markdown note under `LoreVault/chat`
 - plugin settings persist active conversation path and chat folder
 - chat folder path is configurable in settings (`Story Chat Conversation Folder`)

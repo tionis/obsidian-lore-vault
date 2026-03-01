@@ -94,99 +94,72 @@ export class LorevaultHelpView extends ItemView {
     setIcon(icon, 'help-circle');
     titleRow.createEl('h2', { text: 'LoreVault Help' });
 
-    this.renderSection(contentEl, 'Start Here', {
+    this.renderSection(contentEl, 'Quick Start', {
       bullets: [
-        'Tag notes with `#lorebook/...` to place them in one or more lorebooks.',
-        'Add `keywords` or `key` in frontmatter for better trigger matching.',
-        'Build exports from `LoreVault Manager -> Build/Export` on each scope card.',
-        'Use `Continue Story with Context` from the editor context menu to generate text at the cursor.'
+        'Tag notes with `#lorebook/...`.',
+        'Add `keywords` (or `key`) in frontmatter.',
+        'Open **LoreVault Manager** and run `Build/Export` for your scope.',
+        'Use `Continue Story with Context` in the editor to generate at the cursor.'
       ],
-      note: 'LoreVault is task-oriented: build/audit lorebooks, then use them for story continuation and chat.',
       actions: [
         { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() },
-        { label: 'Open Lorebook Auditor', onClick: () => void this.plugin.openLorebookAuditorView() },
-        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }
-      ]
-    });
-
-    this.renderSection(contentEl, 'Recommended Note Structure', {
-      bullets: [
-        'Use one note per chapter/scene for long-form stories.',
-        'Link chapters to a shared Author Note via `authorNote`; set numeric `chapter` where possible.',
-        'Use `previousChapter` / `nextChapter` links for explicit ordering when needed.',
-        'Add a `## Summary` section near the top of notes; LoreVault prefers this for memory/retrieval.'
-      ],
-      note: 'Summary precedence is deterministic: `## Summary` content (or `LV_BEGIN/LV_END` block when present) -> frontmatter `summary` fallback -> excerpt fallback.',
-      codeSample: [
-        '---',
-        'tags: [lorebook/universe/yggdrasil]',
-        'keywords: [baalthasar, archmage, mind magic]',
-        'authorNote: [[LoreVault/author-notes/chronicles-main-author-note]]',
-        'chapter: 7',
-        'chapterTitle: "Crossing the Spine"',
-        'previousChapter: [[story/ch06-the-fallout]]',
-        'nextChapter: [[story/ch08-the-reckoning]]',
-        '---',
-        '# Crossing the Spine',
-        '',
-        '## Summary',
-        '',
-        'Short chapter recap for memory injection.'
-      ].join('\n')
-    });
-
-    this.renderSection(contentEl, 'Continue Story in Editor', {
-      bullets: [
-        'Use editor context menu: `LoreVault: Continue Story with Context`.',
-        'Use command `Stop Active Generation` (or editor menu while running) to abort story text completion.',
-        'Works on desktop and mobile editor menus.',
-        'Context assembly order: local near-cursor story context -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
-        'Chapter-memory depth expands automatically when more context budget is available.',
-        'With embeddings enabled, long query windows are chunked/averaged for semantic query embeddings; failures fall back to lexical retrieval so completion continues.',
-        'Generation Monitor in Story Writing panel (and Manager) shows context usage, selected entries, and trim decisions.',
-        'Inline directives are supported with strict syntax: `[LV: ...]` or `<!-- LV: ... -->`.'
-      ],
-      actions: [
-        { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() },
-        { label: 'Open Query Simulation', onClick: () => void this.plugin.openQuerySimulationView() }
-      ]
-    });
-
-    this.renderSection(contentEl, 'Story Writing and Chat', {
-      bullets: [
-        'Story Steering is now a linked Author Note workflow: set `authorNote: [[path/to/note]]` on story notes.',
-        'Author Note content is edited directly in native Obsidian notes (no separate LoreVault textarea editor).',
-        'Story Writing panel combines writing actions, live generation monitor, selected lorebook controls, selected context items, and compact cost breakdown.',
-        'Story Writing actions are grouped into generation (`Continue/Stop`, `Insert Directive`), author-note controls (`Open/Create`, `Link`, `Rewrite`), and chapter controls (`Generate Chapter Summary`, `Create Next Chapter`).',
-        'When an Author Note is active, Story Writing lists linked chapters/stories (chapter-ordered when frontmatter exists).',
-        'Use `Open or Create Linked Author Note` to create/link an Author Note in the configured Author Note folder.',
-        'Lorebook scope selection for continuation/chat is resolved from active-note frontmatter first, then Author Note frontmatter.',
-        'If multiple story notes link to the same Author Note, LoreVault injects all linked stories as rewrite context.',
-        'Steering layers are simplified to `Author Note` plus parsed inline directives.',
-        'Author Note rewrite supports optional update prompts so you can direct what should change before review/apply.',
-        'Author Note rewrite review shows Current vs Proposed markdown with diff before apply.',
-        '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
-        'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
-        'Story Chat supports per-conversation context lists for lorebooks, author notes, chapters/raw notes, plus manual context and fork/regenerate.',
-        'Story Chat conversation switching uses `Open Conversation` (interactive picker) + `New Chat`.',
-        'Story Chat message bodies are rendered as markdown.',
-        'Story Chat no longer shows legacy continuity checkboxes in context controls.',
-        'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update the active note-level Author Note.',
-        'Chat and continuation both show context-layer traces and token usage diagnostics.'
-      ],
-      actions: [
-        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() },
         { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() }
       ]
     });
 
-    this.renderSection(contentEl, 'Lorebook Auditor and Simulation', {
+    this.renderSection(contentEl, 'Story Notes Format', {
       bullets: [
-        'Lorebook Auditor highlights missing keywords, thin entries, and duplicate-like similarity.',
-        'Duplicate checks use deterministic heuristics plus embedding neighbors when embeddings are available.',
-        'Auditor row actions include: `Open Entry`, `Open Similar`, `Open Pair`, and keyword generation.',
-        'Query Simulation lets you test multi-scope retrieval decisions, lift tiers, fallback policy, and token budgets before generation.',
-        'Use these panels to tune retrieval quality before writing sessions.'
+        'Use one note per chapter/scene for long-form stories.',
+        'Link a shared author note with `authorNote: [[...]]`.',
+        'Use `chapter`, `previousChapter`, and `nextChapter` for ordering.',
+        'Add a `## Summary` section near the top for better memory injection.'
+      ],
+      codeSample: [
+        '---',
+        'tags: [lorebook/universe/yggdrasil]',
+        'keywords: [baalthasar, archmage]',
+        'authorNote: [[LoreVault/author-notes/main-author-note]]',
+        'chapter: 7',
+        'previousChapter: [[story/ch06-the-fallout]]',
+        'nextChapter: [[story/ch08-the-reckoning]]',
+        '---',
+        '# Chapter Title',
+        '',
+        '## Summary',
+        '',
+        'Short chapter recap.'
+      ].join('\n')
+    });
+
+    this.renderSection(contentEl, 'Story Writing Panel', {
+      bullets: [
+        'Generation actions: `Continue Story` (switches to `Stop` while running) and `Insert Directive`.',
+        'Author note actions: `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`.',
+        'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`.',
+        'Panel also shows model, context usage, selected context items, and cost breakdown.'
+      ],
+      actions: [
+        { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() }
+      ]
+    });
+
+    this.renderSection(contentEl, 'Story Chat Panel', {
+      bullets: [
+        'Open chat with `Open Story Chat`.',
+        'Switch chats with `Open Conversation` and create new ones with `New Chat`.',
+        'Per-chat context lists: Lorebooks, Author Notes, Chapters/Raw Notes, and Manual Context.',
+        'Chat messages render markdown and support edit/fork/regenerate.'
+      ],
+      actions: [
+        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }
+      ]
+    });
+
+    this.renderSection(contentEl, 'Lorebook Quality Tools', {
+      bullets: [
+        'Use **Lorebook Auditor** to find weak entries and generate keywords.',
+        'Use **Query Simulation** to inspect what context would be selected.',
+        'Use chapter/world summary commands to maintain concise memory context.'
       ],
       actions: [
         { label: 'Open Lorebook Auditor', onClick: () => void this.plugin.openLorebookAuditorView() },
@@ -194,33 +167,11 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
-    this.renderSection(contentEl, 'Auto Summaries', {
+    this.renderSection(contentEl, 'Import and Update', {
       bullets: [
-        'Generate world_info or chapter summaries from command palette or editor context menu.',
-        'Review and edit in a modal before writing.',
-        'Accepted summaries are written to `## Summary` in the note body.',
-        'Chapter summaries can be multi-paragraph; LoreVault wraps multi-paragraph chapter summaries with `<!-- LV_BEGIN_SUMMARY -->` and `<!-- LV_END_SUMMARY -->`.'
-      ],
-      actions: [
-        { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() }
-      ]
-    });
-
-    this.renderSection(contentEl, 'Text Commands', {
-      bullets: [
-        'Select text, then run `LoreVault: Run Text Command on Selection` from context menu.',
-        'Prompt templates are markdown notes (editable like normal notes).',
-        'Per prompt, choose whether to include lorebook context or use selected text only.',
-        'Edits open in a diff review modal before apply unless auto-accept is enabled.'
-      ]
-    });
-
-    this.renderSection(contentEl, 'Import and Update Wiki Pages', {
-      bullets: [
-        '`Import SillyTavern Lorebook`: paste ST JSON, preview, then import.',
-        '`Extract Wiki Pages from Story`: paste story markdown, run chunked extraction, preview, then apply.',
-        '`Apply Story Delta to Existing Wiki`: compare new story text against existing pages and apply reviewed updates (source modes: `note`, `chapter`, `story`, with note picker).',
-        'Created/updated pages follow readable wiki layout: `# Title`, `## Summary`, then section headings.'
+        '`Import SillyTavern Lorebook`: import JSON lorebooks into notes.',
+        '`Extract Wiki Pages from Story`: extract structured wiki pages from story text.',
+        '`Apply Story Delta to Existing Wiki`: update existing pages from new story content.'
       ],
       actions: [
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
@@ -229,56 +180,15 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
-    this.renderSection(contentEl, 'Settings You Will Likely Use', {
+    this.renderSection(contentEl, 'If Something Looks Wrong', {
       bullets: [
-        'Writing Completion: provider/model/context window/max output and model presets.',
-        'LLM Operation Log: enable full request/response logging, path, retention cap, optional embedding-call logging, and open the built-in explorer panel with parsed message inspection.',
-        'Story Chat folder plus Story Chat tool-call limits/write toggle.',
-        'Author Note folder and extraction sanitization setting.',
-        'Retrieval controls: graph hops/decay, backlink expansion, fallback policy (`off|auto|always`), body-lift settings.',
-        'Text Commands: prompt folder, default context toggle, auto-accept.',
-        'Cost Tracking: usage ledger path, pricing overrides, and optional budget alerts (daily/session/operation/model/scope).'
+        'No scopes found: verify your tags use the configured `#lorebook/...` prefix.',
+        'Weak retrieval: run Query Simulation and check selected scopes and fallback policy.',
+        'Short outputs: increase context window/output limits in settings.',
+        'Unexpected behavior after changing settings: close and reopen the panel once.'
       ],
       actions: [
-        { label: 'Open Operation Log Explorer', onClick: () => void this.plugin.openOperationLogView() }
-      ]
-    });
-
-    this.renderSection(contentEl, 'Command Coverage', {
-      bullets: [
-        'Build/Manage: `Build Active Lorebook Scope`, `Open LoreVault Manager`, `Open LoreVault Lorebook Auditor`, `Open LoreVault Query Simulation`.',
-        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Writing Panel`, `Open or Create Linked Author Note`, `Rewrite Author Note`, `Insert Inline Directive at Cursor`, `Create Next Story Chapter`, `Split Active Story Note into Chapter Notes`, `Split Active Story Note into Chapter Notes (Pick Folder)`.',
-        'Summary/Keyword: `Generate World Info Summary (Active Note)`, `Generate Keywords (Active Note)`, `Generate Chapter Summary (Active Note)`.',
-        'Batch Summary: `Generate World Info Summaries (Active Scope)`, `Generate Chapter Summaries (Current Story)`.',
-        'Import/Update: `Import SillyTavern Lorebook`, `Extract Wiki Pages from Story`, `Apply Story Delta to Existing Wiki`.',
-        'Text Editing: `Run Text Command on Selection`.',
-        'Operation Log: `Open LLM Operation Log Explorer`.',
-        'Usage/Reporting: `Export Usage Report (JSON)`, `Export Usage Report (CSV)`.',
-        'Template: `Create LoreVault Entry Template`.',
-        'Help: `Open LoreVault Help`.'
-      ],
-      note: 'Most writing actions are also available from editor context menus on desktop and mobile where relevant.'
-    });
-
-    this.renderSection(contentEl, 'Troubleshooting', {
-      bullets: [
-        'No lorebooks visible: verify notes are tagged under your configured prefix (default `#lorebook/...`).',
-        'Context seems wrong: run Query Simulation and check selected scopes + fallback policy.',
-        'Generation too short or trimmed: increase context window/output limits in Writing Completion settings.',
-        'Keywords quality issues: use Lorebook Auditor -> Generate Keywords with review.',
-        'If settings changes seem ignored, reopen the affected panel once (it forces a fresh render state).'
-      ],
-      actions: [
-        { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() },
         { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() }
-      ]
-    });
-
-    this.renderSection(contentEl, 'Exports', {
-      bullets: [
-        'Canonical export is one SQLite pack per lorebook scope (`<scope>.db`).',
-        'Downstream files are generated from canonical scope data.',
-        'Build/export is done from Manager scope cards or the build command.'
       ]
     });
 

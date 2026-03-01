@@ -1,6 +1,7 @@
 import { ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { UsageLedgerReportSnapshot, UsageLedgerTotals } from './usage-ledger-report';
+import { formatRelativeTime } from './time-format';
 
 export const LOREVAULT_STORY_STEERING_VIEW_TYPE = 'lorevault-story-steering-view';
 
@@ -13,14 +14,6 @@ function formatUsd(value: number): string {
     return '$0.0000';
   }
   return `$${value.toFixed(4)}`;
-}
-
-function formatSecondsAgo(timestamp: number): string {
-  if (!timestamp) {
-    return '-';
-  }
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  return `${seconds}s ago`;
 }
 
 function formatCostSummary(label: string, totals: UsageLedgerTotals): string {
@@ -272,27 +265,33 @@ export class StorySteeringView extends ItemView {
       setIcon(icon, 'pen-square');
       titleRow.createEl('h2', { text: 'Story Writing' });
 
-      const actions = contentEl.createDiv({ cls: 'lorevault-manager-toolbar' });
-      const continueButton = actions.createEl('button', { text: 'Continue Story' });
-      continueButton.addClass('mod-cta');
-      continueButton.disabled = generationRunning || !workspaceContext.activeFilePath;
-      continueButton.addEventListener('click', () => {
+      const actionCard = contentEl.createDiv({ cls: 'lorevault-chat-controls' });
+      actionCard.createEl('h3', { text: 'Actions' });
+
+      const generationActions = actionCard.createDiv({ cls: 'lorevault-manager-toolbar' });
+      const continueOrStopButton = generationActions.createEl('button', {
+        text: generationRunning ? 'Stop' : 'Continue Story'
+      });
+      if (!generationRunning) {
+        continueOrStopButton.addClass('mod-cta');
+      }
+      continueOrStopButton.disabled = generationRunning ? false : !workspaceContext.activeFilePath;
+      continueOrStopButton.addEventListener('click', () => {
+        if (generationRunning) {
+          this.stopGeneration();
+          return;
+        }
         void this.continueStory();
       });
 
-      const stopButton = actions.createEl('button', { text: 'Stop' });
-      stopButton.disabled = !generationRunning;
-      stopButton.addEventListener('click', () => {
-        this.stopGeneration();
-      });
-
-      const directiveButton = actions.createEl('button', { text: 'Insert Directive' });
+      const directiveButton = generationActions.createEl('button', { text: 'Insert Directive' });
       directiveButton.disabled = !workspaceContext.activeFilePath;
       directiveButton.addEventListener('click', () => {
         void this.insertInlineDirective();
       });
 
-      const openAuthorNoteButton = actions.createEl('button', {
+      const authorNoteActions = actionCard.createDiv({ cls: 'lorevault-manager-toolbar' });
+      const openAuthorNoteButton = authorNoteActions.createEl('button', {
         text: workspaceContext.authorNotePath ? 'Open Author Note' : 'Create Author Note'
       });
       openAuthorNoteButton.disabled = !workspaceContext.activeFilePath;
@@ -300,33 +299,29 @@ export class StorySteeringView extends ItemView {
         void this.openOrCreateAuthorNote();
       });
 
-      const linkAuthorNoteButton = actions.createEl('button', { text: 'Link Author Note' });
+      const linkAuthorNoteButton = authorNoteActions.createEl('button', { text: 'Link Author Note' });
       linkAuthorNoteButton.disabled = workspaceContext.mode !== 'story';
       linkAuthorNoteButton.addEventListener('click', () => {
         void this.linkExistingAuthorNote();
       });
 
-      const createNextChapterButton = actions.createEl('button', { text: 'Create Next Chapter' });
-      createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
-      createNextChapterButton.addEventListener('click', () => {
-        void this.createNextChapter();
-      });
-
-      const chapterSummaryButton = actions.createEl('button', { text: 'Generate Chapter Summary' });
-      chapterSummaryButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
-      chapterSummaryButton.addEventListener('click', () => {
-        void this.generateChapterSummary();
-      });
-
-      const rewriteAuthorNoteButton = actions.createEl('button', { text: 'Rewrite Author Note' });
+      const rewriteAuthorNoteButton = authorNoteActions.createEl('button', { text: 'Rewrite Author Note' });
       rewriteAuthorNoteButton.disabled = !workspaceContext.activeFilePath;
       rewriteAuthorNoteButton.addEventListener('click', () => {
         void this.rewriteAuthorNote();
       });
 
-      const storyChatButton = actions.createEl('button', { text: 'Open Story Chat' });
-      storyChatButton.addEventListener('click', () => {
-        void this.plugin.openStoryChatView();
+      const chapterActions = actionCard.createDiv({ cls: 'lorevault-manager-toolbar' });
+      const chapterSummaryButton = chapterActions.createEl('button', { text: 'Generate Chapter Summary' });
+      chapterSummaryButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
+      chapterSummaryButton.addEventListener('click', () => {
+        void this.generateChapterSummary();
+      });
+
+      const createNextChapterButton = chapterActions.createEl('button', { text: 'Create Next Chapter' });
+      createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
+      createNextChapterButton.addEventListener('click', () => {
+        void this.createNextChapter();
       });
 
       const activeNoteCard = contentEl.createDiv({ cls: 'lorevault-manager-card lorevault-manager-generation-card' });
@@ -393,7 +388,7 @@ export class StorySteeringView extends ItemView {
       });
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
-        text: `Generation: ${telemetry.statusText} | updated ${formatSecondsAgo(telemetry.updatedAt)}`
+        text: `Generation: ${telemetry.statusText} | updated ${formatRelativeTime(telemetry.updatedAt)}`
       });
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
@@ -527,7 +522,7 @@ export class StorySteeringView extends ItemView {
       if (this.usageSummary) {
         costDetails.createEl('p', {
           cls: 'lorevault-manager-generation-stats',
-          text: `Updated ${formatSecondsAgo(this.usageSummary.generatedAt)}`
+          text: `Updated ${formatRelativeTime(this.usageSummary.generatedAt)}`
         });
         costDetails.createEl('p', {
           cls: 'lorevault-manager-generation-stats',
@@ -536,6 +531,14 @@ export class StorySteeringView extends ItemView {
         costDetails.createEl('p', {
           cls: 'lorevault-manager-generation-stats',
           text: formatCostSummary('Today (UTC)', this.usageSummary.totals.day)
+        });
+        costDetails.createEl('p', {
+          cls: 'lorevault-manager-generation-stats',
+          text: formatCostSummary('This Week (UTC)', this.usageSummary.totals.week)
+        });
+        costDetails.createEl('p', {
+          cls: 'lorevault-manager-generation-stats',
+          text: formatCostSummary('This Month (UTC)', this.usageSummary.totals.month)
         });
         costDetails.createEl('p', {
           cls: 'lorevault-manager-generation-stats',

@@ -2,6 +2,7 @@ import {
   App,
   FuzzySuggestModal,
   ItemView,
+  MarkdownRenderer,
   Notice,
   TFile,
   WorkspaceLeaf,
@@ -127,6 +128,37 @@ class ScopePickerModal extends FuzzySuggestModal<string> {
 
   onChooseItem(scope: string): void {
     this.onChoose(scope);
+  }
+}
+
+class ConversationPickerModal extends FuzzySuggestModal<ConversationSummary> {
+  private conversations: ConversationSummary[];
+  private onChoose: (summary: ConversationSummary) => void;
+
+  constructor(
+    app: App,
+    conversations: ConversationSummary[],
+    onChoose: (summary: ConversationSummary) => void
+  ) {
+    super(app);
+    this.conversations = [...conversations].sort((a, b) => (
+      b.updatedAt - a.updatedAt ||
+      a.title.localeCompare(b.title)
+    ));
+    this.onChoose = onChoose;
+    this.setPlaceholder('Pick a conversation...');
+  }
+
+  getItems(): ConversationSummary[] {
+    return this.conversations;
+  }
+
+  getItemText(summary: ConversationSummary): string {
+    return `${summary.title} (${formatDateTime(summary.updatedAt)})`;
+  }
+
+  onChooseItem(summary: ConversationSummary): void {
+    this.onChoose(summary);
   }
 }
 
@@ -542,6 +574,17 @@ export class StoryChatView extends ItemView {
     this.statusEl.setText(message);
   }
 
+  private renderMarkdownContent(container: HTMLElement, markdown: string): void {
+    container.empty();
+    void MarkdownRenderer.render(
+      this.app,
+      markdown,
+      container,
+      this.activeConversationPath || '',
+      this
+    );
+  }
+
   private startTelemetryPolling(): void {
     if (this.telemetryTimer !== null) {
       window.clearInterval(this.telemetryTimer);
@@ -579,30 +622,29 @@ export class StoryChatView extends ItemView {
   private renderConversationBar(container: HTMLElement): void {
     const row = container.createDiv({ cls: 'lorevault-chat-conversation-row' });
     row.createEl('strong', { text: 'Conversation' });
-
-    const selector = row.createEl('select', { cls: 'dropdown lorevault-chat-conversation-select' });
-    for (const summary of this.conversationSummaries) {
-      const option = selector.createEl('option');
-      option.value = summary.path;
-      option.text = `${summary.title} · ${formatDateTime(summary.updatedAt)}`;
-    }
-    selector.value = this.activeConversationPath;
-    selector.disabled = this.isSending || this.conversationSummaries.length === 0;
-    selector.addEventListener('change', () => {
-      void this.switchConversation(selector.value);
+    const activeSummary = this.conversationSummaries.find(summary => summary.path === this.activeConversationPath);
+    row.createEl('span', {
+      cls: 'lorevault-chat-conversation-title',
+      text: this.conversationTitle || activeSummary?.title || 'Story Chat'
     });
 
     const actions = row.createDiv({ cls: 'lorevault-chat-conversation-actions' });
+    const openConversationButton = actions.createEl('button', { text: 'Open Conversation' });
+    openConversationButton.disabled = this.isSending || this.conversationSummaries.length === 0;
+    openConversationButton.addEventListener('click', () => {
+      if (this.conversationSummaries.length === 0) {
+        return;
+      }
+      const modal = new ConversationPickerModal(this.app, this.conversationSummaries, summary => {
+        void this.switchConversation(summary.path);
+      });
+      modal.open();
+    });
+
     const newButton = actions.createEl('button', { text: 'New Chat' });
     newButton.disabled = this.isSending;
     newButton.addEventListener('click', () => {
       void this.createConversationAndRender('Story Chat', null);
-    });
-
-    const openButton = actions.createEl('button', { text: 'Open Note' });
-    openButton.disabled = !this.activeConversationPath;
-    openButton.addEventListener('click', () => {
-      void this.openActiveConversationNote();
     });
   }
 
@@ -640,6 +682,8 @@ export class StoryChatView extends ItemView {
     const controls = container.createDiv({ cls: 'lorevault-chat-controls' });
     controls.createEl('h3', { text: 'Context Controls' });
     this.renderLorebookContextControls(controls);
+    this.renderAuthorNotesContextControls(controls);
+    this.renderStoryNotesContextControls(controls);
 
     const manualSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
     manualSection.createEl('strong', { text: 'Manual Context' });
@@ -652,8 +696,6 @@ export class StoryChatView extends ItemView {
       this.manualContext = manualInput.value;
       this.scheduleConversationSave();
     });
-    this.renderAuthorNotesContextControls(controls);
-    this.renderStoryNotesContextControls(controls);
   }
 
   private readFrontmatter(file: TFile): FrontmatterData {
@@ -1146,7 +1188,12 @@ export class StoryChatView extends ItemView {
         this.renderMessageEditor(row);
       } else {
         const content = row.createDiv({ cls: 'lorevault-chat-message-content' });
-        content.setText(version.content || (this.isSending && message.role === 'assistant' ? '...' : ''));
+        const contentText = version.content || (this.isSending && message.role === 'assistant' ? '...' : '');
+        if (!contentText.trim()) {
+          content.setText('');
+        } else {
+          this.renderMarkdownContent(content, contentText);
+        }
       }
 
       const messageActions = row.createDiv({ cls: 'lorevault-chat-message-actions' });
@@ -1236,15 +1283,6 @@ export class StoryChatView extends ItemView {
       return;
     }
     this.render();
-  }
-
-  private async openActiveConversationNote(): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(this.activeConversationPath);
-    if (!(file instanceof TFile)) {
-      new Notice('Conversation note not found.');
-      return;
-    }
-    await this.app.workspace.getLeaf(true).openFile(file);
   }
 
   private async saveMessageEdit(): Promise<void> {

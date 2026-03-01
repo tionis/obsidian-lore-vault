@@ -3,6 +3,7 @@ import LoreBookConverterPlugin from './main';
 import { ScopeSummary, buildScopeSummaries } from './lorebooks-manager-data';
 import { UsageLedgerTotals } from './usage-ledger-report';
 import { PromptLayerUsage } from './models';
+import { formatRelativeTime } from './time-format';
 
 export const LOREVAULT_MANAGER_VIEW_TYPE = 'lorevault-manager-view';
 
@@ -12,14 +13,6 @@ function formatScopeLabel(scope: string): string {
 
 function formatTokenValue(value: number): string {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)).toString() : '0';
-}
-
-function formatSecondsAgo(timestamp: number): string {
-  if (!timestamp) {
-    return '-';
-  }
-  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  return `${seconds} second${seconds === 1 ? '' : 's'} ago`;
 }
 
 function formatDateTime(timestamp: number): string {
@@ -120,7 +113,7 @@ export class LorebooksManagerView extends ItemView {
     const lastExport = this.plugin.getScopeLastCanonicalExportTimestamp(summary.scope);
     card.createEl('p', {
       cls: 'lorevault-manager-generation-stats',
-      text: `Last canonical export: ${formatDateTime(lastExport)} (${formatSecondsAgo(lastExport)})`
+      text: `Last canonical export: ${formatDateTime(lastExport)} (${formatRelativeTime(lastExport)})`
     });
 
     if (summary.warnings.length > 0) {
@@ -167,7 +160,7 @@ export class LorebooksManagerView extends ItemView {
 
     card.createEl('p', {
       cls: 'lorevault-manager-generation-stats',
-      text: `Status: ${telemetry.statusText} | Updated: ${formatSecondsAgo(telemetry.updatedAt)}`
+      text: `Status: ${telemetry.statusText} | Updated: ${formatRelativeTime(telemetry.updatedAt)}`
     });
 
     const provider = telemetry.provider || '-';
@@ -310,7 +303,7 @@ export class LorebooksManagerView extends ItemView {
       card.empty();
       card.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
-        text: `Updated: ${formatSecondsAgo(snapshot.generatedAt)}`
+        text: `Updated: ${formatRelativeTime(snapshot.generatedAt)}`
       });
 
       card.createEl('p', {
@@ -321,6 +314,16 @@ export class LorebooksManagerView extends ItemView {
       card.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
         text: formatCostSummary('Today (UTC)', snapshot.totals.day)
+      });
+
+      card.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: formatCostSummary('This Week (UTC)', snapshot.totals.week)
+      });
+
+      card.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: formatCostSummary('This Month (UTC)', snapshot.totals.month)
       });
 
       card.createEl('p', {

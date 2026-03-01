@@ -201,7 +201,7 @@ Manager features:
 - per-scope counts (included notes, entries, missing-keyword entries)
 - scope warnings when sections are empty
 - generation monitor (running state, active scopes, token budget, selected context items, output progress)
-- usage and cost monitor (session/day/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
+- usage and cost monitor (session/day/week/month/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
 - `Build/Export` action per scope
 - `Open Auditor` action per scope
 - toolbar shortcuts to open the lorebook auditor, query simulation diagnostics, and story writing panel
@@ -217,12 +217,15 @@ Current capabilities:
 - create the next chapter from the panel
 - generate chapter summary from the panel
 - trigger `Rewrite Author Note` with optional change prompt + diff review
-- quick actions: `Continue Story`, `Stop`, `Insert Directive`, `Open Story Chat`
+- grouped quick actions:
+  - `Continue Story` (toggles to `Stop` while generating), `Insert Directive`
+  - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
+  - `Generate Chapter Summary`, `Create Next Chapter`
 - live generation monitor (state, status, model, scopes, token/output usage)
 - collapsible `Selected Context Items` (selected `world_info` + fallback entries)
 - selected lorebook scopes for the active story note with add/remove/all/none controls
 - when the active note is an Author Note, list linked chapters/stories (chapter-ordered when frontmatter exists)
-- compact collapsible cost breakdown (session/day/project totals + warnings)
+- compact collapsible cost breakdown (session/day/week/month/project totals + warnings)
 
 ## Lorebook Auditor
 
@@ -455,13 +458,15 @@ Current capabilities:
 
 - persistent right-sidebar chat panel
 - in-chat generation monitor (state, scopes, context/output token usage)
-- conversation selector (dropdown) with `New Chat` creation
+- conversation title with `Open Conversation` picker and `New Chat` creation
 - streaming assistant responses
 - per-chat lorebook selection via add/remove list
+- context control order: Lorebooks -> Author Notes -> Chapters/Raw Notes -> Manual Context
 - manual context block
 - author note context list via interactive picker + remove actions
 - chapter/raw note context list via interactive picker + remove actions
 - no continuity checkboxes in chat context controls (continuity handling is automatic)
+- chat messages render markdown (not plain text only)
 - optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
   - search/read selected lorebook entries
   - search/read linked story and manually selected note context

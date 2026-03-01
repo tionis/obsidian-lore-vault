@@ -110,6 +110,16 @@ test('buildUsageLedgerReportSnapshot aggregates totals deterministically', () =>
   assert.equal(snapshot.totals.day.costUsdKnown, 0.0005);
   assert.equal(snapshot.totals.day.unknownCostCount, 1);
 
+  assert.equal(snapshot.totals.week.requests, 3);
+  assert.equal(snapshot.totals.week.totalTokens, 540);
+  assert.equal(snapshot.totals.week.costUsdKnown, 0.0045000000000000005);
+  assert.equal(snapshot.totals.week.unknownCostCount, 1);
+
+  assert.equal(snapshot.totals.month.requests, 3);
+  assert.equal(snapshot.totals.month.totalTokens, 540);
+  assert.equal(snapshot.totals.month.costUsdKnown, 0.0045000000000000005);
+  assert.equal(snapshot.totals.month.unknownCostCount, 1);
+
   assert.equal(snapshot.totals.session.requests, 2);
   assert.equal(snapshot.totals.session.totalTokens, 240);
   assert.equal(snapshot.totals.session.costUsdKnown, 0.0005);

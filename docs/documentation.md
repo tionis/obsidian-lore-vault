@@ -807,6 +807,7 @@ Current behavior:
   - manual context text
   - steering source refs (`note:*`)
     - note refs pull note content + note-level author-note steering
+    - legacy `story:`/`chapter:` refs are ignored during normalization
   - continuity per-group inclusion toggles (threads/open loops/canon deltas)
   - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
@@ -831,7 +832,7 @@ Turn context assembly:
 - optional Story Chat agent tool layer (when enabled and budget allows):
   - search/read selected lorebook entries
   - search/read linked story and manually selected notes
-  - read/update allowed note-level author-note scopes
+  - read/update the active note-level author note (scope is implicit)
   - optionally create lorebook notes when write actions are enabled and current turn includes explicit write intent
 - optional tool-retrieved context layer (when enabled and budget allows)
 - explicit steering layers (author note, inline directives)

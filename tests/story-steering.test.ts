@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import {
   buildStorySteeringScopeResolutions,
   buildStorySteeringFilePath,
-  createStorySteeringChapterId,
-  createStorySteeringStoryId,
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
   parseStorySteeringExtractionResponse,
@@ -79,44 +77,12 @@ test('story steering merge combines layers deterministically', () => {
   );
 });
 
-test('story steering file paths are scoped and deterministic', () => {
-  const storyPath = buildStorySteeringFilePath('LoreVault/steering', {
-    type: 'story',
-    key: 'chronicles-main'
-  });
-  const legacyThreadPath = buildStorySteeringFilePath('LoreVault/steering', {
-    type: 'thread',
-    key: 'chronicles-main'
-  });
+test('story steering file paths are note-scoped and deterministic', () => {
   const notePath = buildStorySteeringFilePath('LoreVault/steering', {
     type: 'note',
     key: 'story/ch07.md'
   });
-  const globalPath = buildStorySteeringFilePath('LoreVault/steering', {
-    type: 'global',
-    key: 'global'
-  });
-
-  assert.match(storyPath, /^LoreVault\/steering\/story\/chronicles-main-[a-f0-9]{10}\.md$/);
-  assert.match(legacyThreadPath, /^LoreVault\/steering\/thread\/chronicles-main-[a-f0-9]{10}\.md$/);
   assert.match(notePath, /^LoreVault\/steering\/note\/ch07\.md-[a-f0-9]{10}\.md$/);
-  assert.equal(globalPath, 'LoreVault/steering/global.md');
-});
-
-test('auto-generated story/chapter steering ids are deterministic and scoped to note identity', () => {
-  const path = 'stories/act1/chapter-07.md';
-  const noteId = 'lvn-abc123';
-
-  const storyIdA = createStorySteeringStoryId(path, noteId);
-  const storyIdB = createStorySteeringStoryId(path, noteId);
-  const chapterIdA = createStorySteeringChapterId(path, noteId);
-  const chapterIdB = createStorySteeringChapterId(path, noteId);
-
-  assert.equal(storyIdA, storyIdB);
-  assert.equal(chapterIdA, chapterIdB);
-  assert.match(storyIdA, /^chapter-07-[a-f0-9]{6}$/);
-  assert.match(chapterIdA, /^chapter-07-[a-f0-9]{6}$/);
-  assert.notEqual(storyIdA, chapterIdA);
 });
 
 test('story steering extraction parser accepts direct authorNote payload', () => {
@@ -158,7 +124,7 @@ test('story steering extraction sanitization removes lorebook-like profile facts
   assert.equal(sanitized.authorNote, 'Focus on escalating tension and keep dialogue concise.\n\nAri now knows the true sigil sequence.');
 });
 
-test('story steering scope resolutions use note-id keys with legacy path alias', () => {
+test('story steering scope resolutions use note-id keys without legacy aliases', () => {
   const resolutions = buildStorySteeringScopeResolutions(
     'stories/ch07.md',
     {},
@@ -168,8 +134,5 @@ test('story steering scope resolutions use note-id keys with legacy path alias',
   assert.equal(resolutions.length, 1);
   assert.equal(resolutions[0].scope.type, 'note');
   assert.equal(resolutions[0].scope.key, 'note:lvn-abc123');
-  assert.deepEqual(resolutions[0].legacyScopes, [{
-    type: 'note',
-    key: 'stories/ch07.md'
-  }]);
+  assert.equal(Object.prototype.hasOwnProperty.call(resolutions[0], 'legacyScopes'), false);
 });

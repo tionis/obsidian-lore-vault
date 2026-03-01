@@ -1,23 +1,8 @@
-export type StoryChatSteeringRefType = 'note' | 'story' | 'chapter';
+export type StoryChatSteeringRefType = 'note';
 
 export interface StoryChatSteeringRef {
   type: StoryChatSteeringRefType;
   key: string;
-}
-
-function parsePrefixedRef(
-  trimmed: string,
-  prefix: string,
-  type: StoryChatSteeringRefType
-): StoryChatSteeringRef | null {
-  if (!trimmed.toLowerCase().startsWith(prefix)) {
-    return null;
-  }
-  const key = trimmed.slice(prefix.length).trim();
-  if (!key) {
-    return null;
-  }
-  return { type, key };
 }
 
 export function parseStoryChatSteeringRef(raw: string): StoryChatSteeringRef | null {
@@ -26,24 +11,19 @@ export function parseStoryChatSteeringRef(raw: string): StoryChatSteeringRef | n
     return null;
   }
 
-  const prefixedStory = parsePrefixedRef(trimmed, 'story:', 'story');
-  if (prefixedStory) {
-    return prefixedStory;
+  if (trimmed.toLowerCase().startsWith('story:') || trimmed.toLowerCase().startsWith('chapter:')) {
+    return null;
   }
 
-  const prefixedChapter = parsePrefixedRef(trimmed, 'chapter:', 'chapter');
-  if (prefixedChapter) {
-    return prefixedChapter;
+  const key = trimmed.toLowerCase().startsWith('note:')
+    ? trimmed.slice('note:'.length).trim()
+    : trimmed;
+  if (!key) {
+    return null;
   }
-
-  const prefixedNote = parsePrefixedRef(trimmed, 'note:', 'note');
-  if (prefixedNote) {
-    return prefixedNote;
-  }
-
   return {
     type: 'note',
-    key: trimmed
+    key
   };
 }
 

@@ -163,7 +163,7 @@ export class LorevaultHelpView extends ItemView {
         'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
         'Story Chat supports per-conversation scopes, manual context, note steering refs (`note:*`), specific notes, and fork/regenerate.',
         'Story Chat continuity items are conversation-level toggles; they are no longer sourced from multi-scope steering fields.',
-        'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed note-level Author Notes.',
+        'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update the active note-level Author Note.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'
       ],
       actions: [

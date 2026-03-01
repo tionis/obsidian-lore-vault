@@ -16,21 +16,15 @@ import {
   normalizeVaultRelativePath
 } from './vault-path-utils';
 
-export type StorySteeringCanonicalScopeType = 'global' | 'story' | 'chapter' | 'note';
-export type StorySteeringScopeType = StorySteeringCanonicalScopeType | 'thread';
+export type StorySteeringScopeType = 'note';
 
 export interface StorySteeringScope {
-  type: StorySteeringScopeType;
+  type: 'note';
   key: string;
 }
 
 export interface StorySteeringScopeResolution {
   scope: StorySteeringScope;
-  legacyScopes: StorySteeringScope[];
-}
-
-export interface StorySteeringScopeChainOptions {
-  ensureScopeType?: StorySteeringCanonicalScopeType | null;
 }
 
 export interface StorySteeringState {
@@ -54,18 +48,6 @@ const EMPTY_STORY_STEERING_STATE: StorySteeringState = {
 
 const NOTE_SCOPE_PREFIX = 'note:';
 const STORY_STEERING_NOTE_ID_FRONTMATTER_KEY = 'lvNoteId';
-const STORY_STEERING_STORY_ID_FRONTMATTER_KEY = 'lvStoryId';
-const STORY_STEERING_CHAPTER_ID_FRONTMATTER_KEY = 'lvChapterId';
-
-export function normalizeStorySteeringScopeType(value: string | null | undefined): StorySteeringCanonicalScopeType {
-  if (value === 'story' || value === 'thread') {
-    return 'story';
-  }
-  if (value === 'chapter' || value === 'note') {
-    return value;
-  }
-  return 'global';
-}
 
 function normalizeTextField(value: unknown): string {
   if (typeof value !== 'string') {
@@ -315,7 +297,7 @@ function escapeYamlString(value: string): string {
 }
 
 export function stringifyStorySteeringMarkdown(scope: StorySteeringScope, state: StorySteeringState): string {
-  const scopeType = normalizeStorySteeringScopeType(scope.type);
+  const scopeType = 'note';
   const normalized = normalizeStorySteeringState(state);
   return [
     '---',
@@ -355,24 +337,9 @@ function buildScopedFilename(key: string, fallbackPrefix: string): string {
 
 export function buildStorySteeringFilePath(folderPath: string, scope: StorySteeringScope): string {
   const root = normalizeVaultRelativePath(folderPath);
-  const canonicalType = normalizeStorySteeringScopeType(scope.type);
   const key = normalizeScopeKey(scope.key);
-  if (canonicalType === 'global') {
-    return joinVaultPath(root, 'global.md');
-  }
-
   if (!key) {
-    throw new Error(`Scope key is required for ${canonicalType} steering scope.`);
-  }
-
-  if (scope.type === 'thread') {
-    return joinVaultPath(root, 'thread', buildScopedFilename(key, 'thread'));
-  }
-  if (canonicalType === 'story') {
-    return joinVaultPath(root, 'story', buildScopedFilename(key, 'story'));
-  }
-  if (canonicalType === 'chapter') {
-    return joinVaultPath(root, 'chapter', buildScopedFilename(key, 'chapter'));
+    throw new Error('Scope key is required for note steering scope.');
   }
   return joinVaultPath(root, 'note', buildScopedFilename(key, 'note'));
 }
@@ -402,86 +369,31 @@ function createStorySteeringNoteId(): string {
   return `lvn-${resolved}`;
 }
 
-function normalizeStorySteeringScopedBasename(filePath: string, fallback: string): string {
-  const rawBasename = getVaultBasename(normalizeVaultPath(filePath))
-    .replace(/\.md$/i, '')
-    .trim();
-  return slugifyIdentifier(rawBasename) || fallback;
-}
-
-export function createStorySteeringStoryId(filePath: string, noteId: string): string {
-  const basename = normalizeStorySteeringScopedBasename(filePath, 'story');
-  const idSource = normalizeSteeringId(noteId) || normalizeVaultPath(filePath);
-  const suffix = sha256Hex(`story:${idSource}`).slice(0, 6);
-  return `${basename}-${suffix}`;
-}
-
-export function createStorySteeringChapterId(filePath: string, noteId: string): string {
-  const basename = normalizeStorySteeringScopedBasename(filePath, 'chapter');
-  const idSource = normalizeSteeringId(noteId) || normalizeVaultPath(filePath);
-  const suffix = sha256Hex(`chapter:${idSource}`).slice(0, 6);
-  return `${basename}-${suffix}`;
-}
-
 function resolveNoteId(frontmatter: FrontmatterData): string {
   return normalizeSteeringId(normalizeFrontmatterString(frontmatter, 'lvNoteId', 'lorevaultNoteId'));
 }
 
-function buildNoteScopeKey(filePath: string, noteId: string): {key: string; legacyKey: string} {
+function buildNoteScopeKey(filePath: string, noteId: string): string {
   const normalizedPath = normalizeVaultPath(filePath);
   const normalizedNoteId = normalizeSteeringId(noteId);
   if (!normalizedNoteId) {
-    return {
-      key: normalizedPath,
-      legacyKey: normalizedPath
-    };
+    return normalizedPath;
   }
-  return {
-    key: `${NOTE_SCOPE_PREFIX}${normalizedNoteId}`,
-    legacyKey: normalizedPath
-  };
+  return `${NOTE_SCOPE_PREFIX}${normalizedNoteId}`;
 }
 
 export function buildStorySteeringScopeResolutions(
   filePath: string,
-  frontmatter: FrontmatterData,
+  _frontmatter: FrontmatterData,
   noteId: string
 ): StorySteeringScopeResolution[] {
-  const normalizedPath = normalizeVaultPath(filePath);
-  const { key: noteScopeKey, legacyKey: noteLegacyKey } = buildNoteScopeKey(normalizedPath, noteId);
-  const noteLegacyScopes = noteScopeKey !== noteLegacyKey
-    ? [{ type: 'note' as const, key: noteLegacyKey }]
-    : [];
+  const noteScopeKey = buildNoteScopeKey(filePath, noteId);
   return [{
     scope: {
       type: 'note',
       key: noteScopeKey
-    },
-    legacyScopes: noteLegacyScopes
+    }
   }];
-}
-
-function toPrimaryScope(scope: StorySteeringScope): StorySteeringScope {
-  const canonicalType = normalizeStorySteeringScopeType(scope.type);
-  return {
-    type: canonicalType,
-    key: canonicalType === 'global' ? 'global' : scope.key
-  };
-}
-
-function buildScopeResolutionWithAliases(scope: StorySteeringScope): StorySteeringScopeResolution {
-  const primaryScope = toPrimaryScope(scope);
-  const legacyScopes: StorySteeringScope[] = [];
-  if (primaryScope.type === 'story') {
-    legacyScopes.push({
-      type: 'thread',
-      key: primaryScope.key
-    });
-  }
-  return {
-    scope: primaryScope,
-    legacyScopes
-  };
 }
 
 export class StorySteeringStore {
@@ -502,12 +414,21 @@ export class StorySteeringStore {
   }
 
   resolveScopePath(scope: StorySteeringScope): string {
-    return buildStorySteeringFilePath(this.resolveFolderPath(), scope);
+    const normalizedScope = this.normalizeNoteScope(scope);
+    return buildStorySteeringFilePath(this.resolveFolderPath(), normalizedScope);
   }
 
   private readFrontmatter(file: TFile): FrontmatterData {
     const cache = this.app.metadataCache.getFileCache(file);
     return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+  }
+
+  private normalizeNoteScope(scope: StorySteeringScope): StorySteeringScope {
+    const key = normalizeScopeKey(scope.key);
+    return {
+      type: 'note',
+      key
+    };
   }
 
   private async ensureNoteIdentifierForFile(file: TFile, frontmatter: FrontmatterData): Promise<FrontmatterData> {
@@ -535,26 +456,15 @@ export class StorySteeringStore {
     }
   }
 
-  private async resolveScopeResolutionsForFile(
-    file: TFile | null,
-    options?: StorySteeringScopeChainOptions
-  ): Promise<StorySteeringScopeResolution[]> {
+  private async resolveScopeResolutionsForFile(file: TFile | null, ensureIds = false): Promise<StorySteeringScopeResolution[]> {
     if (!file) {
       return [];
     }
 
-    const requestedType = normalizeStorySteeringScopeType(options?.ensureScopeType ?? 'note');
-    if (requestedType === 'global') {
-      return [{
-        scope: { type: 'global', key: 'global' },
-        legacyScopes: []
-      }];
-    }
-
-    const frontmatter = await this.ensureNoteIdentifierForFile(
-      file,
-      this.readFrontmatter(file)
-    );
+    const currentFrontmatter = this.readFrontmatter(file);
+    const frontmatter = ensureIds
+      ? await this.ensureNoteIdentifierForFile(file, currentFrontmatter)
+      : currentFrontmatter;
     const noteId = resolveNoteId(frontmatter);
     return buildStorySteeringScopeResolutions(file.path, frontmatter, noteId);
   }
@@ -568,7 +478,7 @@ export class StorySteeringStore {
     return parseStorySteeringMarkdown(markdown);
   }
 
-  private async loadScopeWithFallbacks(
+  private async loadScopeByResolution(
     resolution: StorySteeringScopeResolution
   ): Promise<{state: StorySteeringState; filePath: string}> {
     const primaryPath = this.resolveScopePath(resolution.scope);
@@ -579,29 +489,6 @@ export class StorySteeringStore {
         filePath: primaryPath
       };
     }
-
-    for (const legacyScope of resolution.legacyScopes) {
-      const legacyPath = this.resolveScopePath(legacyScope);
-      const legacyState = await this.readScopeByPath(legacyPath);
-      if (!legacyState) {
-        continue;
-      }
-
-      try {
-        await this.saveScope(resolution.scope, legacyState);
-        return {
-          state: legacyState,
-          filePath: primaryPath
-        };
-      } catch (error) {
-        console.warn(`LoreVault: Failed to migrate legacy steering scope ${legacyPath} -> ${primaryPath}`, error);
-        return {
-          state: legacyState,
-          filePath: legacyPath
-        };
-      }
-    }
-
     return {
       state: createEmptyStorySteeringState(),
       filePath: primaryPath
@@ -609,12 +496,15 @@ export class StorySteeringStore {
   }
 
   async loadScope(scope: StorySteeringScope): Promise<StorySteeringState> {
-    const loaded = await this.loadScopeWithFallbacks(buildScopeResolutionWithAliases(scope));
+    const resolution: StorySteeringScopeResolution = {
+      scope: this.normalizeNoteScope(scope)
+    };
+    const loaded = await this.loadScopeByResolution(resolution);
     return loaded.state;
   }
 
   async saveScope(scope: StorySteeringScope, state: StorySteeringState): Promise<string> {
-    const primaryScope = toPrimaryScope(scope);
+    const primaryScope = this.normalizeNoteScope(scope);
     const path = this.resolveScopePath(primaryScope);
     const markdown = stringifyStorySteeringMarkdown(primaryScope, state);
     await ensureParentVaultFolderForFile(this.app, path);
@@ -622,17 +512,22 @@ export class StorySteeringStore {
     return path;
   }
 
-  async getScopeChainForFile(file: TFile | null, options?: StorySteeringScopeChainOptions): Promise<StorySteeringScope[]> {
-    const resolutions = await this.resolveScopeResolutionsForFile(file, options);
+  async getScopeChainForFile(file: TFile | null): Promise<StorySteeringScope[]> {
+    const resolutions = await this.resolveScopeResolutionsForFile(file, true);
     return resolutions.map(item => item.scope);
   }
 
+  async getScopeForFile(file: TFile | null, options?: { ensureIds?: boolean }): Promise<StorySteeringScope | null> {
+    const resolutions = await this.resolveScopeResolutionsForFile(file, options?.ensureIds ?? false);
+    return resolutions[0]?.scope ?? null;
+  }
+
   async resolveEffectiveStateForFile(file: TFile | null): Promise<StorySteeringEffectiveState> {
-    const scopeResolutions = await this.resolveScopeResolutionsForFile(file);
+    const scopeResolutions = await this.resolveScopeResolutionsForFile(file, true);
     const layers: StorySteeringLayer[] = [];
 
     for (const resolution of scopeResolutions) {
-      const loaded = await this.loadScopeWithFallbacks(resolution);
+      const loaded = await this.loadScopeByResolution(resolution);
       layers.push({
         scope: resolution.scope,
         filePath: loaded.filePath,

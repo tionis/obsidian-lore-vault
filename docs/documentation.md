@@ -180,7 +180,7 @@ npm run profile:large-vault
 Release command (maintainers):
 
 ```bash
-npm run release:version -- 0.0.8
+npm run release:version -- <version>
 ```
 
 Release behavior:
@@ -311,6 +311,7 @@ The same editor menu also exposes note-scoped summary actions when eligible:
 - `LoreVault: Generate Keywords` for notes with lorebook-scope tags.
 - `LoreVault: Generate World Info Summary` for notes with lorebook-scope tags.
 - `LoreVault: Generate Chapter Summary` for notes with story/chapter frontmatter.
+- `LoreVault: Create Next Story Chapter` for notes with story/chapter frontmatter.
 
 Provider options:
 
@@ -481,6 +482,28 @@ Settings (LoreVault -> Auto Summaries):
 
 - `Summary Max Input Chars`
 - `Summary Max Output Chars`
+
+## Long-Form Chapter Utilities
+
+Commands:
+
+- `Split Active Story Note into Chapter Notes`
+- `Split Active Story Note into Chapter Notes (Pick Folder)`
+- `Create Next Story Chapter`
+
+Current behavior:
+
+- split commands parse active note chapters from `##` headings (`#` is treated as story title) and create one chapter note per section.
+- created chapter notes write canonical frontmatter fields:
+  - `storyId`
+  - `chapter`
+  - `chapterTitle`
+  - `previousChapter`
+  - `nextChapter`
+- split command in current-folder mode writes chapter files beside the source note.
+- split command in pick-folder mode writes chapter files to the selected existing vault folder.
+- create-next command creates a new chapter note in the active note folder, sets current note `nextChapter`, and sets new note `previousChapter`.
+- editor context menu shows `LoreVault: Create Next Story Chapter` only when active note resolves as a story/chapter note.
 
 ## Cost Tracking (Experimental, Phase 13)
 
@@ -711,6 +734,8 @@ Query behavior:
   - `rag` (secondary/fallback-capable):
     - term overlap in title/path/content
     - optional semantic boost from embeddings
+    - long query windows are chunked deterministically for query embedding; chunk vectors are averaged
+    - when query embedding calls fail, LoreVault falls back to lexical-only scoring instead of aborting completion
     - default fallback policy is `auto` (used when seed confidence is low or no `world_info` matches are selected)
     - configurable fallback policy: `off|auto|always`
 - completion:

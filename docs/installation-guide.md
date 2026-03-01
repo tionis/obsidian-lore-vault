@@ -136,10 +136,15 @@ If you prefer to build the plugin from source:
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
+   - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Story Steering writes/uses `lvNoteId` in frontmatter for move-safe note/chapter scope links (auto-generated when needed)
-   - Story Steering LLM assistance supports optional update prompts so you can request targeted steering changes before review/save
+   - Story Steering LLM assistance supports optional update prompts so you can request targeted steering changes before review/apply
    - In Story Steering, `Update from Near-Cursor Context` uses text before cursor in the active editor (fallback: active note body)
    - Story Steering review modal shows `Current` vs `Proposed` values per field before apply
+   - Long-form chapter QoL commands:
+     - `Split Active Story Note into Chapter Notes`
+     - `Split Active Story Note into Chapter Notes (Pick Folder)`
+     - `Create Next Story Chapter` (also appears in editor context menu for notes with chapter frontmatter)
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
@@ -235,10 +240,10 @@ Since this is a manual installation, you'll need to manually update the plugin w
 Maintainer release command (repository workflow):
 
 ```bash
-npm run release:version -- 0.0.8
+npm run release:version -- <version>
 ```
 
-This command validates version progression, updates `manifest.json`/`versions.json`, creates commit `release 0.0.8`, tags `0.0.8`, and pushes branch + tag to `origin main` by default.
+This command validates version progression, updates `manifest.json`/`versions.json`, creates commit `release <version>`, tags `<version>`, and pushes branch + tag to `origin main` by default.
 
 ## Need Help?
 

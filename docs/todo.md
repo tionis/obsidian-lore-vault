@@ -288,6 +288,11 @@ Reference design: `docs/planning.md`.
 - [x] Story completion stop UX:
   - [x] add command: `Stop Active Generation`
   - [x] expose editor menu stop action while generation is active
+- [x] Long-form chapter QoL + embedding resiliency:
+  - [x] prevent failed query-embedding calls from aborting story completion (lexical fallback path)
+  - [x] chunk/average long query embeddings deterministically before semantic scoring
+  - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output
+  - [x] add `Create Next Story Chapter` command + chapter-frontmatter-gated editor context action
 - [x] Text command canon consistency default prompt update:
   - [x] bias default template toward lorebook factual consistency constraints
 - [x] Repository release automation:

@@ -65,6 +65,10 @@ This document is the implementation-level reference for core architecture and ru
 - `src/story-thread-resolver.ts`
   - story/chapter metadata parsing
   - deterministic thread ordering (metadata + prev/next links)
+- `src/story-chapter-management.ts`
+  - `##`-section chapter split helpers for monolithic story notes
+  - deterministic chapter-note frontmatter/body render helpers
+  - managed frontmatter upsert for `storyId/chapter/chapterTitle/previousChapter/nextChapter`
 - `src/chapter-summary-store.ts`
   - rolling chapter-summary cache (`## Summary` section -> frontmatter fallback -> excerpt fallback)
 - `src/summary-utils.ts`
@@ -217,6 +221,8 @@ Fallback ranking:
 
 - lexical score over entry title/path/content projections
 - optional semantic boost from embeddings cache/chunk vectors
+- query embedding uses deterministic long-text chunking + weighted-average vector merge
+- embedding-call failures degrade to lexical fallback (query continues without semantic boosts)
 - optional semantic paragraph reranking for world_info body excerpt fallback
 - deterministic tie-breaks: `score DESC`, then `path/title/uid`
 
@@ -337,6 +343,29 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 - injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 
 This provides a dedicated chapter-memory layer before graph retrieval.
+
+### Chapter Authoring Utilities
+
+Runtime commands in `src/main.ts`:
+
+- `Split Active Story Note into Chapter Notes`
+- `Split Active Story Note into Chapter Notes (Pick Folder)`
+- `Create Next Story Chapter`
+
+Contracts:
+
+- split utility reads active note markdown, treats first `#` as story heading, and splits chapters by `##` headings.
+- split output writes deterministic chapter note frontmatter fields:
+  - `storyId`
+  - `chapter`
+  - `chapterTitle`
+  - `previousChapter`
+  - `nextChapter`
+- create-next utility is gated on active note chapter metadata and:
+  - creates a new chapter note in the active note folder
+  - updates active note `nextChapter`
+  - sets new note `previousChapter` to active note
+- editor context menu action `LoreVault: Create Next Story Chapter` is only shown when active note resolves as a story/chapter note.
 
 ## Auto Summary Internals (Phase 9)
 

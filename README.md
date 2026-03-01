@@ -113,6 +113,7 @@ Additional behavior:
 - `Open Conversation` picker + `New Chat`
 - markdown-rendered messages
 - edit/fork/regenerate message actions
+- chat sessions are saved as readable markdown notes with frontmatter + `## User` / `## Model` transcript sections
 - optional bounded tool-calling (search/read lorebooks and selected notes, read/update linked author note)
 - per-response context inspector and layer/token diagnostics
 

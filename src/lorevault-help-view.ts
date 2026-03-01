@@ -148,7 +148,8 @@ export class LorevaultHelpView extends ItemView {
         'Open chat with `Open Story Chat`.',
         'Switch chats with `Open Conversation` and create new ones with `New Chat`.',
         'Per-chat context lists: Lorebooks, Author Notes, Chapters/Raw Notes, and Manual Context.',
-        'Chat messages render markdown and support edit/fork/regenerate.'
+        'Chat messages render markdown and support edit/fork/regenerate.',
+        'Conversations are saved as readable markdown session notes.'
       ],
       actions: [
         { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() }

@@ -178,6 +178,11 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
   const parsed = parseConversationMarkdown(markdown, 'Fallback');
 
   assert.ok(parsed);
+  assert.match(markdown, /^---\n/);
+  assert.match(markdown, /^type: agent-session$/m);
+  assert.match(markdown, /^## User$/m);
+  assert.match(markdown, /^## Model$/m);
+  assert.match(markdown, /^> \[!assistant\]\+$/m);
   assert.equal(parsed?.id, document.id);
   assert.equal(parsed?.title, document.title);
   assert.equal(parsed?.messages.length, document.messages.length);
@@ -185,7 +190,101 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
   assert.deepEqual(parsed?.messages[1].versions[0].contextMeta, document.messages[1].versions[0].contextMeta);
 });
 
-test('parseConversationMarkdown returns null when payload block is missing', () => {
-  const parsed = parseConversationMarkdown('# No payload here', 'Fallback');
+test('parseConversationMarkdown returns null when session frontmatter is missing', () => {
+  const parsed = parseConversationMarkdown('# No session frontmatter', 'Fallback');
   assert.equal(parsed, null);
+});
+
+test('parseConversationMarkdown reads sample-style agent session markdown', () => {
+  const markdown = [
+    '---',
+    'session_id: "session_1772382740438_x15u1lzas"',
+    'type: agent-session',
+    'title: "Yggdrasil Political Landscape"',
+    'selected_lorebooks:',
+    '  - "universe/yggdrasil"',
+    'use_lorebook_context: true',
+    'author_note_refs: []',
+    'note_context_refs: []',
+    'continuity_plot_threads: []',
+    'continuity_open_loops: []',
+    'continuity_canon_deltas: []',
+    'continuity_selection:',
+    '  includePlotThreads: true',
+    '  includeOpenLoops: true',
+    '  includeCanonDeltas: true',
+    'created: "2026-03-01T16:32:20.438Z"',
+    'last_active: "2026-03-01T16:33:57.282Z"',
+    'metadata:',
+    '  source: "lorevault"',
+    '---',
+    '',
+    '# Agent Session 3-1-2026',
+    '',
+    '## Conversation Context',
+    '',
+    '### Manual Context',
+    '```text',
+    '',
+    '```',
+    '',
+    '### Pinned Instructions',
+    '```text',
+    '',
+    '```',
+    '',
+    '### Story Notes',
+    '```text',
+    '',
+    '```',
+    '',
+    '### Scene Intent',
+    '```text',
+    '',
+    '```',
+    '',
+    '## User',
+    '',
+    '> [!metadata]- Message Info',
+    '> | Property | Value |',
+    '> | -------- | ----- |',
+    '> | Time | 2026-03-01T16:32:45.067Z |',
+    '> | Message ID | user-1 |',
+    '> | Version ID | ver-1 |',
+    '> | Active Version | true |',
+    '',
+    '> [!user]+',
+    '> Summarize the political landscape of Yggdrasil based on the Cosmology notes',
+    '',
+    '---',
+    '',
+    '## Model',
+    '',
+    '> [!metadata]- Message Info',
+    '> | Property | Value |',
+    '> | -------- | ----- |',
+    '> | Time | 2026-03-01T16:33:57.274Z |',
+    '> | Message ID | assistant-1 |',
+    '> | Version ID | ver-2 |',
+    '> | Active Version | true |',
+    '',
+    '> [!assistant]+',
+    '> Based on the Cosmology notes...',
+    '',
+    '---',
+    ''
+  ].join('\n');
+
+  const parsed = parseConversationMarkdown(markdown, 'Fallback');
+  assert.ok(parsed);
+  assert.equal(parsed?.id, 'session_1772382740438_x15u1lzas');
+  assert.equal(parsed?.title, 'Yggdrasil Political Landscape');
+  assert.equal(parsed?.messages.length, 2);
+  assert.equal(parsed?.messages[0].role, 'user');
+  assert.equal(parsed?.messages[1].role, 'assistant');
+  assert.equal(
+    parsed?.messages[0].versions[0].content,
+    'Summarize the political landscape of Yggdrasil based on the Cosmology notes'
+  );
+  assert.equal(parsed?.messages[1].versions[0].content, 'Based on the Cosmology notes...');
 });

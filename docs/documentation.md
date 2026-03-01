@@ -849,6 +849,8 @@ Current behavior:
 - allows switching between multiple generated versions of a message; only selected version is used for future context
 - renders message content as markdown inside the chat transcript
 - persists each chat/fork as a markdown note under `LoreVault/chat`
+- conversation-note format is human-readable (`agent-session` frontmatter + `## User` / `## Model` transcript sections)
+- legacy JSON code-block conversation notes are not loaded; Story Chat expects `agent-session` notes
 - plugin settings persist active conversation path and chat folder
 - chat folder path is configurable in settings (`Story Chat Conversation Folder`)
 - optional Story Chat tool-calling settings:

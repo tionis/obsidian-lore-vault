@@ -434,11 +434,12 @@ Conversation persistence is note-backed in `storyChat.chatFolder`.
 
 Stored structure:
 
-- conversation metadata
+- `agent-session` frontmatter (`session_id`, title/timestamps, selected lorebooks/refs, continuity flags)
+- conversation context sections (`Manual Context`, `Pinned Instructions`, `Story Notes`, `Scene Intent`)
 - per-conversation author-note refs (`note:*`)
 - per-conversation chapter/raw note refs
 - per-conversation lorebook scope selection
-- per-turn messages
+- per-turn transcript sections (`## User` / `## Model`)
 - message versions with active version selector
 - optional context inspector metadata on assistant versions (including steering source resolution and agent tool traces/calls/writes)
 
@@ -449,6 +450,7 @@ Story Chat UI behavior:
 - message content is rendered as markdown in-chat
 
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
+Legacy single-code-block (` ```lorevault-chat `) chat payload parsing is removed; only `agent-session` note format is accepted.
 
 ## Inline Directive Contract
 

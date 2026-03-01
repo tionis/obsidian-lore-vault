@@ -1,8 +1,7 @@
 import { ContinuitySelection, StoryChatContextMeta } from './models';
 import { normalizeStoryChatSteeringRefs } from './story-chat-steering-refs';
 
-export const CHAT_SCHEMA_VERSION = 1;
-export const CHAT_CODE_BLOCK_LANGUAGE = 'lorevault-chat';
+export const CHAT_SCHEMA_VERSION = 2;
 
 export interface ChatMessageVersion {
   id: string;
@@ -306,43 +305,479 @@ export function normalizeConversationDocument(
   };
 }
 
+function parseScalar(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return '';
+  }
+  if (trimmed === '[]') {
+    return [];
+  }
+  if (trimmed === 'true') {
+    return true;
+  }
+  if (trimmed === 'false') {
+    return false;
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch (_error) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+function parseFrontmatterBlock(markdown: string): { frontmatter: Record<string, unknown>; body: string } {
+  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) {
+    return {
+      frontmatter: {},
+      body: markdown
+    };
+  }
+
+  const source = match[1];
+  const lines = source.split(/\r?\n/);
+  const frontmatter: Record<string, unknown> = {};
+
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    const keyMatch = line.match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+    if (!keyMatch) {
+      index += 1;
+      continue;
+    }
+
+    const key = keyMatch[1];
+    const inlineValue = keyMatch[2] ?? '';
+    if (inlineValue.trim()) {
+      frontmatter[key] = parseScalar(inlineValue);
+      index += 1;
+      continue;
+    }
+
+    const nestedLines: string[] = [];
+    index += 1;
+    while (index < lines.length) {
+      const nested = lines[index];
+      if (!nested.trim()) {
+        nestedLines.push('');
+        index += 1;
+        continue;
+      }
+      if (!nested.startsWith('  ')) {
+        break;
+      }
+      nestedLines.push(nested);
+      index += 1;
+    }
+
+    const compactNested = nestedLines.filter(item => item.trim().length > 0);
+    if (compactNested.length === 0) {
+      frontmatter[key] = '';
+      continue;
+    }
+
+    if (compactNested[0].trim().startsWith('- ')) {
+      const items = compactNested
+        .map(item => item.trim())
+        .filter(item => item.startsWith('- '))
+        .map(item => parseScalar(item.slice(2)));
+      frontmatter[key] = items;
+      continue;
+    }
+
+    const objectValue: Record<string, unknown> = {};
+    for (const nested of compactNested) {
+      const objectMatch = nested.trim().match(/^([A-Za-z0-9_]+):(?:\s*(.*))?$/);
+      if (!objectMatch) {
+        continue;
+      }
+      objectValue[objectMatch[1]] = parseScalar(objectMatch[2] ?? '');
+    }
+    frontmatter[key] = objectValue;
+  }
+
+  return {
+    frontmatter,
+    body: markdown.slice(match[0].length)
+  };
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return dedupeStrings(value.map(item => String(item ?? '').trim()));
+}
+
+function parseTimestampValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return undefined;
+  }
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    return Math.floor(numeric);
+  }
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function parseBooleanText(value: string): boolean | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === 'true' || normalized === 'yes' || normalized === '1') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === 'no' || normalized === '0') {
+    return false;
+  }
+  return undefined;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function trimTrailingBlankLines(lines: string[]): string[] {
+  const next = [...lines];
+  while (next.length > 0 && next[next.length - 1].trim() === '') {
+    next.pop();
+  }
+  return next;
+}
+
+function extractFencedTextSection(body: string, heading: string): string {
+  const headingPattern = new RegExp(`^###\\s+${escapeRegex(heading)}\\s*$`, 'm');
+  const headingMatch = headingPattern.exec(body);
+  if (!headingMatch) {
+    return '';
+  }
+
+  const start = headingMatch.index + headingMatch[0].length;
+  const after = body.slice(start);
+  const nextHeadingPattern = /^###\s+.+$|^##\s+(?:User|Model)\s*$/m;
+  const nextHeading = nextHeadingPattern.exec(after);
+  const sectionBody = nextHeading ? after.slice(0, nextHeading.index) : after;
+  const fenceMatch = sectionBody.match(/```(?:text|md|markdown)?\s*\r?\n([\s\S]*?)\r?\n```/i);
+  if (!fenceMatch) {
+    return '';
+  }
+  return fenceMatch[1].replace(/\r/g, '');
+}
+
+function parseMetadataTableValues(sectionBody: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const pattern = /^>\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*$/gm;
+  let match: RegExpExecArray | null = pattern.exec(sectionBody);
+  while (match) {
+    const key = match[1].trim().toLowerCase();
+    const value = match[2].trim();
+    if (key && key !== 'property' && key !== '--------') {
+      result[key] = value;
+    }
+    match = pattern.exec(sectionBody);
+  }
+  return result;
+}
+
+function extractCalloutContent(sectionBody: string, role: 'user' | 'assistant'): string {
+  const calloutType = role === 'user' ? 'user' : 'assistant';
+  const markerPattern = new RegExp(`^>\\s*\\[!${calloutType}\\]\\+\\s*$`, 'm');
+  const markerMatch = markerPattern.exec(sectionBody);
+  if (!markerMatch) {
+    return '';
+  }
+
+  const start = markerMatch.index + markerMatch[0].length;
+  const lines = sectionBody
+    .slice(start)
+    .replace(/^\r?\n/, '')
+    .split(/\r?\n/);
+
+  const contentLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('>')) {
+      contentLines.push(line.replace(/^>\s?/, ''));
+      continue;
+    }
+    if (line.trim() === '' && contentLines.length === 0) {
+      continue;
+    }
+    break;
+  }
+
+  return trimTrailingBlankLines(contentLines).join('\n');
+}
+
+function parseMessageSections(body: string, createId: CreateIdFn): ConversationMessage[] {
+  const headingPattern = /^##\s+(User|Model)\s*$/gm;
+  const headings: Array<{ role: 'user' | 'assistant'; index: number; length: number }> = [];
+
+  let match: RegExpExecArray | null = headingPattern.exec(body);
+  while (match) {
+    headings.push({
+      role: match[1] === 'User' ? 'user' : 'assistant',
+      index: match.index,
+      length: match[0].length
+    });
+    match = headingPattern.exec(body);
+  }
+
+  const messagesById = new Map<string, {
+    id: string;
+    role: 'user' | 'assistant';
+    createdAt: number;
+    versions: ChatMessageVersion[];
+    activeVersionId: string;
+    order: number;
+    hasExplicitActiveVersion: boolean;
+  }>();
+
+  for (let index = 0; index < headings.length; index += 1) {
+    const heading = headings[index];
+    const sectionStart = heading.index + heading.length;
+    const sectionEnd = index + 1 < headings.length ? headings[index + 1].index : body.length;
+    const sectionBody = body.slice(sectionStart, sectionEnd);
+
+    const tableValues = parseMetadataTableValues(sectionBody);
+    const messageId = tableValues['message id'] || createId(heading.role);
+    const versionId = tableValues['version id'] || createId('ver');
+    const versionCreatedAt = parseTimestampValue(tableValues.time) ?? Date.now();
+    const activeVersion = parseBooleanText(tableValues['active version']) === true;
+
+    const contextMetaMatch = sectionBody.match(/<!--\s*LV_CHAT_CONTEXT_META:\s*([\s\S]*?)\s*-->/i);
+    let contextMeta: StoryChatContextMeta | undefined;
+    if (contextMetaMatch) {
+      try {
+        contextMeta = normalizeContextMeta(JSON.parse(contextMetaMatch[1].trim()) as unknown);
+      } catch (error) {
+        console.error('Failed to parse Story Chat context metadata:', error);
+      }
+    }
+
+    const version: ChatMessageVersion = {
+      id: versionId,
+      content: extractCalloutContent(sectionBody, heading.role),
+      createdAt: versionCreatedAt,
+      ...(contextMeta ? { contextMeta } : {})
+    };
+
+    const existing = messagesById.get(messageId);
+    if (existing) {
+      existing.versions.push(version);
+      existing.createdAt = Math.min(existing.createdAt, versionCreatedAt);
+      if (activeVersion) {
+        existing.activeVersionId = versionId;
+        existing.hasExplicitActiveVersion = true;
+      }
+      continue;
+    }
+
+    messagesById.set(messageId, {
+      id: messageId,
+      role: heading.role,
+      createdAt: versionCreatedAt,
+      versions: [version],
+      activeVersionId: versionId,
+      order: index,
+      hasExplicitActiveVersion: activeVersion
+    });
+  }
+
+  return [...messagesById.values()]
+    .sort((a, b) => a.order - b.order)
+    .map(item => {
+      const activeVersionId = item.hasExplicitActiveVersion
+        ? item.activeVersionId
+        : item.versions[0].id;
+      return {
+        id: item.id,
+        role: item.role,
+        createdAt: item.createdAt,
+        versions: item.versions,
+        activeVersionId
+      };
+    });
+}
+
+function formatIsoTimestamp(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return new Date(0).toISOString();
+  }
+  return new Date(Math.floor(timestamp)).toISOString();
+}
+
+function serializeYamlScalar(value: unknown): string {
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return JSON.stringify(String(value ?? ''));
+}
+
+function appendYamlArray(lines: string[], key: string, values: string[]): void {
+  if (values.length === 0) {
+    lines.push(`${key}: []`);
+    return;
+  }
+
+  lines.push(`${key}:`);
+  for (const value of values) {
+    lines.push(`  - ${serializeYamlScalar(value)}`);
+  }
+}
+
+function quoteMarkdownCallout(content: string): string[] {
+  const normalized = content.replace(/\r/g, '');
+  const rawLines = normalized.split('\n');
+  if (rawLines.length === 0) {
+    return ['>'];
+  }
+  return rawLines.map(line => (line.length > 0 ? `> ${line}` : '>'));
+}
+
+function renderTextSection(lines: string[], heading: string, content: string): void {
+  lines.push(`### ${heading}`);
+  lines.push('```text');
+  if (content) {
+    lines.push(...content.replace(/\r/g, '').split('\n'));
+  }
+  lines.push('```');
+  lines.push('');
+}
+
 export function parseConversationMarkdown(
   markdown: string,
   fallbackTitle: string,
   createId: CreateIdFn = defaultCreateId
 ): ConversationDocument | null {
-  const match = markdown.match(/```lorevault-chat\s*([\s\S]*?)```/i);
-  if (!match) {
+  const parsed = parseFrontmatterBlock(markdown);
+  const typeValue = String(parsed.frontmatter.type ?? '').trim().toLowerCase();
+  if (typeValue !== 'agent-session') {
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(match[1].trim()) as unknown;
-    return normalizeConversationDocument(parsed, fallbackTitle, createId);
-  } catch (error) {
-    console.error('Failed to parse LoreVault chat payload:', error);
-    return null;
-  }
+  const messageList = parseMessageSections(parsed.body, createId);
+  const continuitySelectionRaw = parsed.frontmatter.continuity_selection;
+
+  const rawDocument = {
+    schemaVersion: parsed.frontmatter.schema_version,
+    id: parsed.frontmatter.session_id,
+    title: parsed.frontmatter.title,
+    createdAt: parseTimestampValue(parsed.frontmatter.created),
+    updatedAt: parseTimestampValue(parsed.frontmatter.last_active),
+    selectedScopes: asStringArray(parsed.frontmatter.selected_lorebooks),
+    useLorebookContext: parsed.frontmatter.use_lorebook_context,
+    manualContext: extractFencedTextSection(parsed.body, 'Manual Context'),
+    steeringScopeRefs: asStringArray(parsed.frontmatter.author_note_refs),
+    pinnedInstructions: extractFencedTextSection(parsed.body, 'Pinned Instructions'),
+    storyNotes: extractFencedTextSection(parsed.body, 'Story Notes'),
+    sceneIntent: extractFencedTextSection(parsed.body, 'Scene Intent'),
+    continuityPlotThreads: asStringArray(parsed.frontmatter.continuity_plot_threads),
+    continuityOpenLoops: asStringArray(parsed.frontmatter.continuity_open_loops),
+    continuityCanonDeltas: asStringArray(parsed.frontmatter.continuity_canon_deltas),
+    continuitySelection: continuitySelectionRaw && typeof continuitySelectionRaw === 'object'
+      ? {
+        includePlotThreads: (continuitySelectionRaw as Record<string, unknown>).includePlotThreads,
+        includeOpenLoops: (continuitySelectionRaw as Record<string, unknown>).includeOpenLoops,
+        includeCanonDeltas: (continuitySelectionRaw as Record<string, unknown>).includeCanonDeltas
+      }
+      : undefined,
+    noteContextRefs: asStringArray(parsed.frontmatter.note_context_refs),
+    messages: messageList
+  };
+
+  return normalizeConversationDocument(rawDocument, fallbackTitle, createId);
 }
 
 export function serializeConversationMarkdown(document: ConversationDocument): string {
-  const payload = {
-    ...document,
-    messages: document.messages.map(message => ({
-      ...message,
-      versions: message.versions.map(version => ({
-        ...version,
-        contextMeta: cloneStoryChatContextMeta(version.contextMeta)
-      }))
-    }))
-  };
+  const normalizedSelectedScopes = dedupeStrings(document.selectedScopes.map(scope => scope.trim()));
+  const normalizedSteeringRefs = normalizeStoryChatSteeringRefs(document.steeringScopeRefs);
+  const normalizedNoteRefs = dedupeStrings(document.noteContextRefs.map(ref => ref.trim()));
 
-  return [
-    `# ${document.title}`,
-    '',
-    `\`\`\`${CHAT_CODE_BLOCK_LANGUAGE}`,
-    JSON.stringify(payload, null, 2),
-    '```',
-    ''
-  ].join('\n');
+  const lines: string[] = [];
+
+  lines.push('---');
+  lines.push(`session_id: ${serializeYamlScalar(document.id)}`);
+  lines.push('type: agent-session');
+  lines.push(`schema_version: ${CHAT_SCHEMA_VERSION}`);
+  lines.push(`title: ${serializeYamlScalar(document.title)}`);
+  appendYamlArray(lines, 'selected_lorebooks', normalizedSelectedScopes);
+  lines.push(`use_lorebook_context: ${serializeYamlScalar(document.useLorebookContext)}`);
+  appendYamlArray(lines, 'author_note_refs', normalizedSteeringRefs);
+  appendYamlArray(lines, 'note_context_refs', normalizedNoteRefs);
+  appendYamlArray(lines, 'continuity_plot_threads', dedupeStrings(document.continuityPlotThreads.map(item => item.trim())));
+  appendYamlArray(lines, 'continuity_open_loops', dedupeStrings(document.continuityOpenLoops.map(item => item.trim())));
+  appendYamlArray(lines, 'continuity_canon_deltas', dedupeStrings(document.continuityCanonDeltas.map(item => item.trim())));
+  lines.push('continuity_selection:');
+  lines.push(`  includePlotThreads: ${serializeYamlScalar(document.continuitySelection.includePlotThreads !== false)}`);
+  lines.push(`  includeOpenLoops: ${serializeYamlScalar(document.continuitySelection.includeOpenLoops !== false)}`);
+  lines.push(`  includeCanonDeltas: ${serializeYamlScalar(document.continuitySelection.includeCanonDeltas !== false)}`);
+  lines.push(`created: ${serializeYamlScalar(formatIsoTimestamp(document.createdAt))}`);
+  lines.push(`last_active: ${serializeYamlScalar(formatIsoTimestamp(document.updatedAt))}`);
+  lines.push('metadata:');
+  lines.push('  source: "lorevault"');
+  lines.push('---');
+  lines.push('');
+
+  lines.push(`# Agent Session: ${document.title}`);
+  lines.push('');
+  lines.push('## Conversation Context');
+  lines.push('');
+  renderTextSection(lines, 'Manual Context', document.manualContext);
+  renderTextSection(lines, 'Pinned Instructions', document.pinnedInstructions);
+  renderTextSection(lines, 'Story Notes', document.storyNotes);
+  renderTextSection(lines, 'Scene Intent', document.sceneIntent);
+
+  for (const message of document.messages) {
+    for (const version of message.versions) {
+      const isActiveVersion = version.id === message.activeVersionId;
+      const heading = message.role === 'user' ? 'User' : 'Model';
+      const calloutType = message.role === 'user' ? 'user' : 'assistant';
+
+      lines.push(`## ${heading}`);
+      lines.push('');
+      lines.push('> [!metadata]- Message Info');
+      lines.push('> | Property | Value |');
+      lines.push('> | -------- | ----- |');
+      lines.push(`> | Time | ${formatIsoTimestamp(version.createdAt)} |`);
+      lines.push(`> | Message ID | ${message.id} |`);
+      lines.push(`> | Version ID | ${version.id} |`);
+      lines.push(`> | Active Version | ${isActiveVersion ? 'true' : 'false'} |`);
+      lines.push('');
+      lines.push(`> [!${calloutType}]+`);
+      lines.push(...quoteMarkdownCallout(version.content));
+      lines.push('');
+
+      if (version.contextMeta) {
+        lines.push(`<!-- LV_CHAT_CONTEXT_META: ${JSON.stringify(cloneStoryChatContextMeta(version.contextMeta))} -->`);
+        lines.push('');
+      }
+
+      lines.push('---');
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n');
 }

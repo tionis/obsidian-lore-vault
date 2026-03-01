@@ -337,7 +337,7 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 `src/main.ts` (`continueStoryWithContext`, `runStoryChatTurn`):
 
 - resolves current note thread
-- selects bounded prior chapters
+- selects bounded prior chapters with deterministic budget-adaptive depth
 - resolves snippets through rolling chapter summary cache/store
   - prefers `## Summary` section
   - then frontmatter `summary`

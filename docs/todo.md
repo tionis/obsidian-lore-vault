@@ -292,6 +292,7 @@ Reference design: `docs/planning.md`.
 - [x] Long-form chapter QoL + embedding resiliency:
   - [x] prevent failed query-embedding calls from aborting story completion (lexical fallback path)
   - [x] chunk/average long query embeddings deterministically before semantic scoring
+  - [x] scale prior-chapter memory depth by available context budget (deterministic window expansion)
   - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output
   - [x] add `Create Next Story Chapter` command + chapter-frontmatter-gated editor context action
 - [x] Text command canon consistency default prompt update:

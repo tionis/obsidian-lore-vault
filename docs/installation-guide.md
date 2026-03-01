@@ -135,7 +135,7 @@ If you prefer to build the plugin from source:
    - If needed, stop an active run with command `Stop Active Generation` (also available in editor menu while running)
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
-   - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
+   - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context, scaling prior-chapter depth when context budget is larger
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Story Steering scope keys are derived from the active note (manual key entry removed)
    - Story Steering writes/uses `lvNoteId` and auto-creates `lvStoryId`/`lvChapterId` as needed for story/chapter scope resolution

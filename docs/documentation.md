@@ -405,6 +405,7 @@ Story Steering extraction behavior:
   - `off`: keeps raw extracted content
 
 When running `Continue Story with Context`, LoreVault resolves a deterministic story sequence for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
+The chapter-memory window scales deterministically with available chapter-memory budget, so larger context windows include more prior chapters.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 

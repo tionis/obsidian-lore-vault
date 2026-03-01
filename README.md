@@ -239,7 +239,7 @@ Behavior:
 
 - builds/refreshes an in-memory scope index
 - watches note create/modify/delete/rename events and performs near-live refresh
-- resolves optional chapter-memory context from prior chapters using story frontmatter (`storyId`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`)
+- resolves optional chapter-memory context from prior chapters using story frontmatter (`storyId`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`) with budget-adaptive depth
 - queries retrieval layers from current editor context:
   - `world_info` by graph-first seed + expansion relevance
   - fallback entries by policy (`off|auto|always`) and relevance

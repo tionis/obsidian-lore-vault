@@ -3,6 +3,11 @@ const MIN_QUERY_CHARS = 5000;
 const MAX_QUERY_CHARS = 180000;
 const MIN_STORY_CHARS = 12000;
 const MAX_STORY_CHARS = 900000;
+const CHAPTER_MEMORY_MIN_PRIOR_CHAPTERS = 4;
+const CHAPTER_MEMORY_MAX_PRIOR_CHAPTERS = 18;
+const CHAPTER_MEMORY_TARGET_TOKENS_PER_CHAPTER = 140;
+const CHAPTER_MEMORY_MIN_SUMMARY_TOKENS = 120;
+const CHAPTER_MEMORY_MAX_SUMMARY_TOKENS = 320;
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
@@ -226,4 +231,29 @@ export function extractAdaptiveStoryWindow(text: string, tokenBudget: number): s
   }
 
   return composed.slice(composed.length - maxChars).trimStart();
+}
+
+export function estimateChapterMemoryPriorChapterWindow(tokenBudget: number): number {
+  const normalizedBudget = Math.max(96, Math.floor(Number(tokenBudget) || 0));
+  const estimated = Math.floor(normalizedBudget / CHAPTER_MEMORY_TARGET_TOKENS_PER_CHAPTER);
+  return clamp(
+    estimated,
+    CHAPTER_MEMORY_MIN_PRIOR_CHAPTERS,
+    CHAPTER_MEMORY_MAX_PRIOR_CHAPTERS
+  );
+}
+
+export function estimateChapterMemorySummaryTokenBudget(
+  tokenBudget: number,
+  priorChapterCount: number
+): number {
+  const normalizedBudget = Math.max(96, Math.floor(Number(tokenBudget) || 0));
+  const normalizedCount = Math.max(1, Math.floor(Number(priorChapterCount) || 0));
+  const perChapterBudget = Math.max(80, Math.floor(normalizedBudget / normalizedCount));
+  const estimated = Math.floor(perChapterBudget * 1.2);
+  return clamp(
+    estimated,
+    CHAPTER_MEMORY_MIN_SUMMARY_TOKENS,
+    CHAPTER_MEMORY_MAX_SUMMARY_TOKENS
+  );
 }

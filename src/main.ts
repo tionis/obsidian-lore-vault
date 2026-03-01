@@ -47,6 +47,7 @@ import {
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
 import { LOREVAULT_STORY_STEERING_VIEW_TYPE, StorySteeringView } from './story-steering-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
+import { openVaultFolderPicker } from './folder-suggest-modal';
 import {
   LOREVAULT_OPERATION_LOG_VIEW_TYPE,
   LorevaultOperationLogView
@@ -124,6 +125,7 @@ import { parseGeneratedKeywords, upsertKeywordsFrontmatter } from './keyword-uti
 import {
   ensureParentVaultFolderForFile,
   getVaultBasename,
+  getVaultDirname,
   joinVaultPath,
   normalizeVaultPath,
   normalizeVaultRelativePath
@@ -156,6 +158,14 @@ import {
   trimTextForTokenBudget
 } from './prompt-staging';
 import { LorebookScopeCache } from './lorebook-scope-cache';
+import {
+  buildChapterFileStem,
+  buildStoryChapterNoteMarkdown,
+  deriveStoryIdFromTitle,
+  formatStoryChapterRef,
+  splitStoryMarkdownIntoChapterSections,
+  upsertStoryChapterFrontmatter
+} from './story-chapter-management';
 
 const INLINE_DIRECTIVE_SCAN_TOKENS = 1800;
 const INLINE_DIRECTIVE_MAX_COUNT = 6;
@@ -5559,6 +5569,36 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'split-active-story-note-into-chapters',
+      name: 'Split Active Story Note into Chapter Notes',
+      callback: () => {
+        void this.splitActiveStoryNoteIntoChaptersCurrentFolder().catch(error => {
+          console.error('LoreVault: Failed to split story note into chapter notes:', error);
+          new Notice(`Failed to split story note: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
+      id: 'split-active-story-note-into-chapters-pick-folder',
+      name: 'Split Active Story Note into Chapter Notes (Pick Folder)',
+      callback: () => {
+        this.splitActiveStoryNoteIntoChaptersPickFolder();
+      }
+    });
+
+    this.addCommand({
+      id: 'create-next-story-chapter',
+      name: 'Create Next Story Chapter',
+      callback: () => {
+        void this.createNextStoryChapterForActiveNote().catch(error => {
+          console.error('LoreVault: Failed to create next story chapter:', error);
+          new Notice(`Failed to create next chapter: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
       id: 'generate-chapter-summary-active-note',
       name: 'Generate Chapter Summary (Active Note)',
       callback: () => {
@@ -5633,6 +5673,18 @@ export default class LoreBookConverterPlugin extends Plugin {
             .setIcon('file-text')
             .onClick(() => {
               void this.generateSummaryForNote(targetFile, 'chapter');
+            });
+        });
+
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Create Next Story Chapter')
+            .setIcon('file-plus')
+            .onClick(() => {
+              void this.createNextStoryChapterForFile(targetFile).catch(error => {
+                console.error('LoreVault: Failed to create next story chapter:', error);
+                new Notice(`Failed to create next chapter: ${error instanceof Error ? error.message : String(error)}`);
+              });
             });
         });
       }
@@ -5841,6 +5893,199 @@ export default class LoreBookConverterPlugin extends Plugin {
     return Boolean(
       parseStoryThreadNodeFromFrontmatter(file.path, file.basename, frontmatter)
     );
+  }
+
+  private getStoryThreadNodeForFile(file: TFile): StoryThreadNode | null {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return parseStoryThreadNodeFromFrontmatter(file.path, file.basename, frontmatter);
+  }
+
+  private allocateUniqueChapterPath(targetFolder: string, stem: string, usedPaths: Set<string>): string {
+    const normalizedFolder = normalizeVaultPath(targetFolder).replace(/^\/+|\/+$/g, '');
+    for (let attempt = 1; attempt <= 5000; attempt += 1) {
+      const suffix = attempt === 1 ? '' : `-${attempt}`;
+      const fileName = `${stem}${suffix}.md`;
+      const candidate = normalizedFolder
+        ? `${normalizedFolder}/${fileName}`
+        : fileName;
+      const normalizedCandidate = normalizeVaultPath(candidate);
+      const key = normalizedCandidate.toLowerCase();
+      if (usedPaths.has(key)) {
+        continue;
+      }
+      usedPaths.add(key);
+      return normalizedCandidate;
+    }
+    throw new Error(`Unable to allocate chapter file path for stem "${stem}".`);
+  }
+
+  private async splitStoryNoteIntoChapterNotes(activeFile: TFile, targetFolderInput: string): Promise<void> {
+    const raw = await this.app.vault.cachedRead(activeFile);
+    const chapterSections = splitStoryMarkdownIntoChapterSections(raw);
+    if (chapterSections.length === 0) {
+      new Notice('No chapter sections found. Add `##` chapter headings before splitting.');
+      return;
+    }
+
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const sourceNode = parseStoryThreadNodeFromFrontmatter(activeFile.path, activeFile.basename, frontmatter);
+    const explicitStoryId = asString(getFrontmatterValue(frontmatter, 'storyId', 'story')) ?? '';
+    const storyId = sourceNode?.storyId || explicitStoryId.toLowerCase() || deriveStoryIdFromTitle(activeFile.basename);
+    const targetFolder = normalizeVaultPath(targetFolderInput).replace(/^\/+|\/+$/g, '');
+    const usedPaths = new Set(
+      this.app.vault.getMarkdownFiles().map(file => normalizeVaultPath(file.path).toLowerCase())
+    );
+
+    const plannedPaths = chapterSections.map(section => this.allocateUniqueChapterPath(
+      targetFolder,
+      buildChapterFileStem(storyId, section.chapterNumber, section.chapterTitle),
+      usedPaths
+    ));
+
+    const createdPaths: string[] = [];
+    for (let index = 0; index < chapterSections.length; index += 1) {
+      const section = chapterSections[index];
+      const chapterPath = plannedPaths[index];
+      const previousChapterRef = index > 0 ? formatStoryChapterRef(plannedPaths[index - 1]) : '';
+      const nextChapterRef = index + 1 < plannedPaths.length ? formatStoryChapterRef(plannedPaths[index + 1]) : '';
+      const chapterMarkdown = buildStoryChapterNoteMarkdown(
+        raw,
+        {
+          storyId,
+          chapter: section.chapterNumber,
+          chapterTitle: section.chapterTitle,
+          previousChapterRefs: previousChapterRef ? [previousChapterRef] : [],
+          nextChapterRefs: nextChapterRef ? [nextChapterRef] : []
+        },
+        section.chapterTitle,
+        section.chapterBody
+      );
+      await ensureParentVaultFolderForFile(this.app, chapterPath);
+      await this.app.vault.create(chapterPath, chapterMarkdown);
+      createdPaths.push(chapterPath);
+    }
+
+    if (createdPaths.length > 0) {
+      const firstFile = this.app.vault.getAbstractFileByPath(createdPaths[0]);
+      if (firstFile instanceof TFile) {
+        void this.app.workspace.getLeaf(true).openFile(firstFile);
+      }
+    }
+
+    const folderLabel = targetFolder || '(vault root)';
+    new Notice(`Created ${createdPaths.length} chapter notes in ${folderLabel}.`);
+  }
+
+  private async splitActiveStoryNoteIntoChaptersCurrentFolder(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice('Open a story note before splitting chapters.');
+      return;
+    }
+
+    const targetFolder = getVaultDirname(activeFile.path);
+    await this.splitStoryNoteIntoChapterNotes(activeFile, targetFolder);
+  }
+
+  private splitActiveStoryNoteIntoChaptersPickFolder(): void {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice('Open a story note before splitting chapters.');
+      return;
+    }
+
+    openVaultFolderPicker(this.app, folderPath => {
+      void this.splitStoryNoteIntoChapterNotes(activeFile, folderPath).catch(error => {
+        console.error('LoreVault: Failed to split story note into chapter notes:', error);
+        new Notice(`Failed to split story note: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    });
+  }
+
+  private async createNextStoryChapterForFile(activeFile: TFile): Promise<void> {
+    const node = this.getStoryThreadNodeForFile(activeFile);
+    if (!node) {
+      new Notice('Active note is missing story/chapter frontmatter (`storyId` required).');
+      return;
+    }
+    if (node.nextChapterRefs.length > 0) {
+      new Notice('This chapter already has `nextChapter` references. Skipping new chapter creation.');
+      return;
+    }
+
+    const storyNodes = this.collectStoryThreadNodes()
+      .filter(item => item.storyId === node.storyId);
+    const usedChapterNumbers = new Set<number>(
+      storyNodes
+        .map(item => item.chapter)
+        .filter((value): value is number => typeof value === 'number')
+    );
+    const maxKnownChapter = storyNodes.reduce((maxValue, item) => {
+      if (typeof item.chapter !== 'number') {
+        return maxValue;
+      }
+      return Math.max(maxValue, item.chapter);
+    }, 0);
+    let nextChapterNumber = typeof node.chapter === 'number'
+      ? node.chapter + 1
+      : (maxKnownChapter + 1);
+    while (usedChapterNumbers.has(nextChapterNumber)) {
+      nextChapterNumber += 1;
+    }
+
+    const nextChapterTitle = `Chapter ${nextChapterNumber}`;
+    const chapterFolder = getVaultDirname(activeFile.path);
+    const usedPaths = new Set(
+      this.app.vault.getMarkdownFiles().map(file => normalizeVaultPath(file.path).toLowerCase())
+    );
+    const chapterPath = this.allocateUniqueChapterPath(
+      chapterFolder,
+      buildChapterFileStem(node.storyId, nextChapterNumber, nextChapterTitle),
+      usedPaths
+    );
+
+    const rawActive = await this.app.vault.cachedRead(activeFile);
+    const newChapterMarkdown = buildStoryChapterNoteMarkdown(
+      rawActive,
+      {
+        storyId: node.storyId,
+        chapter: nextChapterNumber,
+        chapterTitle: nextChapterTitle,
+        previousChapterRefs: [formatStoryChapterRef(activeFile.path)],
+        nextChapterRefs: []
+      },
+      nextChapterTitle,
+      ''
+    );
+    await ensureParentVaultFolderForFile(this.app, chapterPath);
+    await this.app.vault.create(chapterPath, newChapterMarkdown);
+
+    const updatedCurrent = upsertStoryChapterFrontmatter(rawActive, {
+      storyId: node.storyId,
+      chapter: node.chapter,
+      chapterTitle: node.chapterTitle || node.title || activeFile.basename,
+      previousChapterRefs: node.previousChapterRefs,
+      nextChapterRefs: [formatStoryChapterRef(chapterPath)]
+    });
+    await this.app.vault.modify(activeFile, updatedCurrent);
+
+    const createdFile = this.app.vault.getAbstractFileByPath(chapterPath);
+    if (createdFile instanceof TFile) {
+      void this.app.workspace.getLeaf(true).openFile(createdFile);
+    }
+
+    new Notice(`Created next chapter: ${chapterPath}`);
+  }
+
+  private async createNextStoryChapterForActiveNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice('Open a chapter note before creating the next chapter.');
+      return;
+    }
+    await this.createNextStoryChapterForFile(activeFile);
   }
 
   private resolveStoryScopesFromFrontmatter(activeFile: TFile | null): string[] {

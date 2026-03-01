@@ -140,6 +140,7 @@ export class LorevaultHelpView extends ItemView {
         'Use command `Stop Active Generation` (or editor menu while running) to abort story text completion.',
         'Works on desktop and mobile editor menus.',
         'Context assembly order: local near-cursor story context -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
+        'With embeddings enabled, long query windows are chunked/averaged for semantic query embeddings; failures fall back to lexical retrieval so completion continues.',
         'Generation Monitor in Manager shows context usage, selected entries, and trim decisions.',
         'Inline directives are supported with strict syntax: `[LV: ...]` or `<!-- LV: ... -->`.'
       ],
@@ -158,6 +159,7 @@ export class LorevaultHelpView extends ItemView {
         'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/apply.',
         'Steering update review now shows field-level Current vs Proposed values for manual comparison before apply.',
         '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
+        'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
         'Story Chat supports per-conversation scopes, manual context, steering source refs (`note:*`, `story:*`, `chapter:*`), specific notes, and fork/regenerate.',
         'Story Chat continuity items are pulled from resolved steering scopes, with per-group inclusion toggles.',
         'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed steering scopes.',
@@ -236,7 +238,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Command Coverage', {
       bullets: [
         'Build/Manage: `Build Active Lorebook Scope`, `Open LoreVault Manager`, `Open LoreVault Lorebook Auditor`, `Open LoreVault Query Simulation`.',
-        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Steering`.',
+        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Steering`, `Create Next Story Chapter`, `Split Active Story Note into Chapter Notes`, `Split Active Story Note into Chapter Notes (Pick Folder)`.',
         'Summary/Keyword: `Generate World Info Summary (Active Note)`, `Generate Keywords (Active Note)`, `Generate Chapter Summary (Active Note)`.',
         'Batch Summary: `Generate World Info Summaries (Active Scope)`, `Generate Chapter Summaries (Current Story)`.',
         'Import/Update: `Import SillyTavern Lorebook`, `Extract Wiki Pages from Story`, `Apply Story Delta to Existing Wiki`.',

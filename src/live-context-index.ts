@@ -453,7 +453,12 @@ export class LiveContextIndex {
     );
 
     if (embeddingService && shouldComputeQueryEmbedding) {
-      queryEmbedding = await embeddingService.embedQuery(options.queryText);
+      try {
+        queryEmbedding = await embeddingService.embedQuery(options.queryText);
+      } catch (error) {
+        console.warn('LoreVault: Query embedding failed; continuing without semantic boost.', error);
+        queryEmbedding = null;
+      }
     }
 
     if (queryEmbedding && embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {

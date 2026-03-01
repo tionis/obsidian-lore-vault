@@ -10,6 +10,11 @@ interface PendingChunk {
   cacheKey: string;
 }
 
+const QUERY_EMBED_MAX_CHARS_PER_CHUNK = 5000;
+const QUERY_EMBED_MIN_CHARS_PER_CHUNK = 900;
+const QUERY_EMBED_MAX_CHUNKS = 6;
+const QUERY_EMBED_TAIL_CHARS_CAP = 28000;
+
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) {
     return 0;
@@ -36,6 +41,165 @@ export interface RagSimilarityScore {
 
 interface EmbeddingServiceOptions {
   onOperationLog?: CompletionOperationLogger;
+}
+
+function normalizeQueryText(text: string): string {
+  return (text ?? '')
+    .replace(/\r\n?/g, '\n')
+    .trim();
+}
+
+function splitHeadingSections(text: string): string[] {
+  const matches: Array<{ index: number }> = [];
+  const headingRegex = /^##{1,5}\s+\S.*$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = headingRegex.exec(text)) !== null) {
+    matches.push({ index: match.index });
+  }
+  if (matches.length === 0) {
+    return [text];
+  }
+
+  const sections: string[] = [];
+  const firstHeadingIndex = matches[0].index ?? 0;
+  const preface = text.slice(0, firstHeadingIndex).trim();
+  if (preface) {
+    sections.push(preface);
+  }
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const start = matches[index].index ?? 0;
+    const nextStart = matches[index + 1]?.index ?? text.length;
+    const section = text.slice(start, nextStart).trim();
+    if (section) {
+      sections.push(section);
+    }
+  }
+
+  return sections;
+}
+
+function splitLongChunk(text: string, maxChars: number, minChars: number): string[] {
+  const normalized = text.trim();
+  if (!normalized) {
+    return [];
+  }
+  if (normalized.length <= maxChars) {
+    return [normalized];
+  }
+
+  const pieces: string[] = [];
+  let cursor = 0;
+  while (cursor < normalized.length) {
+    let end = Math.min(normalized.length, cursor + maxChars);
+    if (end < normalized.length) {
+      const candidate = normalized.lastIndexOf('\n', end);
+      if (candidate > cursor + minChars) {
+        end = candidate;
+      }
+    }
+    const slice = normalized.slice(cursor, end).trim();
+    if (slice) {
+      pieces.push(slice);
+    }
+    if (end <= cursor) {
+      break;
+    }
+    cursor = end;
+  }
+
+  return pieces;
+}
+
+export function splitQueryTextForEmbedding(text: string): string[] {
+  const normalized = normalizeQueryText(text);
+  if (!normalized) {
+    return [];
+  }
+
+  if (normalized.length <= QUERY_EMBED_MAX_CHARS_PER_CHUNK) {
+    return [normalized];
+  }
+
+  const cappedTail = normalized.length > QUERY_EMBED_TAIL_CHARS_CAP
+    ? normalized.slice(normalized.length - QUERY_EMBED_TAIL_CHARS_CAP).trimStart()
+    : normalized;
+
+  const sections = splitHeadingSections(cappedTail);
+  const collectedRecent: string[] = [];
+
+  for (let sectionIndex = sections.length - 1; sectionIndex >= 0; sectionIndex -= 1) {
+    const section = sections[sectionIndex];
+    const pieces = splitLongChunk(
+      section,
+      QUERY_EMBED_MAX_CHARS_PER_CHUNK,
+      QUERY_EMBED_MIN_CHARS_PER_CHUNK
+    );
+    for (let pieceIndex = pieces.length - 1; pieceIndex >= 0; pieceIndex -= 1) {
+      const piece = pieces[pieceIndex];
+      if (!piece) {
+        continue;
+      }
+      collectedRecent.push(piece);
+      if (collectedRecent.length >= QUERY_EMBED_MAX_CHUNKS) {
+        break;
+      }
+    }
+    if (collectedRecent.length >= QUERY_EMBED_MAX_CHUNKS) {
+      break;
+    }
+  }
+
+  if (collectedRecent.length === 0) {
+    const fallbackPieces = splitLongChunk(
+      cappedTail,
+      QUERY_EMBED_MAX_CHARS_PER_CHUNK,
+      QUERY_EMBED_MIN_CHARS_PER_CHUNK
+    );
+    for (let index = fallbackPieces.length - 1; index >= 0; index -= 1) {
+      const piece = fallbackPieces[index];
+      if (!piece) {
+        continue;
+      }
+      collectedRecent.push(piece);
+      if (collectedRecent.length >= QUERY_EMBED_MAX_CHUNKS) {
+        break;
+      }
+    }
+  }
+
+  return collectedRecent.reverse();
+}
+
+export function averageEmbeddingVectors(vectors: number[][], weights: number[]): number[] | null {
+  if (vectors.length === 0) {
+    return null;
+  }
+  const dimensions = vectors[0]?.length ?? 0;
+  if (dimensions <= 0) {
+    return null;
+  }
+
+  const totals = new Array<number>(dimensions).fill(0);
+  let weightTotal = 0;
+
+  for (let index = 0; index < vectors.length; index += 1) {
+    const vector = vectors[index];
+    if (!Array.isArray(vector) || vector.length !== dimensions) {
+      return null;
+    }
+    const weight = Math.max(1, Math.floor(Number(weights[index] ?? 1)));
+    weightTotal += weight;
+    for (let dim = 0; dim < dimensions; dim += 1) {
+      const value = Number(vector[dim] ?? 0);
+      totals[dim] += Number.isFinite(value) ? value * weight : 0;
+    }
+  }
+
+  if (weightTotal <= 0) {
+    return null;
+  }
+  return totals.map(value => value / weightTotal);
 }
 
 export class EmbeddingService {
@@ -146,17 +310,61 @@ export class EmbeddingService {
   }
 
   async embedQuery(text: string): Promise<number[] | null> {
-    if (!this.config.enabled || !text.trim()) {
+    if (!this.config.enabled) {
       return null;
     }
 
-    const vectors = await requestEmbeddings(this.config, {
-      texts: [text],
-      instruction: this.config.instruction,
-      operationName: 'embeddings_embed_query',
-      onOperationLog: this.onOperationLog
-    });
-    return vectors[0] ?? null;
+    const queryChunks = splitQueryTextForEmbedding(text);
+    if (queryChunks.length === 0) {
+      return null;
+    }
+
+    try {
+      const vectors = await requestEmbeddings(this.config, {
+        texts: queryChunks,
+        instruction: this.config.instruction,
+        operationName: queryChunks.length > 1
+          ? 'embeddings_embed_query_chunked'
+          : 'embeddings_embed_query',
+        onOperationLog: this.onOperationLog
+      });
+
+      if (queryChunks.length === 1) {
+        return vectors[0] ?? null;
+      }
+
+      const averaged = averageEmbeddingVectors(
+        vectors,
+        queryChunks.map(chunk => chunk.length)
+      );
+      return averaged ?? vectors[vectors.length - 1] ?? null;
+    } catch (primaryError) {
+      if (queryChunks.length > 1) {
+        try {
+          const fallbackTail = queryChunks[queryChunks.length - 1];
+          const vectors = await requestEmbeddings(this.config, {
+            texts: [fallbackTail],
+            instruction: this.config.instruction,
+            operationName: 'embeddings_embed_query_recent_fallback',
+            onOperationLog: this.onOperationLog
+          });
+          return vectors[0] ?? null;
+        } catch (fallbackError) {
+          console.warn(
+            'LoreVault: Query embedding failed; proceeding with lexical retrieval fallback.',
+            primaryError,
+            fallbackError
+          );
+          return null;
+        }
+      }
+
+      console.warn(
+        'LoreVault: Query embedding failed; proceeding with lexical retrieval fallback.',
+        primaryError
+      );
+      return null;
+    }
   }
 
   scoreChunks(

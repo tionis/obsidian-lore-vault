@@ -244,6 +244,7 @@ Behavior:
   - `world_info` by graph-first seed + expansion relevance
   - fallback entries by policy (`off|auto|always`) and relevance
   - optional tool-retrieved layer for targeted entry fetches within call/token/time caps
+- when embeddings are enabled, long query windows are chunked deterministically and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback instead of aborting generation
 - applies token-budgeted context assembly
 - stages explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
 - steering layer placement is configurable (`system` | `pre-history` | `pre-response`)
@@ -267,6 +268,7 @@ Behavior:
   - `LoreVault: Generate Keywords` (for lorebook-tagged notes)
   - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
   - `LoreVault: Generate Chapter Summary` (only when note has chapter/story frontmatter)
+  - `LoreVault: Create Next Story Chapter` (only when note has chapter/story frontmatter)
 - mobile note: `Continue Story with Context` is also registered as an editor action command for mobile editor menus.
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
@@ -333,6 +335,17 @@ Behavior:
 - precedence:
   - world_info content: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> note body
   - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> deterministic excerpt
+- chapter note utilities:
+  - split command parses active note chapters from `##` headings (`#` treated as story title) and writes linked chapter notes with `storyId/chapter/chapterTitle/previousChapter/nextChapter`
+  - create-next command creates a new chapter note in the current folder, links current note `nextChapter`, and links new note `previousChapter`
+
+## Long-Form Chapter Commands
+
+Commands:
+
+- `Split Active Story Note into Chapter Notes`
+- `Split Active Story Note into Chapter Notes (Pick Folder)`
+- `Create Next Story Chapter`
 
 Story-level scope override:
 
@@ -459,7 +472,7 @@ npm test
 Release automation (maintainers):
 
 ```bash
-npm run release:version -- 0.0.8
+npm run release:version -- <version>
 ```
 
 Behavior:

@@ -132,6 +132,7 @@ If you prefer to build the plugin from source:
    - Optional: define story scopes in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
+   - Use right-click in story notes -> `LoreVault: Insert Inline Directive` to insert `<!-- LV: ... -->` at the cursor
    - If needed, stop an active run with command `Stop Active Generation` (also available in editor menu while running)
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation

@@ -112,6 +112,7 @@ import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal'
 import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text-command-modal';
 import { TextCommandReviewModal } from './text-command-review-modal';
 import { AuthorNoteRewriteModal } from './author-note-rewrite-modal';
+import { InlineDirectiveInsertModal } from './inline-directive-insert-modal';
 import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
@@ -1715,6 +1716,50 @@ export default class LoreBookConverterPlugin extends Plugin {
       return null;
     }
     return result.updateInstruction.trim();
+  }
+
+  private async promptForInlineDirectiveInstruction(initialInstruction = ''): Promise<string | null> {
+    const modal = new InlineDirectiveInsertModal(this.app, initialInstruction);
+    const resultPromise = modal.waitForResult();
+    modal.open();
+    const result = await resultPromise;
+    if (result.action !== 'insert') {
+      return null;
+    }
+    const instruction = result.instruction.trim().replace(/\s+/g, ' ');
+    if (!instruction) {
+      return null;
+    }
+    return instruction;
+  }
+
+  public async insertInlineDirectiveAtCursor(
+    editorOverride?: Editor,
+    infoOverride?: MarkdownView | MarkdownFileInfo
+  ): Promise<void> {
+    const markdownView = infoOverride instanceof MarkdownView
+      ? infoOverride
+      : this.app.workspace.getActiveViewOfType(MarkdownView);
+    const editor = editorOverride ?? markdownView?.editor;
+    if (!editor) {
+      new Notice('No active markdown editor found.');
+      return;
+    }
+
+    const selectedText = editor.somethingSelected()
+      ? editor.getSelection().trim()
+      : '';
+    const instruction = await this.promptForInlineDirectiveInstruction(selectedText);
+    if (!instruction) {
+      return;
+    }
+
+    const directive = `<!-- LV: ${instruction} -->`;
+    if (editor.somethingSelected()) {
+      editor.replaceSelection(directive);
+    } else {
+      editor.replaceRange(directive, editor.getCursor());
+    }
   }
 
   private async resolveAuthorNoteRewriteTarget(file: TFile | null): Promise<{
@@ -5509,6 +5554,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'insert-inline-directive',
+      name: 'Insert Inline Directive at Cursor',
+      editorCallback: (editor, info) => {
+        void this.insertInlineDirectiveAtCursor(editor, info);
+      },
+      callback: () => {
+        void this.insertInlineDirectiveAtCursor();
+      }
+    });
+
+    this.addCommand({
       id: 'open-lorevault-help',
       name: 'Open LoreVault Help',
       callback: () => {
@@ -5746,7 +5802,19 @@ export default class LoreBookConverterPlugin extends Plugin {
           });
       });
 
-      if (targetFile) {
+      const shouldShowStoryActions = Boolean(
+        targetFile && (isChapterNote || this.noteHasAuthorNoteLink(targetFile))
+      );
+      if (targetFile && shouldShowStoryActions) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Insert Inline Directive')
+            .setIcon('message-square-plus')
+            .onClick(() => {
+              void this.insertInlineDirectiveAtCursor(editor, info);
+            });
+        });
+
         menu.addItem(item => {
           item
             .setTitle('LoreVault: Open or Create Linked Author Note')
@@ -5952,6 +6020,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     return Boolean(
       parseStoryThreadNodeFromFrontmatter(file.path, file.basename, frontmatter)
     );
+  }
+
+  private noteHasAuthorNoteLink(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const authorNote = asString(getFrontmatterValue(frontmatter, 'authorNote')) ?? '';
+    return Boolean(authorNote.trim());
   }
 
   private getStoryThreadNodeForFile(file: TFile): StoryThreadNode | null {

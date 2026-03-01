@@ -3,7 +3,6 @@ import LoreBookConverterPlugin from './main';
 import { StorySteeringReviewModal, StorySteeringReviewResult } from './story-steering-review-modal';
 import {
   createEmptyStorySteeringState,
-  normalizeStorySteeringScopeType,
   normalizeStorySteeringState,
   StorySteeringEffectiveState,
   StorySteeringScope,
@@ -13,8 +12,7 @@ import {
 export const LOREVAULT_STORY_STEERING_VIEW_TYPE = 'lorevault-story-steering-view';
 
 function formatScope(scope: StorySteeringScope): string {
-  const type = normalizeStorySteeringScopeType(scope.type);
-  return `${type}:${scope.key || '(default)'}`;
+  return `note:${scope.key || '(default)'}`;
 }
 
 export class StorySteeringView extends ItemView {
@@ -156,8 +154,7 @@ export class StorySteeringView extends ItemView {
   }
 
   private areScopesEqual(left: StorySteeringScope, right: StorySteeringScope): boolean {
-    return normalizeStorySteeringScopeType(left.type) === normalizeStorySteeringScopeType(right.type)
-      && (left.key || '').trim() === (right.key || '').trim();
+    return (left.key || '').trim() === (right.key || '').trim();
   }
 
   private markDirty(): void {
@@ -234,7 +231,7 @@ export class StorySteeringView extends ItemView {
 
     this.scopeSyncInFlight = true;
     try {
-      const suggested = await this.plugin.getSuggestedStorySteeringScope('note', {
+      const suggested = await this.plugin.getSuggestedStorySteeringScope({
         ensureIds: true
       });
       this.selectedScopeKey = (suggested.key || '').trim();

@@ -264,7 +264,7 @@ Available tools:
 - linked-story/manual-note read/search:
   - `search_story_notes`
   - `read_story_note`
-- note-level author-note scope read/update (active note chain only):
+- active note-level author-note read/update (scope is implicit):
   - `get_steering_scope`
   - `update_steering_scope`
 - optional lorebook note creation:
@@ -275,7 +275,7 @@ Boundary contract:
 - no whole-vault traversal; tools are restricted to:
   - selected lorebook scopes
   - linked story note set (story thread + manually selected note refs)
-  - note-level steering scopes in active-note chain (`note`)
+  - the active note-level author note (`note`)
 - write tools require:
   - `settings.storyChat.toolCalls.allowWriteActions = true`
   - explicit write intent in current user turn (deterministic heuristic gate)

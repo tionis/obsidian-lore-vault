@@ -55,7 +55,7 @@ test('normalizeConversationDocument sanitizes malformed conversation payloads', 
   assert.equal(normalized.title, 'Test Chat');
   assert.deepEqual(normalized.selectedScopes, ['universe', 'world/a']);
   assert.deepEqual(normalized.noteContextRefs, ['Characters/Alice']);
-  assert.deepEqual(normalized.steeringScopeRefs, ['story:chronicles-main', 'note:Characters/Alice']);
+  assert.deepEqual(normalized.steeringScopeRefs, ['note:Characters/Alice']);
   assert.equal(normalized.pinnedInstructions, '');
   assert.equal(normalized.storyNotes, '');
   assert.equal(normalized.sceneIntent, '');

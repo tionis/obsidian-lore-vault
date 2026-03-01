@@ -441,12 +441,13 @@ Current capabilities:
 - manual context block (for manual-only or mixed mode)
 - steering source references (`note:*`)
   - note steering refs pull that note body into specific-note context plus note-level author-note steering
+  - legacy `story:`/`chapter:` steering refs are ignored during normalization
 - per-chat continuity inclusion toggles (plot threads, open loops, canon deltas)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
   - search/read selected lorebook entries
   - search/read linked story and manually selected note context
-  - read/update allowed note-level author-note steering scopes
+  - read/update the active note-level author note (scope is implicit)
   - optionally create lorebook-tagged notes when write actions are enabled
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)

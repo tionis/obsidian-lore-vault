@@ -140,13 +140,11 @@ import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline
 import {
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
-  normalizeStorySteeringScopeType,
   normalizeStorySteeringState,
   parseStorySteeringExtractionResponse,
   sanitizeStorySteeringExtractionState,
   StorySteeringEffectiveState,
   StorySteeringScope,
-  StorySteeringScopeType,
   StorySteeringState,
   StorySteeringStore
 } from './story-steering';
@@ -1608,31 +1606,22 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized || DEFAULT_SETTINGS.storySteering.folder;
   }
 
-  public async getSuggestedStorySteeringScope(
-    type: StorySteeringScopeType,
-    options?: {
-      ensureIds?: boolean;
-    }
-  ): Promise<StorySteeringScope> {
-    const requestedType = normalizeStorySteeringScopeType(type);
-    const canonicalType = requestedType === 'global' ? 'note' : requestedType;
+  public async getSuggestedStorySteeringScope(options?: {
+    ensureIds?: boolean;
+  }): Promise<StorySteeringScope> {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       return {
-        type: canonicalType,
+        type: 'note',
         key: ''
       };
     }
 
-    const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile, {
-      ensureScopeType: options?.ensureIds ? 'note' : undefined
+    const scope = await this.storySteeringStore.getScopeForFile(activeFile, {
+      ensureIds: options?.ensureIds ?? false
     });
-    const matched = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === 'note');
-    if (matched) {
-      return {
-        type: 'note',
-        key: matched.key
-      };
+    if (scope) {
+      return scope;
     }
 
     return {
@@ -2015,9 +2004,8 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   private formatStorySteeringScopeLabel(scope: StorySteeringScope): string {
-    const normalizedType = normalizeStorySteeringScopeType(scope.type);
-    const key = normalizedType === 'global' ? 'global' : scope.key.trim();
-    return `${normalizedType}:${key || '(default)'}`;
+    const key = scope.key.trim();
+    return `note:${key || '(default)'}`;
   }
 
   private async resolveStoryChatSteeringSources(
@@ -2042,18 +2030,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     const resolvedRefs: string[] = [];
     const unresolvedRefs: string[] = [];
     const resolvedScopeLabels: string[] = [];
-    const loadedScopeStateByLabel = new Map<string, StorySteeringState>();
-
-    const loadScopeState = async (scope: StorySteeringScope): Promise<StorySteeringState> => {
-      const label = this.formatStorySteeringScopeLabel(scope);
-      const cached = loadedScopeStateByLabel.get(label);
-      if (cached) {
-        return cached;
-      }
-      const loaded = await this.storySteeringStore.loadScope(scope);
-      loadedScopeStateByLabel.set(label, loaded);
-      return loaded;
-    };
 
     for (const rawRef of normalizedRefs) {
       const parsed = parseStoryChatSteeringRef(rawRef);
@@ -2415,13 +2391,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'get_steering_scope',
-          description: 'Read an allowed note-level author-note scope.',
+          description: 'Read the active note-level author note scope.',
           parameters: {
             type: 'object',
-            properties: {
-              scopeType: { type: 'string' },
-              scopeKey: { type: 'string' }
-            }
+            properties: {}
           }
         }
       });
@@ -2432,12 +2405,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'update_steering_scope',
-          description: 'Update an allowed note-level author-note scope.',
+          description: 'Update the active note-level author note scope.',
           parameters: {
             type: 'object',
             properties: {
-              scopeType: { type: 'string' },
-              scopeKey: { type: 'string' },
               state: {
                 type: 'object',
                 properties: {
@@ -2568,19 +2539,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     const allowStoryNotes = allowedStoryFiles.length > 0;
 
-    const steeringScopes = await this.storySteeringStore.getScopeChainForFile(args.activeStoryFile);
-    const allowedSteeringByKey = new Map<string, StorySteeringScope>();
-    for (const scope of steeringScopes) {
-      const canonicalType = normalizeStorySteeringScopeType(scope.type);
-      if (canonicalType !== 'note') {
-        continue;
-      }
-      const key = scope.key;
-      allowedSteeringByKey.set(`${canonicalType}::${key}`, {
-        type: canonicalType,
-        key
-      });
-    }
+    const activeSteeringScope = await this.storySteeringStore.getScopeForFile(args.activeStoryFile, {
+      ensureIds: true
+    });
+    const allowSteering = Boolean(activeSteeringScope?.key?.trim());
 
     const writeIntent = this.hasExplicitStoryChatWriteIntent(args.userMessage);
     const allowWriteActions = this.settings.storyChat.toolCalls.allowWriteActions && writeIntent;
@@ -2588,7 +2550,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const toolDefinitions = this.buildStoryChatAgentToolDefinitions({
       allowLorebook,
       allowStoryNotes,
-      allowSteering: allowedSteeringByKey.size > 0,
+      allowSteering,
       allowWriteActions
     });
 
@@ -2615,15 +2577,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       return body;
     };
 
-    const parseScopeFromArgs = (payload: Record<string, unknown>): StorySteeringScope | null => {
-      const scopeTypeRaw = typeof payload.scopeType === 'string' ? payload.scopeType : 'note';
-      const canonicalType = normalizeStorySteeringScopeType(scopeTypeRaw);
-      if (canonicalType !== 'note') {
+    const resolveToolSteeringScope = (): StorySteeringScope | null => {
+      if (!allowSteering || !activeSteeringScope) {
         return null;
       }
-      const scopeKey = typeof payload.scopeKey === 'string' ? payload.scopeKey.trim() : '';
-      const resolvedKey = `${canonicalType}::${scopeKey}`;
-      return allowedSteeringByKey.get(resolvedKey) ?? null;
+      return activeSteeringScope;
     };
 
     const buildErrorResult = (toolName: StoryChatAgentToolName, reason: string): StoryChatAgentToolExecutionResult => {
@@ -2867,11 +2825,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       if (toolName === 'get_steering_scope') {
-        const scope = parseScopeFromArgs(payload);
+        const scope = resolveToolSteeringScope();
         if (!scope) {
           return buildErrorResult(
             toolName,
-            `Scope is not allowed. Allowed scopes: ${[...allowedSteeringByKey.keys()].join(', ')}`
+            'No active note-level author note scope is available for this turn.'
           );
         }
         const state = await this.loadStorySteeringScope(scope);
@@ -2901,11 +2859,11 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (!allowWriteActions) {
           return buildErrorResult(toolName, 'Write tools are disabled for this turn.');
         }
-        const scope = parseScopeFromArgs(payload);
+        const scope = resolveToolSteeringScope();
         if (!scope) {
           return buildErrorResult(
             toolName,
-            `Scope is not allowed. Allowed scopes: ${[...allowedSteeringByKey.keys()].join(', ')}`
+            'No active note-level author note scope is available for this turn.'
           );
         }
         const rawState = payload.state && typeof payload.state === 'object' && !Array.isArray(payload.state)
@@ -3070,7 +3028,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           'Respect hard boundaries:',
           '- lorebook tools: selected lorebook scopes only',
           '- story note tools: linked story/manual-selected note paths only',
-          '- steering tools: allowed note-level author-note scopes only',
+          '- steering tools: active note-level author note only',
           'Never call write tools unless the user explicitly asks for updates/creation in this turn.',
           'When enough tool data is available, stop issuing tool calls.'
         ].join('\n')
@@ -3086,7 +3044,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `Linked/manual note paths (${allowedStoryFiles.length}): ${
             allowedStoryFiles.slice(0, 8).map(file => file.path).join(', ') || '(none)'
           }`,
-          `Allowed author-note scopes: ${[...allowedSteeringByKey.keys()].join(', ') || '(none)'}`,
+          `Active author-note scope: ${allowSteering && activeSteeringScope ? `${activeSteeringScope.type}:${activeSteeringScope.key}` : '(none)'}`,
           `Write tools enabled for this turn: ${allowWriteActions ? 'yes' : 'no'}`
         ].join('\n')
       }
@@ -6005,10 +5963,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       return [];
     }
 
-    const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile, {
-      ensureScopeType: 'note'
+    const noteScope = await this.storySteeringStore.getScopeForFile(activeFile, {
+      ensureIds: true
     });
-    const noteScope = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === 'note');
     if (!noteScope) {
       return [];
     }

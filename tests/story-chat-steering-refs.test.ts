@@ -7,14 +7,8 @@ import {
 } from '../src/story-chat-steering-refs';
 
 test('parseStoryChatSteeringRef supports explicit and implicit note refs', () => {
-  assert.deepEqual(parseStoryChatSteeringRef('story:chronicles-main'), {
-    type: 'story',
-    key: 'chronicles-main'
-  });
-  assert.deepEqual(parseStoryChatSteeringRef('chapter:chronicles-main::chapter:4'), {
-    type: 'chapter',
-    key: 'chronicles-main::chapter:4'
-  });
+  assert.equal(parseStoryChatSteeringRef('story:chronicles-main'), null);
+  assert.equal(parseStoryChatSteeringRef('chapter:chronicles-main::chapter:4'), null);
   assert.deepEqual(parseStoryChatSteeringRef('note:stories/ch01.md'), {
     type: 'note',
     key: 'stories/ch01.md'
@@ -34,9 +28,7 @@ test('normalizeStoryChatSteeringRefs canonicalizes refs deterministically', () =
     '  '
   ]);
   assert.deepEqual(normalized, [
-    'story:chronicles-main',
-    'note:stories/ch02.md',
-    'chapter:chronicles-main::chapter:2'
+    'note:stories/ch02.md'
   ]);
 });
 

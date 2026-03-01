@@ -29,6 +29,10 @@ export interface StorySteeringScopeResolution {
   legacyScopes: StorySteeringScope[];
 }
 
+export interface StorySteeringScopeChainOptions {
+  ensureScopeType?: StorySteeringCanonicalScopeType | null;
+}
+
 export interface StorySteeringState {
   pinnedInstructions: string;
   storyNotes: string;
@@ -81,6 +85,8 @@ const LIST_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'a
 
 const NOTE_SCOPE_PREFIX = 'note:';
 const STORY_STEERING_NOTE_ID_FRONTMATTER_KEY = 'lvNoteId';
+const STORY_STEERING_STORY_ID_FRONTMATTER_KEY = 'lvStoryId';
+const STORY_STEERING_CHAPTER_ID_FRONTMATTER_KEY = 'lvChapterId';
 
 export function normalizeStorySteeringScopeType(value: string | null | undefined): StorySteeringCanonicalScopeType {
   if (value === 'story' || value === 'thread') {
@@ -447,6 +453,27 @@ function createStorySteeringNoteId(): string {
   return `lvn-${resolved}`;
 }
 
+function normalizeStorySteeringScopedBasename(filePath: string, fallback: string): string {
+  const rawBasename = getVaultBasename(normalizeVaultPath(filePath))
+    .replace(/\.md$/i, '')
+    .trim();
+  return slugifyIdentifier(rawBasename) || fallback;
+}
+
+export function createStorySteeringStoryId(filePath: string, noteId: string): string {
+  const basename = normalizeStorySteeringScopedBasename(filePath, 'story');
+  const idSource = normalizeSteeringId(noteId) || normalizeVaultPath(filePath);
+  const suffix = sha256Hex(`story:${idSource}`).slice(0, 6);
+  return `${basename}-${suffix}`;
+}
+
+export function createStorySteeringChapterId(filePath: string, noteId: string): string {
+  const basename = normalizeStorySteeringScopedBasename(filePath, 'chapter');
+  const idSource = normalizeSteeringId(noteId) || normalizeVaultPath(filePath);
+  const suffix = sha256Hex(`chapter:${idSource}`).slice(0, 6);
+  return `${basename}-${suffix}`;
+}
+
 function resolveNoteId(frontmatter: FrontmatterData): string {
   return normalizeSteeringId(normalizeFrontmatterString(frontmatter, 'lvNoteId', 'lorevaultNoteId'));
 }
@@ -578,39 +605,80 @@ export class StorySteeringStore {
     return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
   }
 
-  private async ensureNoteIdForFile(file: TFile, frontmatter: FrontmatterData): Promise<string> {
+  private async ensureScopeIdentifiersForFile(
+    file: TFile,
+    frontmatter: FrontmatterData,
+    ensureScopeType: StorySteeringCanonicalScopeType
+  ): Promise<FrontmatterData> {
+    const canonicalType = normalizeStorySteeringScopeType(ensureScopeType);
+    const shouldEnsureNoteId = canonicalType !== 'global';
+    const shouldEnsureStoryKey = canonicalType === 'story' || canonicalType === 'chapter';
+    const shouldEnsureChapterValue = canonicalType === 'chapter';
+
     const existingNoteId = resolveNoteId(frontmatter);
-    if (existingNoteId) {
-      return existingNoteId;
+    const existingStoryKey = resolveStoryKey(frontmatter);
+    const existingChapterValue = resolveChapterValue(frontmatter);
+
+    const generatedNoteId = shouldEnsureNoteId && !existingNoteId
+      ? createStorySteeringNoteId()
+      : '';
+    const noteIdForDerivedKeys = existingNoteId || generatedNoteId;
+    const generatedStoryKey = shouldEnsureStoryKey && !existingStoryKey
+      ? createStorySteeringStoryId(file.path, noteIdForDerivedKeys)
+      : '';
+    const generatedChapterValue = shouldEnsureChapterValue && !existingChapterValue
+      ? createStorySteeringChapterId(file.path, noteIdForDerivedKeys)
+      : '';
+
+    if (!generatedNoteId && !generatedStoryKey && !generatedChapterValue) {
+      return frontmatter;
     }
 
-    const generatedNoteId = createStorySteeringNoteId();
     try {
       await this.app.fileManager.processFrontMatter(file, rawFrontmatter => {
-        const current = typeof rawFrontmatter[STORY_STEERING_NOTE_ID_FRONTMATTER_KEY] === 'string'
-          ? rawFrontmatter[STORY_STEERING_NOTE_ID_FRONTMATTER_KEY].trim()
-          : '';
-        if (!current) {
+        const normalizedCurrent = normalizeFrontmatter(rawFrontmatter as FrontmatterData);
+        if (generatedNoteId && !resolveNoteId(normalizedCurrent)) {
           rawFrontmatter[STORY_STEERING_NOTE_ID_FRONTMATTER_KEY] = generatedNoteId;
         }
+        if (generatedStoryKey && !resolveStoryKey(normalizedCurrent)) {
+          rawFrontmatter[STORY_STEERING_STORY_ID_FRONTMATTER_KEY] = generatedStoryKey;
+        }
+        if (generatedChapterValue && !resolveChapterValue(normalizedCurrent)) {
+          rawFrontmatter[STORY_STEERING_CHAPTER_ID_FRONTMATTER_KEY] = generatedChapterValue;
+        }
       });
-      const refreshed = this.readFrontmatter(file);
-      return resolveNoteId(refreshed) || generatedNoteId;
+      return this.readFrontmatter(file);
     } catch (error) {
-      console.warn(`LoreVault: Failed to persist ${STORY_STEERING_NOTE_ID_FRONTMATTER_KEY} for ${file.path}`, error);
-      return '';
+      const label = [
+        generatedNoteId ? STORY_STEERING_NOTE_ID_FRONTMATTER_KEY : '',
+        generatedStoryKey ? STORY_STEERING_STORY_ID_FRONTMATTER_KEY : '',
+        generatedChapterValue ? STORY_STEERING_CHAPTER_ID_FRONTMATTER_KEY : ''
+      ]
+        .filter(Boolean)
+        .join(', ');
+      console.warn(`LoreVault: Failed to persist Story Steering IDs (${label}) for ${file.path}`, error);
+      return frontmatter;
     }
   }
 
-  private async resolveScopeResolutionsForFile(file: TFile | null): Promise<StorySteeringScopeResolution[]> {
+  private async resolveScopeResolutionsForFile(
+    file: TFile | null,
+    options?: StorySteeringScopeChainOptions
+  ): Promise<StorySteeringScopeResolution[]> {
     if (!file) {
       return [{
         scope: { type: 'global', key: 'global' },
         legacyScopes: []
       }];
     }
-    const frontmatter = this.readFrontmatter(file);
-    const noteId = await this.ensureNoteIdForFile(file, frontmatter);
+
+    const ensureScopeType = normalizeStorySteeringScopeType(options?.ensureScopeType ?? 'note');
+    const frontmatter = await this.ensureScopeIdentifiersForFile(
+      file,
+      this.readFrontmatter(file),
+      ensureScopeType
+    );
+    const noteId = resolveNoteId(frontmatter);
     return buildStorySteeringScopeResolutions(file.path, frontmatter, noteId);
   }
 
@@ -677,8 +745,8 @@ export class StorySteeringStore {
     return path;
   }
 
-  async getScopeChainForFile(file: TFile | null): Promise<StorySteeringScope[]> {
-    const resolutions = await this.resolveScopeResolutionsForFile(file);
+  async getScopeChainForFile(file: TFile | null, options?: StorySteeringScopeChainOptions): Promise<StorySteeringScope[]> {
+    const resolutions = await this.resolveScopeResolutionsForFile(file, options);
     return resolutions.map(item => item.scope);
   }
 

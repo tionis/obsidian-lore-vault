@@ -1651,7 +1651,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized || DEFAULT_SETTINGS.storySteering.folder;
   }
 
-  public async getSuggestedStorySteeringScope(type: StorySteeringScopeType): Promise<StorySteeringScope> {
+  public async getSuggestedStorySteeringScope(
+    type: StorySteeringScopeType,
+    options?: {
+      ensureIds?: boolean;
+    }
+  ): Promise<StorySteeringScope> {
     const requestedType = normalizeStorySteeringScopeType(type);
     if (requestedType === 'global') {
       return { type: 'global', key: 'global' };
@@ -1665,7 +1670,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       };
     }
 
-    const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile);
+    const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile, {
+      ensureScopeType: options?.ensureIds ? requestedType : undefined
+    });
     const matched = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === requestedType);
     if (matched) {
       return matched;

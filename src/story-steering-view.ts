@@ -30,6 +30,9 @@ export class StorySteeringView extends ItemView {
   private loadedScope: StorySteeringScope = { type: 'global', key: 'global' };
   private state: StorySteeringState = createEmptyStorySteeringState();
   private isLoading = false;
+  private scopeSyncInFlight = false;
+  private scopeSyncQueued = false;
+  private activeNotePath = '';
   private hasPendingEdits = false;
   private autosaveTimer: number | null = null;
   private saveInFlight = false;
@@ -57,10 +60,24 @@ export class StorySteeringView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    const suggested = await this.plugin.getSuggestedStorySteeringScope('note');
-    this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
-    this.selectedScopeKey = suggested.key;
-    await this.loadScope(this.getSelectedScopeFromInputs());
+    this.activeNotePath = this.app.workspace.getActiveFile()?.path ?? '';
+    this.registerEvent(this.app.workspace.on('file-open', file => {
+      const nextPath = file?.path ?? '';
+      if (nextPath === this.activeNotePath) {
+        return;
+      }
+      this.activeNotePath = nextPath;
+      void this.syncScopeToActiveNoteAndRender();
+    }));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+      const nextPath = this.app.workspace.getActiveFile()?.path ?? '';
+      if (nextPath === this.activeNotePath) {
+        return;
+      }
+      this.activeNotePath = nextPath;
+      void this.syncScopeToActiveNoteAndRender();
+    }));
+    await this.syncScopeToActiveNote();
     await this.render();
   }
 
@@ -202,7 +219,7 @@ export class StorySteeringView extends ItemView {
     return this.plugin.getCachedLorebookScopes();
   }
 
-  private getSelectedScopeFromInputs(): StorySteeringScope {
+  private getSelectedScope(): StorySteeringScope {
     return {
       type: normalizeStorySteeringScopeType(this.selectedScopeType),
       key: this.selectedScopeType === 'global' ? 'global' : this.selectedScopeKey.trim()
@@ -241,7 +258,7 @@ export class StorySteeringView extends ItemView {
     const targetScope = this.loadedScope;
     if (targetScope.type !== 'global' && !targetScope.key.trim()) {
       if (force && this.hasPendingEdits) {
-        new Notice('Scope key is required before saving this steering scope.');
+        new Notice('Select an active markdown note so this steering scope can be resolved and saved.');
       }
       return;
     }
@@ -280,18 +297,46 @@ export class StorySteeringView extends ItemView {
     this.hasPendingEdits = false;
   }
 
-  private async switchToSelectedScope(): Promise<void> {
-    const nextScope = this.getSelectedScopeFromInputs();
-    if (this.areScopesEqual(this.loadedScope, nextScope)) {
+  private async syncScopeToActiveNote(forceReload = false): Promise<void> {
+    if (this.scopeSyncInFlight) {
+      this.scopeSyncQueued = true;
       return;
     }
+
+    this.scopeSyncInFlight = true;
     try {
+      const suggested = await this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType, {
+        ensureIds: true
+      });
+      this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
+      this.selectedScopeKey = this.selectedScopeType === 'global'
+        ? 'global'
+        : (suggested.key || '').trim();
+      const nextScope = this.getSelectedScope();
+      if (!forceReload && this.areScopesEqual(this.loadedScope, nextScope)) {
+        return;
+      }
       await this.persistScopeIfDirty(true);
       await this.loadScope(nextScope);
-      await this.render();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`Failed to load steering scope: ${message}`);
+      throw new Error(`Failed to resolve active-note scope: ${message}`);
+    } finally {
+      this.scopeSyncInFlight = false;
+      if (this.scopeSyncQueued) {
+        this.scopeSyncQueued = false;
+        await this.syncScopeToActiveNote(true);
+      }
+    }
+  }
+
+  private async syncScopeToActiveNoteAndRender(forceReload = false): Promise<void> {
+    try {
+      await this.syncScopeToActiveNote(forceReload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(message);
+    } finally {
       await this.render();
     }
   }
@@ -358,60 +403,39 @@ export class StorySteeringView extends ItemView {
       scopeTypeSelect.value = this.selectedScopeType;
       scopeTypeSelect.addEventListener('change', () => {
         void (async () => {
-          const previousType = this.selectedScopeType;
           const next = normalizeStorySteeringScopeType(scopeTypeSelect.value as StorySteeringScopeType);
-          this.selectedScopeType = next;
-          if (next === 'global') {
-            this.selectedScopeKey = 'global';
-          } else if (previousType === 'global' && this.selectedScopeKey === 'global') {
-            this.selectedScopeKey = '';
+          if (next === this.selectedScopeType) {
+            return;
           }
-          await this.switchToSelectedScope();
+          this.selectedScopeType = next;
+          await this.syncScopeToActiveNoteAndRender();
         })();
       });
 
       const scopeKeyRow = scopeSection.createDiv({ cls: 'lorevault-chat-scope-row' });
-      scopeKeyRow.createEl('label', { text: 'Scope Key' });
-      const scopeKeyInput = scopeKeyRow.createEl('input', { type: 'text' });
-      scopeKeyInput.disabled = this.selectedScopeType === 'global';
-      scopeKeyInput.placeholder = this.selectedScopeType === 'story'
-        ? 'story key (for example chronicles-main)'
-        : this.selectedScopeType === 'chapter'
-          ? 'chapter scope key (for example chronicles-main::chapter:7)'
-          : 'note scope key (for example note:lvn-...)';
-      scopeKeyInput.value = this.selectedScopeType === 'global' ? 'global' : this.selectedScopeKey;
-      scopeKeyInput.addEventListener('input', () => {
-        this.selectedScopeKey = scopeKeyInput.value;
+      scopeKeyRow.createEl('label', { text: 'Resolved Scope Key' });
+      scopeKeyRow.createEl('code', {
+        text: this.selectedScopeType === 'global'
+          ? 'global'
+          : this.selectedScopeKey || '(no active markdown note)'
       });
-      scopeKeyInput.addEventListener('blur', () => {
-        void this.switchToSelectedScope();
-      });
-      scopeKeyInput.addEventListener('keydown', event => {
-        if (event.key !== 'Enter') {
-          return;
-        }
-        event.preventDefault();
-        void this.switchToSelectedScope();
+
+      const activeFile = this.app.workspace.getActiveFile();
+      scopeSection.createEl('p', {
+        cls: 'lorevault-help-note',
+        text: activeFile
+          ? `Active note: ${activeFile.path}`
+          : 'No active markdown note is selected.'
       });
 
       const actions = scopeSection.createDiv({ cls: 'lorevault-help-actions' });
-
-      const useActiveButton = actions.createEl('button', { text: 'Use Active Note' });
-      useActiveButton.addEventListener('click', () => {
-        void (async () => {
-          try {
-            const suggested = await this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType);
-            this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
-            this.selectedScopeKey = suggested.key;
-            await this.switchToSelectedScope();
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            new Notice(`Failed to resolve active-note scope: ${message}`);
-          }
-        })();
+      const reloadButton = actions.createEl('button', { text: 'Reload Active Note Scope' });
+      reloadButton.addEventListener('click', () => {
+        void this.syncScopeToActiveNoteAndRender(true);
       });
 
       const openButton = actions.createEl('button', { text: 'Open Scope Note' });
+      openButton.disabled = this.loadedScope.type !== 'global' && !this.loadedScope.key.trim();
       openButton.addEventListener('click', () => {
         void (async () => {
           try {
@@ -426,7 +450,7 @@ export class StorySteeringView extends ItemView {
 
       scopeSection.createEl('p', {
         cls: 'lorevault-help-note',
-        text: 'Edits autosave immediately. Switching scope type/key autosaves current changes, then loads the selected scope.'
+        text: 'Edits autosave immediately. Switching scope type or active note autosaves current changes, then loads the derived scope.'
       });
 
       const activeLorebooksSection = contentEl.createDiv({ cls: 'lorevault-help-section' });

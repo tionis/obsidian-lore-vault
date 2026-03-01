@@ -153,7 +153,8 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Story Steering and Chat', {
       bullets: [
         'Story Steering stores reusable controls in scope notes: `global`, `story`, `chapter`, `note`.',
-        'Story Steering edits autosave immediately; switching scope type/key autosaves current edits before loading the next scope.',
+        'Story Steering edits autosave immediately; switching scope type or active note autosaves current edits before loading the next derived scope.',
+        'Story Steering scope keys are derived from the active note; missing `lvNoteId`/`lvStoryId`/`lvChapterId` are auto-created when needed.',
         '`Active Lorebooks` in steering notes is the primary lorebook selector for continuation.',
         'Steering layers: pinned instructions, story notes, scene intent, plot threads, open loops, canon deltas.',
         'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/apply.',

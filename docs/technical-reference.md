@@ -39,7 +39,9 @@ This document is the implementation-level reference for core architecture and ru
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - scope-based steering storage (`global`/`story`/`chapter`/`note`)
-  - panel edits autosave to current scope; scope-switch saves current state before loading next scope
+  - panel edits autosave to current scope; scope-switch or active-note switch saves current state before loading next scope
+  - scope keys are derived from active note metadata (manual key editing removed)
+  - auto-managed scope IDs (`lvNoteId`, plus `lvStoryId`/`lvChapterId` as needed) for seamless scope-key resolution
   - compatibility alias for legacy `thread` scope files/keys
   - per-scope `activeLorebooks` list used as primary scope selection source for continuation
   - move-safe scope linking via `lvNoteId` frontmatter IDs

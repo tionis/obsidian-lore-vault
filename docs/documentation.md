@@ -387,7 +387,9 @@ Story Steering scope notes include:
   - this list is the preferred lorebook scope source for `Continue Story with Context`
   - frontmatter scope keys remain fallback-compatible
 - Story Steering panel edits autosave immediately to the currently loaded scope
-- switching scope type/key autosaves current changes first, then loads the selected scope
+- scope keys are derived from the active note (manual key input removed)
+- switching scope type or switching active note autosaves current changes first, then loads the derived scope
+- missing `lvNoteId`/`lvStoryId`/`lvChapterId` are auto-generated in frontmatter when required for selected scope type
 
 Story Steering extraction behavior:
 

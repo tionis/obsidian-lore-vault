@@ -64,11 +64,12 @@ Long-form support is explicit and frontmatter-first.
 
 Recommended metadata:
 
-- `storyId`
+- `authorNote` (primary thread anchor)
 - `chapter`
 - optional `chapterTitle`
 - optional `arc`
 - optional `previousChapter` / `nextChapter`
+- optional `storyId` fallback when `authorNote` is absent
 - lorebook scope selectors
 
 Conventions:

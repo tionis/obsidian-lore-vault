@@ -367,12 +367,12 @@ Optional continuity frontmatter keys for editor continuation:
 
 Long-form story metadata (new):
 
-- `storyId`: stable story identifier
+- `authorNote`: wikilink/markdown-link to the note-level Author Note for this story note (primary thread anchor)
 - `chapter`: chapter/scene index (numeric)
 - `chapterTitle`: optional chapter display title
 - `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
 - `nextChapter`: optional links/paths to following chapter notes
-- `authorNote`: wikilink/markdown-link to the note-level Author Note for this story note
+- `storyId`: optional explicit fallback anchor when no `authorNote` is linked
 
 Author Note model:
 
@@ -487,14 +487,15 @@ Current behavior:
 
 - split commands parse active note chapters from `##` headings (`#` is treated as story title) and create one chapter note per section.
 - created chapter notes write canonical frontmatter fields:
-  - `storyId`
+  - `authorNote` link to shared Author Note
   - `chapter`
   - `chapterTitle`
   - `previousChapter`
   - `nextChapter`
+  - optional `storyId` only when already explicitly set on source note
 - split command in current-folder mode writes chapter files beside the source note.
 - split command in pick-folder mode writes chapter files to the selected existing vault folder.
-- create-next command creates a new chapter note in the active note folder, sets current note `nextChapter`, and sets new note `previousChapter`.
+- create-next command creates a new chapter note in the active note folder, sets current note `nextChapter`, sets new note `previousChapter`, and links the new note to the same Author Note.
 - editor context menu shows `LoreVault: Create Next Story Chapter` only when active note resolves as a story/chapter note.
 
 ## Cost Tracking (Experimental, Phase 13)
@@ -582,11 +583,14 @@ Capabilities:
   - `Insert Directive` (`<!-- LV: ... -->`)
   - `Open Story Chat`
   - `Open/Create Author Note`
+  - `Link Author Note` (interactive picker)
+  - `Create Next Chapter`
   - `Rewrite Author Note`
 - Author Note workflow:
   - linked from story frontmatter `authorNote`
   - authored in native Obsidian note editor
   - rewrite flow uses optional change prompt + diff review
+  - when an Author Note is active, panel lists linked chapters/stories (chapter-ordered when available)
 - lorebook scope controls for active story note:
   - show selected scopes
   - add/remove scopes

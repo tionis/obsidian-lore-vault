@@ -287,7 +287,10 @@ Reference design: `docs/planning.md`.
 - [x] Story Steering simplification (Author Note model):
   - [x] collapse steering state to one note-level `authorNote` markdown layer
   - [x] link story notes to Author Notes via `authorNote` frontmatter (no manual scope key workflow)
+  - [x] treat `authorNote` as primary story-thread anchor (optional `storyId` fallback only)
   - [x] replace Story Author Note panel with unified Story Writing panel (author-note actions + generation monitor + lorebook controls + compact cost breakdown)
+  - [x] add Story Writing panel actions for interactive author-note linking and create-next chapter
+  - [x] show linked chapters/stories in Story Writing panel when active note is an Author Note
   - [x] remove legacy scope-based steering storage/backward-compat parsing paths
   - [x] remove multi-scope steering merge in continuation/chat (note-level only)
   - [x] resolve lorebook scope selection from story-note frontmatter, then Author Note frontmatter (no active-scope fallback)
@@ -299,7 +302,7 @@ Reference design: `docs/planning.md`.
   - [x] prevent failed query-embedding calls from aborting story completion (lexical fallback path)
   - [x] chunk/average long query embeddings deterministically before semantic scoring
   - [x] scale prior-chapter memory depth by available context budget (deterministic window expansion)
-  - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output
+  - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output and shared Author Note linking
   - [x] add `Create Next Story Chapter` command + chapter-frontmatter-gated editor context action
 - [x] Text command canon consistency default prompt update:
   - [x] bias default template toward lorebook factual consistency constraints

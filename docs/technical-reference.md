@@ -40,7 +40,8 @@ This document is the implementation-level reference for core architecture and ru
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - note-level author-note storage resolved from story frontmatter `authorNote` link
   - Story Writing panel combines writing controls, generation monitor, lorebook scope controls, context-item inspection, and compact cost summary
-  - panel actions include open/create linked Author Note, rewrite Author Note, continue/stop generation, inline-directive insert, and open Story Chat
+  - panel actions include open/create linked Author Note, interactive author-note linking, create-next chapter, rewrite Author Note, continue/stop generation, inline-directive insert, and open Story Chat
+  - when an Author Note is active, panel lists linked chapters/stories
   - markdown editing remains native Obsidian note editing for Author Note content
   - single note-level author-note layer only (no global/story/chapter scope hierarchy)
   - lorebook scope selection reads story-note frontmatter first, then author-note frontmatter
@@ -69,7 +70,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/story-chapter-management.ts`
   - `##`-section chapter split helpers for monolithic story notes
   - deterministic chapter-note frontmatter/body render helpers
-  - managed frontmatter upsert for `storyId/chapter/chapterTitle/previousChapter/nextChapter`
+  - managed frontmatter upsert for `chapter/chapterTitle/previousChapter/nextChapter` (+ optional explicit `storyId`)
 - `src/chapter-summary-store.ts`
   - rolling chapter-summary cache (`## Summary` section -> frontmatter fallback -> excerpt fallback)
 - `src/summary-utils.ts`
@@ -312,18 +313,19 @@ Budget diagnostics:
 
 Supported keys (case-insensitive normalization):
 
-- `storyId`
+- `authorNote` (primary thread anchor)
 - `chapter`
 - `chapterTitle`
 - `previousChapter` / `prevChapter` / `previous` / `prev`
 - `nextChapter` / `next`
+- `storyId` (optional fallback anchor when `authorNote` is absent)
 
 ### Thread Resolution
 
 `src/story-thread-resolver.ts`:
 
 - parses story nodes from frontmatter
-- scopes by `storyId`
+- scopes by `authorNote` link anchor first, then explicit `storyId` fallback
 - applies deterministic ordering by:
   - explicit chapter index where available
   - prev/next edge constraints
@@ -357,15 +359,17 @@ Contracts:
 
 - split utility reads active note markdown, treats first `#` as story heading, and splits chapters by `##` headings.
 - split output writes deterministic chapter note frontmatter fields:
-  - `storyId`
+  - `authorNote` link to the shared Author Note
   - `chapter`
   - `chapterTitle`
   - `previousChapter`
   - `nextChapter`
+  - optional explicit `storyId` if source note already defines one
 - create-next utility is gated on active note chapter metadata and:
   - creates a new chapter note in the active note folder
   - updates active note `nextChapter`
   - sets new note `previousChapter` to active note
+  - links new note to the same Author Note as the active note
 - editor context menu action `LoreVault: Create Next Story Chapter` is only shown when active note resolves as a story/chapter note.
 
 ## Auto Summary Internals (Phase 9)

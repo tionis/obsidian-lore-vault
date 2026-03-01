@@ -19,7 +19,7 @@ Core scope boundary:
 
 - Plugin id: `lore-vault`
 - Plugin name: `LoreVault`
-- Minimum Obsidian version: `0.15.0`
+- Minimum Obsidian version: `1.1.0`
 - Desktop and mobile supported (`isDesktopOnly: false`)
 - Mobile compatibility matrix and QA checklist: `docs/mobile-compatibility-plan.md`
 

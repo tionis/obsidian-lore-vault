@@ -319,7 +319,7 @@ Needed capabilities:
 - story-focused prompts and insert-at-cursor workflows
 - chat workflow for interactive story discussion with selectable lorebooks/manual context
 
-## Story Steering Additions (In Progress)
+## Story Steering Additions (Completed Baseline)
 
 To better match proven writing workflows (for example SillyTavern/NovelAI-style steering),
 LoreVault should add explicit context staging controls instead of relying on implicit prompt assembly.
@@ -334,16 +334,15 @@ Current status:
 - inspector traces now include per-layer token usage/headroom and overflow rationale
 - continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
 - note-level steering workspace is implemented:
-  - dedicated Story Steering panel
-  - markdown-backed note-scoped Author Note files
+  - dedicated Story Author Note panel (control surface)
+  - story-note `authorNote` frontmatter linking to markdown Author Note files
+  - native Obsidian note editing for Author Note content
   - merged with chat/continuation steering assembly
   - lorebook scope selection resolves from story-note frontmatter first, then Author Note frontmatter
-- LLM-assisted extraction actions are implemented in the Story Steering panel:
-  - extract from active note or near-cursor editor context (text-before-cursor fallback to note body)
+- LLM-assisted Author Note rewrite actions are implemented:
   - optional per-run update prompt to steer what should change
-  - existing Author Note is treated as baseline; missing evidence preserves prior values
-  - review/edit modal with current-vs-proposed Author Note comparison before applying to panel state
-  - panel edits autosave immediately
+  - rewrite context includes linked story notes + lorebook context + current Author Note
+  - review/edit modal shows current-vs-proposed Author Note diff before applying
 - story text completion now supports explicit stop control (`Stop Active Generation` command + editor-menu stop while running)
 - optional operation log captures full LLM request/response payloads for completion and planner calls
 

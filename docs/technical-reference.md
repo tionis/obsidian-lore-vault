@@ -38,24 +38,22 @@ This document is the implementation-level reference for core architecture and ru
   - note-backed conversation persistence
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
-  - note-level author-note storage (`note` scope only)
-  - panel edits autosave to current note scope; active-note switch saves current state before loading next note scope
-  - note scope key is derived from active note metadata/path
-  - auto-managed note ID (`lvNoteId`) for move-safe scope linking
-  - compatibility alias support for legacy scope files/keys
+  - note-level author-note storage resolved from story frontmatter `authorNote` link
+  - Author Note panel is control-only (open/create linked note + rewrite); markdown editing is native Obsidian note editing
+  - single note-level author-note layer only (no global/story/chapter scope hierarchy)
   - lorebook scope selection reads story-note frontmatter first, then author-note frontmatter
-  - legacy path-keyed note scope migration to ID-keyed note scope files
-  - LLM-assisted steering update flow with optional per-run update prompt
-  - extraction source modes: active note body or near-cursor editor context (text-before-cursor, note-body fallback)
+  - linked-story detection is driven by story-note `authorNote` references (supports multi-story shared author notes)
+  - LLM-assisted author-note rewrite flow with optional per-run update prompt
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
-  - markdown-backed steering note parse/serialize
+  - markdown-backed author-note parse/serialize (frontmatter preserved on body writes)
   - effective author-note merge for chat/continuation prompt assembly
 - `src/lorebook-scope-cache.ts`
   - shared metadata/scope cache reused by manager/steering/auditor UI
   - explicit invalidation on vault and settings mutations
-- `src/story-steering-review-modal.ts`
-  - review/edit approval modal for LLM-proposed steering updates
-  - field-level `Current` (read-only) vs `Proposed` (editable) comparison layout
+- `src/author-note-rewrite-modal.ts`
+  - optional user instruction capture for Author Note rewrite requests
+- `src/text-command-review-modal.ts`
+  - review/edit approval modal used for Author Note rewrite diff/apply
 - `src/lorebooks-routing-debug-view.ts`
   - scope inclusion/routing diagnostics
   - world_info content inspection
@@ -433,7 +431,6 @@ Stored structure:
 - conversation metadata
 - per-conversation steering source refs (`note:*`)
 - per-conversation continuity inclusion toggles (plot threads/open loops/canon deltas)
-- legacy steering text/list fields remain parse-compatible for older chats
 - per-turn messages
 - message versions with active version selector
 - optional context inspector metadata on assistant versions (including steering source resolution and agent tool traces/calls/writes)
@@ -456,6 +453,7 @@ Parser and staging constraints (implemented):
 - deterministic parse order follows source document order
 - stable dedupe normalization is applied before prompt staging
 - parsed directives are injected as a dedicated steering layer with inspector trace visibility
+- system prompt explicitly instructs model to follow injected `<inline_story_directives>`
 - per-turn caps are enforced for directive count and token budget
 - directive layer placement follows configured completion placement policy (`system`, `pre_history`, `pre_response`)
 

@@ -1,13 +1,15 @@
-import { App, TFile } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import {
   asString,
+  asStringArray,
   FrontmatterData,
   getFrontmatterValue,
   normalizeFrontmatter,
   stripFrontmatter,
   uniqueStrings
 } from './frontmatter-utils';
-import { sha256Hex, slugifyIdentifier } from './hash-utils';
+import { slugifyIdentifier } from './hash-utils';
+import { normalizeLinkTarget } from './link-target-index';
 import {
   ensureParentVaultFolderForFile,
   getVaultBasename,
@@ -21,10 +23,6 @@ export type StorySteeringScopeType = 'note';
 export interface StorySteeringScope {
   type: 'note';
   key: string;
-}
-
-export interface StorySteeringScopeResolution {
-  scope: StorySteeringScope;
 }
 
 export interface StorySteeringState {
@@ -46,94 +44,24 @@ const EMPTY_STORY_STEERING_STATE: StorySteeringState = {
   authorNote: ''
 };
 
-const NOTE_SCOPE_PREFIX = 'note:';
-const STORY_STEERING_NOTE_ID_FRONTMATTER_KEY = 'lvNoteId';
+const DEFAULT_AUTHOR_NOTE_FOLDER = 'LoreVault/author-notes';
+const AUTHOR_NOTE_FRONTMATTER_KEY = 'authorNote';
+const AUTHOR_NOTE_DOC_TYPE_KEY = 'lvDocType';
+const AUTHOR_NOTE_DOC_TYPE_VALUE = 'authorNote';
+
+function isVaultMarkdownFile(value: unknown): value is TFile {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as { path?: unknown; basename?: unknown };
+  return typeof candidate.path === 'string' && typeof candidate.basename === 'string';
+}
 
 function normalizeTextField(value: unknown): string {
   if (typeof value !== 'string') {
     return '';
   }
   return value.trim();
-}
-
-function splitLevelTwoSections(markdown: string): Array<{heading: string; body: string}> {
-  const normalized = stripFrontmatter(markdown ?? '').replace(/\r\n?/g, '\n');
-  const headingRegex = /^##\s+(.+)$/gm;
-  const sections: Array<{heading: string; start: number; end: number}> = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = headingRegex.exec(normalized)) !== null) {
-    sections.push({
-      heading: match[1].trim(),
-      start: match.index,
-      end: headingRegex.lastIndex
-    });
-  }
-
-  const resolved: Array<{heading: string; body: string}> = [];
-  for (let index = 0; index < sections.length; index += 1) {
-    const current = sections[index];
-    const next = sections[index + 1];
-    const sectionBody = normalized.slice(
-      current.end,
-      next ? next.start : normalized.length
-    );
-    resolved.push({
-      heading: current.heading,
-      body: sectionBody.trim()
-    });
-  }
-
-  return resolved;
-}
-
-function normalizeAuthorNoteBody(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) {
-    return '';
-  }
-
-  const withoutTopHeading = trimmed
-    .replace(/^#\s+LoreVault Steering\s*$/im, '')
-    .replace(/^#\s+LoreVault Author Note\s*$/im, '')
-    .trim();
-
-  // Legacy structured steering files used many separate sections. Preserve intent by
-  // normalizing those headings into one markdown author-note document.
-  const sections = splitLevelTwoSections(withoutTopHeading);
-  if (sections.length === 0) {
-    return withoutTopHeading;
-  }
-
-  const lines: string[] = [];
-  for (const section of sections) {
-    const title = section.heading.trim();
-    const bodyText = section.body.trim();
-    if (!title || !bodyText || bodyText === '_None._') {
-      continue;
-    }
-
-    if (/^(active lorebooks|lorebooks|lorebook scopes|active scopes)$/i.test(title)) {
-      lines.push('## Active Lorebooks');
-      lines.push('');
-      const values = bodyText
-        .replace(/\r\n?/g, '\n')
-        .split('\n')
-        .map(item => item.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, ''))
-        .filter(Boolean);
-      lines.push(...values.map(value => `- ${value}`));
-      lines.push('');
-      continue;
-    }
-
-    lines.push(`## ${title}`);
-    lines.push('');
-    lines.push(bodyText);
-    lines.push('');
-  }
-
-  const normalized = lines.join('\n').trim();
-  return normalized || withoutTopHeading;
 }
 
 export function createEmptyStorySteeringState(): StorySteeringState {
@@ -152,7 +80,7 @@ export function normalizeStorySteeringState(input: Partial<StorySteeringState> |
 export function parseStorySteeringMarkdown(markdown: string): StorySteeringState {
   const body = stripFrontmatter(markdown ?? '').trim();
   return normalizeStorySteeringState({
-    authorNote: normalizeAuthorNoteBody(body)
+    authorNote: body
   });
 }
 
@@ -206,61 +134,6 @@ function sanitizeExtractionTextField(value: string): string {
   return filtered.join('\n\n').trim();
 }
 
-function toLines(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map(item => (typeof item === 'string' ? item.trim() : ''))
-      .filter(Boolean);
-  }
-  if (typeof value === 'string') {
-    return value
-      .replace(/\r\n?/g, '\n')
-      .split('\n')
-      .map(item => item.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, ''))
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function buildLegacyAuthorNote(candidate: {[key: string]: unknown}): string {
-  const sections: string[] = [];
-  const textSections: Array<{title: string; keys: string[]}> = [
-    { title: 'General Writing Instructions', keys: ['pinnedInstructions', 'pinned'] },
-    { title: 'Story Notes', keys: ['storyNotes'] },
-    { title: 'Scene Intent', keys: ['sceneIntent'] }
-  ];
-  const listSections: Array<{title: string; keys: string[]}> = [
-    { title: 'Active Lorebooks', keys: ['activeLorebooks', 'lorebooks', 'lorebookScopes', 'activeScopes'] },
-    { title: 'Active Plot Threads', keys: ['plotThreads'] },
-    { title: 'Open Questions', keys: ['openLoops'] },
-    { title: 'Canon Deltas', keys: ['canonDeltas'] }
-  ];
-
-  for (const section of textSections) {
-    const rawValue = section.keys
-      .map(key => candidate[key])
-      .find(value => typeof value === 'string');
-    const text = normalizeTextField(rawValue);
-    if (!text) {
-      continue;
-    }
-    sections.push(`## ${section.title}\n\n${text}`);
-  }
-
-  for (const section of listSections) {
-    const rawValue = section.keys
-      .map(key => candidate[key])
-      .find(value => Array.isArray(value) || typeof value === 'string');
-    const items = toLines(rawValue);
-    if (items.length === 0) {
-      continue;
-    }
-    sections.push(`## ${section.title}\n\n${items.map(item => `- ${item}`).join('\n')}`);
-  }
-
-  return sections.join('\n\n').trim();
-}
-
 export function sanitizeStorySteeringExtractionState(state: StorySteeringState): StorySteeringState {
   const normalized = normalizeStorySteeringState(state);
   return normalizeStorySteeringState({
@@ -271,45 +144,18 @@ export function sanitizeStorySteeringExtractionState(state: StorySteeringState):
 export function parseStorySteeringExtractionResponse(raw: string): StorySteeringState {
   const payload = extractJsonPayload(raw);
   if (!payload || typeof payload !== 'object') {
-    throw new Error('Steering extraction payload is not an object.');
+    throw new Error('Author-note rewrite payload is not an object.');
   }
 
   const objectPayload = payload as {[key: string]: unknown};
-  const candidate = (objectPayload.state && typeof objectPayload.state === 'object')
-    ? (objectPayload.state as {[key: string]: unknown})
-    : objectPayload;
-
-  const directAuthorNote = normalizeTextField(candidate.authorNote);
-  if (directAuthorNote) {
-    return normalizeStorySteeringState({
-      authorNote: directAuthorNote
-    });
+  const directAuthorNote = normalizeTextField(objectPayload.authorNote);
+  if (!directAuthorNote) {
+    throw new Error('Author-note rewrite payload must include a non-empty `authorNote` field.');
   }
 
-  const legacyAuthorNote = buildLegacyAuthorNote(candidate);
   return normalizeStorySteeringState({
-    authorNote: legacyAuthorNote
+    authorNote: directAuthorNote
   });
-}
-
-function escapeYamlString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-export function stringifyStorySteeringMarkdown(scope: StorySteeringScope, state: StorySteeringState): string {
-  const scopeType = 'note';
-  const normalized = normalizeStorySteeringState(state);
-  return [
-    '---',
-    'type: lorevault-steering',
-    `scopeType: ${scopeType}`,
-    `scopeKey: "${escapeYamlString(scope.key)}"`,
-    '---',
-    '# LoreVault Author Note',
-    '',
-    normalized.authorNote || '_None._',
-    ''
-  ].join('\n');
 }
 
 function mergeTextLayers(values: string[]): string {
@@ -325,75 +171,59 @@ export function mergeStorySteeringStates(states: StorySteeringState[]): StorySte
 }
 
 function normalizeScopeKey(value: string): string {
-  return value.trim();
-}
-
-function buildScopedFilename(key: string, fallbackPrefix: string): string {
-  const basename = getVaultBasename(key) || key || fallbackPrefix;
-  const slug = slugifyIdentifier(basename) || fallbackPrefix;
-  const suffix = sha256Hex(key).slice(0, 10);
-  return `${slug}-${suffix}.md`;
-}
-
-export function buildStorySteeringFilePath(folderPath: string, scope: StorySteeringScope): string {
-  const root = normalizeVaultRelativePath(folderPath);
-  const key = normalizeScopeKey(scope.key);
-  if (!key) {
-    throw new Error('Scope key is required for note steering scope.');
-  }
-  return joinVaultPath(root, 'note', buildScopedFilename(key, 'note'));
+  return normalizeVaultPath(value.trim());
 }
 
 function normalizeFrontmatterString(frontmatter: FrontmatterData, ...keys: string[]): string {
   return asString(getFrontmatterValue(frontmatter, ...keys)) ?? '';
 }
 
-function normalizeSteeringId(value: string): string {
-  return value
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^A-Za-z0-9._:-]/g, '');
-}
-
-function createFallbackUuidLike(): string {
-  const hex = sha256Hex(`${Date.now()}-${Math.random()}-${Math.random()}`);
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-
-function createStorySteeringNoteId(): string {
-  const cryptoRef = (globalThis as typeof globalThis & { crypto?: { randomUUID?: () => string } }).crypto;
-  const randomUuid = cryptoRef?.randomUUID?.();
-  const resolved = typeof randomUuid === 'string' && randomUuid.trim().length > 0
-    ? randomUuid.trim().toLowerCase()
-    : createFallbackUuidLike();
-  return `lvn-${resolved}`;
-}
-
-function resolveNoteId(frontmatter: FrontmatterData): string {
-  return normalizeSteeringId(normalizeFrontmatterString(frontmatter, 'lvNoteId', 'lorevaultNoteId'));
-}
-
-function buildNoteScopeKey(filePath: string, noteId: string): string {
-  const normalizedPath = normalizeVaultPath(filePath);
-  const normalizedNoteId = normalizeSteeringId(noteId);
-  if (!normalizedNoteId) {
-    return normalizedPath;
+function normalizeLinkLikeValue(raw: string): string {
+  let normalized = raw.trim();
+  if (!normalized) {
+    return '';
   }
-  return `${NOTE_SCOPE_PREFIX}${normalizedNoteId}`;
+
+  const wikiMatch = normalized.match(/^\[\[([\s\S]+)\]\]$/);
+  if (wikiMatch) {
+    normalized = wikiMatch[1].trim();
+  }
+
+  const markdownLinkMatch = normalized.match(/^\[[^\]]*\]\(([^)]+)\)$/);
+  if (markdownLinkMatch) {
+    normalized = markdownLinkMatch[1].trim();
+  }
+
+  const angleBracketMatch = normalized.match(/^<([\s\S]+)>$/);
+  if (angleBracketMatch) {
+    normalized = angleBracketMatch[1].trim();
+  }
+
+  const pipeIndex = normalized.indexOf('|');
+  if (pipeIndex >= 0) {
+    normalized = normalized.slice(0, pipeIndex).trim();
+  }
+
+  return normalizeLinkTarget(normalized);
 }
 
-export function buildStorySteeringScopeResolutions(
-  filePath: string,
-  _frontmatter: FrontmatterData,
-  noteId: string
-): StorySteeringScopeResolution[] {
-  const noteScopeKey = buildNoteScopeKey(filePath, noteId);
-  return [{
-    scope: {
-      type: 'note',
-      key: noteScopeKey
-    }
-  }];
+function renderWikilink(filePath: string): string {
+  const normalized = normalizeLinkTarget(filePath);
+  return `[[${normalized}]]`;
+}
+
+function preserveFrontmatterWithBody(originalMarkdown: string, nextBody: string): string {
+  const normalizedBody = nextBody.trim();
+  const frontmatterMatch = originalMarkdown.match(/^---\s*\r?\n[\s\S]*?\r?\n---\s*(?:\r?\n)?/);
+  if (!frontmatterMatch) {
+    return normalizedBody ? `${normalizedBody}\n` : '';
+  }
+
+  if (!normalizedBody) {
+    return frontmatterMatch[0];
+  }
+
+  return `${frontmatterMatch[0]}${normalizedBody}\n`;
 }
 
 export class StorySteeringStore {
@@ -408,14 +238,9 @@ export class StorySteeringStore {
   private resolveFolderPath(): string {
     const raw = this.getFolderPath().trim();
     if (!raw) {
-      return 'LoreVault/steering';
+      return DEFAULT_AUTHOR_NOTE_FOLDER;
     }
     return normalizeVaultRelativePath(raw);
-  }
-
-  resolveScopePath(scope: StorySteeringScope): string {
-    const normalizedScope = this.normalizeNoteScope(scope);
-    return buildStorySteeringFilePath(this.resolveFolderPath(), normalizedScope);
   }
 
   private readFrontmatter(file: TFile): FrontmatterData {
@@ -423,121 +248,260 @@ export class StorySteeringStore {
     return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
   }
 
-  private normalizeNoteScope(scope: StorySteeringScope): StorySteeringScope {
-    const key = normalizeScopeKey(scope.key);
+  private resolveFileFromLinkTarget(target: string, sourcePath: string): TFile | null {
+    const normalizedTarget = normalizeLinkLikeValue(target);
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const resolvedFromLink = this.app.metadataCache.getFirstLinkpathDest(normalizedTarget, sourcePath);
+    if (isVaultMarkdownFile(resolvedFromLink)) {
+      return resolvedFromLink;
+    }
+
+    const directCandidates = [normalizedTarget, `${normalizedTarget}.md`];
+    for (const candidate of directCandidates) {
+      const found = this.app.vault.getAbstractFileByPath(candidate);
+      if (isVaultMarkdownFile(found)) {
+        return found;
+      }
+    }
+
+    const basename = getVaultBasename(normalizedTarget);
+    const byBasename = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.basename.localeCompare(basename, undefined, { sensitivity: 'accent' }) === 0);
+    if (byBasename.length === 1) {
+      return byBasename[0];
+    }
+
+    return null;
+  }
+
+  private resolveAuthorNoteTargetFromFrontmatter(frontmatter: FrontmatterData): string {
+    const rawValue = getFrontmatterValue(frontmatter, AUTHOR_NOTE_FRONTMATTER_KEY);
+    const listValue = asStringArray(rawValue).map(item => normalizeLinkLikeValue(item)).filter(Boolean);
+    if (listValue.length > 0) {
+      return listValue[0];
+    }
+    return normalizeLinkLikeValue(asString(rawValue) ?? '');
+  }
+
+  public getAuthorNoteRefForStory(file: TFile | null): string {
+    if (!file) {
+      return '';
+    }
+    const frontmatter = this.readFrontmatter(file);
+    return this.resolveAuthorNoteTargetFromFrontmatter(frontmatter);
+  }
+
+  private resolveAuthorNoteFileForStoryWithRef(file: TFile | null): {file: TFile | null; ref: string} {
+    if (!file) {
+      return { file: null, ref: '' };
+    }
+
+    const frontmatter = this.readFrontmatter(file);
+    const ref = this.resolveAuthorNoteTargetFromFrontmatter(frontmatter);
+    if (!ref) {
+      return { file: null, ref };
+    }
+
+    const resolved = this.resolveFileFromLinkTarget(ref, file.path);
     return {
-      type: 'note',
-      key
+      file: resolved,
+      ref
     };
   }
 
-  private async ensureNoteIdentifierForFile(file: TFile, frontmatter: FrontmatterData): Promise<FrontmatterData> {
-    const existingNoteId = resolveNoteId(frontmatter);
-    if (existingNoteId) {
-      return frontmatter;
-    }
-
-    const generatedNoteId = createStorySteeringNoteId();
-
-    try {
-      await this.app.fileManager.processFrontMatter(file, rawFrontmatter => {
-        const normalizedCurrent = normalizeFrontmatter(rawFrontmatter as FrontmatterData);
-        if (!resolveNoteId(normalizedCurrent)) {
-          rawFrontmatter[STORY_STEERING_NOTE_ID_FRONTMATTER_KEY] = generatedNoteId;
-        }
-      });
-      return this.readFrontmatter(file);
-    } catch (error) {
-      console.warn(
-        `LoreVault: Failed to persist Story Steering note ID (${STORY_STEERING_NOTE_ID_FRONTMATTER_KEY}) for ${file.path}`,
-        error
-      );
-      return frontmatter;
-    }
+  async resolveAuthorNoteFileForStory(file: TFile | null): Promise<TFile | null> {
+    return this.resolveAuthorNoteFileForStoryWithRef(file).file;
   }
 
-  private async resolveScopeResolutionsForFile(file: TFile | null, ensureIds = false): Promise<StorySteeringScopeResolution[]> {
-    if (!file) {
-      return [];
+  private buildDefaultAuthorNotePath(storyFile: TFile): string {
+    const folderPath = this.resolveFolderPath();
+    const stem = slugifyIdentifier(`${storyFile.basename}-author-note`) || 'author-note';
+    return joinVaultPath(folderPath, `${stem}.md`);
+  }
+
+  private async updateStoryAuthorNoteLink(storyFile: TFile, authorNoteFile: TFile): Promise<void> {
+    await this.app.fileManager.processFrontMatter(storyFile, frontmatter => {
+      frontmatter[AUTHOR_NOTE_FRONTMATTER_KEY] = renderWikilink(authorNoteFile.path);
+    });
+  }
+
+  private async ensureAuthorNoteMetadata(authorNoteFile: TFile, _storyFile: TFile): Promise<void> {
+    await this.app.fileManager.processFrontMatter(authorNoteFile, frontmatter => {
+      const docTypeRaw = typeof frontmatter[AUTHOR_NOTE_DOC_TYPE_KEY] === 'string'
+        ? String(frontmatter[AUTHOR_NOTE_DOC_TYPE_KEY]).trim()
+        : '';
+      if (!docTypeRaw) {
+        frontmatter[AUTHOR_NOTE_DOC_TYPE_KEY] = AUTHOR_NOTE_DOC_TYPE_VALUE;
+      }
+    });
+  }
+
+  async ensureAuthorNoteForStory(storyFile: TFile): Promise<TFile> {
+    const resolvedExisting = this.resolveAuthorNoteFileForStoryWithRef(storyFile).file;
+    if (resolvedExisting) {
+      await this.ensureAuthorNoteMetadata(resolvedExisting, storyFile);
+      return resolvedExisting;
     }
 
-    const currentFrontmatter = this.readFrontmatter(file);
-    const frontmatter = ensureIds
-      ? await this.ensureNoteIdentifierForFile(file, currentFrontmatter)
-      : currentFrontmatter;
-    const noteId = resolveNoteId(frontmatter);
-    return buildStorySteeringScopeResolutions(file.path, frontmatter, noteId);
+    const initialPath = this.buildDefaultAuthorNotePath(storyFile);
+    let candidatePath = initialPath;
+    let suffix = 2;
+    while (await this.app.vault.adapter.exists(candidatePath)) {
+      candidatePath = initialPath.replace(/\.md$/i, `-${suffix}.md`);
+      suffix += 1;
+    }
+
+    const initialMarkdown = [
+      '---',
+      `${AUTHOR_NOTE_DOC_TYPE_KEY}: ${AUTHOR_NOTE_DOC_TYPE_VALUE}`,
+      '---',
+      '',
+      '## Author Note',
+      ''
+    ].join('\n');
+
+    await ensureParentVaultFolderForFile(this.app, candidatePath);
+    await this.app.vault.adapter.write(candidatePath, initialMarkdown);
+
+    const created = this.app.vault.getAbstractFileByPath(candidatePath);
+    if (!isVaultMarkdownFile(created)) {
+      throw new Error(`Failed to create author note at ${candidatePath}`);
+    }
+
+    await this.updateStoryAuthorNoteLink(storyFile, created);
+    return created;
+  }
+
+  async getLinkedStoryFilesForAuthorNote(authorNoteFile: TFile): Promise<TFile[]> {
+    const linked = new Map<string, TFile>();
+    const files = [...this.app.vault.getMarkdownFiles()].sort((left, right) => left.path.localeCompare(right.path));
+    for (const candidate of files) {
+      if (candidate.path === authorNoteFile.path) {
+        continue;
+      }
+      const resolved = this.resolveAuthorNoteFileForStoryWithRef(candidate).file;
+      if (!isVaultMarkdownFile(resolved) || resolved.path !== authorNoteFile.path) {
+        continue;
+      }
+      linked.set(candidate.path, candidate);
+    }
+
+    return [...linked.values()].sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  async isAuthorNoteFile(file: TFile | null): Promise<boolean> {
+    if (!file) {
+      return false;
+    }
+
+    const frontmatter = this.readFrontmatter(file);
+    const docType = normalizeFrontmatterString(frontmatter, AUTHOR_NOTE_DOC_TYPE_KEY).toLowerCase();
+    if (docType === AUTHOR_NOTE_DOC_TYPE_VALUE.toLowerCase()) {
+      return true;
+    }
+
+    const linkedStories = await this.getLinkedStoryFilesForAuthorNote(file);
+    return linkedStories.length > 0;
+  }
+
+  resolveScopePath(scope: StorySteeringScope): string {
+    return normalizeScopeKey(scope.key);
   }
 
   private async readScopeByPath(path: string): Promise<StorySteeringState | null> {
-    const exists = await this.app.vault.adapter.exists(path);
-    if (!exists) {
+    const normalizedPath = normalizeVaultPath(path);
+    if (!normalizedPath) {
       return null;
     }
-    const markdown = await this.app.vault.adapter.read(path);
+
+    const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+    if (!isVaultMarkdownFile(file)) {
+      return null;
+    }
+
+    const markdown = await this.app.vault.cachedRead(file);
     return parseStorySteeringMarkdown(markdown);
   }
 
-  private async loadScopeByResolution(
-    resolution: StorySteeringScopeResolution
-  ): Promise<{state: StorySteeringState; filePath: string}> {
-    const primaryPath = this.resolveScopePath(resolution.scope);
-    const primaryState = await this.readScopeByPath(primaryPath);
-    if (primaryState) {
-      return {
-        state: primaryState,
-        filePath: primaryPath
-      };
+  private async writeScopeByPath(path: string, state: StorySteeringState): Promise<string> {
+    const normalizedPath = normalizeVaultPath(path);
+    if (!normalizedPath) {
+      throw new Error('Author note path is required.');
     }
-    return {
-      state: createEmptyStorySteeringState(),
-      filePath: primaryPath
-    };
+
+    const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+    if (!isVaultMarkdownFile(file)) {
+      throw new Error(`Author note file not found: ${normalizedPath}`);
+    }
+
+    const existingMarkdown = await this.app.vault.cachedRead(file);
+    const nextMarkdown = preserveFrontmatterWithBody(existingMarkdown, normalizeStorySteeringState(state).authorNote);
+    await this.app.vault.modify(file, nextMarkdown);
+    return file.path;
   }
 
   async loadScope(scope: StorySteeringScope): Promise<StorySteeringState> {
-    const resolution: StorySteeringScopeResolution = {
-      scope: this.normalizeNoteScope(scope)
-    };
-    const loaded = await this.loadScopeByResolution(resolution);
-    return loaded.state;
+    const path = this.resolveScopePath(scope);
+    const loaded = await this.readScopeByPath(path);
+    return loaded ?? createEmptyStorySteeringState();
   }
 
   async saveScope(scope: StorySteeringScope, state: StorySteeringState): Promise<string> {
-    const primaryScope = this.normalizeNoteScope(scope);
-    const path = this.resolveScopePath(primaryScope);
-    const markdown = stringifyStorySteeringMarkdown(primaryScope, state);
-    await ensureParentVaultFolderForFile(this.app, path);
-    await this.app.vault.adapter.write(path, markdown);
-    return path;
+    const path = this.resolveScopePath(scope);
+    return this.writeScopeByPath(path, state);
   }
 
   async getScopeChainForFile(file: TFile | null): Promise<StorySteeringScope[]> {
-    const resolutions = await this.resolveScopeResolutionsForFile(file, true);
-    return resolutions.map(item => item.scope);
+    const scope = await this.getScopeForFile(file);
+    return scope ? [scope] : [];
   }
 
-  async getScopeForFile(file: TFile | null, options?: { ensureIds?: boolean }): Promise<StorySteeringScope | null> {
-    const resolutions = await this.resolveScopeResolutionsForFile(file, options?.ensureIds ?? false);
-    return resolutions[0]?.scope ?? null;
+  async getScopeForFile(file: TFile | null): Promise<StorySteeringScope | null> {
+    if (!file) {
+      return null;
+    }
+
+    const resolvedFromStory = await this.resolveAuthorNoteFileForStory(file);
+    if (resolvedFromStory) {
+      return {
+        type: 'note',
+        key: normalizeVaultPath(resolvedFromStory.path)
+      };
+    }
+
+    if (await this.isAuthorNoteFile(file)) {
+      return {
+        type: 'note',
+        key: normalizeVaultPath(file.path)
+      };
+    }
+
+    return null;
   }
 
   async resolveEffectiveStateForFile(file: TFile | null): Promise<StorySteeringEffectiveState> {
-    const scopeResolutions = await this.resolveScopeResolutionsForFile(file, true);
-    const layers: StorySteeringLayer[] = [];
-
-    for (const resolution of scopeResolutions) {
-      const loaded = await this.loadScopeByResolution(resolution);
-      layers.push({
-        scope: resolution.scope,
-        filePath: loaded.filePath,
-        state: loaded.state
-      });
+    const scope = await this.getScopeForFile(file);
+    if (!scope) {
+      return {
+        layers: [],
+        merged: createEmptyStorySteeringState()
+      };
     }
 
+    const state = await this.loadScope(scope);
+    const layer: StorySteeringLayer = {
+      scope,
+      filePath: scope.key,
+      state
+    };
+
     return {
-      layers,
-      merged: mergeStorySteeringStates(layers.map(layer => layer.state))
+      layers: [layer],
+      merged: mergeStorySteeringStates([state])
     };
   }
 }

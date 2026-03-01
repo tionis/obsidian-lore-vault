@@ -839,7 +839,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Allow Story Chat Tool Write Actions')
-      .setDesc('Allow tool actions that write to steering notes or create lorebook notes. Writes are still blocked unless the current user turn explicitly asks for an edit/create action.')
+      .setDesc('Allow tool actions that write to linked Author Notes or create lorebook notes. Writes are still blocked unless the current user turn explicitly asks for an edit/create action.')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.storyChat.toolCalls.allowWriteActions)
         .onChange(async (value) => {
@@ -856,7 +856,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       .addText(text => {
         steeringFolderInput = text;
         text
-          .setPlaceholder('LoreVault/steering')
+          .setPlaceholder('LoreVault/author-notes')
           .setValue(this.plugin.settings.storySteering.folder)
           .onChange(async (value) => {
             this.plugin.settings.storySteering.folder = this.normalizePathInput(value);
@@ -869,7 +869,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       .onClick(() => {
         this.openFolderPicker((folderPath: string) => {
           const normalized = this.normalizePathInput(folderPath);
-          this.plugin.settings.storySteering.folder = normalized || 'LoreVault/steering';
+          this.plugin.settings.storySteering.folder = normalized || 'LoreVault/author-notes';
           steeringFolderInput?.setValue(this.plugin.settings.storySteering.folder);
           void this.persistSettings();
         });

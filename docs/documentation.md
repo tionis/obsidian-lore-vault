@@ -371,25 +371,23 @@ Long-form story metadata (new):
 - `chapterTitle`: optional chapter display title
 - `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
 - `nextChapter`: optional links/paths to following chapter notes
-- `lvNoteId` (auto-managed): stable note identifier used for note-level Story Steering scope links
+- `authorNote`: wikilink/markdown-link to the note-level Author Note for this story note
 
-Story Steering scope notes include:
+Author Note model:
 
-- one note-level Author Note markdown field (no global/story/chapter scope hierarchy)
-- optional frontmatter lorebook scopes using the same accepted scope keys
-- Story Steering panel edits autosave immediately to the currently loaded note scope
-- switching active note autosaves current changes first, then loads the next note-level scope
-- missing `lvNoteId` may be auto-generated in frontmatter for stable note-scope keys
+- one note-level Author Note markdown document per story note link
+- Author Note content is edited directly in native Obsidian notes
+- optional frontmatter lorebook scopes use the same accepted scope keys as story notes
+- default creation folder is configurable in settings (`Story Steering -> Author Note Folder`)
+- optional `lvDocType: authorNote` frontmatter marks notes as explicit Author Notes
+- if multiple story notes link to the same Author Note, rewrite/generation context includes all linked stories
 
-Story Steering extraction behavior:
+Author Note rewrite behavior:
 
-- extraction/update focuses on Author Note markdown
-- source options:
-  - `Update from Active Note`: active note body
-  - `Update from Near-Cursor Context`: story text before cursor in active editor (fallback to note body when no editor window is available)
-- existing Author Note markdown is treated as baseline and preserved when no evidence exists for changes
+- rewrite/update focuses on Author Note markdown only
 - optional per-run update prompt can steer what should be changed
-- review modal shows `Current` (read-only) vs `Proposed` (editable) Author Note markdown before apply + immediate save
+- rewrite context includes linked story note content, selected lorebook context, and current Author Note
+- review modal shows `Current` vs `Proposed` Author Note markdown diff before apply
 - optional sanitization mode controls filtering:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
@@ -718,9 +716,9 @@ Query behavior:
 - query text source: active editor content up to cursor (last window)
 - inline directives source: strict-prefix directives in near-cursor editor window (`[LV: ...]`, `<!-- LV: ... -->`)
 - scope resolution:
-  - first lorebook scope tag on active file, if present
-  - otherwise configured `activeScope`
-  - otherwise first discovered scope
+  - story note frontmatter (`lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`)
+  - otherwise linked Author Note frontmatter (same keys)
+  - otherwise no lorebook retrieval scopes are selected
 - scoring:
   - `world_info` (primary):
     - deterministic seed detection from keywords/aliases/titles
@@ -807,7 +805,6 @@ Current behavior:
   - manual context text
   - steering source refs (`note:*`)
     - note refs pull note content + note-level author-note steering
-    - legacy `story:`/`chapter:` refs are ignored during normalization
   - continuity per-group inclusion toggles (threads/open loops/canon deltas)
   - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
@@ -842,7 +839,7 @@ Turn context assembly:
 - recent chat history window
 - deterministic context inspector metadata attached to assistant turns:
   - selected scopes
-  - resolved steering source refs + steering scopes
+  - resolved steering source refs + resolved author-note paths
   - unresolved steering source refs
   - resolved specific note paths
   - unresolved note references
@@ -872,6 +869,7 @@ Rules:
 - plain bracket text (for example `[Editor Note: ...]` or `[Make it bigger]`) is treated as normal prose
 - directives are parsed from active-story near-cursor context only
 - directives are injected into a dedicated steering layer (not mixed into lore retrieval layers)
+- system prompt explicitly tells the model to follow injected inline directives
 - directive placement is configurable with other steering layers (`system` / `pre-history` / `pre-response`)
 - resolved directives are shown in inspector traces before/with generation output
 - directives are excluded from lorebook exports and wiki import/update extraction flows

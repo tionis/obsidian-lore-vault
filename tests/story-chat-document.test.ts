@@ -87,7 +87,7 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
     selectedScopes: ['universe/core'],
     useLorebookContext: true,
     manualContext: 'Manual context',
-    steeringScopeRefs: ['note:stories/ch01.md', 'story:chronicles-main'],
+    steeringScopeRefs: ['note:stories/ch01.md'],
     pinnedInstructions: 'Keep the narration in close third person.',
     storyNotes: 'Avoid sudden POV shifts.',
     sceneIntent: 'Escalate conflict before chapter close.',

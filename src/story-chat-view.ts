@@ -25,6 +25,12 @@ import {
   buildStoryChatContextInspectorLines,
   buildStoryChatContextInspectorSummary
 } from './story-chat-context-inspector';
+import {
+  extractNoteRefsFromStoryChatSteeringRefs,
+  normalizeStoryChatSteeringRefs,
+  parseStoryChatSteeringRef,
+  stringifyStoryChatSteeringRef
+} from './story-chat-steering-refs';
 
 export const LOREVAULT_STORY_CHAT_VIEW_TYPE = 'lorevault-story-chat-view';
 
@@ -102,12 +108,7 @@ export class StoryChatView extends ItemView {
   private selectedScopes = new Set<string>();
   private useLorebookContext = true;
   private manualContext = '';
-  private pinnedInstructions = '';
-  private storyNotes = '';
-  private sceneIntent = '';
-  private continuityPlotThreads: string[] = [];
-  private continuityOpenLoops: string[] = [];
-  private continuityCanonDeltas: string[] = [];
+  private steeringScopeRefs: string[] = [];
   private continuitySelection = {
     includePlotThreads: true,
     includeOpenLoops: true,
@@ -226,17 +227,6 @@ export class StoryChatView extends ItemView {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  private parseMultilineList(value: string): string[] {
-    return value
-      .split('\n')
-      .map(item => item.trim())
-      .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
-  }
-
-  private formatMultilineList(values: string[]): string {
-    return values.join('\n');
-  }
-
   private cloneContextMeta(meta: StoryChatContextMeta | undefined): StoryChatContextMeta | undefined {
     return cloneStoryChatContextMeta(meta);
   }
@@ -321,12 +311,7 @@ export class StoryChatView extends ItemView {
     this.selectedScopes = new Set(document.selectedScopes);
     this.useLorebookContext = document.useLorebookContext;
     this.manualContext = document.manualContext;
-    this.pinnedInstructions = document.pinnedInstructions;
-    this.storyNotes = document.storyNotes;
-    this.sceneIntent = document.sceneIntent;
-    this.continuityPlotThreads = [...document.continuityPlotThreads];
-    this.continuityOpenLoops = [...document.continuityOpenLoops];
-    this.continuityCanonDeltas = [...document.continuityCanonDeltas];
+    this.steeringScopeRefs = normalizeStoryChatSteeringRefs(document.steeringScopeRefs ?? []);
     this.continuitySelection = { ...document.continuitySelection };
     this.noteContextRefs = [...document.noteContextRefs];
     this.messages = document.messages.map(message => this.cloneMessage(message));
@@ -345,12 +330,13 @@ export class StoryChatView extends ItemView {
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
       useLorebookContext: this.useLorebookContext,
       manualContext: this.manualContext,
-      pinnedInstructions: this.pinnedInstructions,
-      storyNotes: this.storyNotes,
-      sceneIntent: this.sceneIntent,
-      continuityPlotThreads: [...this.continuityPlotThreads],
-      continuityOpenLoops: [...this.continuityOpenLoops],
-      continuityCanonDeltas: [...this.continuityCanonDeltas],
+      steeringScopeRefs: [...this.steeringScopeRefs],
+      pinnedInstructions: '',
+      storyNotes: '',
+      sceneIntent: '',
+      continuityPlotThreads: [],
+      continuityOpenLoops: [],
+      continuityCanonDeltas: [],
       continuitySelection: { ...this.continuitySelection },
       noteContextRefs: [...this.noteContextRefs],
       messages: this.messages.map(message => this.cloneMessage(message))
@@ -451,12 +437,13 @@ export class StoryChatView extends ItemView {
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
       useLorebookContext: this.useLorebookContext,
       manualContext: this.manualContext,
-      pinnedInstructions: this.pinnedInstructions,
-      storyNotes: this.storyNotes,
-      sceneIntent: this.sceneIntent,
-      continuityPlotThreads: [...this.continuityPlotThreads],
-      continuityOpenLoops: [...this.continuityOpenLoops],
-      continuityCanonDeltas: [...this.continuityCanonDeltas],
+      steeringScopeRefs: [...this.steeringScopeRefs],
+      pinnedInstructions: '',
+      storyNotes: '',
+      sceneIntent: '',
+      continuityPlotThreads: [],
+      continuityOpenLoops: [],
+      continuityCanonDeltas: [],
       continuitySelection: { ...this.continuitySelection },
       noteContextRefs: [...this.noteContextRefs],
       messages: sourceMessages
@@ -688,52 +675,12 @@ export class StoryChatView extends ItemView {
       this.scheduleConversationSave();
     });
 
-    const steeringSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
-    steeringSection.createEl('strong', { text: 'Steering Controls' });
-    steeringSection.createEl('p', {
-      text: 'These layers are injected before retrieval context. Placement is configured in Settings -> Writing Completion.'
-    });
-
-    steeringSection.createEl('label', { text: 'Pinned Instructions' });
-
-    const pinnedInput = steeringSection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    pinnedInput.placeholder = 'Pinned instructions (stable style/constraints for this conversation).';
-    pinnedInput.value = this.pinnedInstructions;
-    pinnedInput.addEventListener('input', () => {
-      this.pinnedInstructions = pinnedInput.value;
-      this.scheduleConversationSave();
-    });
-
-    steeringSection.createEl('label', { text: 'Story Notes' });
-
-    const storyNotesInput = steeringSection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    storyNotesInput.placeholder = 'Story notes (author-note style guidance for this chat).';
-    storyNotesInput.value = this.storyNotes;
-    storyNotesInput.addEventListener('input', () => {
-      this.storyNotes = storyNotesInput.value;
-      this.scheduleConversationSave();
-    });
-
-    steeringSection.createEl('label', { text: 'Scene Intent' });
-
-    const sceneIntentInput = steeringSection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    sceneIntentInput.placeholder = 'Scene intent (what this turn/scene should accomplish).';
-    sceneIntentInput.value = this.sceneIntent;
-    sceneIntentInput.addEventListener('input', () => {
-      this.sceneIntent = sceneIntentInput.value;
-      this.scheduleConversationSave();
-    });
+    this.renderSteeringSourcesControls(controls);
 
     const continuitySection = controls.createDiv({ cls: 'lorevault-chat-manual' });
     continuitySection.createEl('strong', { text: 'Continuity State' });
     continuitySection.createEl('p', {
-      text: 'One item per line. Toggle categories on/off for this conversation.'
+      text: 'Continuity items come from resolved steering sources and active-note steering. Toggle categories on/off per conversation.'
     });
 
     const continuityToggleRow = continuitySection.createDiv({ cls: 'lorevault-chat-scope-list' });
@@ -764,43 +711,120 @@ export class StoryChatView extends ItemView {
     });
     canonToggleRow.createEl('label', { text: 'Include Recent Canon Deltas' });
 
-    continuitySection.createEl('label', { text: 'Active Plot Threads' });
-
-    const plotThreadsInput = continuitySection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    plotThreadsInput.placeholder = 'One active plot thread per line.';
-    plotThreadsInput.value = this.formatMultilineList(this.continuityPlotThreads);
-    plotThreadsInput.addEventListener('input', () => {
-      this.continuityPlotThreads = this.parseMultilineList(plotThreadsInput.value);
-      this.scheduleConversationSave();
-    });
-
-    continuitySection.createEl('label', { text: 'Unresolved Commitments / Open Loops' });
-
-    const openLoopsInput = continuitySection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    openLoopsInput.placeholder = 'One unresolved commitment/open loop per line.';
-    openLoopsInput.value = this.formatMultilineList(this.continuityOpenLoops);
-    openLoopsInput.addEventListener('input', () => {
-      this.continuityOpenLoops = this.parseMultilineList(openLoopsInput.value);
-      this.scheduleConversationSave();
-    });
-
-    continuitySection.createEl('label', { text: 'Recent Canon / Fact Deltas' });
-
-    const canonDeltasInput = continuitySection.createEl('textarea', {
-      cls: 'lorevault-chat-manual-input'
-    });
-    canonDeltasInput.placeholder = 'One recent canon/fact delta per line.';
-    canonDeltasInput.value = this.formatMultilineList(this.continuityCanonDeltas);
-    canonDeltasInput.addEventListener('input', () => {
-      this.continuityCanonDeltas = this.parseMultilineList(canonDeltasInput.value);
-      this.scheduleConversationSave();
-    });
-
     this.renderSpecificNotesControls(controls);
+  }
+
+  private addSteeringScopeRef(rawRef: string): void {
+    const parsed = parseStoryChatSteeringRef(rawRef);
+    if (!parsed) {
+      return;
+    }
+    const canonical = stringifyStoryChatSteeringRef(parsed);
+    if (this.steeringScopeRefs.includes(canonical)) {
+      return;
+    }
+    this.steeringScopeRefs.push(canonical);
+    this.scheduleConversationSave();
+    this.render();
+  }
+
+  private promptSteeringScopeRef(type: 'story' | 'chapter'): void {
+    const label = type === 'story' ? 'story' : 'chapter';
+    const key = window.prompt(`Enter ${label} scope key:`, '')?.trim() ?? '';
+    if (!key) {
+      return;
+    }
+    this.addSteeringScopeRef(`${type}:${key}`);
+  }
+
+  private renderSteeringSourcesControls(container: HTMLElement): void {
+    const steeringSection = container.createDiv({ cls: 'lorevault-chat-manual' });
+    const steeringHeader = steeringSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
+    steeringHeader.createEl('strong', { text: 'Steering Sources' });
+    const steeringButtons = steeringHeader.createDiv({ cls: 'lorevault-chat-scope-buttons' });
+
+    const addNoteButton = steeringButtons.createEl('button', { text: 'Add Note' });
+    addNoteButton.addEventListener('click', () => {
+      const files = this.app.vault.getMarkdownFiles();
+      const modal = new NotePickerModal(this.app, files, file => {
+        this.addSteeringScopeRef(`note:${file.path}`);
+      });
+      modal.open();
+    });
+
+    const addActiveButton = steeringButtons.createEl('button', { text: 'Add Active' });
+    addActiveButton.addEventListener('click', () => {
+      const active = this.app.workspace.getActiveFile();
+      if (!active) {
+        new Notice('No active note to add.');
+        return;
+      }
+      this.addSteeringScopeRef(`note:${active.path}`);
+    });
+
+    const addStoryButton = steeringButtons.createEl('button', { text: 'Add Story' });
+    addStoryButton.addEventListener('click', () => {
+      this.promptSteeringScopeRef('story');
+    });
+
+    const addChapterButton = steeringButtons.createEl('button', { text: 'Add Chapter' });
+    addChapterButton.addEventListener('click', () => {
+      this.promptSteeringScopeRef('chapter');
+    });
+
+    const clearButton = steeringButtons.createEl('button', { text: 'Clear' });
+    clearButton.disabled = this.steeringScopeRefs.length === 0;
+    clearButton.addEventListener('click', () => {
+      this.steeringScopeRefs = [];
+      this.scheduleConversationSave();
+      this.render();
+    });
+
+    steeringSection.createEl('p', {
+      text: 'Sources are resolved each turn. Notes pull both note content and steering layers; story/chapter refs pull steering layers only.'
+    });
+
+    const noteRefs = extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs);
+    const notePreview = this.plugin.previewNoteContextRefs(noteRefs);
+    const unresolvedNoteRefs = new Set(notePreview.unresolvedRefs);
+
+    const list = steeringSection.createDiv({ cls: 'lorevault-chat-note-list' });
+    if (this.steeringScopeRefs.length === 0) {
+      list.createEl('p', { text: 'No steering sources selected.' });
+      return;
+    }
+
+    for (let index = 0; index < this.steeringScopeRefs.length; index += 1) {
+      const ref = this.steeringScopeRefs[index];
+      const parsed = parseStoryChatSteeringRef(ref);
+      if (!parsed) {
+        continue;
+      }
+
+      const row = list.createDiv({ cls: 'lorevault-chat-note-row' });
+      const label = row.createEl('span', { text: stringifyStoryChatSteeringRef(parsed) });
+      if (parsed.type === 'note') {
+        if (unresolvedNoteRefs.has(parsed.key)) {
+          label.addClass('lorevault-chat-note-unresolved');
+        } else {
+          label.addClass('lorevault-chat-note-resolved');
+        }
+      }
+
+      const removeButton = row.createEl('button', { text: 'Remove' });
+      removeButton.addEventListener('click', () => {
+        this.steeringScopeRefs.splice(index, 1);
+        this.scheduleConversationSave();
+        this.render();
+      });
+    }
+
+    if (notePreview.unresolvedRefs.length > 0) {
+      const unresolved = steeringSection.createEl('p', {
+        text: `Unresolved note steering refs: ${notePreview.unresolvedRefs.join(', ')}`
+      });
+      unresolved.addClass('lorevault-manager-warning-item');
+    }
   }
 
   private renderSpecificNotesControls(container: HTMLElement): void {
@@ -1196,11 +1220,18 @@ export class StoryChatView extends ItemView {
     this.editingVersionId = null;
     this.editingMessageDraft = '';
 
-    const preview = this.plugin.previewNoteContextRefs(this.noteContextRefs);
-    if (this.noteContextRefs.length > 0 && preview.resolvedPaths.length === 0) {
-      new Notice('No specific notes could be resolved from current references.');
+    const steeringNoteRefs = extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs);
+    const combinedNoteContextRefs = [...this.noteContextRefs];
+    for (const ref of steeringNoteRefs) {
+      if (!combinedNoteContextRefs.includes(ref)) {
+        combinedNoteContextRefs.push(ref);
+      }
+    }
+    const preview = this.plugin.previewNoteContextRefs(combinedNoteContextRefs);
+    if (combinedNoteContextRefs.length > 0 && preview.resolvedPaths.length === 0) {
+      new Notice('No note sources could be resolved from current specific/steering references.');
     } else if (preview.unresolvedRefs.length > 0) {
-      new Notice(`Some specific note references were unresolved (${preview.unresolvedRefs.length}).`);
+      new Notice(`Some note source references were unresolved (${preview.unresolvedRefs.length}).`);
     }
 
     if (appendUser) {
@@ -1281,14 +1312,15 @@ export class StoryChatView extends ItemView {
         selectedScopes: [...this.selectedScopes],
         useLorebookContext: this.useLorebookContext,
         manualContext: this.manualContext,
-        pinnedInstructions: this.pinnedInstructions,
-        storyNotes: this.storyNotes,
-        sceneIntent: this.sceneIntent,
-        continuityPlotThreads: [...this.continuityPlotThreads],
-        continuityOpenLoops: [...this.continuityOpenLoops],
-        continuityCanonDeltas: [...this.continuityCanonDeltas],
+        steeringScopeRefs: [...this.steeringScopeRefs],
+        pinnedInstructions: '',
+        storyNotes: '',
+        sceneIntent: '',
+        continuityPlotThreads: [],
+        continuityOpenLoops: [],
+        continuityCanonDeltas: [],
         continuitySelection: { ...this.continuitySelection },
-        noteContextRefs: this.noteContextRefs,
+        noteContextRefs: combinedNoteContextRefs,
         history: this.buildHistoryForGeneration(targetAssistantMessage.id),
         onDelta: delta => {
           targetVersion.content += delta;

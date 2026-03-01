@@ -1,4 +1,5 @@
 import { ContinuitySelection, StoryChatContextMeta } from './models';
+import { normalizeStoryChatSteeringRefs } from './story-chat-steering-refs';
 
 export const CHAT_SCHEMA_VERSION = 1;
 export const CHAT_CODE_BLOCK_LANGUAGE = 'lorevault-chat';
@@ -27,6 +28,7 @@ export interface ConversationDocument {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  steeringScopeRefs: string[];
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
@@ -74,6 +76,9 @@ export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined
   return {
     ...meta,
     scopes: [...meta.scopes],
+    steeringSourceRefs: [...(meta.steeringSourceRefs ?? [])],
+    steeringSourceScopes: [...(meta.steeringSourceScopes ?? [])],
+    unresolvedSteeringSourceRefs: [...(meta.unresolvedSteeringSourceRefs ?? [])],
     specificNotePaths: [...meta.specificNotePaths],
     unresolvedNoteRefs: [...meta.unresolvedNoteRefs],
     chapterMemoryItems: [...(meta.chapterMemoryItems ?? [])],
@@ -108,6 +113,15 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     usedContinuityState: Boolean(meta.usedContinuityState),
     scopes: Array.isArray(meta.scopes)
       ? meta.scopes.map(value => String(value ?? ''))
+      : [],
+    steeringSourceRefs: Array.isArray(meta.steeringSourceRefs)
+      ? meta.steeringSourceRefs.map(value => String(value ?? ''))
+      : [],
+    steeringSourceScopes: Array.isArray(meta.steeringSourceScopes)
+      ? meta.steeringSourceScopes.map(value => String(value ?? ''))
+      : [],
+    unresolvedSteeringSourceRefs: Array.isArray(meta.unresolvedSteeringSourceRefs)
+      ? meta.unresolvedSteeringSourceRefs.map(value => String(value ?? ''))
       : [],
     specificNotePaths: Array.isArray(meta.specificNotePaths)
       ? meta.specificNotePaths.map(value => String(value ?? ''))
@@ -257,6 +271,9 @@ export function normalizeConversationDocument(
   const noteContextRefs = Array.isArray(payload.noteContextRefs)
     ? dedupeStrings(payload.noteContextRefs.map(value => String(value ?? '').trim()))
     : [];
+  const steeringScopeRefs = Array.isArray(payload.steeringScopeRefs)
+    ? normalizeStoryChatSteeringRefs(payload.steeringScopeRefs.map(value => String(value ?? '')))
+    : [];
   const continuityPlotThreads = Array.isArray(payload.continuityPlotThreads)
     ? dedupeStrings(payload.continuityPlotThreads.map(value => String(value ?? '').trim()))
     : [];
@@ -276,6 +293,7 @@ export function normalizeConversationDocument(
     selectedScopes,
     useLorebookContext: Boolean(payload.useLorebookContext ?? true),
     manualContext: typeof payload.manualContext === 'string' ? payload.manualContext : '',
+    steeringScopeRefs,
     pinnedInstructions: typeof payload.pinnedInstructions === 'string' ? payload.pinnedInstructions : '',
     storyNotes: typeof payload.storyNotes === 'string' ? payload.storyNotes : '',
     sceneIntent: typeof payload.sceneIntent === 'string' ? payload.sceneIntent : '',

@@ -1681,6 +1681,16 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Include Embedding Backend Calls')
+      .setDesc('Also log embedding request/response payloads (`kind: embedding`). Useful for semantic-retrieval debugging; can generate large logs.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.operationLog.includeEmbeddings)
+        .onChange(async (value) => {
+          this.plugin.settings.operationLog.includeEmbeddings = value;
+          await this.plugin.saveData(this.plugin.settings);
+        }));
+
+    new Setting(containerEl)
       .setName('Open LLM Operation Log Explorer')
       .setDesc('Open the built-in panel to browse and inspect captured LLM operations.')
       .addButton(button => button

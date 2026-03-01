@@ -29,7 +29,7 @@ export interface CompletionUsageReport {
   source: 'openai_usage' | 'ollama_usage';
 }
 
-export type CompletionOperationKind = 'completion' | 'completion_stream' | 'tool_planner';
+export type CompletionOperationKind = 'completion' | 'completion_stream' | 'tool_planner' | 'embedding';
 
 export interface CompletionOperationLogAttempt {
   index: number;

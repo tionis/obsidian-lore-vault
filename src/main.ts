@@ -131,6 +131,8 @@ import {
 import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
 import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
 import {
+  createEmptyStorySteeringState,
+  mergeStorySteeringStates,
   normalizeStorySteeringScopeType,
   normalizeStorySteeringState,
   parseStorySteeringExtractionResponse,
@@ -141,6 +143,11 @@ import {
   StorySteeringState,
   StorySteeringStore
 } from './story-steering';
+import {
+  normalizeStoryChatSteeringRefs,
+  parseStoryChatSteeringRef,
+  stringifyStoryChatSteeringRef
+} from './story-chat-steering-refs';
 import {
   applyDeterministicOverflow,
   estimateTextTokens,
@@ -206,6 +213,7 @@ export interface StoryChatTurnRequest {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  steeringScopeRefs: string[];
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
@@ -299,11 +307,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     return raw || DEFAULT_SETTINGS.operationLog.path;
   }
 
-  public async appendCompletionOperationLog(record: CompletionOperationLogRecord): Promise<void> {
-    if (!this.settings.operationLog.enabled) {
-      return;
-    }
+  private isEmbeddingOperationLogEnabled(): boolean {
+    return this.settings.operationLog.enabled && this.settings.operationLog.includeEmbeddings;
+  }
 
+  private async appendOperationLogRecord(record: CompletionOperationLogRecord): Promise<void> {
     const path = this.getOperationLogPath();
     const maxEntries = Math.max(20, Math.min(5000, Math.floor(Number(this.settings.operationLog.maxEntries) || DEFAULT_SETTINGS.operationLog.maxEntries)));
     const serialized = JSON.stringify(record);
@@ -335,6 +343,20 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.operationLogWriteQueue;
     this.queueOperationLogViewRefresh();
+  }
+
+  public async appendCompletionOperationLog(record: CompletionOperationLogRecord): Promise<void> {
+    if (!this.settings.operationLog.enabled) {
+      return;
+    }
+    await this.appendOperationLogRecord(record);
+  }
+
+  public async appendEmbeddingOperationLog(record: CompletionOperationLogRecord): Promise<void> {
+    if (!this.isEmbeddingOperationLogEnabled()) {
+      return;
+    }
+    await this.appendOperationLogRecord(record);
   }
 
   private estimateTokens(text: string): number {
@@ -1801,6 +1823,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       contextMeta: message.contextMeta ? {
         ...message.contextMeta,
         scopes: [...message.contextMeta.scopes],
+        steeringSourceRefs: [...(message.contextMeta.steeringSourceRefs ?? [])],
+        steeringSourceScopes: [...(message.contextMeta.steeringSourceScopes ?? [])],
+        unresolvedSteeringSourceRefs: [...(message.contextMeta.unresolvedSteeringSourceRefs ?? [])],
         specificNotePaths: [...message.contextMeta.specificNotePaths],
         unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
         chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
@@ -1827,6 +1852,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.settings.storyChat.forkSnapshots.map(snapshot => ({
       ...snapshot,
       selectedScopes: [...snapshot.selectedScopes],
+      steeringScopeRefs: normalizeStoryChatSteeringRefs(snapshot.steeringScopeRefs ?? []),
       continuityPlotThreads: [...(snapshot.continuityPlotThreads ?? [])],
       continuityOpenLoops: [...(snapshot.continuityOpenLoops ?? [])],
       continuityCanonDeltas: [...(snapshot.continuityCanonDeltas ?? [])],
@@ -1843,6 +1869,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         contextMeta: message.contextMeta ? {
           ...message.contextMeta,
           scopes: [...message.contextMeta.scopes],
+          steeringSourceRefs: [...(message.contextMeta.steeringSourceRefs ?? [])],
+          steeringSourceScopes: [...(message.contextMeta.steeringSourceScopes ?? [])],
+          unresolvedSteeringSourceRefs: [...(message.contextMeta.unresolvedSteeringSourceRefs ?? [])],
           specificNotePaths: [...message.contextMeta.specificNotePaths],
           unresolvedNoteRefs: [...message.contextMeta.unresolvedNoteRefs],
           chapterMemoryItems: [...(message.contextMeta.chapterMemoryItems ?? [])],
@@ -1870,6 +1899,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return {
       ...this.settings.storyChat,
       selectedScopes: [...this.settings.storyChat.selectedScopes],
+      steeringScopeRefs: normalizeStoryChatSteeringRefs(this.settings.storyChat.steeringScopeRefs ?? []),
       noteContextRefs: [...this.settings.storyChat.noteContextRefs],
       messages: this.getStoryChatMessages(),
       forkSnapshots: this.getStoryChatForkSnapshots()
@@ -2015,6 +2045,122 @@ export default class LoreBookConverterPlugin extends Plugin {
     return {
       resolvedPaths,
       unresolvedRefs
+    };
+  }
+
+  private formatStorySteeringScopeLabel(scope: StorySteeringScope): string {
+    const normalizedType = normalizeStorySteeringScopeType(scope.type);
+    const key = normalizedType === 'global' ? 'global' : scope.key.trim();
+    return `${normalizedType}:${key || '(default)'}`;
+  }
+
+  private async resolveStoryChatSteeringSources(
+    refs: string[]
+  ): Promise<{
+    mergedState: StorySteeringState;
+    resolvedRefs: string[];
+    unresolvedRefs: string[];
+    resolvedScopeLabels: string[];
+  }> {
+    const normalizedRefs = normalizeStoryChatSteeringRefs(refs);
+    if (normalizedRefs.length === 0) {
+      return {
+        mergedState: createEmptyStorySteeringState(),
+        resolvedRefs: [],
+        unresolvedRefs: [],
+        resolvedScopeLabels: []
+      };
+    }
+
+    const mergedStates: StorySteeringState[] = [];
+    const resolvedRefs: string[] = [];
+    const unresolvedRefs: string[] = [];
+    const resolvedScopeLabels: string[] = [];
+    const loadedScopeStateByLabel = new Map<string, StorySteeringState>();
+
+    const loadScopeState = async (scope: StorySteeringScope): Promise<StorySteeringState> => {
+      const label = this.formatStorySteeringScopeLabel(scope);
+      const cached = loadedScopeStateByLabel.get(label);
+      if (cached) {
+        return cached;
+      }
+      const loaded = await this.storySteeringStore.loadScope(scope);
+      loadedScopeStateByLabel.set(label, loaded);
+      return loaded;
+    };
+
+    for (const rawRef of normalizedRefs) {
+      const parsed = parseStoryChatSteeringRef(rawRef);
+      if (!parsed) {
+        continue;
+      }
+
+      if (parsed.type === 'note') {
+        const file = this.resolveNoteContextFile(parsed.key);
+        if (!file) {
+          if (!unresolvedRefs.includes(rawRef)) {
+            unresolvedRefs.push(rawRef);
+          }
+          continue;
+        }
+
+        const effective = await this.storySteeringStore.resolveEffectiveStateForFile(file);
+        mergedStates.push(effective.merged);
+
+        const canonicalRef = stringifyStoryChatSteeringRef({
+          type: 'note',
+          key: file.path
+        });
+        if (!resolvedRefs.includes(canonicalRef)) {
+          resolvedRefs.push(canonicalRef);
+        }
+        for (const layer of effective.layers) {
+          const label = this.formatStorySteeringScopeLabel(layer.scope);
+          if (!resolvedScopeLabels.includes(label)) {
+            resolvedScopeLabels.push(label);
+          }
+        }
+        continue;
+      }
+
+      const key = parsed.key.trim();
+      if (!key) {
+        if (!unresolvedRefs.includes(rawRef)) {
+          unresolvedRefs.push(rawRef);
+        }
+        continue;
+      }
+
+      const targetScope: StorySteeringScope = {
+        type: parsed.type,
+        key
+      };
+      const layeredScopes: StorySteeringScope[] = [
+        { type: 'global', key: 'global' },
+        targetScope
+      ];
+      const layeredStates: StorySteeringState[] = [];
+      for (const scope of layeredScopes) {
+        layeredStates.push(await loadScopeState(scope));
+        const label = this.formatStorySteeringScopeLabel(scope);
+        if (!resolvedScopeLabels.includes(label)) {
+          resolvedScopeLabels.push(label);
+        }
+      }
+
+      mergedStates.push(mergeStorySteeringStates(layeredStates));
+      if (!resolvedRefs.includes(rawRef)) {
+        resolvedRefs.push(rawRef);
+      }
+    }
+
+    return {
+      mergedState: mergedStates.length > 0
+        ? mergeStorySteeringStates(mergedStates)
+        : createEmptyStorySteeringState(),
+      resolvedRefs,
+      unresolvedRefs,
+      resolvedScopeLabels
     };
   }
 
@@ -3685,37 +3831,43 @@ export default class LoreBookConverterPlugin extends Plugin {
     const requestedScopes = request.selectedScopes.length > 0
       ? request.selectedScopes.map(scope => normalizeScope(scope)).filter(Boolean)
       : [];
+    const steeringScopeRefs = normalizeStoryChatSteeringRefs(request.steeringScopeRefs ?? []);
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
     const activeStoryFile = this.app.workspace.getActiveFile();
     const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeStoryFile);
+    const steeringSourceResolution = await this.resolveStoryChatSteeringSources(steeringScopeRefs);
+    const mergedScopedSteering = mergeStorySteeringStates([
+      scopedSteering.merged,
+      steeringSourceResolution.mergedState
+    ]);
     const selectedScopes = requestedScopes.length > 0
       ? requestedScopes
-      : this.resolveStoryScopeSelection(activeStoryFile, scopedSteering.merged, { allowFallback: false }).scopes;
+      : this.resolveStoryScopeSelection(activeStoryFile, mergedScopedSteering, { allowFallback: false }).scopes;
     const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
     const mergedPinnedInstructions = this.mergeSteeringText(
-      scopedSteering.merged.pinnedInstructions,
+      mergedScopedSteering.pinnedInstructions,
       request.pinnedInstructions
     );
     const mergedStoryNotes = this.mergeSteeringText(
-      scopedSteering.merged.storyNotes,
+      mergedScopedSteering.storyNotes,
       request.storyNotes
     );
     const mergedSceneIntent = this.mergeSteeringText(
-      scopedSteering.merged.sceneIntent,
+      mergedScopedSteering.sceneIntent,
       request.sceneIntent
     );
     const continuityPlotThreads = this.mergeSteeringList(
-      scopedSteering.merged.plotThreads,
+      mergedScopedSteering.plotThreads,
       this.normalizeContinuityItems(request.continuityPlotThreads ?? [])
     );
     const continuityOpenLoops = this.mergeSteeringList(
-      scopedSteering.merged.openLoops,
+      mergedScopedSteering.openLoops,
       this.normalizeContinuityItems(request.continuityOpenLoops ?? [])
     );
     const continuityCanonDeltas = this.mergeSteeringList(
-      scopedSteering.merged.canonDeltas,
+      mergedScopedSteering.canonDeltas,
       this.normalizeContinuityItems(request.continuityCanonDeltas ?? [])
     );
     const continuitySelection: ContinuitySelection = {
@@ -4152,7 +4304,18 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (trimmedByPlacement('pre_response')) {
       layerTrace.push('steering(pre_response): trimmed to reservation');
     }
-    const scopedSteeringLabels = scopedSteering.layers.map(layer => `${layer.scope.type}:${layer.scope.key || 'global'}`);
+    if (steeringScopeRefs.length > 0) {
+      layerTrace.push(
+        `chat_steering_refs: ${steeringSourceResolution.resolvedRefs.length}/${steeringScopeRefs.length} resolved`
+      );
+      if (steeringSourceResolution.unresolvedRefs.length > 0) {
+        layerTrace.push(`chat_steering_refs_unresolved: ${steeringSourceResolution.unresolvedRefs.join(', ')}`);
+      }
+    }
+    const scopedSteeringLabels = [...new Set([
+      ...scopedSteering.layers.map(layer => `${layer.scope.type}:${layer.scope.key || 'global'}`),
+      ...steeringSourceResolution.resolvedScopeLabels
+    ])];
     if (scopedSteeringLabels.length > 0) {
       layerTrace.push(`scoped_steering_layers: ${scopedSteeringLabels.join(' -> ')}`);
     }
@@ -4192,6 +4355,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       usedChapterMemoryContext: chapterMemoryItems.length > 0,
       usedInlineDirectives: resolvedInlineDirectiveItems.length > 0,
       scopes: selectedScopes,
+      steeringSourceRefs: steeringSourceResolution.resolvedRefs,
+      steeringSourceScopes: steeringSourceResolution.resolvedScopeLabels,
+      unresolvedSteeringSourceRefs: steeringSourceResolution.unresolvedRefs,
       specificNotePaths,
       unresolvedNoteRefs,
       chapterMemoryItems,
@@ -4726,6 +4892,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       20,
       Math.min(5000, Math.floor(Number(merged.operationLog.maxEntries ?? DEFAULT_SETTINGS.operationLog.maxEntries)))
     );
+    merged.operationLog.includeEmbeddings = Boolean(
+      merged.operationLog.includeEmbeddings
+      ?? DEFAULT_SETTINGS.operationLog.includeEmbeddings
+    );
 
     merged.completion.enabled = Boolean(merged.completion.enabled);
     merged.completion.provider = (
@@ -4816,6 +4986,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       .filter((scope, index, array): scope is string => Boolean(scope) && array.indexOf(scope) === index);
     merged.storyChat.useLorebookContext = Boolean(merged.storyChat.useLorebookContext);
     merged.storyChat.manualContext = (merged.storyChat.manualContext ?? '').toString();
+    const steeringScopeRefs = Array.isArray(merged.storyChat.steeringScopeRefs)
+      ? merged.storyChat.steeringScopeRefs
+      : [];
+    merged.storyChat.steeringScopeRefs = normalizeStoryChatSteeringRefs(
+      steeringScopeRefs.map(ref => String(ref ?? ''))
+    );
     merged.storyChat.pinnedInstructions = (merged.storyChat.pinnedInstructions ?? '').toString();
     merged.storyChat.storyNotes = (merged.storyChat.storyNotes ?? '').toString();
     merged.storyChat.sceneIntent = (merged.storyChat.sceneIntent ?? '').toString();
@@ -4915,6 +5091,15 @@ export default class LoreBookConverterPlugin extends Plugin {
                 .map((scope: string) => normalizeScope(scope))
                 .filter((scope: string | null): scope is string => Boolean(scope))
               : [],
+            steeringSourceRefs: Array.isArray(message.contextMeta.steeringSourceRefs)
+              ? message.contextMeta.steeringSourceRefs.map((item: unknown) => String(item))
+              : [],
+            steeringSourceScopes: Array.isArray(message.contextMeta.steeringSourceScopes)
+              ? message.contextMeta.steeringSourceScopes.map((item: unknown) => String(item))
+              : [],
+            unresolvedSteeringSourceRefs: Array.isArray(message.contextMeta.unresolvedSteeringSourceRefs)
+              ? message.contextMeta.unresolvedSteeringSourceRefs.map((item: unknown) => String(item))
+              : [],
             specificNotePaths: Array.isArray(message.contextMeta.specificNotePaths)
               ? message.contextMeta.specificNotePaths.map((item: unknown) => String(item))
               : [],
@@ -5013,6 +5198,15 @@ export default class LoreBookConverterPlugin extends Plugin {
                   .map((scope: string) => normalizeScope(scope))
                   .filter((scope: string | null): scope is string => Boolean(scope))
                 : [],
+              steeringSourceRefs: Array.isArray(message.contextMeta.steeringSourceRefs)
+                ? message.contextMeta.steeringSourceRefs.map((item: unknown) => String(item))
+                : [],
+              steeringSourceScopes: Array.isArray(message.contextMeta.steeringSourceScopes)
+                ? message.contextMeta.steeringSourceScopes.map((item: unknown) => String(item))
+                : [],
+              unresolvedSteeringSourceRefs: Array.isArray(message.contextMeta.unresolvedSteeringSourceRefs)
+                ? message.contextMeta.unresolvedSteeringSourceRefs.map((item: unknown) => String(item))
+                : [],
               specificNotePaths: Array.isArray(message.contextMeta.specificNotePaths)
                 ? message.contextMeta.specificNotePaths.map((item: unknown) => String(item))
                 : [],
@@ -5088,6 +5282,11 @@ export default class LoreBookConverterPlugin extends Plugin {
         const selectedScopes = selectedSnapshotScopes
           .map((scope: unknown) => normalizeScope(String(scope ?? '')))
           .filter((scope: string | null, index: number, array: Array<string | null>): scope is string => Boolean(scope) && array.indexOf(scope) === index);
+        const steeringScopeRefs = normalizeStoryChatSteeringRefs(
+          Array.isArray(snapshot.steeringScopeRefs)
+            ? snapshot.steeringScopeRefs.map((ref: unknown) => String(ref ?? ''))
+            : []
+        );
         const noteRefs = Array.isArray(snapshot.noteContextRefs) ? snapshot.noteContextRefs : [];
         const noteContextRefs = noteRefs
           .map((ref: unknown) => normalizeLinkTarget(String(ref ?? '')))
@@ -5101,6 +5300,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           selectedScopes,
           useLorebookContext: Boolean(snapshot.useLorebookContext),
           manualContext: (snapshot.manualContext ?? '').toString(),
+          steeringScopeRefs,
           pinnedInstructions: (snapshot.pinnedInstructions ?? '').toString(),
           storyNotes: (snapshot.storyNotes ?? '').toString(),
           sceneIntent: (snapshot.sceneIntent ?? '').toString(),
@@ -5149,7 +5349,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     this.liveContextIndex = new LiveContextIndex(
       this.app,
-      () => this.settings
+      () => this.settings,
+      record => this.appendEmbeddingOperationLog(record)
     );
     this.chapterSummaryStore = new ChapterSummaryStore(this.app);
     this.lorebookScopeCache = new LorebookScopeCache({
@@ -6848,7 +7049,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       const sqliteExporter = new SqlitePackExporter(this.app);
       const sqliteReader = new SqlitePackReader(this.app);
       const embeddingService = this.settings.embeddings.enabled
-        ? new EmbeddingService(this.app, this.settings.embeddings)
+        ? new EmbeddingService(this.app, this.settings.embeddings, {
+          onOperationLog: record => this.appendEmbeddingOperationLog(record)
+        })
         : null;
       const scopeAssignments: ScopeOutputAssignment[] = scopesToBuild.map(scope => ({
         scope,

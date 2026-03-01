@@ -385,6 +385,8 @@ Story Steering scope notes include:
 - `Active Lorebooks` list (one scope per line)
   - this list is the preferred lorebook scope source for `Continue Story with Context`
   - frontmatter scope keys remain fallback-compatible
+- Story Steering panel edits autosave immediately to the currently loaded scope
+- switching scope type/key autosaves current changes first, then loads the selected scope
 
 Story Steering extraction behavior:
 
@@ -394,7 +396,7 @@ Story Steering extraction behavior:
   - `Update from Near-Cursor Context`: story text before cursor in active editor (fallback to note body when no editor window is available)
 - existing steering state is treated as baseline and fields without evidence remain preserved
 - optional per-run update prompt can steer what should be changed
-- review modal shows per-field `Current` (read-only) vs `Proposed` (editable) values before apply
+- review modal shows per-field `Current` (read-only) vs `Proposed` (editable) values before apply + immediate scope save
 - optional sanitization mode controls filtering:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
@@ -761,9 +763,11 @@ LLM operation log settings:
 - `Enable LLM Operation Log`
 - `LLM Operation Log Path`
 - `LLM Operation Log Max Entries`
+- `Include Embedding Backend Calls`
 - `Open LLM Operation Log Explorer` (settings button + command)
 
 When enabled, LoreVault writes full LLM request/response content (including tool planner calls) to the configured JSONL file.
+When `Include Embedding Backend Calls` is enabled, LoreVault also writes embedding provider calls with `kind: embedding`.
 Use command `Open LLM Operation Log Explorer` to inspect/search entries, view parsed request messages (with preserved newlines) in expandable textboxes, and open full raw request/response payload JSON inside the plugin.
 
 ## Story Chat Panel
@@ -780,14 +784,10 @@ Current behavior:
   - selected lorebook scopes
   - `Use Lorebook Context` toggle
   - manual context text
-  - pinned instructions text
-  - story notes text
-  - scene intent text
-  - continuity state:
-    - active plot threads (list)
-    - unresolved commitments/open loops (list)
-    - recent canon deltas (list)
-    - per-group inclusion toggles
+  - steering source refs (`note:*`, `story:*`, `chapter:*`)
+    - note refs pull note content + steering
+    - story/chapter refs pull steering only
+  - continuity per-group inclusion toggles (threads/open loops/canon deltas)
   - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
 - supports per-message actions:
@@ -821,6 +821,8 @@ Turn context assembly:
 - recent chat history window
 - deterministic context inspector metadata attached to assistant turns:
   - selected scopes
+  - resolved steering source refs + steering scopes
+  - unresolved steering source refs
   - resolved specific note paths
   - unresolved note references
   - chapter memory summaries used for the turn

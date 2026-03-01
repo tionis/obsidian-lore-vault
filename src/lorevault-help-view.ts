@@ -152,12 +152,14 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Story Steering and Chat', {
       bullets: [
         'Story Steering stores reusable controls in scope notes: `global`, `story`, `chapter`, `note`.',
+        'Story Steering edits autosave immediately; switching scope type/key autosaves current edits before loading the next scope.',
         '`Active Lorebooks` in steering notes is the primary lorebook selector for continuation.',
         'Steering layers: pinned instructions, story notes, scene intent, plot threads, open loops, canon deltas.',
-        'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/save.',
+        'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/apply.',
         'Steering update review now shows field-level Current vs Proposed values for manual comparison before apply.',
         '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
-        'Story Chat supports per-conversation scopes, manual context, specific note references, and fork/regenerate.',
+        'Story Chat supports per-conversation scopes, manual context, steering source refs (`note:*`, `story:*`, `chapter:*`), specific notes, and fork/regenerate.',
+        'Story Chat continuity items are pulled from resolved steering scopes, with per-group inclusion toggles.',
         'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed steering scopes.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'
       ],
@@ -219,7 +221,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Settings You Will Likely Use', {
       bullets: [
         'Writing Completion: provider/model/context window/max output and model presets.',
-        'LLM Operation Log: enable full request/response logging, path, retention cap, and open the built-in explorer panel with parsed message inspection.',
+        'LLM Operation Log: enable full request/response logging, path, retention cap, optional embedding-call logging, and open the built-in explorer panel with parsed message inspection.',
         'Story Chat folder plus Story Chat tool-call limits/write toggle.',
         'Story Steering folder and extraction sanitization setting.',
         'Retrieval controls: graph hops/decay, backlink expansion, fallback policy (`off|auto|always`), body-lift settings.',

@@ -3,6 +3,7 @@ import { ConverterSettings, RagChunk, RagChunkEmbedding } from './models';
 import { sha256HexAsync, stableJsonHashAsync } from './hash-utils';
 import { requestEmbeddings } from './embedding-provider';
 import { CachedEmbeddingRecord, EmbeddingCache } from './embedding-cache';
+import { CompletionOperationLogger } from './completion-provider';
 
 interface PendingChunk {
   chunk: RagChunk;
@@ -33,16 +34,22 @@ export interface RagSimilarityScore {
   score: number;
 }
 
+interface EmbeddingServiceOptions {
+  onOperationLog?: CompletionOperationLogger;
+}
+
 export class EmbeddingService {
   private app: App;
   private config: ConverterSettings['embeddings'];
   private cache: EmbeddingCache;
   private chunkingSignature: string;
+  private onOperationLog: CompletionOperationLogger | undefined;
 
-  constructor(app: App, config: ConverterSettings['embeddings']) {
+  constructor(app: App, config: ConverterSettings['embeddings'], options?: EmbeddingServiceOptions) {
     this.app = app;
     this.config = config;
     this.cache = new EmbeddingCache(app, config);
+    this.onOperationLog = options?.onOperationLog;
     this.chunkingSignature = JSON.stringify({
       mode: config.chunkingMode,
       minChunkChars: config.minChunkChars,
@@ -121,7 +128,9 @@ export class EmbeddingService {
       const batch = pending.slice(i, i + batchSize);
       const vectors = await requestEmbeddings(this.config, {
         texts: batch.map(item => item.chunk.text),
-        instruction: this.config.instruction
+        instruction: this.config.instruction,
+        operationName: 'embeddings_embed_chunks',
+        onOperationLog: this.onOperationLog
       });
 
       for (let j = 0; j < batch.length; j++) {
@@ -143,7 +152,9 @@ export class EmbeddingService {
 
     const vectors = await requestEmbeddings(this.config, {
       texts: [text],
-      instruction: this.config.instruction
+      instruction: this.config.instruction,
+      operationName: 'embeddings_embed_query',
+      onOperationLog: this.onOperationLog
     });
     return vectors[0] ?? null;
   }

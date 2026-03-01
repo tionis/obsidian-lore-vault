@@ -103,7 +103,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
     operationLog: {
       enabled: overrides.operationLog?.enabled ?? false,
       path: overrides.operationLog?.path ?? '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
-      maxEntries: overrides.operationLog?.maxEntries ?? 400
+      maxEntries: overrides.operationLog?.maxEntries ?? 400,
+      includeEmbeddings: overrides.operationLog?.includeEmbeddings ?? false
     },
     completion: {
       enabled: false,
@@ -133,6 +134,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',
+      steeringScopeRefs: [],
       pinnedInstructions: '',
       storyNotes: '',
       sceneIntent: '',

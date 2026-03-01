@@ -101,7 +101,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - Optional: create model presets and select an active completion preset for quick A/B comparison
    - Optional: configure Story Chat tool calling (`Enable Story Chat Tool Calls`, call/token/time limits, optional write-action gate)
-   - Optional: enable LLM Operation Log (full request/response debug logs), choose log path and retention
+   - Optional: enable LLM Operation Log (full request/response debug logs), choose log path/retention, and optionally include embedding backend calls
    - Optional: open `LLM Operation Log Explorer` from settings (or command palette) to inspect/search captured calls in-plugin
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
@@ -140,7 +140,7 @@ If you prefer to build the plugin from source:
    - Story Steering LLM assistance supports optional update prompts so you can request targeted steering changes before review/save
    - In Story Steering, `Update from Near-Cursor Context` uses text before cursor in the active editor (fallback: active note body)
    - Story Steering review modal shows `Current` vs `Proposed` values per field before apply
-   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads without leaving Obsidian
+   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
    - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
 
 5. **Open embedded help**

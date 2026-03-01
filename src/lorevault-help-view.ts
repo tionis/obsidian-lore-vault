@@ -115,7 +115,7 @@ export class LorevaultHelpView extends ItemView {
         'Use `previousChapter` / `nextChapter` links for explicit ordering when needed.',
         'Add a `## Summary` section near the top of notes; LoreVault prefers this for memory/retrieval.'
       ],
-      note: 'Summary precedence is deterministic: `## Summary` first paragraph -> frontmatter `summary` fallback -> excerpt fallback.',
+      note: 'Summary precedence is deterministic: `## Summary` content (or `LV_BEGIN/LV_END` block when present) -> frontmatter `summary` fallback -> excerpt fallback.',
       codeSample: [
         '---',
         'tags: [lorebook/universe/yggdrasil]',
@@ -196,7 +196,7 @@ export class LorevaultHelpView extends ItemView {
         'Generate world_info or chapter summaries from command palette or editor context menu.',
         'Review and edit in a modal before writing.',
         'Accepted summaries are written to `## Summary` in the note body.',
-        'For safety, only the first paragraph under `## Summary` is treated as canonical summary text.'
+        'Chapter summaries can be multi-paragraph; LoreVault wraps multi-paragraph chapter summaries with `<!-- LV_BEGIN_SUMMARY -->` and `<!-- LV_END_SUMMARY -->`.'
       ],
       actions: [
         { label: 'Open Manager', onClick: () => void this.plugin.openLorebooksManagerView() }

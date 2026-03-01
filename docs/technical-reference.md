@@ -370,7 +370,7 @@ Contracts:
   - updates active note `nextChapter`
   - sets new note `previousChapter` to active note
   - links new note to the same Author Note as the active note
-- editor context menu action `LoreVault: Create Next Story Chapter` is only shown when active note resolves as a story/chapter note.
+- create-next chapter is exposed in Story Writing panel and command palette (not editor context menu).
 
 ## Auto Summary Internals (Phase 9)
 
@@ -386,15 +386,15 @@ Flow:
 1. read note body (`stripFrontmatter`)
 2. build constrained prompt with summary mode (`world_info` or `chapter`)
 3. call completion provider (non-stream request)
-4. normalize summary text (single paragraph, capped length)
+4. normalize summary text (`world_info`: capped single paragraph; `chapter`: multi-paragraph allowed, no hard length cap)
 5. show review modal with edit + accept options
-6. write accepted summary into note `## Summary` section
+6. write accepted summary into note `## Summary` section (`chapter` multi-paragraph summaries use `LV_BEGIN/LV_END` markers)
 7. request index/view refresh and chapter-summary cache invalidation for affected note
 
 Precedence contract:
 
-- world_info entry content: first paragraph under `## Summary` -> `frontmatter summary` fallback -> note body
-- chapter memory summary: first paragraph under `## Summary` -> `frontmatter summary` fallback -> deterministic excerpt
+- world_info entry content: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` fallback -> note body
+- chapter memory summary: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` fallback -> deterministic excerpt
 
 ## Text Command Internals
 

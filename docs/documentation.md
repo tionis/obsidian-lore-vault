@@ -96,7 +96,7 @@ Key fields:
 Content:
 
 - markdown body (frontmatter stripped)
-- overridden by the first paragraph under `## Summary` when present
+- overridden by summary content under `## Summary` when present (`LV_BEGIN/LV_END` delimited block if present, otherwise first paragraph)
 - if summary section is missing, LoreVault falls back to frontmatter `summary`
 - if both are missing, LoreVault uses the note body
 
@@ -311,8 +311,8 @@ The same editor menu also exposes note-scoped summary actions when eligible:
 - `LoreVault: Run Text Command on Selection` (only when text selection is non-empty).
 - `LoreVault: Generate Keywords` for notes with lorebook-scope tags.
 - `LoreVault: Generate World Info Summary` for notes with lorebook-scope tags.
-- `LoreVault: Generate Chapter Summary` for notes with story/chapter frontmatter.
-- `LoreVault: Create Next Story Chapter` for notes with story/chapter frontmatter.
+- `LoreVault: Rewrite Author Note` for author-note documents.
+- `LoreVault: Continue Story with Context` is hidden for author-note documents.
 
 Provider options:
 
@@ -444,7 +444,7 @@ Editor context menu behavior:
 
 - keyword generation action appears only when the current note is in a lorebook scope (tag-derived).
 - world_info summary action appears only when the current note is in a lorebook scope (tag-derived).
-- chapter summary action appears only when the current note resolves as a story/chapter note from frontmatter.
+- chapter summary generation is available via command palette and Story Writing panel.
 
 Review/acceptance flow:
 
@@ -462,13 +462,17 @@ Storage and determinism:
 Precedence:
 
 - world_info export content:
-  - first paragraph under `## Summary`
+  - summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph)
   - frontmatter `summary` (fallback)
   - note body
 - chapter memory:
-  - first paragraph under `## Summary`
+  - summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph)
   - frontmatter `summary` (fallback)
   - deterministic excerpt fallback
+- chapter summaries are not hard-length capped.
+- when a chapter summary contains multiple paragraphs, LoreVault writes it inside:
+  - `<!-- LV_BEGIN_SUMMARY -->`
+  - `<!-- LV_END_SUMMARY -->`
 
 Settings (LoreVault -> Auto Summaries):
 
@@ -496,7 +500,7 @@ Current behavior:
 - split command in current-folder mode writes chapter files beside the source note.
 - split command in pick-folder mode writes chapter files to the selected existing vault folder.
 - create-next command creates a new chapter note in the active note folder, sets current note `nextChapter`, sets new note `previousChapter`, and links the new note to the same Author Note.
-- editor context menu shows `LoreVault: Create Next Story Chapter` only when active note resolves as a story/chapter note.
+- create-next chapter is exposed in Story Writing panel (and command palette), not editor context menu.
 
 ## Cost Tracking (Experimental, Phase 13)
 
@@ -585,6 +589,7 @@ Capabilities:
   - `Open/Create Author Note`
   - `Link Author Note` (interactive picker)
   - `Create Next Chapter`
+  - `Generate Chapter Summary`
   - `Rewrite Author Note`
 - Author Note workflow:
   - linked from story frontmatter `authorNote`

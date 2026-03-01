@@ -107,7 +107,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
-   - Optional: configure Auto Summaries (summary input/output character caps)
+   - Optional: configure Auto Summaries (summary input cap + world_info output cap)
    - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/scope)
    - Optional: configure embeddings backend/cache/chunking for semantic fallback retrieval
    - Adjust priority weights if needed
@@ -147,8 +147,8 @@ If you prefer to build the plugin from source:
    - Long-form chapter QoL commands:
      - `Split Active Story Note into Chapter Notes`
      - `Split Active Story Note into Chapter Notes (Pick Folder)`
-     - `Create Next Story Chapter` (also appears in editor context menu for notes with chapter frontmatter)
-   - Story Writing Panel also includes `Link Author Note` and `Create Next Chapter` actions
+     - `Create Next Story Chapter`
+   - Story Writing Panel also includes `Link Author Note`, `Create Next Chapter`, and `Generate Chapter Summary` actions
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
@@ -168,8 +168,9 @@ If you prefer to build the plugin from source:
    - In the review modal:
      - `Write Summary Section` writes/updates the `## Summary` section in the note body
    - LoreVault uses precedence:
-     - world_info: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> body
-     - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> excerpt
+     - world_info: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` (fallback) -> body
+     - chapter memory: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` (fallback) -> excerpt
+   - Chapter summaries are not hard-length capped; multi-paragraph chapter summaries are wrapped with `<!-- LV_BEGIN_SUMMARY -->` and `<!-- LV_END_SUMMARY -->` in `## Summary`.
 
 7. **Optional: Run text commands on selection**
    - Select text in editor

@@ -137,7 +137,7 @@ Reference design: `docs/planning.md`.
 
 - [x] Add command + panel: `Apply Story Delta to Existing Wiki`.
 - [x] Add panel inputs:
-  - source story markdown/story note selection
+  - source story markdown/source-note selection (`note`/`chapter`/`story` with note picker)
   - target wiki folder/tag scope
   - update policy (safe append vs structured merge)
   - default tags/lorebook tag mapping for newly created pages

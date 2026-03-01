@@ -1,4 +1,4 @@
-import { ItemView, Notice, Setting, TFile, getAllTags, WorkspaceLeaf } from 'obsidian';
+import { App, FuzzySuggestModal, ItemView, Notice, Setting, TFile, getAllTags, WorkspaceLeaf } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { requestStoryContinuation } from './completion-provider';
 import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
@@ -14,11 +14,38 @@ import {
 } from './story-delta-update';
 import { extractLorebookScopesFromTags, normalizeScope, shouldIncludeInScope } from './lorebook-scoping';
 import { normalizeVaultPath } from './vault-path-utils';
+import { FrontmatterData, stripFrontmatter } from './frontmatter-utils';
+import { parseStoryThreadNodeFromFrontmatter, resolveStoryThread, StoryThreadNode } from './story-thread-resolver';
+import { resolveStoryDeltaSourcePaths, StoryDeltaSourceMode } from './story-delta-source';
 
 export const LOREVAULT_STORY_DELTA_VIEW_TYPE = 'lorevault-story-delta-view';
 
 type StoryDeltaConflictDecision = 'pending' | 'accept' | 'reject' | 'keep_both';
 type StoryDeltaConflictFilter = 'all' | StoryDeltaConflictDecision;
+
+class StoryDeltaSourceNotePickerModal extends FuzzySuggestModal<TFile> {
+  private readonly files: TFile[];
+  private readonly onChoose: (file: TFile) => void;
+
+  constructor(app: App, files: TFile[], onChoose: (file: TFile) => void) {
+    super(app);
+    this.files = [...files].sort((left, right) => left.path.localeCompare(right.path));
+    this.onChoose = onChoose;
+    this.setPlaceholder('Pick story source note...');
+  }
+
+  getItems(): TFile[] {
+    return this.files;
+  }
+
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  onChooseItem(file: TFile): void {
+    this.onChoose(file);
+  }
+}
 
 function buildConflictCompanionPath(path: string): string {
   const normalized = normalizeVaultPath(path);
@@ -67,6 +94,7 @@ function buildConflictCompanionContent(
 export class LorevaultStoryDeltaView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private sourceStoryNotePath = '';
+  private sourceMode: StoryDeltaSourceMode = 'note';
   private storyMarkdown = '';
   private newNoteTargetFolder = 'LoreVault/import';
   private selectedLorebookScopes: string[] = [];
@@ -150,13 +178,77 @@ export class LorevaultStoryDeltaView extends ItemView {
       throw new Error(`Story note not found: ${storyPath}`);
     }
 
-    const raw = await this.app.vault.read(file);
-    const resolved = raw.trim();
-    if (!resolved) {
-      throw new Error(`Story note is empty: ${storyPath}`);
+    if (this.sourceMode === 'note') {
+      const raw = await this.app.vault.read(file);
+      const resolved = raw.trim();
+      if (!resolved) {
+        throw new Error(`Story note is empty: ${storyPath}`);
+      }
+      return resolved;
     }
 
-    return resolved;
+    const nodes = this.collectStoryThreadNodes();
+    const resolution = resolveStoryThread(nodes, file.path);
+    if (!resolution) {
+      throw new Error(`Selected source note is not part of a resolvable story thread: ${storyPath}`);
+    }
+
+    const targetPaths = resolveStoryDeltaSourcePaths(this.sourceMode, file.path, resolution);
+    const targetFiles = targetPaths
+      .map(path => this.app.vault.getAbstractFileByPath(path))
+      .filter((candidate): candidate is TFile => candidate instanceof TFile);
+    if (targetFiles.length === 0) {
+      throw new Error(`No source files found for ${this.sourceMode} mode.`);
+    }
+
+    return this.buildStoryMarkdownFromFiles(
+      targetFiles,
+      this.sourceMode === 'chapter' ? 'chapter' : `story (${resolution.storyId})`
+    );
+  }
+
+  private collectStoryThreadNodes(): StoryThreadNode[] {
+    const nodes: StoryThreadNode[] = [];
+    const files = [...this.app.vault.getMarkdownFiles()].sort((left, right) => left.path.localeCompare(right.path));
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = (cache?.frontmatter ?? {}) as FrontmatterData;
+      const node = parseStoryThreadNodeFromFrontmatter(file.path, file.basename, frontmatter);
+      if (node) {
+        nodes.push(node);
+      }
+    }
+    return nodes;
+  }
+
+  private async buildStoryMarkdownFromFiles(files: TFile[], sourceLabel: string): Promise<string> {
+    const sections: string[] = [];
+
+    for (const file of files) {
+      const raw = await this.app.vault.read(file);
+      const body = stripFrontmatter(raw).trim();
+      if (!body) {
+        continue;
+      }
+      const section = [
+        `## ${file.basename}`,
+        `Source: \`${file.path}\``,
+        '',
+        body
+      ].join('\n');
+      sections.push(section);
+    }
+
+    if (sections.length === 0) {
+      throw new Error(`Selected ${sourceLabel} source contains no markdown content.`);
+    }
+
+    return [
+      `# Story Delta Source (${sourceLabel})`,
+      '',
+      sections.join('\n\n---\n\n'),
+      ''
+    ].join('\n').trim();
   }
 
   private async collectTargetPages(): Promise<StoryDeltaExistingPageInput[]> {
@@ -207,6 +299,19 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
     this.sourceStoryNotePath = activeFile.path;
     this.render();
+  }
+
+  private openStorySourceNotePicker(): void {
+    const files = this.app.vault.getMarkdownFiles();
+    if (files.length === 0) {
+      new Notice('No markdown notes found.');
+      return;
+    }
+    const modal = new StoryDeltaSourceNotePickerModal(this.app, files, file => {
+      this.sourceStoryNotePath = file.path;
+      this.render();
+    });
+    modal.open();
   }
 
   private getNormalizedSelectedScopes(): string[] {
@@ -649,7 +754,7 @@ export class LorevaultStoryDeltaView extends ItemView {
 
     new Setting(contentEl)
       .setName('Source Story Note Path (Optional)')
-      .setDesc('If set, this note is used when Story Markdown is empty.')
+      .setDesc('Used when Story Markdown is empty. In chapter/story mode, this note anchors thread resolution.')
       .addText(text => text
         .setPlaceholder('Stories/Book One/Chapter 03.md')
         .setValue(this.sourceStoryNotePath)
@@ -657,10 +762,38 @@ export class LorevaultStoryDeltaView extends ItemView {
           this.sourceStoryNotePath = value.trim();
         }))
       .addButton(button => button
+        .setButtonText('Pick Note')
+        .onClick(() => {
+          this.openStorySourceNotePicker();
+        }))
+      .addButton(button => button
         .setButtonText('Use Active Note')
         .onClick(() => {
           this.setStoryPathFromActiveNote();
         }));
+
+    new Setting(contentEl)
+      .setName('Source Scope')
+      .setDesc('How Source Story Note Path is expanded when Story Markdown is empty.')
+      .addDropdown(dropdown => {
+        dropdown.addOption('note', 'Note (selected note only)');
+        dropdown.addOption('chapter', 'Chapter (selected chapter note)');
+        dropdown.addOption('story', 'Story (full story thread)');
+        dropdown
+          .setValue(this.sourceMode)
+          .onChange(value => {
+            this.sourceMode = value === 'chapter' || value === 'story' ? value : 'note';
+            this.render();
+          });
+      });
+    contentEl.createEl('p', {
+      cls: 'lorevault-routing-subtle',
+      text: this.sourceMode === 'story'
+        ? 'Story mode loads all notes in deterministic story-thread order from the selected source note.'
+        : this.sourceMode === 'chapter'
+          ? 'Chapter mode requires story/chapter frontmatter and loads the selected chapter note.'
+          : 'Note mode loads exactly the selected source note content.'
+    });
 
     new Setting(contentEl)
       .setName('Story Markdown')

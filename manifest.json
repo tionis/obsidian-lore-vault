@@ -1,7 +1,7 @@
 {
   "id": "lore-vault",
   "name": "LoreVault",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "minAppVersion": "0.15.0",
   "description": "Build scoped world info and RAG context packs from Obsidian notes",
   "author": "tionis.dev",

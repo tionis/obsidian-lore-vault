@@ -1,33 +1,26 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
-import { normalizeScope } from './lorebook-scoping';
 import { StorySteeringReviewModal, StorySteeringReviewResult } from './story-steering-review-modal';
 import {
   createEmptyStorySteeringState,
   normalizeStorySteeringScopeType,
   normalizeStorySteeringState,
-  StorySteeringCanonicalScopeType,
   StorySteeringEffectiveState,
   StorySteeringScope,
-  StorySteeringScopeType,
   StorySteeringState
 } from './story-steering';
 
 export const LOREVAULT_STORY_STEERING_VIEW_TYPE = 'lorevault-story-steering-view';
 
-function formatScopeTypeLabel(type: StorySteeringScopeType): string {
-  return normalizeStorySteeringScopeType(type);
-}
-
 function formatScope(scope: StorySteeringScope): string {
-  return `${formatScopeTypeLabel(scope.type)}:${scope.key || '(default)'}`;
+  const type = normalizeStorySteeringScopeType(scope.type);
+  return `${type}:${scope.key || '(default)'}`;
 }
 
 export class StorySteeringView extends ItemView {
   private plugin: LoreBookConverterPlugin;
-  private selectedScopeType: StorySteeringCanonicalScopeType = 'note';
   private selectedScopeKey = '';
-  private loadedScope: StorySteeringScope = { type: 'global', key: 'global' };
+  private loadedScope: StorySteeringScope = { type: 'note', key: '' };
   private state: StorySteeringState = createEmptyStorySteeringState();
   private isLoading = false;
   private scopeSyncInFlight = false;
@@ -114,7 +107,7 @@ export class StorySteeringView extends ItemView {
 
   private async runSteeringExtraction(source: 'active_note' | 'story_window'): Promise<void> {
     if (this.extractionInFlight) {
-      new Notice('Steering extraction is already running.');
+      new Notice('Author-note extraction is already running.');
       return;
     }
     const controller = new AbortController();
@@ -142,13 +135,13 @@ export class StorySteeringView extends ItemView {
       this.markDirty();
       await this.persistScopeIfDirty(true);
       await this.render();
-      new Notice(`Updated steering scope: ${formatScope(this.loadedScope)}`);
+      new Notice(`Updated author note: ${formatScope(this.loadedScope)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/aborted/i.test(message)) {
-        new Notice('Steering extraction aborted.');
+        new Notice('Author-note extraction aborted.');
       } else {
-        new Notice(`Steering extraction failed: ${message}`);
+        new Notice(`Author-note extraction failed: ${message}`);
       }
     } finally {
       this.extractionInFlight = false;
@@ -160,70 +153,6 @@ export class StorySteeringView extends ItemView {
 
   private abortSteeringExtraction(): void {
     this.extractionAbortController?.abort();
-  }
-
-  private parseListInput(value: string): string[] {
-    const lines = value
-      .replace(/\r\n?/g, '\n')
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean);
-    const deduped: string[] = [];
-    for (const line of lines) {
-      if (!deduped.includes(line)) {
-        deduped.push(line);
-      }
-    }
-    return deduped;
-  }
-
-  private formatListInput(values: string[]): string {
-    return values.join('\n');
-  }
-
-  private getNormalizedActiveLorebooks(): string[] {
-    const normalized = this.state.activeLorebooks
-      .map(scope => normalizeScope(scope))
-      .filter(Boolean);
-    return [...new Set(normalized)].sort((left, right) => left.localeCompare(right));
-  }
-
-  private addActiveLorebook(scope: string): void {
-    const normalized = normalizeScope(scope);
-    if (!normalized) {
-      return;
-    }
-    const next = this.getNormalizedActiveLorebooks();
-    if (next.includes(normalized)) {
-      return;
-    }
-    next.push(normalized);
-    next.sort((left, right) => left.localeCompare(right));
-    this.state.activeLorebooks = next;
-    this.markDirty();
-    void this.render();
-  }
-
-  private removeActiveLorebook(scope: string): void {
-    const normalized = normalizeScope(scope);
-    if (!normalized) {
-      return;
-    }
-    this.state.activeLorebooks = this.getNormalizedActiveLorebooks()
-      .filter(item => item !== normalized);
-    this.markDirty();
-    void this.render();
-  }
-
-  private getAvailableLorebookScopes(): string[] {
-    return this.plugin.getCachedLorebookScopes();
-  }
-
-  private getSelectedScope(): StorySteeringScope {
-    return {
-      type: normalizeStorySteeringScopeType(this.selectedScopeType),
-      key: this.selectedScopeType === 'global' ? 'global' : this.selectedScopeKey.trim()
-    };
   }
 
   private areScopesEqual(left: StorySteeringScope, right: StorySteeringScope): boolean {
@@ -256,9 +185,9 @@ export class StorySteeringView extends ItemView {
     }
 
     const targetScope = this.loadedScope;
-    if (targetScope.type !== 'global' && !targetScope.key.trim()) {
+    if (!targetScope.key.trim()) {
       if (force && this.hasPendingEdits) {
-        new Notice('Select an active markdown note so this steering scope can be resolved and saved.');
+        new Notice('Select an active markdown note so this author note can be resolved and saved.');
       }
       return;
     }
@@ -269,7 +198,7 @@ export class StorySteeringView extends ItemView {
       this.hasPendingEdits = false;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`Failed to save steering scope: ${message}`);
+      new Notice(`Failed to save author note: ${message}`);
     } finally {
       this.saveInFlight = false;
       if (this.saveQueued) {
@@ -283,10 +212,10 @@ export class StorySteeringView extends ItemView {
 
   private async loadScope(scope: StorySteeringScope): Promise<void> {
     const normalizedScope: StorySteeringScope = {
-      type: normalizeStorySteeringScopeType(scope.type),
-      key: normalizeStorySteeringScopeType(scope.type) === 'global' ? 'global' : scope.key.trim()
+      type: 'note',
+      key: scope.key.trim()
     };
-    if (normalizedScope.type !== 'global' && !normalizedScope.key) {
+    if (!normalizedScope.key) {
       this.loadedScope = normalizedScope;
       this.state = createEmptyStorySteeringState();
       this.hasPendingEdits = false;
@@ -305,14 +234,14 @@ export class StorySteeringView extends ItemView {
 
     this.scopeSyncInFlight = true;
     try {
-      const suggested = await this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType, {
+      const suggested = await this.plugin.getSuggestedStorySteeringScope('note', {
         ensureIds: true
       });
-      this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
-      this.selectedScopeKey = this.selectedScopeType === 'global'
-        ? 'global'
-        : (suggested.key || '').trim();
-      const nextScope = this.getSelectedScope();
+      this.selectedScopeKey = (suggested.key || '').trim();
+      const nextScope: StorySteeringScope = {
+        type: 'note',
+        key: this.selectedScopeKey
+      };
       if (!forceReload && this.areScopesEqual(this.loadedScope, nextScope)) {
         return;
       }
@@ -320,7 +249,7 @@ export class StorySteeringView extends ItemView {
       await this.loadScope(nextScope);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to resolve active-note scope: ${message}`);
+      throw new Error(`Failed to resolve active-note author note: ${message}`);
     } finally {
       this.scopeSyncInFlight = false;
       if (this.scopeSyncQueued) {
@@ -343,33 +272,24 @@ export class StorySteeringView extends ItemView {
 
   private renderEffectiveState(container: HTMLElement, effective: StorySteeringEffectiveState): void {
     const layers = container.createDiv({ cls: 'lorevault-help-note' });
-    layers.createEl('strong', { text: 'Effective Scope Chain' });
+    layers.createEl('strong', { text: 'Loaded Author Note Layer(s)' });
     const list = layers.createEl('ul');
+    if (effective.layers.length === 0) {
+      list.createEl('li', { text: 'No active markdown note selected.' });
+    }
     for (const layer of effective.layers) {
-      const textSnippets = [
-        layer.state.pinnedInstructions ? 'pinned' : '',
-        layer.state.storyNotes ? 'notes' : '',
-        layer.state.sceneIntent ? 'intent' : '',
-        layer.state.activeLorebooks.length > 0 ? `lorebooks:${layer.state.activeLorebooks.length}` : '',
-        layer.state.plotThreads.length > 0 ? `threads:${layer.state.plotThreads.length}` : '',
-        layer.state.openLoops.length > 0 ? `loops:${layer.state.openLoops.length}` : '',
-        layer.state.canonDeltas.length > 0 ? `deltas:${layer.state.canonDeltas.length}` : ''
-      ].filter(Boolean).join(', ') || 'empty';
+      const hasContent = layer.state.authorNote.trim().length > 0;
       list.createEl('li', {
-        text: `${formatScope(layer.scope)} -> ${layer.filePath} (${textSnippets})`
+        text: `${formatScope(layer.scope)} -> ${layer.filePath} (${hasContent ? 'has content' : 'empty'})`
       });
     }
 
     const merged = container.createDiv({ cls: 'lorevault-help-note' });
-    merged.createEl('strong', { text: 'Merged Effective Steering' });
+    merged.createEl('strong', { text: 'Effective Author Note' });
     merged.createEl('p', {
-      text: `Pinned: ${effective.merged.pinnedInstructions ? 'yes' : 'no'} | Notes: ${effective.merged.storyNotes ? 'yes' : 'no'} | Intent: ${effective.merged.sceneIntent ? 'yes' : 'no'}`
-    });
-    merged.createEl('p', {
-      text: `Active lorebooks: ${effective.merged.activeLorebooks.length > 0 ? effective.merged.activeLorebooks.join(', ') : '(none)'}`
-    });
-    merged.createEl('p', {
-      text: `Plot threads: ${effective.merged.plotThreads.length} | Open loops: ${effective.merged.openLoops.length} | Canon deltas: ${effective.merged.canonDeltas.length}`
+      text: effective.merged.authorNote
+        ? `Loaded (${effective.merged.authorNote.length} chars).`
+        : 'Empty.'
     });
   }
 
@@ -386,38 +306,15 @@ export class StorySteeringView extends ItemView {
       const titleRow = contentEl.createDiv({ cls: 'lorevault-help-title-row' });
       const icon = titleRow.createSpan({ cls: 'lorevault-help-icon' });
       setIcon(icon, 'sliders-horizontal');
-      titleRow.createEl('h2', { text: 'Story Steering' });
+      titleRow.createEl('h2', { text: 'Story Author Note' });
 
       const scopeSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
-      scopeSection.createEl('h3', { text: 'Scope' });
-
-      const scopeTypeRow = scopeSection.createDiv({ cls: 'lorevault-chat-scope-row' });
-      scopeTypeRow.createEl('label', { text: 'Scope Type' });
-      const scopeTypeSelect = scopeTypeRow.createEl('select', { cls: 'dropdown' });
-      const scopeOptions: StorySteeringCanonicalScopeType[] = ['global', 'story', 'chapter', 'note'];
-      for (const option of scopeOptions) {
-        const element = scopeTypeSelect.createEl('option');
-        element.value = option;
-        element.text = formatScopeTypeLabel(option);
-      }
-      scopeTypeSelect.value = this.selectedScopeType;
-      scopeTypeSelect.addEventListener('change', () => {
-        void (async () => {
-          const next = normalizeStorySteeringScopeType(scopeTypeSelect.value as StorySteeringScopeType);
-          if (next === this.selectedScopeType) {
-            return;
-          }
-          this.selectedScopeType = next;
-          await this.syncScopeToActiveNoteAndRender();
-        })();
-      });
+      scopeSection.createEl('h3', { text: 'Active Note Scope' });
 
       const scopeKeyRow = scopeSection.createDiv({ cls: 'lorevault-chat-scope-row' });
       scopeKeyRow.createEl('label', { text: 'Resolved Scope Key' });
       scopeKeyRow.createEl('code', {
-        text: this.selectedScopeType === 'global'
-          ? 'global'
-          : this.selectedScopeKey || '(no active markdown note)'
+        text: this.selectedScopeKey || '(no active markdown note)'
       });
 
       const activeFile = this.app.workspace.getActiveFile();
@@ -429,13 +326,13 @@ export class StorySteeringView extends ItemView {
       });
 
       const actions = scopeSection.createDiv({ cls: 'lorevault-help-actions' });
-      const reloadButton = actions.createEl('button', { text: 'Reload Active Note Scope' });
+      const reloadButton = actions.createEl('button', { text: 'Reload Active Note Author Note' });
       reloadButton.addEventListener('click', () => {
         void this.syncScopeToActiveNoteAndRender(true);
       });
 
-      const openButton = actions.createEl('button', { text: 'Open Scope Note' });
-      openButton.disabled = this.loadedScope.type !== 'global' && !this.loadedScope.key.trim();
+      const openButton = actions.createEl('button', { text: 'Open Author Note File' });
+      openButton.disabled = !this.loadedScope.key.trim();
       openButton.addEventListener('click', () => {
         void (async () => {
           try {
@@ -443,140 +340,43 @@ export class StorySteeringView extends ItemView {
             await this.plugin.openStorySteeringScopeNote(this.loadedScope);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            new Notice(`Failed to open steering scope note: ${message}`);
+            new Notice(`Failed to open author note file: ${message}`);
           }
         })();
       });
 
       scopeSection.createEl('p', {
         cls: 'lorevault-help-note',
-        text: 'Edits autosave immediately. Switching scope type or active note autosaves current changes, then loads the derived scope.'
-      });
-
-      const activeLorebooksSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
-      activeLorebooksSection.createEl('h3', { text: 'Active Lorebooks' });
-      activeLorebooksSection.createEl('p', {
-        text: 'These scopes are saved in this steering note and used as primary lorebook selection for continuation.'
-      });
-      const selectedLorebooks = this.getNormalizedActiveLorebooks();
-      const availableLorebooks = this.getAvailableLorebookScopes();
-      const unselectedLorebooks = availableLorebooks.filter(scope => !selectedLorebooks.includes(scope));
-      const selectedLorebookList = activeLorebooksSection.createDiv({ cls: 'lorevault-import-review-list' });
-      if (selectedLorebooks.length === 0) {
-        selectedLorebookList.createEl('p', { text: 'No active lorebooks selected.' });
-      } else {
-        for (const scope of selectedLorebooks) {
-          const row = selectedLorebookList.createDiv({ cls: 'lorevault-import-review-item lorevault-steering-lorebook-row' });
-          row.createEl('code', { text: scope });
-          const removeButton = row.createEl('button', { text: 'Remove' });
-          removeButton.addClass('lorevault-steering-remove-button');
-          removeButton.addEventListener('click', () => {
-            this.removeActiveLorebook(scope);
-          });
-        }
-      }
-      const lorebookActions = activeLorebooksSection.createDiv({ cls: 'lorevault-import-actions' });
-      const lorebookSelect = lorebookActions.createEl('select', {
-        cls: 'dropdown lorevault-steering-lorebook-select'
-      });
-      if (unselectedLorebooks.length === 0) {
-        const option = lorebookSelect.createEl('option');
-        option.value = '';
-        option.text = availableLorebooks.length === 0
-          ? 'No lorebooks found'
-          : 'All lorebooks already selected';
-        lorebookSelect.disabled = true;
-      } else {
-        const option = lorebookSelect.createEl('option');
-        option.value = '';
-        option.text = 'Select lorebook scope...';
-        for (const scope of unselectedLorebooks) {
-          const scopeOption = lorebookSelect.createEl('option');
-          scopeOption.value = scope;
-          scopeOption.text = scope;
-        }
-      }
-      const addLorebookButton = lorebookActions.createEl('button', { text: 'Add Lorebook' });
-      addLorebookButton.disabled = unselectedLorebooks.length === 0 || !lorebookSelect.value.trim();
-      lorebookSelect.addEventListener('change', () => {
-        addLorebookButton.disabled = !lorebookSelect.value.trim();
-      });
-      addLorebookButton.addEventListener('click', () => {
-        const value = lorebookSelect.value.trim();
-        if (!value) {
-          return;
-        }
-        this.addActiveLorebook(value);
+        text: 'Edits autosave immediately. Switching active note autosaves current changes, then loads the next note-level author note.'
       });
 
       const editorSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
-      editorSection.createEl('h3', { text: 'Steering Content' });
-
-      editorSection.createEl('label', { text: 'Pinned Instructions' });
-      const pinnedInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
-      pinnedInput.value = this.state.pinnedInstructions;
-      pinnedInput.placeholder = 'Stable constraints for this scope.';
-      pinnedInput.addEventListener('input', () => {
-        this.state.pinnedInstructions = pinnedInput.value.trim();
-        this.markDirty();
+      editorSection.createEl('h3', { text: 'Author Note (Markdown)' });
+      editorSection.createEl('p', {
+        text: 'Use your own markdown format. LoreVault passes this through as one steering block.'
       });
-
-      editorSection.createEl('label', { text: 'Story Notes' });
-      const notesInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
-      notesInput.value = this.state.storyNotes;
-      notesInput.placeholder = 'Author-note style guidance.';
-      notesInput.addEventListener('input', () => {
-        this.state.storyNotes = notesInput.value.trim();
-        this.markDirty();
-      });
-
-      editorSection.createEl('label', { text: 'Scene Intent' });
-      const intentInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
-      intentInput.value = this.state.sceneIntent;
-      intentInput.placeholder = 'What this scene/chapter should accomplish.';
-      intentInput.addEventListener('input', () => {
-        this.state.sceneIntent = intentInput.value.trim();
-        this.markDirty();
-      });
-
-      editorSection.createEl('label', { text: 'Active Plot Threads (one per line)' });
-      const threadsInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
-      threadsInput.value = this.formatListInput(this.state.plotThreads);
-      threadsInput.addEventListener('input', () => {
-        this.state.plotThreads = this.parseListInput(threadsInput.value);
-        this.markDirty();
-      });
-
-      editorSection.createEl('label', { text: 'Open Loops (one per line)' });
-      const loopsInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
-      loopsInput.value = this.formatListInput(this.state.openLoops);
-      loopsInput.addEventListener('input', () => {
-        this.state.openLoops = this.parseListInput(loopsInput.value);
-        this.markDirty();
-      });
-
-      editorSection.createEl('label', { text: 'Canon Deltas (one per line)' });
-      const deltasInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
-      deltasInput.value = this.formatListInput(this.state.canonDeltas);
-      deltasInput.addEventListener('input', () => {
-        this.state.canonDeltas = this.parseListInput(deltasInput.value);
+      const noteInput = editorSection.createEl('textarea', { cls: 'lorevault-chat-manual-input' });
+      noteInput.value = this.state.authorNote;
+      noteInput.placeholder = 'Example: ## Story Notes\n- ...\n\n## Scene Intent\n...';
+      noteInput.addEventListener('input', () => {
+        this.state.authorNote = noteInput.value.trim();
         this.markDirty();
       });
 
       const extractionSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
       extractionSection.createEl('h3', { text: 'LLM Assistance' });
       extractionSection.createEl('p', {
-        text: 'Update steering from story text, review/edit in a modal, then save immediately to the active scope.'
+        text: 'Update the author note from story text, review/edit in a modal, then save immediately to this note-level scope.'
       });
       extractionSection.createEl('p', {
         cls: 'lorevault-help-note',
-        text: '`Near-Cursor Context` means story text before the cursor in the active editor; if unavailable, it falls back to the active note body.'
+        text: '`Near-Cursor Context` means story text before the cursor in the active editor; if unavailable, it uses the active note body.'
       });
       extractionSection.createEl('label', { text: 'Optional Update Prompt' });
       const extractionPromptInput = extractionSection.createEl('textarea', {
         cls: 'lorevault-chat-manual-input'
       });
-      extractionPromptInput.placeholder = 'Optional: tell the LLM what should change in steering (for example "tighten pacing guidance and add unresolved political threads").';
+      extractionPromptInput.placeholder = 'Optional: tell the LLM what should change in the author note.';
       extractionPromptInput.value = this.extractionInstruction;
       extractionPromptInput.addEventListener('input', () => {
         this.extractionInstruction = extractionPromptInput.value.trim();
@@ -620,7 +420,7 @@ export class StorySteeringView extends ItemView {
       });
 
       const effectiveSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
-      effectiveSection.createEl('h3', { text: 'Effective Steering for Active Note' });
+      effectiveSection.createEl('h3', { text: 'Effective Author Note for Active Note' });
       const effective = await this.plugin.resolveEffectiveStorySteeringForActiveNote();
       this.renderEffectiveState(effectiveSection, effective);
     } finally {

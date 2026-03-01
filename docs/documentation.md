@@ -330,19 +330,17 @@ Settings:
 - context window tokens
 - prompt reserve tokens
 - steering layer placement for:
-  - pinned instructions
-  - story notes
-  - scene intent
+  - author note
   - inline directives
 - timeout
 
 Story lorebook scope selection order:
 
-1. Story Steering merged state `activeLorebooks` (preferred)
-2. Story frontmatter scope keys (fallback)
-3. active-note lorebook tag / configured active scope (final fallback)
+1. Story note frontmatter scope keys (preferred)
+2. Author Note frontmatter scope keys (fallback)
+3. no implicit scope fallback
 
-Story frontmatter scope keys (fallback):
+Story frontmatter scope keys:
 
 - keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`
 - value format:
@@ -355,11 +353,8 @@ Story frontmatter scope keys (fallback):
   - completion token budget is split across selected scopes
   - context budgets are trimmed iteratively if selected context exceeds input budget
 
-Optional frontmatter steering keys for editor continuation:
+Optional continuity frontmatter keys for editor continuation:
 
-- `lvPinnedInstructions` (or `lvPinned` / `pinnedInstructions`)
-- `lvStoryNotes` (or `lvStoryNote` / `storyNotes` / `authorNote`)
-- `lvSceneIntent` (or `sceneIntent` / `chapterIntent`)
 - continuity lists:
   - `lvPlotThreads` (or `plotThreads` / `activePlotThreads`)
   - `lvOpenLoops` (or `openLoops` / `unresolvedCommitments`)
@@ -376,30 +371,25 @@ Long-form story metadata (new):
 - `chapterTitle`: optional chapter display title
 - `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
 - `nextChapter`: optional links/paths to following chapter notes
-- `lvStoryId` (optional): Story Steering story scope key override
-- `lvChapterId` (optional): Story Steering chapter scope value override
-- `lvNoteId` (auto-managed): stable note identifier used for move-safe Story Steering note/chapter scope links
+- `lvNoteId` (auto-managed): stable note identifier used for note-level Story Steering scope links
 
 Story Steering scope notes include:
 
-- reusable steering text/list fields
-- `Active Lorebooks` list (one scope per line)
-  - this list is the preferred lorebook scope source for `Continue Story with Context`
-  - frontmatter scope keys remain fallback-compatible
-- Story Steering panel edits autosave immediately to the currently loaded scope
-- scope keys are derived from the active note (manual key input removed)
-- switching scope type or switching active note autosaves current changes first, then loads the derived scope
-- missing `lvNoteId`/`lvStoryId`/`lvChapterId` are auto-generated in frontmatter when required for selected scope type
+- one note-level Author Note markdown field (no global/story/chapter scope hierarchy)
+- optional frontmatter lorebook scopes using the same accepted scope keys
+- Story Steering panel edits autosave immediately to the currently loaded note scope
+- switching active note autosaves current changes first, then loads the next note-level scope
+- missing `lvNoteId` may be auto-generated in frontmatter for stable note-scope keys
 
 Story Steering extraction behavior:
 
-- extraction/update focuses on control metadata (instructions, intent, active threads/loops/deltas)
+- extraction/update focuses on Author Note markdown
 - source options:
   - `Update from Active Note`: active note body
   - `Update from Near-Cursor Context`: story text before cursor in active editor (fallback to note body when no editor window is available)
-- existing steering state is treated as baseline and fields without evidence remain preserved
+- existing Author Note markdown is treated as baseline and preserved when no evidence exists for changes
 - optional per-run update prompt can steer what should be changed
-- review modal shows per-field `Current` (read-only) vs `Proposed` (editable) values before apply + immediate scope save
+- review modal shows `Current` (read-only) vs `Proposed` (editable) Author Note markdown before apply + immediate save
 - optional sanitization mode controls filtering:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
@@ -746,8 +736,8 @@ Query behavior:
     - configurable fallback policy: `off|auto|always`
 - completion:
   - builds a prompt from scope context + recent near-cursor story context
-  - stages explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
-  - steering placement is configurable per layer (`system`, `pre-history`, `pre-response`)
+  - stages explicit steering layers (author note + inline directives)
+  - steering placement is configurable for author note + inline directives (`system`, `pre-history`, `pre-response`)
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
   - calls configured completion provider with streaming enabled
   - inserts streamed generated continuation text at cursor
@@ -815,9 +805,8 @@ Current behavior:
   - selected lorebook scopes
   - `Use Lorebook Context` toggle
   - manual context text
-  - steering source refs (`note:*`, `story:*`, `chapter:*`)
-    - note refs pull note content + steering
-    - story/chapter refs pull steering only
+  - steering source refs (`note:*`)
+    - note refs pull note content + note-level author-note steering
   - continuity per-group inclusion toggles (threads/open loops/canon deltas)
   - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
 - allows manual-context-only operation by disabling lorebook context or selecting no scopes
@@ -842,10 +831,10 @@ Turn context assembly:
 - optional Story Chat agent tool layer (when enabled and budget allows):
   - search/read selected lorebook entries
   - search/read linked story and manually selected notes
-  - read steering scopes in allowed active scope chain
-  - optionally update steering scopes/create lorebook notes when write actions are enabled and current turn includes explicit write intent
+  - read/update allowed note-level author-note scopes
+  - optionally create lorebook notes when write actions are enabled and current turn includes explicit write intent
 - optional tool-retrieved context layer (when enabled and budget allows)
-- explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
+- explicit steering layers (author note, inline directives)
 - optional continuity-state layer (plot threads, open loops, canon deltas) with selectable inclusion
 - optional manual context block
 - optional specific-note context blocks resolved from note references

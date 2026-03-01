@@ -286,6 +286,12 @@ Reference design: `docs/planning.md`.
   - [x] derive Story Steering scope keys from active note; auto-sync on active-note switch and auto-create missing `lvNoteId`/`lvStoryId`/`lvChapterId`
   - [x] replace chat manual steering text fields with steering source refs (`note`/`story`/`chapter`)
   - [x] resolve chat steering refs into steering layers and inspector traces each turn
+- [x] Story Steering simplification (Author Note model):
+  - [x] collapse steering state to one note-level `authorNote` markdown field
+  - [x] simplify Story Steering panel/review modal to Author Note markdown editing
+  - [x] remove multi-scope steering merge in continuation/chat (note-level only)
+  - [x] resolve lorebook scope selection from story-note frontmatter, then Author Note frontmatter (no active-scope fallback)
+  - [x] limit Story Chat steering refs/tool scope access to note-level steering only
 - [x] Story completion stop UX:
   - [x] add command: `Stop Active Generation`
   - [x] expose editor menu stop action while generation is active

@@ -38,19 +38,18 @@ This document is the implementation-level reference for core architecture and ru
   - note-backed conversation persistence
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
-  - scope-based steering storage (`global`/`story`/`chapter`/`note`)
-  - panel edits autosave to current scope; scope-switch or active-note switch saves current state before loading next scope
-  - scope keys are derived from active note metadata (manual key editing removed)
-  - auto-managed scope IDs (`lvNoteId`, plus `lvStoryId`/`lvChapterId` as needed) for seamless scope-key resolution
-  - compatibility alias for legacy `thread` scope files/keys
-  - per-scope `activeLorebooks` list used as primary scope selection source for continuation
-  - move-safe scope linking via `lvNoteId` frontmatter IDs
-  - legacy path-keyed note/chapter scope migration to ID-keyed scope files
+  - note-level author-note storage (`note` scope only)
+  - panel edits autosave to current note scope; active-note switch saves current state before loading next note scope
+  - note scope key is derived from active note metadata/path
+  - auto-managed note ID (`lvNoteId`) for move-safe scope linking
+  - compatibility alias support for legacy scope files/keys
+  - lorebook scope selection reads story-note frontmatter first, then author-note frontmatter
+  - legacy path-keyed note scope migration to ID-keyed note scope files
   - LLM-assisted steering update flow with optional per-run update prompt
   - extraction source modes: active note body or near-cursor editor context (text-before-cursor, note-body fallback)
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
   - markdown-backed steering note parse/serialize
-  - effective-layer merge for chat/continuation prompt assembly
+  - effective author-note merge for chat/continuation prompt assembly
 - `src/lorebook-scope-cache.ts`
   - shared metadata/scope cache reused by manager/steering/auditor UI
   - explicit invalidation on vault and settings mutations
@@ -265,7 +264,7 @@ Available tools:
 - linked-story/manual-note read/search:
   - `search_story_notes`
   - `read_story_note`
-- steering scope read/update (active scope chain only):
+- note-level author-note scope read/update (active note chain only):
   - `get_steering_scope`
   - `update_steering_scope`
 - optional lorebook note creation:
@@ -276,7 +275,7 @@ Boundary contract:
 - no whole-vault traversal; tools are restricted to:
   - selected lorebook scopes
   - linked story note set (story thread + manually selected note refs)
-  - steering scopes in active-note chain (`global`/`story`/`chapter`/`note`)
+  - note-level steering scopes in active-note chain (`note`)
 - write tools require:
   - `settings.storyChat.toolCalls.allowWriteActions = true`
   - explicit write intent in current user turn (deterministic heuristic gate)
@@ -432,7 +431,7 @@ Conversation persistence is note-backed in `storyChat.chatFolder`.
 Stored structure:
 
 - conversation metadata
-- per-conversation steering source refs (`note:*`, `story:*`, `chapter:*`)
+- per-conversation steering source refs (`note:*`)
 - per-conversation continuity inclusion toggles (plot threads/open loops/canon deltas)
 - legacy steering text/list fields remain parse-compatible for older chats
 - per-turn messages

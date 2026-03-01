@@ -34,13 +34,7 @@ export interface StorySteeringScopeChainOptions {
 }
 
 export interface StorySteeringState {
-  pinnedInstructions: string;
-  storyNotes: string;
-  sceneIntent: string;
-  activeLorebooks: string[];
-  plotThreads: string[];
-  openLoops: string[];
-  canonDeltas: string[];
+  authorNote: string;
 }
 
 export interface StorySteeringLayer {
@@ -55,32 +49,7 @@ export interface StorySteeringEffectiveState {
 }
 
 const EMPTY_STORY_STEERING_STATE: StorySteeringState = {
-  pinnedInstructions: '',
-  storyNotes: '',
-  sceneIntent: '',
-  activeLorebooks: [],
-  plotThreads: [],
-  openLoops: [],
-  canonDeltas: []
-};
-
-const TEXT_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'pinnedInstructions' | 'storyNotes' | 'sceneIntent'>} = {
-  'pinned instructions': 'pinnedInstructions',
-  'story notes': 'storyNotes',
-  'scene intent': 'sceneIntent'
-};
-
-const LIST_SECTION_BY_HEADING: {[key: string]: keyof Pick<StorySteeringState, 'activeLorebooks' | 'plotThreads' | 'openLoops' | 'canonDeltas'>} = {
-  'active lorebooks': 'activeLorebooks',
-  'lorebooks': 'activeLorebooks',
-  'lorebook scopes': 'activeLorebooks',
-  'active scopes': 'activeLorebooks',
-  'active plot threads': 'plotThreads',
-  'plot threads': 'plotThreads',
-  'open loops': 'openLoops',
-  'unresolved commitments': 'openLoops',
-  'canon deltas': 'canonDeltas',
-  'recent canon deltas': 'canonDeltas'
+  authorNote: ''
 };
 
 const NOTE_SCOPE_PREFIX = 'note:';
@@ -103,41 +72,6 @@ function normalizeTextField(value: unknown): string {
     return '';
   }
   return value.trim();
-}
-
-function normalizeListField(values: string[]): string[] {
-  return uniqueStrings(values.map(item => item.trim()).filter(Boolean));
-}
-
-function collectListItems(sectionText: string): string[] {
-  const items: string[] = [];
-  const lines = sectionText
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean);
-
-  for (const line of lines) {
-    if (line === '_None._' || line === '[none]' || line === '(none)') {
-      continue;
-    }
-
-    const bulletMatch = line.match(/^[-*+]\s+(.+)$/);
-    if (bulletMatch) {
-      items.push(bulletMatch[1].trim());
-      continue;
-    }
-
-    const orderedMatch = line.match(/^\d+\.\s+(.+)$/);
-    if (orderedMatch) {
-      items.push(orderedMatch[1].trim());
-      continue;
-    }
-
-    items.push(line);
-  }
-
-  return normalizeListField(items);
 }
 
 function splitLevelTwoSections(markdown: string): Array<{heading: string; body: string}> {
@@ -171,46 +105,73 @@ function splitLevelTwoSections(markdown: string): Array<{heading: string; body: 
   return resolved;
 }
 
+function normalizeAuthorNoteBody(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutTopHeading = trimmed
+    .replace(/^#\s+LoreVault Steering\s*$/im, '')
+    .replace(/^#\s+LoreVault Author Note\s*$/im, '')
+    .trim();
+
+  // Legacy structured steering files used many separate sections. Preserve intent by
+  // normalizing those headings into one markdown author-note document.
+  const sections = splitLevelTwoSections(withoutTopHeading);
+  if (sections.length === 0) {
+    return withoutTopHeading;
+  }
+
+  const lines: string[] = [];
+  for (const section of sections) {
+    const title = section.heading.trim();
+    const bodyText = section.body.trim();
+    if (!title || !bodyText || bodyText === '_None._') {
+      continue;
+    }
+
+    if (/^(active lorebooks|lorebooks|lorebook scopes|active scopes)$/i.test(title)) {
+      lines.push('## Active Lorebooks');
+      lines.push('');
+      const values = bodyText
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(item => item.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, ''))
+        .filter(Boolean);
+      lines.push(...values.map(value => `- ${value}`));
+      lines.push('');
+      continue;
+    }
+
+    lines.push(`## ${title}`);
+    lines.push('');
+    lines.push(bodyText);
+    lines.push('');
+  }
+
+  const normalized = lines.join('\n').trim();
+  return normalized || withoutTopHeading;
+}
+
 export function createEmptyStorySteeringState(): StorySteeringState {
   return {
-    ...EMPTY_STORY_STEERING_STATE,
-    plotThreads: [],
-    openLoops: [],
-    canonDeltas: []
+    ...EMPTY_STORY_STEERING_STATE
   };
 }
 
 export function normalizeStorySteeringState(input: Partial<StorySteeringState> | null | undefined): StorySteeringState {
   const state = input ?? {};
   return {
-    pinnedInstructions: normalizeTextField(state.pinnedInstructions),
-    storyNotes: normalizeTextField(state.storyNotes),
-    sceneIntent: normalizeTextField(state.sceneIntent),
-    activeLorebooks: normalizeListField(Array.isArray(state.activeLorebooks) ? state.activeLorebooks : []),
-    plotThreads: normalizeListField(Array.isArray(state.plotThreads) ? state.plotThreads : []),
-    openLoops: normalizeListField(Array.isArray(state.openLoops) ? state.openLoops : []),
-    canonDeltas: normalizeListField(Array.isArray(state.canonDeltas) ? state.canonDeltas : [])
+    authorNote: normalizeTextField(state.authorNote)
   };
 }
 
 export function parseStorySteeringMarkdown(markdown: string): StorySteeringState {
-  const next = createEmptyStorySteeringState();
-  const sections = splitLevelTwoSections(markdown);
-  for (const section of sections) {
-    const heading = section.heading.trim().toLowerCase();
-    const textKey = TEXT_SECTION_BY_HEADING[heading];
-    if (textKey) {
-      next[textKey] = normalizeTextField(section.body);
-      continue;
-    }
-
-    const listKey = LIST_SECTION_BY_HEADING[heading];
-    if (listKey) {
-      next[listKey] = collectListItems(section.body);
-    }
-  }
-
-  return normalizeStorySteeringState(next);
+  const body = stripFrontmatter(markdown ?? '').trim();
+  return normalizeStorySteeringState({
+    authorNote: normalizeAuthorNoteBody(body)
+  });
 }
 
 function extractJsonPayload(raw: string): unknown {
@@ -222,26 +183,6 @@ function extractJsonPayload(raw: string): unknown {
     throw new Error('Response did not contain a JSON object.');
   }
   return JSON.parse(candidate.slice(start, end + 1));
-}
-
-function parseExtractionList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return normalizeListField(
-      value
-        .map(item => (typeof item === 'string' ? item : ''))
-        .filter(Boolean)
-    );
-  }
-  if (typeof value === 'string') {
-    return normalizeListField(
-      value
-        .replace(/\r\n?/g, '\n')
-        .split('\n')
-        .map(item => item.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, ''))
-        .filter(Boolean)
-    );
-  }
-  return [];
 }
 
 function looksLikeLorebookFact(text: string): boolean {
@@ -283,20 +224,65 @@ function sanitizeExtractionTextField(value: string): string {
   return filtered.join('\n\n').trim();
 }
 
-function sanitizeExtractionListField(values: string[]): string[] {
-  return normalizeListField(values.filter(item => !looksLikeLorebookFact(item)));
+function toLines(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .map(item => item.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, ''))
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function buildLegacyAuthorNote(candidate: {[key: string]: unknown}): string {
+  const sections: string[] = [];
+  const textSections: Array<{title: string; keys: string[]}> = [
+    { title: 'General Writing Instructions', keys: ['pinnedInstructions', 'pinned'] },
+    { title: 'Story Notes', keys: ['storyNotes'] },
+    { title: 'Scene Intent', keys: ['sceneIntent'] }
+  ];
+  const listSections: Array<{title: string; keys: string[]}> = [
+    { title: 'Active Lorebooks', keys: ['activeLorebooks', 'lorebooks', 'lorebookScopes', 'activeScopes'] },
+    { title: 'Active Plot Threads', keys: ['plotThreads'] },
+    { title: 'Open Questions', keys: ['openLoops'] },
+    { title: 'Canon Deltas', keys: ['canonDeltas'] }
+  ];
+
+  for (const section of textSections) {
+    const rawValue = section.keys
+      .map(key => candidate[key])
+      .find(value => typeof value === 'string');
+    const text = normalizeTextField(rawValue);
+    if (!text) {
+      continue;
+    }
+    sections.push(`## ${section.title}\n\n${text}`);
+  }
+
+  for (const section of listSections) {
+    const rawValue = section.keys
+      .map(key => candidate[key])
+      .find(value => Array.isArray(value) || typeof value === 'string');
+    const items = toLines(rawValue);
+    if (items.length === 0) {
+      continue;
+    }
+    sections.push(`## ${section.title}\n\n${items.map(item => `- ${item}`).join('\n')}`);
+  }
+
+  return sections.join('\n\n').trim();
 }
 
 export function sanitizeStorySteeringExtractionState(state: StorySteeringState): StorySteeringState {
   const normalized = normalizeStorySteeringState(state);
   return normalizeStorySteeringState({
-    pinnedInstructions: sanitizeExtractionTextField(normalized.pinnedInstructions),
-    storyNotes: sanitizeExtractionTextField(normalized.storyNotes),
-    sceneIntent: sanitizeExtractionTextField(normalized.sceneIntent),
-    activeLorebooks: normalized.activeLorebooks,
-    plotThreads: sanitizeExtractionListField(normalized.plotThreads),
-    openLoops: sanitizeExtractionListField(normalized.openLoops),
-    canonDeltas: sanitizeExtractionListField(normalized.canonDeltas)
+    authorNote: sanitizeExtractionTextField(normalized.authorNote)
   });
 }
 
@@ -311,22 +297,17 @@ export function parseStorySteeringExtractionResponse(raw: string): StorySteering
     ? (objectPayload.state as {[key: string]: unknown})
     : objectPayload;
 
-  return normalizeStorySteeringState({
-    pinnedInstructions: normalizeTextField(candidate.pinnedInstructions),
-    storyNotes: normalizeTextField(candidate.storyNotes),
-    sceneIntent: normalizeTextField(candidate.sceneIntent),
-    activeLorebooks: parseExtractionList(candidate.activeLorebooks),
-    plotThreads: parseExtractionList(candidate.plotThreads),
-    openLoops: parseExtractionList(candidate.openLoops),
-    canonDeltas: parseExtractionList(candidate.canonDeltas)
-  });
-}
-
-function renderListSection(items: string[]): string {
-  if (items.length === 0) {
-    return '_None._';
+  const directAuthorNote = normalizeTextField(candidate.authorNote);
+  if (directAuthorNote) {
+    return normalizeStorySteeringState({
+      authorNote: directAuthorNote
+    });
   }
-  return items.map(item => `- ${item}`).join('\n');
+
+  const legacyAuthorNote = buildLegacyAuthorNote(candidate);
+  return normalizeStorySteeringState({
+    authorNote: legacyAuthorNote
+  });
 }
 
 function escapeYamlString(value: string): string {
@@ -342,35 +323,9 @@ export function stringifyStorySteeringMarkdown(scope: StorySteeringScope, state:
     `scopeType: ${scopeType}`,
     `scopeKey: "${escapeYamlString(scope.key)}"`,
     '---',
-    '# LoreVault Steering',
+    '# LoreVault Author Note',
     '',
-    '## Pinned Instructions',
-    '',
-    normalized.pinnedInstructions || '_None._',
-    '',
-    '## Story Notes',
-    '',
-    normalized.storyNotes || '_None._',
-    '',
-    '## Scene Intent',
-    '',
-    normalized.sceneIntent || '_None._',
-    '',
-    '## Active Lorebooks',
-    '',
-    renderListSection(normalized.activeLorebooks),
-    '',
-    '## Active Plot Threads',
-    '',
-    renderListSection(normalized.plotThreads),
-    '',
-    '## Open Loops',
-    '',
-    renderListSection(normalized.openLoops),
-    '',
-    '## Canon Deltas',
-    '',
-    renderListSection(normalized.canonDeltas),
+    normalized.authorNote || '_None._',
     ''
   ].join('\n');
 }
@@ -383,13 +338,7 @@ function mergeTextLayers(values: string[]): string {
 export function mergeStorySteeringStates(states: StorySteeringState[]): StorySteeringState {
   const normalized = states.map(state => normalizeStorySteeringState(state));
   return {
-    pinnedInstructions: mergeTextLayers(normalized.map(state => state.pinnedInstructions)),
-    storyNotes: mergeTextLayers(normalized.map(state => state.storyNotes)),
-    sceneIntent: mergeTextLayers(normalized.map(state => state.sceneIntent)),
-    activeLorebooks: uniqueStrings(normalized.flatMap(state => state.activeLorebooks)),
-    plotThreads: uniqueStrings(normalized.flatMap(state => state.plotThreads)),
-    openLoops: uniqueStrings(normalized.flatMap(state => state.openLoops)),
-    canonDeltas: uniqueStrings(normalized.flatMap(state => state.canonDeltas))
+    authorNote: mergeTextLayers(normalized.map(state => state.authorNote))
   };
 }
 
@@ -478,21 +427,6 @@ function resolveNoteId(frontmatter: FrontmatterData): string {
   return normalizeSteeringId(normalizeFrontmatterString(frontmatter, 'lvNoteId', 'lorevaultNoteId'));
 }
 
-function resolveStoryKey(frontmatter: FrontmatterData): string {
-  return normalizeFrontmatterString(frontmatter, 'lvStoryId', 'storyId', 'threadId', 'thread', 'story', 'lvThread');
-}
-
-function resolveChapterValue(frontmatter: FrontmatterData): string {
-  return normalizeFrontmatterString(frontmatter, 'lvChapterId', 'chapterId', 'chapter');
-}
-
-function buildChapterKey(storyKey: string, noteScopeKey: string, chapterValue: string): string {
-  if (storyKey) {
-    return `${storyKey}::chapter:${chapterValue}`;
-  }
-  return `${noteScopeKey}::chapter:${chapterValue}`;
-}
-
 function buildNoteScopeKey(filePath: string, noteId: string): {key: string; legacyKey: string} {
   const normalizedPath = normalizeVaultPath(filePath);
   const normalizedNoteId = normalizeSteeringId(noteId);
@@ -513,54 +447,25 @@ export function buildStorySteeringScopeResolutions(
   frontmatter: FrontmatterData,
   noteId: string
 ): StorySteeringScopeResolution[] {
-  const normalizedFrontmatter = normalizeFrontmatter(frontmatter);
   const normalizedPath = normalizeVaultPath(filePath);
   const { key: noteScopeKey, legacyKey: noteLegacyKey } = buildNoteScopeKey(normalizedPath, noteId);
-  const scopes: StorySteeringScopeResolution[] = [{
-    scope: { type: 'global', key: 'global' },
-    legacyScopes: []
-  }];
-  const storyKey = resolveStoryKey(normalizedFrontmatter);
-  if (storyKey) {
-    scopes.push({
-      scope: { type: 'story', key: storyKey },
-      legacyScopes: [{ type: 'thread', key: storyKey }]
-    });
-  }
-
-  const chapterValue = resolveChapterValue(normalizedFrontmatter);
-  if (chapterValue) {
-    const chapterScopeKey = buildChapterKey(storyKey, noteScopeKey, chapterValue);
-    const legacyChapterKey = buildChapterKey(storyKey, noteLegacyKey, chapterValue);
-    const legacyScopes = chapterScopeKey !== legacyChapterKey
-      ? [{ type: 'chapter' as const, key: legacyChapterKey }]
-      : [];
-    scopes.push({
-      scope: {
-        type: 'chapter',
-        key: chapterScopeKey
-      },
-      legacyScopes
-    });
-  }
-
   const noteLegacyScopes = noteScopeKey !== noteLegacyKey
     ? [{ type: 'note' as const, key: noteLegacyKey }]
     : [];
-  scopes.push({
+  return [{
     scope: {
       type: 'note',
       key: noteScopeKey
     },
     legacyScopes: noteLegacyScopes
-  });
-  return scopes;
+  }];
 }
 
 function toPrimaryScope(scope: StorySteeringScope): StorySteeringScope {
+  const canonicalType = normalizeStorySteeringScopeType(scope.type);
   return {
-    type: normalizeStorySteeringScopeType(scope.type),
-    key: scope.key
+    type: canonicalType,
+    key: canonicalType === 'global' ? 'global' : scope.key
   };
 }
 
@@ -605,58 +510,27 @@ export class StorySteeringStore {
     return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
   }
 
-  private async ensureScopeIdentifiersForFile(
-    file: TFile,
-    frontmatter: FrontmatterData,
-    ensureScopeType: StorySteeringCanonicalScopeType
-  ): Promise<FrontmatterData> {
-    const canonicalType = normalizeStorySteeringScopeType(ensureScopeType);
-    const shouldEnsureNoteId = canonicalType !== 'global';
-    const shouldEnsureStoryKey = canonicalType === 'story' || canonicalType === 'chapter';
-    const shouldEnsureChapterValue = canonicalType === 'chapter';
-
+  private async ensureNoteIdentifierForFile(file: TFile, frontmatter: FrontmatterData): Promise<FrontmatterData> {
     const existingNoteId = resolveNoteId(frontmatter);
-    const existingStoryKey = resolveStoryKey(frontmatter);
-    const existingChapterValue = resolveChapterValue(frontmatter);
-
-    const generatedNoteId = shouldEnsureNoteId && !existingNoteId
-      ? createStorySteeringNoteId()
-      : '';
-    const noteIdForDerivedKeys = existingNoteId || generatedNoteId;
-    const generatedStoryKey = shouldEnsureStoryKey && !existingStoryKey
-      ? createStorySteeringStoryId(file.path, noteIdForDerivedKeys)
-      : '';
-    const generatedChapterValue = shouldEnsureChapterValue && !existingChapterValue
-      ? createStorySteeringChapterId(file.path, noteIdForDerivedKeys)
-      : '';
-
-    if (!generatedNoteId && !generatedStoryKey && !generatedChapterValue) {
+    if (existingNoteId) {
       return frontmatter;
     }
+
+    const generatedNoteId = createStorySteeringNoteId();
 
     try {
       await this.app.fileManager.processFrontMatter(file, rawFrontmatter => {
         const normalizedCurrent = normalizeFrontmatter(rawFrontmatter as FrontmatterData);
-        if (generatedNoteId && !resolveNoteId(normalizedCurrent)) {
+        if (!resolveNoteId(normalizedCurrent)) {
           rawFrontmatter[STORY_STEERING_NOTE_ID_FRONTMATTER_KEY] = generatedNoteId;
-        }
-        if (generatedStoryKey && !resolveStoryKey(normalizedCurrent)) {
-          rawFrontmatter[STORY_STEERING_STORY_ID_FRONTMATTER_KEY] = generatedStoryKey;
-        }
-        if (generatedChapterValue && !resolveChapterValue(normalizedCurrent)) {
-          rawFrontmatter[STORY_STEERING_CHAPTER_ID_FRONTMATTER_KEY] = generatedChapterValue;
         }
       });
       return this.readFrontmatter(file);
     } catch (error) {
-      const label = [
-        generatedNoteId ? STORY_STEERING_NOTE_ID_FRONTMATTER_KEY : '',
-        generatedStoryKey ? STORY_STEERING_STORY_ID_FRONTMATTER_KEY : '',
-        generatedChapterValue ? STORY_STEERING_CHAPTER_ID_FRONTMATTER_KEY : ''
-      ]
-        .filter(Boolean)
-        .join(', ');
-      console.warn(`LoreVault: Failed to persist Story Steering IDs (${label}) for ${file.path}`, error);
+      console.warn(
+        `LoreVault: Failed to persist Story Steering note ID (${STORY_STEERING_NOTE_ID_FRONTMATTER_KEY}) for ${file.path}`,
+        error
+      );
       return frontmatter;
     }
   }
@@ -666,17 +540,20 @@ export class StorySteeringStore {
     options?: StorySteeringScopeChainOptions
   ): Promise<StorySteeringScopeResolution[]> {
     if (!file) {
+      return [];
+    }
+
+    const requestedType = normalizeStorySteeringScopeType(options?.ensureScopeType ?? 'note');
+    if (requestedType === 'global') {
       return [{
         scope: { type: 'global', key: 'global' },
         legacyScopes: []
       }];
     }
 
-    const ensureScopeType = normalizeStorySteeringScopeType(options?.ensureScopeType ?? 'note');
-    const frontmatter = await this.ensureScopeIdentifiersForFile(
+    const frontmatter = await this.ensureNoteIdentifierForFile(
       file,
-      this.readFrontmatter(file),
-      ensureScopeType
+      this.readFrontmatter(file)
     );
     const noteId = resolveNoteId(frontmatter);
     return buildStorySteeringScopeResolutions(file.path, frontmatter, noteId);

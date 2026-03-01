@@ -74,7 +74,7 @@ import {
   requestStoryContinuation,
   requestStoryContinuationStream
 } from './completion-provider';
-import { parseStoryScopesFromFrontmatter, parseStoryScopesFromRawValues } from './story-scope-selector';
+import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
@@ -177,7 +177,7 @@ const INLINE_DIRECTIVE_MAX_COUNT = 6;
 const INLINE_DIRECTIVE_MAX_TOKENS = 220;
 const STEERING_RESERVE_FRACTION = 0.14;
 
-type SteeringLayerKey = 'pinned_instructions' | 'story_notes' | 'scene_intent' | 'inline_directives';
+type SteeringLayerKey = 'author_note' | 'inline_directives';
 
 interface SteeringLayerSection {
   key: SteeringLayerKey;
@@ -472,9 +472,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private createSteeringSections(args: {
     maxInputTokens: number;
-    pinnedInstructions: string;
-    storyNotes: string;
-    sceneIntent: string;
+    authorNote: string;
     inlineDirectives: string[];
   }): SteeringLayerSection[] {
     const placements = this.getCompletionLayerPlacementConfig();
@@ -496,30 +494,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       locked: boolean;
     }> = [
       {
-        key: 'pinned_instructions',
-        label: 'Pinned Instructions',
-        tag: 'pinned_session_instructions',
-        placement: placements.pinnedInstructions,
-        text: args.pinnedInstructions,
-        reserveFraction: 0.4,
-        locked: true
-      },
-      {
-        key: 'story_notes',
-        label: 'Story Notes',
-        tag: 'story_author_notes',
+        key: 'author_note',
+        label: 'Author Note',
+        tag: 'story_author_note',
         placement: placements.storyNotes,
-        text: args.storyNotes,
-        reserveFraction: 0.24,
-        locked: false
-      },
-      {
-        key: 'scene_intent',
-        label: 'Scene Intent',
-        tag: 'scene_intent',
-        placement: placements.sceneIntent,
-        text: args.sceneIntent,
-        reserveFraction: 0.18,
+        text: args.authorNote,
+        reserveFraction: 0.82,
         locked: false
       },
       {
@@ -566,34 +546,6 @@ export default class LoreBookConverterPlugin extends Plugin {
         `</${section.tag}>`
       ].join('\n'))
       .join('\n\n');
-  }
-
-  private resolveSteeringFromFrontmatter(file: TFile | null): {
-    pinnedInstructions: string;
-    storyNotes: string;
-    sceneIntent: string;
-  } {
-    if (!file) {
-      return {
-        pinnedInstructions: '',
-        storyNotes: '',
-        sceneIntent: ''
-      };
-    }
-
-    const cache = this.app.metadataCache.getFileCache(file);
-    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-    return {
-      pinnedInstructions: asString(
-        getFrontmatterValue(frontmatter, 'lvPinnedInstructions', 'lvPinned', 'pinnedInstructions', 'pinned')
-      ) ?? '',
-      storyNotes: asString(
-        getFrontmatterValue(frontmatter, 'lvStoryNotes', 'lvStoryNote', 'storyNotes', 'authorNote')
-      ) ?? '',
-      sceneIntent: asString(
-        getFrontmatterValue(frontmatter, 'lvSceneIntent', 'sceneIntent', 'chapterIntent')
-      ) ?? ''
-    };
   }
 
   private normalizeContinuityItems(values: string[]): string[] {
@@ -1663,36 +1615,29 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   ): Promise<StorySteeringScope> {
     const requestedType = normalizeStorySteeringScopeType(type);
-    if (requestedType === 'global') {
-      return { type: 'global', key: 'global' };
-    }
-
+    const canonicalType = requestedType === 'global' ? 'note' : requestedType;
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       return {
-        type: requestedType,
+        type: canonicalType,
         key: ''
       };
     }
 
     const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile, {
-      ensureScopeType: options?.ensureIds ? requestedType : undefined
+      ensureScopeType: options?.ensureIds ? 'note' : undefined
     });
-    const matched = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === requestedType);
+    const matched = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === 'note');
     if (matched) {
-      return matched;
-    }
-
-    if (requestedType === 'note') {
       return {
         type: 'note',
-        key: normalizeVaultPath(activeFile.path)
+        key: matched.key
       };
     }
 
     return {
-      type: requestedType,
-      key: ''
+      type: 'note',
+      key: normalizeVaultPath(activeFile.path)
     };
   }
 
@@ -1773,18 +1718,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     const normalizedCurrent = normalizeStorySteeringState(currentState);
     const normalizedUpdateInstruction = updateInstruction.trim();
     const systemPrompt = [
-      'You are a writing assistant updating structured story steering state.',
+      'You are a writing assistant updating a single markdown Author Note for story generation.',
       'Return JSON only. No markdown, no prose, no reasoning.',
-      'Output exactly one object with keys:',
-      'pinnedInstructions, storyNotes, sceneIntent, plotThreads, openLoops, canonDeltas.',
-      'Use strings for text fields and arrays of strings for list fields.',
-      'Treat existing steering JSON as the baseline state and update it to reflect current story state.',
-      'Keep entries concise and actionable for story generation guidance.',
+      'Output exactly one object with key `authorNote`.',
+      'The value must be markdown text.',
+      'Treat existing author-note JSON as the baseline state and update it to reflect current story state.',
+      'Keep content concise and actionable for story generation guidance.',
       'Do NOT restate encyclopedic lore that belongs in lorebook entries.',
       'Exclude static character bios, world/location descriptions, appearance/personality summaries, and backstory recaps.',
       'Only keep writer-control guidance, active plot pressure, unresolved questions, and recent canon changes that matter for next generation.',
       'If optional update instructions are provided, prioritize them while preserving valid existing constraints.',
-      'If the source does not provide evidence for a field, preserve the existing value.'
+      'If the source does not provide evidence for updates, preserve the existing value.'
     ].join('\n');
     const userPrompt = [
       `Source mode: ${sourceLabel}`,
@@ -1805,7 +1749,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       truncatedSource,
       '</story_source>',
       '',
-      'Return JSON with the required keys only.'
+      'Return JSON with the required key only.'
     ].join('\n');
 
     let usageReport: CompletionUsageReport | null = null;
@@ -2145,34 +2089,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         continue;
       }
 
-      const key = parsed.key.trim();
-      if (!key) {
-        if (!unresolvedRefs.includes(rawRef)) {
-          unresolvedRefs.push(rawRef);
-        }
-        continue;
-      }
-
-      const targetScope: StorySteeringScope = {
-        type: parsed.type,
-        key
-      };
-      const layeredScopes: StorySteeringScope[] = [
-        { type: 'global', key: 'global' },
-        targetScope
-      ];
-      const layeredStates: StorySteeringState[] = [];
-      for (const scope of layeredScopes) {
-        layeredStates.push(await loadScopeState(scope));
-        const label = this.formatStorySteeringScopeLabel(scope);
-        if (!resolvedScopeLabels.includes(label)) {
-          resolvedScopeLabels.push(label);
-        }
-      }
-
-      mergedStates.push(mergeStorySteeringStates(layeredStates));
-      if (!resolvedRefs.includes(rawRef)) {
-        resolvedRefs.push(rawRef);
+      if (!unresolvedRefs.includes(rawRef)) {
+        unresolvedRefs.push(rawRef);
       }
     }
 
@@ -2497,7 +2415,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'get_steering_scope',
-          description: 'Read a steering scope from allowed linked scopes (global/story/chapter/note).',
+          description: 'Read an allowed note-level author-note scope.',
           parameters: {
             type: 'object',
             properties: {
@@ -2514,7 +2432,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'update_steering_scope',
-          description: 'Update an allowed steering scope with partial state fields.',
+          description: 'Update an allowed note-level author-note scope.',
           parameters: {
             type: 'object',
             properties: {
@@ -2523,33 +2441,7 @@ export default class LoreBookConverterPlugin extends Plugin {
               state: {
                 type: 'object',
                 properties: {
-                  pinnedInstructions: { type: 'string' },
-                  storyNotes: { type: 'string' },
-                  sceneIntent: { type: 'string' },
-                  activeLorebooks: {
-                    oneOf: [
-                      { type: 'array', items: { type: 'string' } },
-                      { type: 'string' }
-                    ]
-                  },
-                  plotThreads: {
-                    oneOf: [
-                      { type: 'array', items: { type: 'string' } },
-                      { type: 'string' }
-                    ]
-                  },
-                  openLoops: {
-                    oneOf: [
-                      { type: 'array', items: { type: 'string' } },
-                      { type: 'string' }
-                    ]
-                  },
-                  canonDeltas: {
-                    oneOf: [
-                      { type: 'array', items: { type: 'string' } },
-                      { type: 'string' }
-                    ]
-                  }
+                  authorNote: { type: 'string' }
                 }
               }
             },
@@ -2680,14 +2572,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     const allowedSteeringByKey = new Map<string, StorySteeringScope>();
     for (const scope of steeringScopes) {
       const canonicalType = normalizeStorySteeringScopeType(scope.type);
-      const key = canonicalType === 'global' ? 'global' : scope.key;
+      if (canonicalType !== 'note') {
+        continue;
+      }
+      const key = scope.key;
       allowedSteeringByKey.set(`${canonicalType}::${key}`, {
         type: canonicalType,
         key
       });
-    }
-    if (!allowedSteeringByKey.has('global::global')) {
-      allowedSteeringByKey.set('global::global', { type: 'global', key: 'global' });
     }
 
     const writeIntent = this.hasExplicitStoryChatWriteIntent(args.userMessage);
@@ -2724,12 +2616,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     };
 
     const parseScopeFromArgs = (payload: Record<string, unknown>): StorySteeringScope | null => {
-      const scopeTypeRaw = typeof payload.scopeType === 'string' ? payload.scopeType : 'global';
+      const scopeTypeRaw = typeof payload.scopeType === 'string' ? payload.scopeType : 'note';
       const canonicalType = normalizeStorySteeringScopeType(scopeTypeRaw);
-      const scopeKey = canonicalType === 'global'
-        ? 'global'
-        : (typeof payload.scopeKey === 'string' ? payload.scopeKey.trim() : '');
-      const resolvedKey = `${canonicalType}::${canonicalType === 'global' ? 'global' : scopeKey}`;
+      if (canonicalType !== 'note') {
+        return null;
+      }
+      const scopeKey = typeof payload.scopeKey === 'string' ? payload.scopeKey.trim() : '';
+      const resolvedKey = `${canonicalType}::${scopeKey}`;
       return allowedSteeringByKey.get(resolvedKey) ?? null;
     };
 
@@ -3022,28 +2915,36 @@ export default class LoreBookConverterPlugin extends Plugin {
           return buildErrorResult(toolName, 'state object is required');
         }
         const existing = await this.loadStorySteeringScope(scope);
+        const legacySections: string[] = [];
+        const legacyTextFields: Array<{title: string; value: unknown}> = [
+          { title: 'General Writing Instructions', value: rawState.pinnedInstructions },
+          { title: 'Story Notes', value: rawState.storyNotes },
+          { title: 'Scene Intent', value: rawState.sceneIntent }
+        ];
+        for (const field of legacyTextFields) {
+          if (typeof field.value !== 'string' || !field.value.trim()) {
+            continue;
+          }
+          legacySections.push(`## ${field.title}\n\n${field.value.trim()}`);
+        }
+        const legacyListFields: Array<{title: string; value: unknown}> = [
+          { title: 'Active Lorebooks', value: rawState.activeLorebooks },
+          { title: 'Active Plot Threads', value: rawState.plotThreads },
+          { title: 'Open Questions', value: rawState.openLoops },
+          { title: 'Canon Deltas', value: rawState.canonDeltas }
+        ];
+        for (const field of legacyListFields) {
+          const items = this.parseToolStringArray(field.value);
+          if (items.length === 0) {
+            continue;
+          }
+          legacySections.push(`## ${field.title}\n\n${items.map(item => `- ${item}`).join('\n')}`);
+        }
+        const legacyAuthorNote = legacySections.join('\n\n').trim();
         const updated = normalizeStorySteeringState({
-          pinnedInstructions: typeof rawState.pinnedInstructions === 'string'
-            ? rawState.pinnedInstructions
-            : existing.pinnedInstructions,
-          storyNotes: typeof rawState.storyNotes === 'string'
-            ? rawState.storyNotes
-            : existing.storyNotes,
-          sceneIntent: typeof rawState.sceneIntent === 'string'
-            ? rawState.sceneIntent
-            : existing.sceneIntent,
-          activeLorebooks: Object.prototype.hasOwnProperty.call(rawState, 'activeLorebooks')
-            ? this.parseToolStringArray(rawState.activeLorebooks)
-            : existing.activeLorebooks,
-          plotThreads: Object.prototype.hasOwnProperty.call(rawState, 'plotThreads')
-            ? this.parseToolStringArray(rawState.plotThreads)
-            : existing.plotThreads,
-          openLoops: Object.prototype.hasOwnProperty.call(rawState, 'openLoops')
-            ? this.parseToolStringArray(rawState.openLoops)
-            : existing.openLoops,
-          canonDeltas: Object.prototype.hasOwnProperty.call(rawState, 'canonDeltas')
-            ? this.parseToolStringArray(rawState.canonDeltas)
-            : existing.canonDeltas
+          authorNote: typeof rawState.authorNote === 'string'
+            ? rawState.authorNote.trim()
+            : (legacyAuthorNote || existing.authorNote)
         });
         const path = await this.saveStorySteeringScope(scope, updated);
         const resultPayload: Record<string, unknown> = {
@@ -3169,7 +3070,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           'Respect hard boundaries:',
           '- lorebook tools: selected lorebook scopes only',
           '- story note tools: linked story/manual-selected note paths only',
-          '- steering tools: allowed scope chain only',
+          '- steering tools: allowed note-level author-note scopes only',
           'Never call write tools unless the user explicitly asks for updates/creation in this turn.',
           'When enough tool data is available, stop issuing tool calls.'
         ].join('\n')
@@ -3185,7 +3086,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           `Linked/manual note paths (${allowedStoryFiles.length}): ${
             allowedStoryFiles.slice(0, 8).map(file => file.path).join(', ') || '(none)'
           }`,
-          `Allowed steering scopes: ${[...allowedSteeringByKey.keys()].join(', ')}`,
+          `Allowed author-note scopes: ${[...allowedSteeringByKey.keys()].join(', ') || '(none)'}`,
           `Write tools enabled for this turn: ${allowWriteActions ? 'yes' : 'no'}`
         ].join('\n')
       }
@@ -3866,30 +3767,21 @@ export default class LoreBookConverterPlugin extends Plugin {
     ]);
     const selectedScopes = requestedScopes.length > 0
       ? requestedScopes
-      : this.resolveStoryScopeSelection(activeStoryFile, mergedScopedSteering, { allowFallback: false }).scopes;
+      : (await this.resolveStoryScopeSelection(activeStoryFile)).scopes;
     const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
-    const mergedPinnedInstructions = this.mergeSteeringText(
-      mergedScopedSteering.pinnedInstructions,
-      request.pinnedInstructions
-    );
-    const mergedStoryNotes = this.mergeSteeringText(
-      mergedScopedSteering.storyNotes,
-      request.storyNotes
-    );
-    const mergedSceneIntent = this.mergeSteeringText(
-      mergedScopedSteering.sceneIntent,
+    const mergedAuthorNote = this.mergeSteeringText(
+      mergedScopedSteering.authorNote,
+      request.pinnedInstructions,
+      request.storyNotes,
       request.sceneIntent
     );
     const continuityPlotThreads = this.mergeSteeringList(
-      mergedScopedSteering.plotThreads,
       this.normalizeContinuityItems(request.continuityPlotThreads ?? [])
     );
     const continuityOpenLoops = this.mergeSteeringList(
-      mergedScopedSteering.openLoops,
       this.normalizeContinuityItems(request.continuityOpenLoops ?? [])
     );
     const continuityCanonDeltas = this.mergeSteeringList(
-      mergedScopedSteering.canonDeltas,
       this.normalizeContinuityItems(request.continuityCanonDeltas ?? [])
     );
     const continuitySelection: ContinuitySelection = {
@@ -3909,9 +3801,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const steeringSections = this.createSteeringSections({
       maxInputTokens,
-      pinnedInstructions: mergedPinnedInstructions,
-      storyNotes: mergedStoryNotes,
-      sceneIntent: mergedSceneIntent,
+      authorNote: mergedAuthorNote,
       inlineDirectives
     });
     const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
@@ -6110,30 +6000,33 @@ export default class LoreBookConverterPlugin extends Plugin {
     return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
   }
 
-  private resolveStoryScopesFromSteeringState(state: StorySteeringState | null | undefined): string[] {
-    if (!state) {
+  private async resolveStoryScopesFromAuthorNoteFrontmatter(activeFile: TFile | null): Promise<string[]> {
+    if (!activeFile) {
       return [];
     }
-    return parseStoryScopesFromRawValues(
-      Array.isArray(state.activeLorebooks) ? state.activeLorebooks : [],
-      this.settings.tagScoping.tagPrefix
-    );
-  }
 
-  private resolveStoryScopeSelection(
-    activeFile: TFile | null,
-    steeringState?: StorySteeringState | null,
-    options?: { allowFallback?: boolean }
-  ): { scopes: string[]; source: 'steering' | 'frontmatter' | 'fallback' | 'none' } {
-    const allowFallback = options?.allowFallback !== false;
-    const steeringScopes = this.resolveStoryScopesFromSteeringState(steeringState);
-    if (steeringScopes.length > 0) {
-      return {
-        scopes: steeringScopes,
-        source: 'steering'
-      };
+    const scopeChain = await this.storySteeringStore.getScopeChainForFile(activeFile, {
+      ensureScopeType: 'note'
+    });
+    const noteScope = scopeChain.find(scope => normalizeStorySteeringScopeType(scope.type) === 'note');
+    if (!noteScope) {
+      return [];
     }
 
+    const path = this.storySteeringStore.resolveScopePath(noteScope);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      return [];
+    }
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
+  }
+
+  private async resolveStoryScopeSelection(
+    activeFile: TFile | null
+  ): Promise<{ scopes: string[]; source: 'frontmatter' | 'author_note_frontmatter' | 'none' }> {
     const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
     if (frontmatterScopes.length > 0) {
       return {
@@ -6142,18 +6035,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       };
     }
 
-    if (!allowFallback) {
+    const authorNoteFrontmatterScopes = await this.resolveStoryScopesFromAuthorNoteFrontmatter(activeFile);
+    if (authorNoteFrontmatterScopes.length > 0) {
       return {
-        scopes: [],
-        source: 'none'
-      };
-    }
-
-    const fallbackScope = this.resolveScopeFromActiveFile(activeFile) ?? normalizeScope(this.settings.tagScoping.activeScope);
-    if (fallbackScope) {
-      return {
-        scopes: [fallbackScope],
-        source: 'fallback'
+        scopes: authorNoteFrontmatterScopes,
+        source: 'author_note_frontmatter'
       };
     }
 
@@ -6707,10 +6593,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     const inlineDirectives = inlineDirectiveResolution.directives;
     const textBeforeCursor = stripInlineLoreDirectives(rawTextBeforeCursor);
     const fallbackQuery = activeFile?.basename ?? 'story continuation';
-    let targetScopes: string[] = [''];
-    let targetScopeLabels: string[] = ['(all)'];
-    let initialScopeLabel = '(all)';
-    let scopeSelectionSource: 'steering' | 'frontmatter' | 'fallback' | 'none' = 'none';
+    let targetScopes: string[] = [];
+    let targetScopeLabels: string[] = ['(none)'];
+    let initialScopeLabel = '(none)';
+    let scopeSelectionSource: 'frontmatter' | 'author_note_frontmatter' | 'none' = 'none';
 
     try {
       this.generationInFlight = true;
@@ -6726,10 +6612,12 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       const completion = this.settings.completion;
       const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
-      const scopeSelection = this.resolveStoryScopeSelection(activeFile, scopedSteering.merged);
+      const scopeSelection = await this.resolveStoryScopeSelection(activeFile);
       scopeSelectionSource = scopeSelection.source;
-      targetScopes = scopeSelection.scopes.length > 0 ? scopeSelection.scopes : [''];
-      targetScopeLabels = targetScopes.map(scope => scope || '(all)');
+      targetScopes = scopeSelection.scopes;
+      targetScopeLabels = targetScopes.length > 0
+        ? targetScopes.map(scope => scope || '(all)')
+        : ['(none)'];
       initialScopeLabel = this.renderScopeListLabel(targetScopeLabels);
       const startedAt = Date.now();
       this.updateGenerationTelemetry({
@@ -6749,33 +6637,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
-      const steeringFromFrontmatter = this.resolveSteeringFromFrontmatter(activeFile);
-      const mergedSteering = {
-        pinnedInstructions: this.mergeSteeringText(
-          scopedSteering.merged.pinnedInstructions,
-          steeringFromFrontmatter.pinnedInstructions
-        ),
-        storyNotes: this.mergeSteeringText(
-          scopedSteering.merged.storyNotes,
-          steeringFromFrontmatter.storyNotes
-        ),
-        sceneIntent: this.mergeSteeringText(
-          scopedSteering.merged.sceneIntent,
-          steeringFromFrontmatter.sceneIntent
-        )
-      };
+      const mergedAuthorNote = scopedSteering.merged.authorNote;
       const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(activeFile);
       const mergedContinuity = {
         plotThreads: this.mergeSteeringList(
-          scopedSteering.merged.plotThreads,
           continuityFromFrontmatter.plotThreads
         ),
         openLoops: this.mergeSteeringList(
-          scopedSteering.merged.openLoops,
           continuityFromFrontmatter.openLoops
         ),
         canonDeltas: this.mergeSteeringList(
-          scopedSteering.merged.canonDeltas,
           continuityFromFrontmatter.canonDeltas
         ),
         selection: continuityFromFrontmatter.selection
@@ -6788,9 +6659,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
       const steeringSections = this.createSteeringSections({
         maxInputTokens,
-        pinnedInstructions: mergedSteering.pinnedInstructions,
-        storyNotes: mergedSteering.storyNotes,
-        sceneIntent: mergedSteering.sceneIntent,
+        authorNote: mergedAuthorNote,
         inlineDirectives
       });
       const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
@@ -6897,36 +6766,40 @@ export default class LoreBookConverterPlugin extends Plugin {
       );
 
       let contexts: AssembledContext[] = [];
-      let remainingInputTokens = 0;
+      let remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens;
       let usedContextTokens = 0;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        const perScopeBudget = Math.max(64, Math.floor(contextBudget / Math.max(1, targetScopes.length)));
-        const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
-        const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
-        contexts = [];
-        for (const scope of targetScopes) {
-          contexts.push(await this.liveContextIndex.query({
-            queryText: scopedQuery,
-            tokenBudget: perScopeBudget,
-            maxWorldInfoEntries: perScopeWorldInfoLimit,
-            maxRagDocuments: perScopeRagLimit
-          }, scope));
-        }
+      if (targetScopes.length > 0) {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const perScopeBudget = Math.max(64, Math.floor(contextBudget / Math.max(1, targetScopes.length)));
+          const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
+          const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
+          contexts = [];
+          for (const scope of targetScopes) {
+            contexts.push(await this.liveContextIndex.query({
+              queryText: scopedQuery,
+              tokenBudget: perScopeBudget,
+              maxWorldInfoEntries: perScopeWorldInfoLimit,
+              maxRagDocuments: perScopeRagLimit
+            }, scope));
+          }
 
-        usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
-        remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens - usedContextTokens;
-        if (remainingInputTokens >= 0 || contextBudget <= 64) {
-          break;
-        }
+          usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
+          remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens - usedContextTokens;
+          if (remainingInputTokens >= 0 || contextBudget <= 64) {
+            break;
+          }
 
-        const nextBudget = Math.max(64, contextBudget + remainingInputTokens - 48);
-        if (nextBudget === contextBudget) {
-          break;
+          const nextBudget = Math.max(64, contextBudget + remainingInputTokens - 48);
+          if (nextBudget === contextBudget) {
+            break;
+          }
+          contextBudget = nextBudget;
         }
-        contextBudget = nextBudget;
       }
 
-      const selectedScopeLabels = contexts.map(item => item.scope || '(all)');
+      const selectedScopeLabels = targetScopes.length > 0
+        ? contexts.map(item => item.scope || '(all)')
+        : ['(none)'];
       const graphContextMarkdown = contexts
         .map(item => item.markdown)
         .join('\n\n---\n\n');

@@ -14,19 +14,21 @@ import {
   stringifyStorySteeringMarkdown
 } from '../src/story-steering';
 
-test('story steering markdown round-trips deterministic sections', () => {
+test('story author-note markdown round-trips deterministically', () => {
   const scope: StorySteeringScope = {
-    type: 'story',
-    key: 'chronicles-main'
+    type: 'note',
+    key: 'note:lvn-abc123'
   };
   const state = {
-    pinnedInstructions: 'Keep tense in past tense.',
-    storyNotes: 'Highlight character conflict.',
-    sceneIntent: 'End on a hard decision.',
-    activeLorebooks: ['universe', 'universe/yggdrasil'],
-    plotThreads: ['The envoy is hiding something'],
-    openLoops: ['Who sabotaged the bridge?'],
-    canonDeltas: ['Ari knows the true sigil']
+    authorNote: [
+      '## General Writing Instructions',
+      '',
+      '- Keep tense in past tense.',
+      '',
+      '## Story Notes',
+      '',
+      'Highlight character conflict.'
+    ].join('\n')
   };
 
   const markdown = stringifyStorySteeringMarkdown(scope, state);
@@ -34,70 +36,47 @@ test('story steering markdown round-trips deterministic sections', () => {
   assert.deepEqual(parsed, state);
 });
 
-test('story steering parser supports bullet and ordered list forms', () => {
+test('story steering parser strips legacy title wrapper', () => {
   const markdown = [
-    '# Any title',
+    '# LoreVault Steering',
     '',
-    '## Active Plot Threads',
+    '## Story Notes',
     '',
-    '- Thread A',
-    '1. Thread B',
-    '',
-    '## Open Loops',
-    '',
-    '* Loop A',
-    '',
-    '## Canon Deltas',
-    '',
-    'Delta A'
+    'Focus on consequences.'
   ].join('\n');
 
   const parsed = parseStorySteeringMarkdown(markdown);
-  assert.deepEqual(parsed.activeLorebooks, []);
-  assert.deepEqual(parsed.plotThreads, ['Thread A', 'Thread B']);
-  assert.deepEqual(parsed.openLoops, ['Loop A']);
-  assert.deepEqual(parsed.canonDeltas, ['Delta A']);
+  assert.equal(parsed.authorNote, '## Story Notes\n\nFocus on consequences.');
 });
 
-test('story steering parser supports active lorebooks section aliases', () => {
-  const markdown = [
-    '# Any title',
-    '',
-    '## Lorebook Scopes',
-    '',
-    '- #lorebook/universe',
-    '- universe/yggdrasil'
-  ].join('\n');
-
-  const parsed = parseStorySteeringMarkdown(markdown);
-  assert.deepEqual(parsed.activeLorebooks, ['#lorebook/universe', 'universe/yggdrasil']);
-});
-
-test('story steering merge combines layered text and list state deterministically', () => {
+test('story steering merge combines layers deterministically', () => {
   const merged = mergeStorySteeringStates([
     {
       ...createEmptyStorySteeringState(),
-      pinnedInstructions: 'Keep prose concise.',
-      activeLorebooks: ['universe'],
-      plotThreads: ['Thread A'],
-      openLoops: ['Loop A']
+      authorNote: '## Story Notes\n\nFocus on tension.'
     },
     {
       ...createEmptyStorySteeringState(),
-      pinnedInstructions: 'Keep prose concise.',
-      storyNotes: 'Focus on tension.',
-      activeLorebooks: ['universe/yggdrasil', 'universe'],
-      plotThreads: ['Thread B', 'Thread A'],
-      canonDeltas: ['Delta A']
+      authorNote: '## Story Notes\n\nFocus on tension.'
+    },
+    {
+      ...createEmptyStorySteeringState(),
+      authorNote: '## Scene Intent\n\nEnd on a hard decision.'
     }
   ]);
 
-  assert.equal(merged.pinnedInstructions, 'Keep prose concise.');
-  assert.equal(merged.storyNotes, 'Focus on tension.');
-  assert.deepEqual(merged.activeLorebooks, ['universe', 'universe/yggdrasil']);
-  assert.deepEqual(merged.plotThreads, ['Thread A', 'Thread B']);
-  assert.deepEqual(merged.openLoops, ['Loop A']);
-  assert.deepEqual(merged.canonDeltas, ['Delta A']);
+  assert.equal(
+    merged.authorNote,
+    [
+      '## Story Notes',
+      '',
+      'Focus on tension.',
+      '',
+      '## Scene Intent',
+      '',
+      'End on a hard decision.'
+    ].join('\n')
+  );
 });
 
 test('story steering file paths are scoped and deterministic', () => {
@@ -140,119 +119,57 @@ test('auto-generated story/chapter steering ids are deterministic and scoped to 
   assert.notEqual(storyIdA, chapterIdA);
 });
 
-test('story steering extraction parser accepts plain json and fenced json payloads', () => {
-  const plain = parseStorySteeringExtractionResponse(JSON.stringify({
-    pinnedInstructions: 'Keep tone bleak.',
-    storyNotes: 'Focus on aftermath.',
-    sceneIntent: 'End with unresolved threat.',
-    activeLorebooks: ['universe/main'],
-    plotThreads: ['Thread A', 'Thread B'],
-    openLoops: ['Loop A'],
-    canonDeltas: ['Delta A']
+test('story steering extraction parser accepts direct authorNote payload', () => {
+  const parsed = parseStorySteeringExtractionResponse(JSON.stringify({
+    authorNote: '## Scene Intent\n\nEscalate the conflict.'
   }));
-  assert.equal(plain.pinnedInstructions, 'Keep tone bleak.');
-  assert.deepEqual(plain.activeLorebooks, ['universe/main']);
-  assert.deepEqual(plain.plotThreads, ['Thread A', 'Thread B']);
-
-  const fenced = parseStorySteeringExtractionResponse([
-    '```json',
-    '{',
-    '  "state": {',
-    '    "pinnedInstructions": "Keep tense consistent.",',
-    '    "plotThreads": ["Thread C"],',
-    '    "openLoops": "1. Loop C\\n- Loop D"',
-    '  }',
-    '}',
-    '```'
-  ].join('\n'));
-  assert.equal(fenced.pinnedInstructions, 'Keep tense consistent.');
-  assert.deepEqual(fenced.plotThreads, ['Thread C']);
-  assert.deepEqual(fenced.openLoops, ['Loop C', 'Loop D']);
+  assert.equal(parsed.authorNote, '## Scene Intent\n\nEscalate the conflict.');
 });
 
-test('story steering extraction parser keeps raw values before optional sanitization', () => {
+test('story steering extraction parser supports legacy structured payloads', () => {
   const parsed = parseStorySteeringExtractionResponse(JSON.stringify({
-    pinnedInstructions: 'Baalthasar is an ancient dark elven archmage.'
+    state: {
+      pinnedInstructions: 'Keep tone bleak.',
+      storyNotes: 'Focus on aftermath.',
+      plotThreads: ['Thread A', 'Thread B'],
+      openLoops: '1. Loop C\n- Loop D'
+    }
   }));
-  assert.equal(parsed.pinnedInstructions, 'Baalthasar is an ancient dark elven archmage.');
+
+  assert.match(parsed.authorNote, /## General Writing Instructions/);
+  assert.match(parsed.authorNote, /## Story Notes/);
+  assert.match(parsed.authorNote, /## Active Plot Threads/);
+  assert.match(parsed.authorNote, /## Open Questions/);
+  assert.match(parsed.authorNote, /Thread A/);
+  assert.match(parsed.authorNote, /Loop D/);
 });
 
 test('story steering extraction sanitization removes lorebook-like profile facts', () => {
   const sanitized = sanitizeStorySteeringExtractionState({
-    pinnedInstructions: 'Baalthasar is an ancient dark elven archmage.',
-    storyNotes: 'Focus on escalating tension and keep dialogue concise.',
-    sceneIntent: 'Ari is a young courier.',
-    activeLorebooks: ['universe/main'],
-    plotThreads: [
-      'Who sabotaged the bridge?',
-      'Baalthasar is a dark elf mage.'
-    ],
-    openLoops: [
-      'What is the envoy hiding?',
-      'The city is a massive floating metropolis.'
-    ],
-    canonDeltas: [
-      'Ari now knows the true sigil sequence.',
-      'Baalthasar is an archmage.'
-    ]
+    authorNote: [
+      'Baalthasar is an ancient dark elven archmage.',
+      '',
+      'Focus on escalating tension and keep dialogue concise.',
+      '',
+      'Ari now knows the true sigil sequence.'
+    ].join('\n')
   });
 
-  assert.equal(sanitized.pinnedInstructions, '');
-  assert.equal(sanitized.sceneIntent, '');
-  assert.equal(sanitized.storyNotes, 'Focus on escalating tension and keep dialogue concise.');
-  assert.deepEqual(sanitized.plotThreads, ['Who sabotaged the bridge?']);
-  assert.deepEqual(sanitized.openLoops, ['What is the envoy hiding?']);
-  assert.deepEqual(sanitized.canonDeltas, ['Ari now knows the true sigil sequence.']);
+  assert.equal(sanitized.authorNote, 'Focus on escalating tension and keep dialogue concise.\n\nAri now knows the true sigil sequence.');
 });
 
-test('story steering scope resolutions use stable note-id keys with legacy path alias', () => {
+test('story steering scope resolutions use note-id keys with legacy path alias', () => {
   const resolutions = buildStorySteeringScopeResolutions(
     'stories/ch07.md',
     {},
     'lvn-abc123'
   );
 
-  const noteResolution = resolutions.find(item => item.scope.type === 'note');
-  assert.ok(noteResolution);
-  assert.equal(noteResolution?.scope.key, 'note:lvn-abc123');
-  assert.deepEqual(noteResolution?.legacyScopes, [{
+  assert.equal(resolutions.length, 1);
+  assert.equal(resolutions[0].scope.type, 'note');
+  assert.equal(resolutions[0].scope.key, 'note:lvn-abc123');
+  assert.deepEqual(resolutions[0].legacyScopes, [{
     type: 'note',
     key: 'stories/ch07.md'
-  }]);
-});
-
-test('story scope resolution uses canonical story scope with legacy thread alias', () => {
-  const resolutions = buildStorySteeringScopeResolutions(
-    'stories/ch07.md',
-    {
-      storyId: 'chronicles-main'
-    },
-    'lvn-abc123'
-  );
-
-  const storyResolution = resolutions.find(item => item.scope.type === 'story');
-  assert.ok(storyResolution);
-  assert.equal(storyResolution?.scope.key, 'chronicles-main');
-  assert.deepEqual(storyResolution?.legacyScopes, [{
-    type: 'thread',
-    key: 'chronicles-main'
-  }]);
-});
-
-test('chapter scope resolution migrates from legacy path fallback to note-id fallback', () => {
-  const resolutions = buildStorySteeringScopeResolutions(
-    'stories/ch07.md',
-    {
-      chapter: 7
-    },
-    'lvn-abc123'
-  );
-
-  const chapterResolution = resolutions.find(item => item.scope.type === 'chapter');
-  assert.ok(chapterResolution);
-  assert.equal(chapterResolution?.scope.key, 'note:lvn-abc123::chapter:7');
-  assert.deepEqual(chapterResolution?.legacyScopes, [{
-    type: 'chapter',
-    key: 'stories/ch07.md::chapter:7'
   }]);
 });

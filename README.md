@@ -1,488 +1,199 @@
 # LoreVault
 
-Obsidian plugin that compiles Obsidian notes into scoped context exports for writing workflows.
+LoreVault is an Obsidian plugin for deterministic writing context assembly.
 
-## Current Status
+It turns tagged notes into scoped lorebooks, exports canonical packs, and provides writing/chat workflows that inject the right context while keeping the selection inspectable.
 
-- Desktop and mobile compatible (`manifest.json` uses `isDesktopOnly: false`)
-- Hierarchical lorebook tag scoping (`#lorebook/...`) with exact/cascade membership
-- Canonical SQLite pack export per scope (`.db`)
-- Unified lore-entry model per scope (single canonical entry set)
-- Downstream exports per scope: `world_info` JSON and fallback markdown projection
-- Optional embedding-based fallback retrieval with hash-cache
-- Graph-first retrieval with configurable fallback policy (`off|auto|always`)
-- Optional backlink-aware graph expansion toggle for retrieval hops
-- Optional model-driven retrieval tool hooks (`search_entries`, `expand_neighbors`, `get_entry`) with per-turn safety limits
-- Optional LLM completion generation for story continuation
-- Ribbon shortcut for `Continue Story with Context` (mobile-friendly one-tap access)
-- Prompt-driven selection text commands with optional lore context and diff-based apply confirmation
-- Optional LLM summary workflows (world_info + chapter) with review/approval and in-note summary-section writes
-- Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
-- Deterministic story-thread resolution anchored by linked `authorNote`, with optional chapter ordering (`chapter` + prev/next refs) and prior-chapter memory injection
-- Story Chat panel with per-chat lorebook scope selection and manual-context mode
-- Dedicated lorebook auditor panel for user-facing quality checks
-- Dedicated query simulation panel for multi-scope retrieval simulation
-- Embedded user help panel (`Open LoreVault Help`)
-- Frontmatter retrieval mode (`auto|world_info|rag|both|none`, with `none` as hard exclusion)
-- Deterministic processing, ordering, and tie-breaking
-- Unicode-aware retrieval tokenization for non-English keywords/titles
-- Fixture-backed regression tests for graph ordering, wikilinks, lorebook scoping, retrieval routing, and output naming
+## Compatibility
 
-Mobile rollout notes:
+- Plugin id: `lore-vault`
+- Minimum Obsidian version: `1.1.0`
+- Desktop and mobile supported (`isDesktopOnly: false`)
 
-- export/cache paths must be vault-relative (absolute filesystem paths are rejected).
-- see `docs/mobile-compatibility-plan.md` for the compatibility matrix and QA checklist.
+## What LoreVault Does
 
-## Migration Notes
+- Builds lorebook scopes from hierarchical tags (`#lorebook/...` by default).
+- Exports one canonical SQLite pack per scope.
+- Exports downstream scope files (`world_info` JSON and `rag` markdown projection).
+- Runs graph-first retrieval for story continuation and chat.
+- Supports optional embedding-assisted fallback retrieval.
+- Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
+- Provides a Story Chat panel with per-conversation context controls.
+- Keeps retrieval/debug behavior deterministic and inspectable.
 
-- Plugin id is now `lore-vault`.
-- Install/update path should be `.obsidian/plugins/lore-vault/`.
-- If you previously used `.obsidian/plugins/lorebook-converter/`, move the plugin files to the new folder.
+## Quick Start
 
-## Source Selection (Hierarchical Tags)
+1. Add lorebook tags to relevant notes (for example `#lorebook/universe/yggdrasil`).
+2. Add frontmatter metadata (`keywords`, `summary`, aliases) to improve retrieval quality.
+3. Open `LoreVault Manager` and run `Build/Export` for your target scope.
+4. Open `Story Writing Panel`.
+5. Link an author note from your story note (`authorNote: [[...]]`) using `Open/Create Author Note` or `Link Author Note`.
+6. Use `Continue Story` to generate at the cursor.
 
-The converter scans all markdown files and maps notes to lorebook scopes by tag namespace.
+## Core Note Model
 
-Example tags:
+| Concept | Where it lives | Purpose |
+| --- | --- | --- |
+| Lorebook scope membership | Tags (`#lorebook/...`) | Determines scope inclusion |
+| Story-to-author-note link | Story frontmatter `authorNote` | Anchors writing instructions |
+| Story lorebook selection | Story frontmatter `lorebooks` | Selects scopes for continuation/chat |
+| Chapter ordering | `chapter`, `previousChapter`, `nextChapter` | Determines chapter threading/memory |
+| Inline directives | Story body (`<!-- LV: ... -->` or `[LV: ...]`) | Turn-level writing guidance |
 
-- `#lorebook/universe`
-- `#lorebook/universe/yggdrasil`
-- `#lorebook/universe/yggdrasil/factions`
+## Frontmatter Examples
 
-Settings:
-
-- `tagPrefix`: lorebook namespace prefix (default `lorebook`)
-- `activeScope`: optional target scope (`universe/yggdrasil`)
-- `membershipMode`:
-  - `exact`: only exact scope membership
-  - `cascade`: include ancestor and descendant scopes in the same branch
-- `includeUntagged`: include notes without lorebook tags
-
-Notes with frontmatter `exclude: true` are always skipped.
-
-Build behavior:
-
-- `Build Active Lorebook Scope` resolves one scope at a time:
-  - first lorebook scope on the active file
-  - otherwise configured `activeScope`
-- `Open LoreVault Manager` lists all discovered scopes and provides per-scope `Build/Export Scope`.
-
-## Frontmatter Parsing Model
-
-Structured fields are read from frontmatter only. Legacy `# Field: value` parsing is no longer used.
-
-Supported examples:
+### Lore entry note
 
 ```yaml
 ---
 tags: [lorebook/universe/yggdrasil]
 title: "Aurelia"
 aliases: ["The Radiant Sphere"]
-keywords: ["Aurelia", "Radiant Sphere"]
-summary: "Compact override content for this entry."
-trigger_method: selective
-selectiveLogic: 0
-probability: 100
-depth: 4
-root: true
+keywords: [aurelia, radiant sphere]
+summary: "Compact retrieval summary."
+retrieval: auto
 ---
 ```
 
-Entry content defaults to the markdown body (frontmatter block removed).  
-If a `## Summary` section is present, LoreVault reads summary content from that section.  
-When `<!-- LV_BEGIN_SUMMARY -->` / `<!-- LV_END_SUMMARY -->` markers are present, the full delimited block is used.  
-If section summary is missing, LoreVault falls back to frontmatter `summary`, then note body content.
-
-## Retrieval Routing
-
-Default routing (`retrieval: auto`):
-
-- note is included as a canonical lore entry (`world_info` + fallback projection)
-- `retrieval: none` is the only hard exclusion mode
-
-Per-note override:
+### Story chapter note
 
 ```yaml
 ---
-retrieval: auto   # auto | world_info | rag | both | none
+authorNote: [[LoreVault/author-notes/chronicles-main-author-note]]
+lorebooks: [universe/yggdrasil]
+chapter: 7
+chapterTitle: "Crossing the Spine"
+previousChapter: [[story/ch06-the-fallout]]
+nextChapter: [[story/ch08-the-reckoning]]
 ---
 ```
 
-Routing behavior:
+### Author note (optional explicit typing)
 
-- `world_info` uses compact entry content (`## Summary` section when present, else frontmatter `summary`, else note body)
-- live retrieval can upgrade high-score entries to full note body when budget allows (falls back to lexical/semantic excerpt lift when needed)
-- embedding/lexical fallback retrieval pulls additional entries from the same canonical entry set when seed confidence is weak
+```yaml
+---
+lvDocType: authorNote
+lorebooks: [universe/yggdrasil]
+---
+```
 
-## Root Handling
-
-- Optional explicit root: `root: true` (or `lorebookRoot: true`) in frontmatter
-- If no explicit root exists, the plugin infers one deterministically from graph connectivity
-
-## Link Resolution
-
-- Detects `[[Page]]`, `[[Page|Alias]]`, and embedded wikilinks
-- Normalizes targets by:
-  - stripping heading/block refs (`#...`)
-  - stripping `.md`
-  - converting `\` to `/`
-- Notes are mapped by full path and basename
-- Ambiguous basenames are dropped from basename lookup to avoid wrong links
-
-## Ranking / Order
-
-Order uses weighted normalized metrics:
-
-- hierarchy depth (BFS from root)
-- in-degree
-- PageRank
-- betweenness
-- out-degree
-- total degree
-- file depth
-
-Details:
-
-- `order = max(1, floor(weighted_score))`
-- ties are broken deterministically by ascending UID offsets
-- defaults are tuned via representative fixtures (`fixtures/graph/default-weights-representative.json`)
-
-## Output Files
-
-For each built scope, LoreVault writes:
-
-- `<sqliteOutputDir>/<scope-slug>.db` -> canonical SQLite pack (default dir: `lorebooks/`)
-- `<sqliteOutputDir>/<downstreamSubpath>.json` -> `world_info` (default subpath: `sillytavern/lorevault.json`)
-- `<sqliteOutputDir>/<downstreamSubpath>.rag.md` -> `rag`
-
-`sqliteOutputDir` must be vault-relative (absolute filesystem paths are not supported).
-`downstreamSubpath` must also be vault-relative.
-
-Downstream filenames are scope-specific. If the downstream subpath does not contain `{scope}`, LoreVault appends a scope slug:
-
-- `lorebooks/sillytavern/lorevault-universe.json`
-- `lorebooks/sillytavern/lorevault-universe.rag.md`
-
-If downstream subpath contains `{scope}`, the token is replaced by the scope slug.  
-Export aborts if two scopes resolve to the same output path.
-
-## Canonical Pack and Embeddings
-
-SQLite pack includes:
-
-- `world_info` entries
-- `rag` documents
-- chunked `rag` text segments
-- optional chunk embeddings
-- source note metadata (paths/tags/retrieval mode/summary/body hashes)
-- note-level centroid embeddings (derived from chunk embeddings)
-- build metadata in `meta` table (schema/build signatures/settings snapshots/counts)
-
-Schema reference:
-
-- `docs/sqlite-pack-schema.md`
-
-Embedding backends:
-
-- OpenRouter
-- Ollama
-- OpenAI-compatible endpoints
-
-Default embedding model: `qwen/qwen3-embedding-8b`.
-
-Embedding cache is one-file-per-hash so it syncs better across devices and avoids frequent recomputation.
-
-## LoreVault Manager
-
-Use command `Open LoreVault Manager` to open the persistent right-sidebar panel for scope inspection and operations.
-
-Manager features:
-
-- per-scope counts (included notes, entries, missing-keyword entries)
-- scope warnings when sections are empty
-- generation monitor (running state, active scopes, token budget, selected context items, output progress)
-- usage and cost monitor (session/day/week/month/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
-- `Build/Export` action per scope
-- `Open Auditor` action per scope
-- toolbar shortcuts to open the lorebook auditor, query simulation diagnostics, and story writing panel
-
-## Story Writing Panel
+## Story Writing Workflow
 
 Command: `Open Story Writing Panel`
 
-Current capabilities:
+The panel groups writing actions into three rows:
 
-- open/create linked Author Note from the active story note
-- link an existing Author Note interactively from the panel
-- create the next chapter from the panel
-- generate chapter summary from the panel
-- trigger `Rewrite Author Note` with optional change prompt + diff review
-- grouped quick actions:
-  - `Continue Story` (toggles to `Stop` while generating), `Insert Directive`
-  - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
-  - `Generate Chapter Summary`, `Create Next Chapter`
-- live generation monitor (state, status, model, scopes, token/output usage)
-- collapsible `Selected Context Items` (selected `world_info` + fallback entries)
-- selected lorebook scopes for the active story note with add/remove/all/none controls
-- when the active note is an Author Note, list linked chapters/stories (chapter-ordered when frontmatter exists)
-- compact collapsible cost breakdown (session/day/week/month/project totals + warnings)
+- `Continue Story` (switches to `Stop` while generating), `Insert Directive`
+- `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
+- `Generate Chapter Summary`, `Create Next Chapter`
 
-## Lorebook Auditor
+The panel also shows:
 
-Use command `Open LoreVault Lorebook Auditor` to open a dedicated diagnostics view.
+- active note + linked author note state
+- linked stories when an author note is active
+- current completion model
+- generation status and token usage
+- selected context items (`world_info` + fallback)
+- selected lorebooks (add/remove/all/none)
+- collapsible cost breakdown (session/day/week/month/project)
 
-Lorebook auditor features:
+## Story Chat Workflow
 
-- scope selector
-- lorebook contents panel for `world_info` entries (keywords, trigger params, collapsible content)
-- quality audit table (risk score + reasons) using missing-keyword/thin-content heuristics and embedding similarity where available
-- per-row actions for audit items (`Open` and `Generate Keywords` for missing-keyword notes)
-- bulk keyword generation from selected missing-keyword entries
-- keyword generation always opens a review step before writing frontmatter
+Command: `Open Story Chat`
 
-## Query Simulation
+Per-conversation context controls are ordered as:
 
-Use command `Open LoreVault Query Simulation` to open a dedicated retrieval simulation view.
+1. Lorebooks
+2. Author Notes
+3. Chapters and Raw Notes
+4. Manual Context
 
-Query simulation features:
+Additional behavior:
 
-- multi-scope selection (simulate across multiple lorebooks at once)
-- token budget split across selected scopes
-- optional override controls (`maxGraphHops`, `graphHopDecay`, backlink expansion, fallback policy/threshold, world_info/fallback limits, body-lift knobs)
-- selected `world_info` diagnostics (score breakdown, path/reasons, tier counts, included content tier)
-- body-lift decision trace (applied/skipped reason per entry with score/hop/tier transition)
-- selected fallback diagnostics (scores and matched terms)
+- `Open Conversation` picker + `New Chat`
+- markdown-rendered messages
+- edit/fork/regenerate message actions
+- optional bounded tool-calling (search/read lorebooks and selected notes, read/update linked author note)
+- per-response context inspector and layer/token diagnostics
 
-## Writing Assistant Commands (MVP)
+## Continuation Behavior (High Level)
 
-Command: `Continue Story with Context`
+`Continue Story with Context`:
 
-Behavior:
+1. Reads near-cursor story text.
+2. Resolves story lorebooks from story frontmatter (`lorebooks`, aliases) or linked author note frontmatter fallback.
+3. Resolves linked author note content.
+4. Parses inline directives from strict forms (`[LV: ...]`, `<!-- LV: ... -->`).
+5. Builds layered context (chapter memory, graph-selected `world_info`, optional fallback entries).
+6. Streams continuation text into the editor at the cursor.
 
-- builds/refreshes an in-memory scope index
-- watches note create/modify/delete/rename events and performs near-live refresh
-- resolves optional chapter-memory context from prior chapters using story frontmatter (`authorNote`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`; `storyId` optional legacy fallback) with budget-adaptive depth
-- queries retrieval layers from current editor context:
-  - `world_info` by graph-first seed + expansion relevance
-  - fallback entries by policy (`off|auto|always`) and relevance
-  - optional tool-retrieved layer for targeted entry fetches within call/token/time caps
-- when embeddings are enabled, long query windows are chunked deterministically and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback instead of aborting generation
-- applies token-budgeted context assembly
-- stages explicit steering layers (author note + inline directives)
-- steering layer placement is configurable (`system` | `pre-history` | `pre-response`)
-- parses strict inline directives from near-cursor story text (`[LV: ...]`, `<!-- LV: ... -->`)
-- ignores non-prefixed bracket text (for example `[Editor Note: ...]`)
-- injects inline directives as a dedicated steering layer with per-turn count/token caps
-- supports continuation continuity-state frontmatter lists/toggles:
-  - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
-  - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
-- Author Note rewrite supports an optional update prompt so users can request targeted changes before review/apply
-- Author Note rewrite review modal compares current vs proposed markdown before apply
-- sends context + local near-cursor story context to configured completion provider
-- streams generated continuation text into the editor at cursor (no raw context dump)
-- generation can be aborted with command `Stop Active Generation` (also available as editor-menu action while a run is in progress)
-- updates status bar while running (`preparing`, `retrieving`, `generating`, `error`, `idle`)
-- reports active scopes and pulled `world_info`/fallback items at generation start
-- adds right-click editor context-menu actions:
-  - `LoreVault: Continue Story with Context`
-  - `LoreVault: Insert Inline Directive` (for story notes with chapter metadata or `authorNote` link)
-  - `LoreVault: Run Text Command on Selection` (only when editor selection is non-empty)
-  - `LoreVault: Generate Keywords` (for lorebook-tagged notes)
-  - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
-  - `LoreVault: Rewrite Author Note` (author-note documents only)
-  - `LoreVault: Continue Story with Context` is hidden for author-note documents
-- mobile note: `Continue Story with Context` is also registered as an editor action command for mobile editor menus.
+Notes:
 
-Configure generation under Settings -> LoreVault -> Writing Completion.
-Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
-For debugging, `LLM Operation Log` settings can persist full request/response content (including tool-planner calls) to a vault JSONL file.
-`Include Embedding Backend Calls` optionally adds embedding request/response logs (`kind: embedding`) for semantic-retrieval troubleshooting.
-Use command `Open LLM Operation Log Explorer` (or Settings -> `Open LLM Operation Log Explorer`) to browse/search entries, inspect parsed request messages in expandable textboxes, and view full raw payload JSON in-plugin.
-Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`, with pricing provenance and optional budgets by operation/model/scope.
-Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
+- Inline directives are treated as instruction comments in prompt staging.
+- Long query windows for embeddings are chunked and averaged deterministically.
+- If embedding calls fail, LoreVault falls back to lexical retrieval instead of aborting generation.
 
-## Text Commands
+## Build and Export Outputs
 
-Command palette:
+For each scope:
 
-- `Run Text Command on Selection`
+- `lorebooks/<scope-slug>.db` (canonical SQLite pack)
+- `lorebooks/sillytavern/<name>-<scope-slug>.json` (`world_info`)
+- `lorebooks/sillytavern/<name>-<scope-slug>.rag.md` (`rag` projection)
 
-Editor context menu:
+Output naming remains deterministic; collisions fail the build.
 
-- `LoreVault: Run Text Command on Selection` (shown only when text is selected)
+## Key Commands
 
-Behavior:
+Core:
 
-- opens a prompt modal with:
-  - prompt template selection from prompt-note files in your configured prompt folder
-  - editable custom prompt text
-  - per-run toggle for lorebook context injection
-- submits selected text + prompt (and optional lore context) to the configured completion model
-- returns transformed text only
-- by default opens a review modal with original text + diff preview before apply
-- optional auto-accept can apply directly without review
-- default `Canon Consistency Pass` prompt now prioritizes factual consistency with lorebook canon and minimizes non-factual rewrites
+- `Build Active Lorebook Scope`
+- `Open LoreVault Manager`
+- `Open LoreVault Lorebook Auditor`
+- `Open LoreVault Query Simulation`
+- `Open LoreVault Help`
 
-Settings path: `Settings -> LoreVault -> Text Commands`
+Writing:
 
-- auto-accept toggle
-- default lore-context toggle
-- context token budget
-- text-command system prompt
-- prompt notes folder path
-- create default prompt notes action (creates markdown prompt templates with frontmatter)
-
-## Auto Summary Commands (Phase 9)
-
-Commands:
-
-- `Generate Keywords (Active Note)`
-- `Generate World Info Summary (Active Note)`
-- `Generate Chapter Summary (Active Note)`
-- `Generate World Info Summaries (Active Scope)`
-- `Generate Chapter Summaries (Current Story)`
-
-Right-click editor menu:
-
-- `LoreVault: Generate Keywords` appears for notes tagged into a lorebook scope.
-- `LoreVault: Generate World Info Summary` appears for notes tagged into a lorebook scope.
-- chapter summary generation is available from command palette and Story Writing panel.
-
-Behavior:
-
-- uses configured completion provider/model to propose summary text
-- opens review modal before acceptance
-- review action:
-  - `Write Summary Section`: write/update `## Summary` section in the note body
-- precedence:
-  - world_info content: summary section content (`LV_BEGIN/LV_END` delimited block when present, otherwise first paragraph) -> `frontmatter summary` (fallback) -> note body
-  - chapter memory: summary section content (`LV_BEGIN/LV_END` delimited block when present, otherwise first paragraph) -> `frontmatter summary` (fallback) -> deterministic excerpt
-  - chapter summaries are not hard-length capped; multi-paragraph summaries are wrapped with `<!-- LV_BEGIN_SUMMARY -->` and `<!-- LV_END_SUMMARY -->` when written
-- chapter note utilities:
-  - split command parses active note chapters from `##` headings (`#` treated as story title), writes linked chapter notes with chapter/front-link metadata, and links each chapter to the same Author Note
-  - create-next command creates a new chapter note in the current folder, links current note `nextChapter`, links new note `previousChapter`, and links new chapter to the same Author Note
-
-## Long-Form Chapter Commands
-
-Commands:
-
+- `Continue Story with Context`
+- `Stop Active Generation`
+- `Open Story Writing Panel`
+- `Open Story Chat`
+- `Open or Create Linked Author Note`
+- `Link Existing Author Note`
+- `Rewrite Author Note`
+- `Insert Inline Directive at Cursor`
+- `Create Next Story Chapter`
 - `Split Active Story Note into Chapter Notes`
 - `Split Active Story Note into Chapter Notes (Pick Folder)`
-- `Create Next Story Chapter`
+- `Generate Chapter Summary (Active Note)`
 
-Story-level scope override:
+Quality and utility:
 
-- Preferred: set lorebook scopes directly in frontmatter on the story note.
-- Optional: set lorebook scopes in Author Note frontmatter (used when story-note frontmatter does not define scopes).
-- Link a story note to an Author Note with `authorNote: [[path/to/author-note]]`.
-- No active-scope fallback is applied for continuation/chat scope selection.
+- `Generate World Info Summary (Active Note)`
+- `Generate Keywords (Active Note)`
+- `Generate World Info Summaries (Active Scope)`
+- `Generate Chapter Summaries (Current Story)`
+- `Run Text Command on Selection`
 
-Frontmatter example:
-
-```yaml
----
-lorebooks:
-  - universe
-  - universe/yggdrasil
----
-```
-
-Accepted keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`.
-
-## Embedded Help
-
-Command: `Open LoreVault Help`
-
-Provides an in-plugin overview of:
-
-- scope/tag setup
-- retrieval and fallback behavior
-- build/export artifacts
-- story completion/chat workflow
-- direct actions to open import/extraction/lorebook-update panels
-
-## Inbound Wiki Panels (Phase 14)
-
-Commands:
+Import and updates:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
 - `Apply Story Delta to Existing Wiki`
 
-Current behavior:
+Operations and reporting:
 
-- `Import SillyTavern Lorebook` opens a panel with:
-  - target folder (manual path or `Browse` existing folder picker)
-  - default tags
-  - lorebook name (converted into a lorebook tag)
-  - pasted lorebook JSON input
-- importer supports preview + deterministic note generation and create/update writes.
-- imported notes map ST entry fields to frontmatter/body:
-  - `keywords` from `key`
-  - `aliases` from `keysecondary`
-  - `title/comment` when present
-  - derived `## Summary` section (frontmatter `summary` is legacy fallback input only)
-  - default + lorebook tags
+- `Open LLM Operation Log Explorer`
+- `Export Usage Report (JSON)`
+- `Export Usage Report (CSV)`
 
-Story extraction behavior:
+## Logging and Cost Tracking
 
-- deterministic story chunking (heading-aware + size constrained)
-- per-chunk LLM extraction with strict JSON response validation
-- iterative context injection of already-extracted page state between chunks
-- deterministic safe-merge policy (`summary` merge + keyword/alias union + unique content block append)
-- target folder can be selected by path or `Browse` picker
-- generated/updated page summaries are written into note `## Summary` sections
-- generated pages use structured note layout: top `# Title`, then `## Summary`, then sectioned body (`## Backstory`/`## Overview`/`## Details` based on page key)
-- extraction/update title sanitization strips type-label prefixes like `Character:` / `Location:` / `Faction:` from display titles
-- preview first, then explicit apply to write pages
-
-Story delta behavior (Phase 15 foundation):
-
-- updates existing notes in a target folder (optional tag filter)
-- target folder can be selected by path or `Browse` picker
-- accepts story markdown directly or from a selected story source note
-- source note mode supports `note`, `chapter`, or `story` expansion (with interactive note picker)
-- low-confidence operation gating (preview warnings + skipped operation count)
-- deterministic matching to existing pages by `pageKey` then title fallback
-- policy modes:
-  - `safe_append` (default): preserve existing metadata and append unique durable updates
-  - `structured_merge`: also merge summary/keywords/aliases deterministically
-- dry-run diff previews per planned change
-- per-change approval checkboxes with `Apply Selected`
-
-## Story Chat (Phase 10 Foundation)
-
-Command: `Open Story Chat`
-
-Current capabilities:
-
-- persistent right-sidebar chat panel
-- in-chat generation monitor (state, scopes, context/output token usage)
-- conversation title with `Open Conversation` picker and `New Chat` creation
-- streaming assistant responses
-- per-chat lorebook selection via add/remove list
-- context control order: Lorebooks -> Author Notes -> Chapters/Raw Notes -> Manual Context
-- manual context block
-- author note context list via interactive picker + remove actions
-- chapter/raw note context list via interactive picker + remove actions
-- no continuity checkboxes in chat context controls (continuity handling is automatic)
-- chat messages render markdown (not plain text only)
-- optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
-  - search/read selected lorebook entries
-  - search/read linked story and manually selected note context
-  - read/update the linked note-level author note
-  - optionally create lorebook-tagged notes when write actions are enabled
-- each chat/fork is saved as a markdown note under `LoreVault/chat`
-- chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
-- message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
-- regenerate appends a new assistant message version; users can switch active versions
-- per-response context inspector (scopes, steering refs, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
-- per-response layer budget/overflow inspector (`reserved`, `used`, `headroom`, trim rationale)
-- per-response continuity inspector (included threads/open loops/canon deltas)
-- per-response agent tool inspector rows (tool call summaries, write actions, and tool-loop trace)
-- chapter memory shown in layer trace indicates summary source (`section`, `frontmatter`, or `excerpt`)
-
-Story Chat state is persisted primarily in conversation notes, with settings storing active conversation path.
+- Optional operation log captures full LLM request/response payloads.
+- Optional embedding backend call logging can be enabled for retrieval debugging.
+- Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
+- Budget warnings are available for configured thresholds.
 
 ## Development
 
@@ -490,6 +201,7 @@ Story Chat state is persisted primarily in conversation notes, with settings sto
 npm install
 npm run check:mobile-runtime
 npm run build
+npm run lint
 npm test
 ```
 
@@ -499,20 +211,13 @@ Release automation (maintainers):
 npm run release:version -- <version>
 ```
 
-Behavior:
+This updates `manifest.json` + `versions.json`, creates `release <version>` commit, creates tag `<version>`, and pushes branch + tag.
 
-- requires target version `x.y.z` and validates it is greater than `manifest.json` `version`
-- updates `manifest.json` `version`
-- adds `<version>: <minAppVersion>` to `versions.json`
-- commits as `release <version>`, tags `<version>`, and pushes branch + tag (`git push origin main <version>` by default)
-- supports `--dry-run`, `--remote`, `--branch`, and `--allow-dirty`
+## Documentation
 
-See:
-
-- `docs/approach.md`
-- `docs/documentation.md`
-- `docs/technical-reference.md`
-- `docs/installation-guide.md`
-- `docs/profile-schema.md`
-- `docs/planning.md`
-- `docs/todo.md`
+- [docs/documentation.md](docs/documentation.md)
+- [docs/technical-reference.md](docs/technical-reference.md)
+- [docs/installation-guide.md](docs/installation-guide.md)
+- [docs/sqlite-pack-schema.md](docs/sqlite-pack-schema.md)
+- [docs/planning.md](docs/planning.md)
+- [docs/todo.md](docs/todo.md)

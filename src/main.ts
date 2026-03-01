@@ -74,7 +74,7 @@ import {
   requestStoryContinuation,
   requestStoryContinuationStream
 } from './completion-provider';
-import { parseStoryScopesFromFrontmatter } from './story-scope-selector';
+import { parseStoryScopesFromFrontmatter, parseStoryScopesFromRawValues } from './story-scope-selector';
 import {
   assertUniqueOutputPaths,
   ScopeOutputAssignment,
@@ -5477,7 +5477,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       void this.openStoryChatView();
     });
 
-    this.addRibbonIcon('lorevault-steering', 'Open Story Author Note Panel', () => {
+    this.addRibbonIcon('lorevault-steering', 'Open Story Writing Panel', () => {
       void this.openStorySteeringView();
     });
 
@@ -5528,7 +5528,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-story-steering',
-      name: 'Open Story Author Note Panel',
+      name: 'Open Story Writing Panel',
       callback: () => {
         void this.openStorySteeringView();
       }
@@ -6247,7 +6247,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
   }
 
-  private async resolveStoryScopeSelection(
+  public async resolveStoryScopeSelection(
     activeFile: TFile | null
   ): Promise<{ scopes: string[]; source: 'frontmatter' | 'author_note_frontmatter' | 'none' }> {
     const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
@@ -6270,6 +6270,27 @@ export default class LoreBookConverterPlugin extends Plugin {
       scopes: [],
       source: 'none'
     };
+  }
+
+  public async updateStoryNoteLorebookScopes(filePath: string, scopes: string[]): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(normalizeVaultPath(filePath));
+    if (!(file instanceof TFile)) {
+      throw new Error(`Story note not found: ${filePath}`);
+    }
+
+    const normalizedScopes = parseStoryScopesFromRawValues(scopes, this.settings.tagScoping.tagPrefix);
+    await this.app.fileManager.processFrontMatter(file, frontmatter => {
+      if (normalizedScopes.length > 0) {
+        frontmatter.lorebooks = [...normalizedScopes];
+      } else {
+        delete frontmatter.lorebooks;
+      }
+      delete frontmatter.lorebookScopes;
+      delete frontmatter.lorevaultScopes;
+      delete frontmatter.activeLorebooks;
+    });
+
+    this.refreshStorySteeringViews();
   }
 
   private collectStoryThreadNodes(): StoryThreadNode[] {

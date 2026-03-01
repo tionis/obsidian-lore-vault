@@ -142,19 +142,20 @@ export class LorevaultHelpView extends ItemView {
         'Context assembly order: local near-cursor story context -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
         'Chapter-memory depth expands automatically when more context budget is available.',
         'With embeddings enabled, long query windows are chunked/averaged for semantic query embeddings; failures fall back to lexical retrieval so completion continues.',
-        'Generation Monitor in Manager shows context usage, selected entries, and trim decisions.',
+        'Generation Monitor in Story Writing panel (and Manager) shows context usage, selected entries, and trim decisions.',
         'Inline directives are supported with strict syntax: `[LV: ...]` or `<!-- LV: ... -->`.'
       ],
       actions: [
-        { label: 'Open Story Author Note Panel', onClick: () => void this.plugin.openStorySteeringView() },
+        { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() },
         { label: 'Open Query Simulation', onClick: () => void this.plugin.openQuerySimulationView() }
       ]
     });
 
-    this.renderSection(contentEl, 'Story Author Note and Chat', {
+    this.renderSection(contentEl, 'Story Writing and Chat', {
       bullets: [
         'Story Steering is now a linked Author Note workflow: set `authorNote: [[path/to/note]]` on story notes.',
         'Author Note content is edited directly in native Obsidian notes (no separate LoreVault textarea editor).',
+        'Story Writing panel combines writing actions, live generation monitor, selected lorebook controls, selected context items, and compact cost breakdown.',
         'Use `Open or Create Linked Author Note` to create/link an Author Note in the configured Author Note folder.',
         'Lorebook scope selection for continuation/chat is resolved from active-note frontmatter first, then Author Note frontmatter.',
         'If multiple story notes link to the same Author Note, LoreVault injects all linked stories as rewrite context.',
@@ -170,7 +171,7 @@ export class LorevaultHelpView extends ItemView {
       ],
       actions: [
         { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() },
-        { label: 'Open Story Author Note Panel', onClick: () => void this.plugin.openStorySteeringView() }
+        { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() }
       ]
     });
 
@@ -241,7 +242,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Command Coverage', {
       bullets: [
         'Build/Manage: `Build Active Lorebook Scope`, `Open LoreVault Manager`, `Open LoreVault Lorebook Auditor`, `Open LoreVault Query Simulation`.',
-        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Author Note Panel`, `Open or Create Linked Author Note`, `Rewrite Author Note`, `Create Next Story Chapter`, `Split Active Story Note into Chapter Notes`, `Split Active Story Note into Chapter Notes (Pick Folder)`.',
+        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Writing Panel`, `Open or Create Linked Author Note`, `Rewrite Author Note`, `Insert Inline Directive at Cursor`, `Create Next Story Chapter`, `Split Active Story Note into Chapter Notes`, `Split Active Story Note into Chapter Notes (Pick Folder)`.',
         'Summary/Keyword: `Generate World Info Summary (Active Note)`, `Generate Keywords (Active Note)`, `Generate Chapter Summary (Active Note)`.',
         'Batch Summary: `Generate World Info Summaries (Active Scope)`, `Generate Chapter Summaries (Current Story)`.',
         'Import/Update: `Import SillyTavern Lorebook`, `Extract Wiki Pages from Story`, `Apply Story Delta to Existing Wiki`.',

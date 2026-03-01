@@ -570,6 +570,37 @@ Capabilities:
   - budget warnings from configured daily/session/operation/model/scope limits
 - top breakdown lists by operation, model, scope, and cost source
 
+## Story Writing Panel
+
+Command: `Open Story Writing Panel` (persistent right-side workspace panel)
+
+Capabilities:
+
+- active-note writing controls:
+  - `Continue Story`
+  - `Stop` active generation
+  - `Insert Directive` (`<!-- LV: ... -->`)
+  - `Open Story Chat`
+  - `Open/Create Author Note`
+  - `Rewrite Author Note`
+- Author Note workflow:
+  - linked from story frontmatter `authorNote`
+  - authored in native Obsidian note editor
+  - rewrite flow uses optional change prompt + diff review
+- lorebook scope controls for active story note:
+  - show selected scopes
+  - add/remove scopes
+  - `All` / `None`
+  - writes canonical story-note `lorebooks` key and clears legacy aliases
+- generation monitor details:
+  - state/status
+  - configured provider/model
+  - active scopes, token usage, output progress
+  - collapsible selected context items (`world_info`, fallback items)
+- compact collapsible usage/cost summary:
+  - session/day/project totals
+  - warnings when configured budgets are exceeded
+
 ## Inbound Wiki Import and Story Extraction (Phase 14)
 
 Commands:

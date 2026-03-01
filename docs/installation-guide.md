@@ -41,13 +41,14 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - Toggle the switch to enable it
 
 4. **Verify installation**
-   - You should now see LoreVault ribbon icons in the left sidebar (build scope + manager + story chat)
+   - You should now see LoreVault ribbon icons in the left sidebar (build scope + manager + story chat + story writing)
    - The command palette (Ctrl+P or Cmd+P) should include:
      - "Build Active Lorebook Scope"
      - "Open LoreVault Manager" (opens right sidebar panel)
      - "Open LoreVault Lorebook Auditor" (opens dedicated lorebook audit panel)
      - "Open LoreVault Query Simulation" (opens dedicated retrieval simulation panel)
      - "Open Story Chat" (opens right sidebar panel)
+     - "Open Story Writing Panel" (opens right sidebar panel)
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
      - "Run Text Command on Selection"
@@ -148,7 +149,7 @@ If you prefer to build the plugin from source:
      - `Split Active Story Note into Chapter Notes (Pick Folder)`
      - `Create Next Story Chapter` (also appears in editor context menu for notes with chapter frontmatter)
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
-   - Open "Open LoreVault Manager" for global generation overview, or "Open Story Chat" for in-chat generation telemetry
+   - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
 5. **Open embedded help**
    - Run command `Open LoreVault Help`

@@ -287,7 +287,7 @@ Reference design: `docs/planning.md`.
 - [x] Story Steering simplification (Author Note model):
   - [x] collapse steering state to one note-level `authorNote` markdown layer
   - [x] link story notes to Author Notes via `authorNote` frontmatter (no manual scope key workflow)
-  - [x] simplify Story Author Note panel to native-note workflow controls (open/create + rewrite)
+  - [x] replace Story Author Note panel with unified Story Writing panel (author-note actions + generation monitor + lorebook controls + compact cost breakdown)
   - [x] remove legacy scope-based steering storage/backward-compat parsing paths
   - [x] remove multi-scope steering merge in continuation/chat (note-level only)
   - [x] resolve lorebook scope selection from story-note frontmatter, then Author Note frontmatter (no active-scope fallback)

@@ -334,7 +334,7 @@ Current status:
 - inspector traces now include per-layer token usage/headroom and overflow rationale
 - continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
 - note-level steering workspace is implemented:
-  - dedicated Story Author Note panel (control surface)
+  - dedicated Story Writing panel (combined writing control surface)
   - story-note `authorNote` frontmatter linking to markdown Author Note files
   - native Obsidian note editing for Author Note content
   - merged with chat/continuation steering assembly

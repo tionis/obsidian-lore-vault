@@ -203,7 +203,21 @@ Manager features:
 - usage and cost monitor (session/day/project totals, unknown-cost counts, budget warnings, top operation/model breakdown)
 - `Build/Export` action per scope
 - `Open Auditor` action per scope
-- toolbar shortcuts to open the lorebook auditor and query simulation diagnostics
+- toolbar shortcuts to open the lorebook auditor, query simulation diagnostics, and story writing panel
+
+## Story Writing Panel
+
+Command: `Open Story Writing Panel`
+
+Current capabilities:
+
+- open/create linked Author Note from the active story note
+- trigger `Rewrite Author Note` with optional change prompt + diff review
+- quick actions: `Continue Story`, `Stop`, `Insert Directive`, `Open Story Chat`
+- live generation monitor (state, status, model, scopes, token/output usage)
+- collapsible `Selected Context Items` (selected `world_info` + fallback entries)
+- selected lorebook scopes for the active story note with add/remove/all/none controls
+- compact collapsible cost breakdown (session/day/project totals + warnings)
 
 ## Lorebook Auditor
 

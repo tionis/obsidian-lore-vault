@@ -99,7 +99,7 @@ export class LorebooksManagerView extends ItemView {
       void this.plugin.openQuerySimulationView();
     });
 
-    const steeringButton = toolbar.createEl('button', { text: 'Open Story Steering' });
+    const steeringButton = toolbar.createEl('button', { text: 'Open Story Writing Panel' });
     steeringButton.addEventListener('click', () => {
       void this.plugin.openStorySteeringView();
     });

@@ -39,7 +39,9 @@ This document is the implementation-level reference for core architecture and ru
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - note-level author-note storage resolved from story frontmatter `authorNote` link
-  - Author Note panel is control-only (open/create linked note + rewrite); markdown editing is native Obsidian note editing
+  - Story Writing panel combines writing controls, generation monitor, lorebook scope controls, context-item inspection, and compact cost summary
+  - panel actions include open/create linked Author Note, rewrite Author Note, continue/stop generation, inline-directive insert, and open Story Chat
+  - markdown editing remains native Obsidian note editing for Author Note content
   - single note-level author-note layer only (no global/story/chapter scope hierarchy)
   - lorebook scope selection reads story-note frontmatter first, then author-note frontmatter
   - linked-story detection is driven by story-note `authorNote` references (supports multi-story shared author notes)

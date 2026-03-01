@@ -417,7 +417,8 @@ Story delta behavior (Phase 15 foundation):
 
 - updates existing notes in a target folder (optional tag filter)
 - target folder can be selected by path or `Browse` picker
-- accepts story markdown directly or from a selected story note path
+- accepts story markdown directly or from a selected story source note
+- source note mode supports `note`, `chapter`, or `story` expansion (with interactive note picker)
 - low-confidence operation gating (preview warnings + skipped operation count)
 - deterministic matching to existing pages by `pageKey` then title fallback
 - policy modes:

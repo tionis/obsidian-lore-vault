@@ -212,7 +212,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         '`Import SillyTavern Lorebook`: paste ST JSON, preview, then import.',
         '`Extract Wiki Pages from Story`: paste story markdown, run chunked extraction, preview, then apply.',
-        '`Apply Story Delta to Existing Wiki`: compare new story text against existing pages and apply reviewed updates.',
+        '`Apply Story Delta to Existing Wiki`: compare new story text against existing pages and apply reviewed updates (source modes: `note`, `chapter`, `story`, with note picker).',
         'Created/updated pages follow readable wiki layout: `# Title`, `## Summary`, then section headings.'
       ],
       actions: [

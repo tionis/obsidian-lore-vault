@@ -596,6 +596,8 @@ Shared panel inputs:
   - default tags
   - lorebook name converted into a lorebook tag using configured `tagPrefix`
 - `Apply Story Delta to Existing Wiki`:
+  - source story input: inline markdown or `Source Story Note Path` (`Pick Note` / `Use Active Note`)
+  - source scope mode: `note` | `chapter` | `story` (deterministic expansion from selected source note)
   - lorebook scope selection list (add/remove scopes to consider for existing-page updates)
   - `New Note Target Folder` (used only for new-note creation)
   - default tags
@@ -641,7 +643,8 @@ Current merge policy (default):
   - explicit/normalized `pageKey`
   - normalized `title`
   - deterministic new-note creation in `New Note Target Folder`
-- story delta can use inline markdown or load source markdown from a story note path
+- story delta can use inline markdown or load source markdown from a selected story source note
+- source note mode supports deterministic `note`, `chapter`, or `story` expansion from the selected note (with picker support)
 - story delta selects existing notes from one or more chosen lorebook scopes
 - story delta preview includes per-change dry-run diff snippets (`+`/`-` line summary + collapsed preview block)
 - story delta preview includes conflict-review rows for update churn with quick decisions (`accept`, `reject`, `keep_both`)

@@ -581,7 +581,8 @@ Implemented:
 Implemented:
 
 - story-delta command/view (`Apply Story Delta to Existing Wiki`)
-- source story input from inline markdown or note path
+- source story input from inline markdown or source-note mode (`note` | `chapter` | `story`) with picker
+- chapter/story source modes expand deterministically from selected note using story-thread resolution
 - deterministic target-page loading from folder with optional scope-tag filter
 - deterministic chunking reuse (`splitStoryMarkdownIntoChunks`)
 - schema-constrained delta operations including confidence + rationale

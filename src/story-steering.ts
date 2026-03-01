@@ -376,6 +376,11 @@ export class StorySteeringStore {
     return created;
   }
 
+  async linkStoryToAuthorNote(storyFile: TFile, authorNoteFile: TFile): Promise<void> {
+    await this.ensureAuthorNoteMetadata(authorNoteFile, storyFile);
+    await this.updateStoryAuthorNoteLink(storyFile, authorNoteFile);
+  }
+
   async getLinkedStoryFilesForAuthorNote(authorNoteFile: TFile): Promise<TFile[]> {
     const linked = new Map<string, TFile>();
     const files = [...this.app.vault.getMarkdownFiles()].sort((left, right) => left.path.localeCompare(right.path));

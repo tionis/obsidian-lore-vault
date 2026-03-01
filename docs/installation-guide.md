@@ -137,7 +137,7 @@ If you prefer to build the plugin from source:
    - If needed, stop an active run with command `Stop Active Generation` (also available in editor menu while running)
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
-   - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context, scaling prior-chapter depth when context budget is larger
+   - If the active note defines long-form story metadata (`authorNote` link, `chapter`, optional prev/next refs; `storyId` optional fallback), LoreVault injects bounded prior chapter memory before lorebook context, scaling prior-chapter depth when context budget is larger
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Author Note content is edited directly in the linked note (native Obsidian editor)
@@ -148,6 +148,7 @@ If you prefer to build the plugin from source:
      - `Split Active Story Note into Chapter Notes`
      - `Split Active Story Note into Chapter Notes (Pick Folder)`
      - `Create Next Story Chapter` (also appears in editor context menu for notes with chapter frontmatter)
+   - Story Writing Panel also includes `Link Author Note` and `Create Next Chapter` actions
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 

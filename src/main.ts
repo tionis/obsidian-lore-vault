@@ -112,6 +112,7 @@ import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal'
 import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text-command-modal';
 import { TextCommandReviewModal } from './text-command-review-modal';
 import { AuthorNoteRewriteModal } from './author-note-rewrite-modal';
+import { AuthorNoteLinkModal } from './author-note-link-modal';
 import { InlineDirectiveInsertModal } from './inline-directive-insert-modal';
 import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
@@ -167,7 +168,6 @@ import { LorebookScopeCache } from './lorebook-scope-cache';
 import {
   buildChapterFileStem,
   buildStoryChapterNoteMarkdown,
-  deriveStoryIdFromTitle,
   formatStoryChapterRef,
   splitStoryMarkdownIntoChapterSections,
   upsertStoryChapterFrontmatter
@@ -245,6 +245,12 @@ export interface StoryChatTurnRequest {
 export interface StoryChatTurnResult {
   assistantText: string;
   contextMeta: StoryChatContextMeta;
+}
+
+export interface LinkedStoryDisplayItem {
+  path: string;
+  chapter: number | null;
+  chapterTitle: string;
 }
 
 type StoryChatAgentToolName =
@@ -1705,6 +1711,77 @@ export default class LoreBookConverterPlugin extends Plugin {
     await this.app.workspace.getLeaf(true).openFile(authorNoteFile);
     this.refreshStorySteeringViews();
     return authorNoteFile;
+  }
+
+  public async resolveLinkedStoryDisplayForAuthorNote(authorNotePath: string): Promise<LinkedStoryDisplayItem[]> {
+    const normalizedPath = normalizeVaultPath(authorNotePath);
+    if (!normalizedPath) {
+      return [];
+    }
+
+    const authorNote = this.app.vault.getAbstractFileByPath(normalizedPath);
+    if (!(authorNote instanceof TFile)) {
+      return [];
+    }
+
+    const linkedStories = await this.storySteeringStore.getLinkedStoryFilesForAuthorNote(authorNote);
+    const items: LinkedStoryDisplayItem[] = linkedStories.map(file => {
+      const node = this.getStoryThreadNodeForFile(file);
+      return {
+        path: file.path,
+        chapter: typeof node?.chapter === 'number' ? node.chapter : null,
+        chapterTitle: (node?.chapterTitle ?? '').trim()
+      };
+    });
+    items.sort((left, right) => {
+      const leftHasChapter = typeof left.chapter === 'number';
+      const rightHasChapter = typeof right.chapter === 'number';
+      if (leftHasChapter && rightHasChapter && left.chapter !== right.chapter) {
+        return (left.chapter as number) - (right.chapter as number);
+      }
+      if (leftHasChapter !== rightHasChapter) {
+        return leftHasChapter ? -1 : 1;
+      }
+      return left.path.localeCompare(right.path);
+    });
+    return items;
+  }
+
+  private async promptForAuthorNoteLinkSelection(activeFile: TFile): Promise<TFile | null> {
+    const files = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.path !== activeFile.path)
+      .sort((a, b) => a.path.localeCompare(b.path));
+    if (files.length === 0) {
+      new Notice('No markdown notes available to link as Author Note.');
+      return null;
+    }
+    const modal = new AuthorNoteLinkModal(this.app, files);
+    const resultPromise = modal.waitForSelection();
+    modal.open();
+    return resultPromise;
+  }
+
+  public async linkExistingAuthorNoteForActiveNote(): Promise<TFile | null> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('No active markdown note.');
+      return null;
+    }
+    if (await this.storySteeringStore.isAuthorNoteFile(activeFile)) {
+      new Notice('Active note is an Author Note. Open a story note to link it.');
+      return null;
+    }
+
+    const selected = await this.promptForAuthorNoteLinkSelection(activeFile);
+    if (!selected) {
+      return null;
+    }
+
+    await this.storySteeringStore.linkStoryToAuthorNote(activeFile, selected);
+    this.refreshStorySteeringViews();
+    new Notice(`Linked author note: ${selected.path}`);
+    return selected;
   }
 
   private async promptForAuthorNoteRewriteInstruction(): Promise<string | null> {
@@ -5543,6 +5620,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'link-existing-author-note',
+      name: 'Link Existing Author Note',
+      callback: () => {
+        void this.linkExistingAuthorNoteForActiveNote().catch(error => {
+          console.error('LoreVault: Failed to link existing author note:', error);
+          new Notice(`Failed to link existing author note: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
       id: 'rewrite-author-note',
       name: 'Rewrite Author Note',
       callback: () => {
@@ -5826,6 +5914,18 @@ export default class LoreBookConverterPlugin extends Plugin {
 
         menu.addItem(item => {
           item
+            .setTitle('LoreVault: Link Existing Author Note')
+            .setIcon('link')
+            .onClick(() => {
+              void this.linkExistingAuthorNoteForActiveNote().catch(error => {
+                console.error('LoreVault: Failed to link existing author note:', error);
+                new Notice(`Failed to link existing author note: ${error instanceof Error ? error.message : String(error)}`);
+              });
+            });
+        });
+
+        menu.addItem(item => {
+          item
             .setTitle('LoreVault: Rewrite Author Note')
             .setIcon('wand')
             .onClick(() => {
@@ -6029,6 +6129,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     return Boolean(authorNote.trim());
   }
 
+  public canCreateNextStoryChapterForActiveNote(): boolean {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      return false;
+    }
+    return this.noteHasChapterFrontmatter(activeFile);
+  }
+
   private getStoryThreadNodeForFile(file: TFile): StoryThreadNode | null {
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
@@ -6062,11 +6170,15 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
+    let authorNoteFile = await this.storySteeringStore.resolveAuthorNoteFileForStory(activeFile);
+    if (!(authorNoteFile instanceof TFile)) {
+      authorNoteFile = await this.storySteeringStore.ensureAuthorNoteForStory(activeFile);
+    }
+
     const cache = this.app.metadataCache.getFileCache(activeFile);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-    const sourceNode = parseStoryThreadNodeFromFrontmatter(activeFile.path, activeFile.basename, frontmatter);
-    const explicitStoryId = asString(getFrontmatterValue(frontmatter, 'storyId', 'story')) ?? '';
-    const storyId = sourceNode?.storyId || explicitStoryId.toLowerCase() || deriveStoryIdFromTitle(activeFile.basename);
+    const explicitStoryId = (asString(getFrontmatterValue(frontmatter, 'storyId', 'story')) ?? '').trim();
+    const chapterStemAnchor = explicitStoryId || authorNoteFile.basename || activeFile.basename;
     const targetFolder = normalizeVaultPath(targetFolderInput).replace(/^\/+|\/+$/g, '');
     const usedPaths = new Set(
       this.app.vault.getMarkdownFiles().map(file => normalizeVaultPath(file.path).toLowerCase())
@@ -6074,7 +6186,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const plannedPaths = chapterSections.map(section => this.allocateUniqueChapterPath(
       targetFolder,
-      buildChapterFileStem(storyId, section.chapterNumber, section.chapterTitle),
+      buildChapterFileStem(chapterStemAnchor, section.chapterNumber, section.chapterTitle),
       usedPaths
     ));
 
@@ -6087,7 +6199,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       const chapterMarkdown = buildStoryChapterNoteMarkdown(
         raw,
         {
-          storyId,
+          storyId: explicitStoryId,
           chapter: section.chapterNumber,
           chapterTitle: section.chapterTitle,
           previousChapterRefs: previousChapterRef ? [previousChapterRef] : [],
@@ -6098,6 +6210,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       );
       await ensureParentVaultFolderForFile(this.app, chapterPath);
       await this.app.vault.create(chapterPath, chapterMarkdown);
+      const createdFile = this.app.vault.getAbstractFileByPath(chapterPath);
+      if (createdFile instanceof TFile) {
+        await this.storySteeringStore.linkStoryToAuthorNote(createdFile, authorNoteFile);
+      }
       createdPaths.push(chapterPath);
     }
 
@@ -6139,9 +6255,17 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   private async createNextStoryChapterForFile(activeFile: TFile): Promise<void> {
+    let authorNoteFile = await this.storySteeringStore.resolveAuthorNoteFileForStory(activeFile);
+    if (!(authorNoteFile instanceof TFile)) {
+      authorNoteFile = await this.storySteeringStore.ensureAuthorNoteForStory(activeFile);
+    }
+
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const explicitStoryId = (asString(getFrontmatterValue(frontmatter, 'storyId', 'story')) ?? '').trim();
     const node = this.getStoryThreadNodeForFile(activeFile);
     if (!node) {
-      new Notice('Active note is missing story/chapter frontmatter (`storyId` required).');
+      new Notice('Unable to resolve chapter metadata for active note.');
       return;
     }
     if (node.nextChapterRefs.length > 0) {
@@ -6176,7 +6300,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     const chapterPath = this.allocateUniqueChapterPath(
       chapterFolder,
-      buildChapterFileStem(node.storyId, nextChapterNumber, nextChapterTitle),
+      buildChapterFileStem(
+        explicitStoryId || authorNoteFile.basename || activeFile.basename,
+        nextChapterNumber,
+        nextChapterTitle
+      ),
       usedPaths
     );
 
@@ -6184,7 +6312,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const newChapterMarkdown = buildStoryChapterNoteMarkdown(
       rawActive,
       {
-        storyId: node.storyId,
+        storyId: explicitStoryId,
         chapter: nextChapterNumber,
         chapterTitle: nextChapterTitle,
         previousChapterRefs: [formatStoryChapterRef(activeFile.path)],
@@ -6195,9 +6323,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     await ensureParentVaultFolderForFile(this.app, chapterPath);
     await this.app.vault.create(chapterPath, newChapterMarkdown);
+    const createdChapterFile = this.app.vault.getAbstractFileByPath(chapterPath);
+    if (createdChapterFile instanceof TFile) {
+      await this.storySteeringStore.linkStoryToAuthorNote(createdChapterFile, authorNoteFile);
+    }
 
     const updatedCurrent = upsertStoryChapterFrontmatter(rawActive, {
-      storyId: node.storyId,
+      storyId: explicitStoryId,
       chapter: node.chapter,
       chapterTitle: node.chapterTitle || node.title || activeFile.basename,
       previousChapterRefs: node.previousChapterRefs,
@@ -6213,7 +6345,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     new Notice(`Created next chapter: ${chapterPath}`);
   }
 
-  private async createNextStoryChapterForActiveNote(): Promise<void> {
+  public async createNextStoryChapterForActiveNote(): Promise<void> {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       new Notice('Open a chapter note before creating the next chapter.');

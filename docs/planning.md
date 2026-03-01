@@ -416,12 +416,13 @@ Canonical unit:
 
 Recommended metadata (frontmatter-first):
 
-- `storyId`: stable story identifier
+- `authorNote`: link to shared Author Note (primary story-thread anchor)
 - `chapter`: chapter/scene index
 - `chapterTitle`: optional display title
 - `arc`: optional grouping label
 - `previousChapter`: optional explicit link/path
 - `nextChapter`: optional explicit link/path
+- `storyId`: optional fallback anchor when `authorNote` is not present
 - `lorebooks`/scope selectors for context boundaries
 
 Conventions:

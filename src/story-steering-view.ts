@@ -151,6 +151,28 @@ export class StorySteeringView extends ItemView {
     }
   }
 
+  private async linkExistingAuthorNote(): Promise<void> {
+    try {
+      await this.plugin.linkExistingAuthorNoteForActiveNote();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to link author note: ${message}`);
+    } finally {
+      await this.render(true);
+    }
+  }
+
+  private async createNextChapter(): Promise<void> {
+    try {
+      await this.plugin.createNextStoryChapterForActiveNote();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to create next chapter: ${message}`);
+    } finally {
+      await this.render(true);
+    }
+  }
+
   private async rewriteAuthorNote(): Promise<void> {
     try {
       await this.plugin.rewriteAuthorNoteFromActiveNote();
@@ -202,6 +224,9 @@ export class StorySteeringView extends ItemView {
       const telemetry = this.plugin.getGenerationTelemetry();
       const generationRunning = telemetry.state !== 'idle';
       const workspaceContext = await this.plugin.resolveAuthorNoteWorkspaceContext();
+      const linkedStoryItems = workspaceContext.mode === 'author_note' && workspaceContext.authorNotePath
+        ? await this.plugin.resolveLinkedStoryDisplayForAuthorNote(workspaceContext.authorNotePath)
+        : [];
 
       let editableStoryPath = '';
       let selectedScopes: string[] = [];
@@ -264,6 +289,18 @@ export class StorySteeringView extends ItemView {
         void this.openOrCreateAuthorNote();
       });
 
+      const linkAuthorNoteButton = actions.createEl('button', { text: 'Link Author Note' });
+      linkAuthorNoteButton.disabled = workspaceContext.mode !== 'story';
+      linkAuthorNoteButton.addEventListener('click', () => {
+        void this.linkExistingAuthorNote();
+      });
+
+      const createNextChapterButton = actions.createEl('button', { text: 'Create Next Chapter' });
+      createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
+      createNextChapterButton.addEventListener('click', () => {
+        void this.createNextChapter();
+      });
+
       const rewriteAuthorNoteButton = actions.createEl('button', { text: 'Rewrite Author Note' });
       rewriteAuthorNoteButton.disabled = !workspaceContext.activeFilePath;
       rewriteAuthorNoteButton.addEventListener('click', () => {
@@ -296,7 +333,37 @@ export class StorySteeringView extends ItemView {
             : 'Author note: (not linked yet)')
       });
 
-      if (workspaceContext.linkedStoryPaths.length > 0) {
+      if (workspaceContext.mode === 'author_note') {
+        activeNoteCard.createEl('p', {
+          cls: 'lorevault-manager-generation-stats',
+          text: 'Linked Chapters/Stories:'
+        });
+        if (linkedStoryItems.length === 0) {
+          activeNoteCard.createEl('p', {
+            cls: 'lorevault-manager-generation-stats',
+            text: '(none)'
+          });
+        } else {
+          const linkedList = activeNoteCard.createEl('ul');
+          for (const linkedStory of linkedStoryItems) {
+            const item = linkedList.createEl('li');
+            const chapterLabel = typeof linkedStory.chapter === 'number'
+              ? `Chapter ${linkedStory.chapter}`
+              : 'Unnumbered';
+            const titleSuffix = linkedStory.chapterTitle ? ` - ${linkedStory.chapterTitle}` : '';
+            item.createSpan({ text: `${chapterLabel}${titleSuffix}: ${linkedStory.path} ` });
+            const openButton = item.createEl('button', { text: 'Open' });
+            openButton.addEventListener('click', () => {
+              const file = this.getMarkdownFileByPath(linkedStory.path);
+              if (!file) {
+                new Notice(`Unable to open linked story: ${linkedStory.path}`);
+                return;
+              }
+              void this.app.workspace.getLeaf(true).openFile(file);
+            });
+          }
+        }
+      } else if (workspaceContext.linkedStoryPaths.length > 0) {
         activeNoteCard.createEl('p', {
           cls: 'lorevault-manager-generation-stats',
           text: `Linked stories: ${workspaceContext.linkedStoryPaths.join(', ')}`

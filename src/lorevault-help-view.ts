@@ -111,7 +111,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Recommended Note Structure', {
       bullets: [
         'Use one note per chapter/scene for long-form stories.',
-        'Keep `storyId` stable across chapters; set numeric `chapter` where possible.',
+        'Link chapters to a shared Author Note via `authorNote`; set numeric `chapter` where possible.',
         'Use `previousChapter` / `nextChapter` links for explicit ordering when needed.',
         'Add a `## Summary` section near the top of notes; LoreVault prefers this for memory/retrieval.'
       ],
@@ -120,8 +120,8 @@ export class LorevaultHelpView extends ItemView {
         '---',
         'tags: [lorebook/universe/yggdrasil]',
         'keywords: [baalthasar, archmage, mind magic]',
+        'authorNote: [[LoreVault/author-notes/chronicles-main-author-note]]',
         'chapter: 7',
-        'storyId: chronicles-main',
         'chapterTitle: "Crossing the Spine"',
         'previousChapter: [[story/ch06-the-fallout]]',
         'nextChapter: [[story/ch08-the-reckoning]]',
@@ -156,6 +156,8 @@ export class LorevaultHelpView extends ItemView {
         'Story Steering is now a linked Author Note workflow: set `authorNote: [[path/to/note]]` on story notes.',
         'Author Note content is edited directly in native Obsidian notes (no separate LoreVault textarea editor).',
         'Story Writing panel combines writing actions, live generation monitor, selected lorebook controls, selected context items, and compact cost breakdown.',
+        'Story Writing actions include `Link Author Note` (interactive picker) and `Create Next Chapter`.',
+        'When an Author Note is active, Story Writing lists linked chapters/stories (chapter-ordered when frontmatter exists).',
         'Use `Open or Create Linked Author Note` to create/link an Author Note in the configured Author Note folder.',
         'Lorebook scope selection for continuation/chat is resolved from active-note frontmatter first, then Author Note frontmatter.',
         'If multiple story notes link to the same Author Note, LoreVault injects all linked stories as rewrite context.',

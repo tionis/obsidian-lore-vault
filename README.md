@@ -18,7 +18,7 @@ Obsidian plugin that compiles Obsidian notes into scoped context exports for wri
 - Prompt-driven selection text commands with optional lore context and diff-based apply confirmation
 - Optional LLM summary workflows (world_info + chapter) with review/approval and in-note summary-section writes
 - Experimental cost tracking ledger for completion usage (tokens + provider cost metadata + fallback USD estimates)
-- Deterministic story-thread resolution (`storyId` + `chapter` + prev/next refs) with prior-chapter memory injection
+- Deterministic story-thread resolution anchored by linked `authorNote`, with optional chapter ordering (`chapter` + prev/next refs) and prior-chapter memory injection
 - Story Chat panel with per-chat lorebook scope selection and manual-context mode
 - Dedicated lorebook auditor panel for user-facing quality checks
 - Dedicated query simulation panel for multi-scope retrieval simulation
@@ -212,11 +212,14 @@ Command: `Open Story Writing Panel`
 Current capabilities:
 
 - open/create linked Author Note from the active story note
+- link an existing Author Note interactively from the panel
+- create the next chapter from the panel (same command as palette/context menu)
 - trigger `Rewrite Author Note` with optional change prompt + diff review
 - quick actions: `Continue Story`, `Stop`, `Insert Directive`, `Open Story Chat`
 - live generation monitor (state, status, model, scopes, token/output usage)
 - collapsible `Selected Context Items` (selected `world_info` + fallback entries)
 - selected lorebook scopes for the active story note with add/remove/all/none controls
+- when the active note is an Author Note, list linked chapters/stories (chapter-ordered when frontmatter exists)
 - compact collapsible cost breakdown (session/day/project totals + warnings)
 
 ## Lorebook Auditor
@@ -253,7 +256,7 @@ Behavior:
 
 - builds/refreshes an in-memory scope index
 - watches note create/modify/delete/rename events and performs near-live refresh
-- resolves optional chapter-memory context from prior chapters using story frontmatter (`storyId`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`) with budget-adaptive depth
+- resolves optional chapter-memory context from prior chapters using story frontmatter (`authorNote`, `chapter`, `chapterTitle`, `previousChapter`, `nextChapter`; `storyId` optional legacy fallback) with budget-adaptive depth
 - queries retrieval layers from current editor context:
   - `world_info` by graph-first seed + expansion relevance
   - fallback entries by policy (`off|auto|always`) and relevance
@@ -350,8 +353,8 @@ Behavior:
   - world_info content: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> note body
   - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> deterministic excerpt
 - chapter note utilities:
-  - split command parses active note chapters from `##` headings (`#` treated as story title) and writes linked chapter notes with `storyId/chapter/chapterTitle/previousChapter/nextChapter`
-  - create-next command creates a new chapter note in the current folder, links current note `nextChapter`, and links new note `previousChapter`
+  - split command parses active note chapters from `##` headings (`#` treated as story title), writes linked chapter notes with chapter/front-link metadata, and links each chapter to the same Author Note
+  - create-next command creates a new chapter note in the current folder, links current note `nextChapter`, links new note `previousChapter`, and links new chapter to the same Author Note
 
 ## Long-Form Chapter Commands
 

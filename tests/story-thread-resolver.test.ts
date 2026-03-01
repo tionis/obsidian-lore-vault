@@ -44,6 +44,22 @@ test('parseStoryThreadNodeFromFrontmatter parses story/chapter schema and refs',
   assert.deepEqual(node?.nextChapterRefs, ['story/ch03']);
 });
 
+test('parseStoryThreadNodeFromFrontmatter prefers authorNote link as thread anchor', () => {
+  const node = parseStoryThreadNodeFromFrontmatter(
+    'story/ch02.md',
+    'Ch 2',
+    {
+      storyId: 'legacy-story-id',
+      authorNote: '[[Lore/Story Author Note.md]]',
+      chapter: 2
+    }
+  );
+
+  assert.ok(node);
+  assert.equal(node?.storyId, 'author-note:lore/story author note');
+  assert.equal(node?.chapter, 2);
+});
+
 test('resolveStoryThread orders deterministically by chapter when no links exist', () => {
   const nodes: StoryThreadNode[] = [
     {

@@ -851,8 +851,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     let steeringFolderInput: TextComponent | null = null;
     const steeringFolderSetting = new Setting(containerEl)
-      .setName('Story Steering Folder')
-      .setDesc('Vault folder where scope-based steering notes are stored (global/story/chapter/note).')
+      .setName('Author Note Folder')
+      .setDesc('Vault folder where note-level Author Note markdown files are stored.')
       .addText(text => {
         steeringFolderInput = text;
         text
@@ -1135,7 +1135,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     containerEl.createEl('p', {
-      text: 'Steering layer placement controls where pinned instructions, story notes, scene intent, and parsed inline directives are staged in prompts.'
+      text: 'Steering layer placement controls where Author Note markdown and parsed inline directives are staged in prompts.'
     });
     containerEl.createEl('p', {
       text: 'Inline directive syntax: [LV: ...] or <!-- LV: ... --> (parsed from near-cursor story text only).'
@@ -1152,40 +1152,14 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     };
 
     new Setting(containerEl)
-      .setName('Pinned Instructions Placement')
-      .setDesc('Where pinned session instructions are injected in staged prompts.')
-      .addDropdown(dropdown => dropdown
-        .addOptions(placementOptions)
-        .setValue(this.plugin.settings.completion.layerPlacement.pinnedInstructions)
-        .onChange(async value => {
-          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
-            this.plugin.settings.completion.layerPlacement.pinnedInstructions = value;
-            await this.persistSettings();
-          }
-        }));
-
-    new Setting(containerEl)
-      .setName('Story Notes Placement')
-      .setDesc('Where author-note style story guidance is injected.')
+      .setName('Author Note Placement')
+      .setDesc('Where note-level Author Note markdown is injected.')
       .addDropdown(dropdown => dropdown
         .addOptions(placementOptions)
         .setValue(this.plugin.settings.completion.layerPlacement.storyNotes)
         .onChange(async value => {
           if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
             this.plugin.settings.completion.layerPlacement.storyNotes = value;
-            await this.persistSettings();
-          }
-        }));
-
-    new Setting(containerEl)
-      .setName('Scene Intent Placement')
-      .setDesc('Where scene/chapter intent guidance is injected.')
-      .addDropdown(dropdown => dropdown
-        .addOptions(placementOptions)
-        .setValue(this.plugin.settings.completion.layerPlacement.sceneIntent)
-        .onChange(async value => {
-          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
-            this.plugin.settings.completion.layerPlacement.sceneIntent = value;
             await this.persistSettings();
           }
         }));

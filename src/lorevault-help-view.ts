@@ -153,18 +153,17 @@ export class LorevaultHelpView extends ItemView {
 
     this.renderSection(contentEl, 'Story Steering and Chat', {
       bullets: [
-        'Story Steering stores reusable controls in scope notes: `global`, `story`, `chapter`, `note`.',
-        'Story Steering edits autosave immediately; switching scope type or active note autosaves current edits before loading the next derived scope.',
-        'Story Steering scope keys are derived from the active note; missing `lvNoteId`/`lvStoryId`/`lvChapterId` are auto-created when needed.',
-        '`Active Lorebooks` in steering notes is the primary lorebook selector for continuation.',
-        'Steering layers: pinned instructions, story notes, scene intent, plot threads, open loops, canon deltas.',
+        'Story Steering now uses one note-level Author Note markdown document per active note.',
+        'Story Steering edits autosave immediately; switching active notes autosaves current edits before loading the next note-level Author Note.',
+        'Lorebook scope selection for continuation/chat is resolved from active-note frontmatter first, then Author Note frontmatter.',
+        'Steering layers are simplified to `Author Note` plus parsed inline directives.',
         'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/apply.',
-        'Steering update review now shows field-level Current vs Proposed values for manual comparison before apply.',
+        'Steering update review shows Current vs Proposed Author Note markdown before apply.',
         '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
         'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
-        'Story Chat supports per-conversation scopes, manual context, steering source refs (`note:*`, `story:*`, `chapter:*`), specific notes, and fork/regenerate.',
-        'Story Chat continuity items are pulled from resolved steering scopes, with per-group inclusion toggles.',
-        'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed steering scopes.',
+        'Story Chat supports per-conversation scopes, manual context, note steering refs (`note:*`), specific notes, and fork/regenerate.',
+        'Story Chat continuity items are conversation-level toggles; they are no longer sourced from multi-scope steering fields.',
+        'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update allowed note-level Author Notes.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'
       ],
       actions: [
@@ -227,7 +226,7 @@ export class LorevaultHelpView extends ItemView {
         'Writing Completion: provider/model/context window/max output and model presets.',
         'LLM Operation Log: enable full request/response logging, path, retention cap, optional embedding-call logging, and open the built-in explorer panel with parsed message inspection.',
         'Story Chat folder plus Story Chat tool-call limits/write toggle.',
-        'Story Steering folder and extraction sanitization setting.',
+        'Author Note folder and extraction sanitization setting.',
         'Retrieval controls: graph hops/decay, backlink expansion, fallback policy (`off|auto|always`), body-lift settings.',
         'Text Commands: prompt folder, default context toggle, auto-accept.',
         'Cost Tracking: usage ledger path, pricing overrides, and optional budget alerts (daily/session/operation/model/scope).'

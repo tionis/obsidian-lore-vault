@@ -728,15 +728,6 @@ export class StoryChatView extends ItemView {
     this.render();
   }
 
-  private promptSteeringScopeRef(type: 'story' | 'chapter'): void {
-    const label = type === 'story' ? 'story' : 'chapter';
-    const key = window.prompt(`Enter ${label} scope key:`, '')?.trim() ?? '';
-    if (!key) {
-      return;
-    }
-    this.addSteeringScopeRef(`${type}:${key}`);
-  }
-
   private renderSteeringSourcesControls(container: HTMLElement): void {
     const steeringSection = container.createDiv({ cls: 'lorevault-chat-manual' });
     const steeringHeader = steeringSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
@@ -762,16 +753,6 @@ export class StoryChatView extends ItemView {
       this.addSteeringScopeRef(`note:${active.path}`);
     });
 
-    const addStoryButton = steeringButtons.createEl('button', { text: 'Add Story' });
-    addStoryButton.addEventListener('click', () => {
-      this.promptSteeringScopeRef('story');
-    });
-
-    const addChapterButton = steeringButtons.createEl('button', { text: 'Add Chapter' });
-    addChapterButton.addEventListener('click', () => {
-      this.promptSteeringScopeRef('chapter');
-    });
-
     const clearButton = steeringButtons.createEl('button', { text: 'Clear' });
     clearButton.disabled = this.steeringScopeRefs.length === 0;
     clearButton.addEventListener('click', () => {
@@ -781,7 +762,7 @@ export class StoryChatView extends ItemView {
     });
 
     steeringSection.createEl('p', {
-      text: 'Sources are resolved each turn. Notes pull both note content and steering layers; story/chapter refs pull steering layers only.'
+      text: 'Sources are resolved each turn. Only note sources are supported; each note pulls both note content and author-note steering.'
     });
 
     const noteRefs = extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs);

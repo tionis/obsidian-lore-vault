@@ -246,17 +246,16 @@ Behavior:
   - optional tool-retrieved layer for targeted entry fetches within call/token/time caps
 - when embeddings are enabled, long query windows are chunked deterministically and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback instead of aborting generation
 - applies token-budgeted context assembly
-- stages explicit steering layers (pinned instructions, story notes, scene intent, inline directives)
+- stages explicit steering layers (author note + inline directives)
 - steering layer placement is configurable (`system` | `pre-history` | `pre-response`)
 - parses strict inline directives from near-cursor story text (`[LV: ...]`, `<!-- LV: ... -->`)
 - ignores non-prefixed bracket text (for example `[Editor Note: ...]`)
 - injects inline directives as a dedicated steering layer with per-turn count/token caps
-- supports optional continuation frontmatter steering keys (`lvPinnedInstructions`, `lvStoryNotes`, `lvSceneIntent`)
 - supports continuation continuity-state frontmatter lists/toggles:
   - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
   - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
 - Story Steering LLM assistance supports optional update prompts so users can request targeted steering changes before review/apply
-- Story Steering update review modal shows field-level `Current` vs `Proposed` values for manual comparison before apply
+- Story Steering update review modal compares current vs proposed Author Note markdown before apply
 - sends context + local near-cursor story context to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - generation can be aborted with command `Stop Active Generation` (also available as editor-menu action while a run is in progress)
@@ -349,12 +348,12 @@ Commands:
 
 Story-level scope override:
 
-- Preferred: set `Active Lorebooks` in Story Steering scope notes (`global`/`story`/`chapter`/`note`).
-- Story Steering panel edits autosave immediately to the active scope; changing scope type or switching active note saves current edits, then loads the note-derived scope.
-- Story Steering scope keys are derived from the active note (manual scope-key editing removed); missing `lvNoteId`/`lvStoryId`/`lvChapterId` are auto-created when needed.
-- Frontmatter keys remain supported as fallback.
+- Preferred: set lorebook scopes directly in frontmatter on the story note.
+- Optional: set lorebook scopes in Author Note frontmatter (used when story-note frontmatter does not define scopes).
+- Story Steering panel is note-level only; edits autosave immediately and active-note switches load the next note-level Author Note.
+- No active-scope fallback is applied for continuation/chat scope selection.
 
-Frontmatter fallback example:
+Frontmatter example:
 
 ```yaml
 ---
@@ -440,16 +439,15 @@ Current capabilities:
 - per-chat lorebook scope selection (including none)
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
-- steering source references (`note:*`, `story:*`, `chapter:*`)
-  - note steering refs also pull that note body into specific-note context
-  - story/chapter refs pull steering layers only
+- steering source references (`note:*`)
+  - note steering refs pull that note body into specific-note context plus note-level author-note steering
 - per-chat continuity inclusion toggles (plot threads, open loops, canon deltas)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
   - search/read selected lorebook entries
   - search/read linked story and manually selected note context
-  - read steering scopes in the active scope chain (`global`/`story`/`chapter`/`note`)
-  - optionally update steering scopes and create lorebook-tagged notes when write actions are enabled
+  - read/update allowed note-level author-note steering scopes
+  - optionally create lorebook-tagged notes when write actions are enabled
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)

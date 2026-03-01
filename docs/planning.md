@@ -328,30 +328,29 @@ Current status:
 
 - inline shorthand directives are implemented for completion/chat (`[LV: ...]`, `<!-- LV: ... -->`)
 - implemented constraints: strict-prefix parsing, near-cursor scope, deterministic dedupe/order, per-turn caps, and export/import/update exclusion
-- explicit steering layers are implemented (pinned instructions, story notes, scene intent) for both Story Chat and editor continuation
-- placement policy is implemented per steering layer (`system`, `pre-history`, `pre-response`) via Writing Completion settings
-- deterministic staged reservations + overflow trimming are implemented with fixed trim order and pinned-layer protection
+- explicit steering layers are implemented as a single note-level `Author Note` plus inline directives for both Story Chat and editor continuation
+- placement policy is implemented for author-note and inline-directive layers (`system`, `pre-history`, `pre-response`) via Writing Completion settings
+- deterministic staged reservations + overflow trimming are implemented with fixed trim order
 - inspector traces now include per-layer token usage/headroom and overflow rationale
 - continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
-- scope-based steering workspace foundation is implemented:
+- note-level steering workspace is implemented:
   - dedicated Story Steering panel
-  - markdown-backed scoped steering notes (`global`, optional `story` [compat alias: `thread`], optional `chapter`, `note`)
-  - merged with chat/continuation steering assembly without mandatory `storyId`
+  - markdown-backed note-scoped Author Note files
+  - merged with chat/continuation steering assembly
+  - lorebook scope selection resolves from story-note frontmatter first, then Author Note frontmatter
 - LLM-assisted extraction actions are implemented in the Story Steering panel:
   - extract from active note or near-cursor editor context (text-before-cursor fallback to note body)
   - optional per-run update prompt to steer what should change
-  - existing steering state is treated as baseline; missing evidence preserves prior values
-  - review/edit modal with field-level current-vs-proposed comparison before applying to panel state
-  - explicit manual save step to persist scope note updates
+  - existing Author Note is treated as baseline; missing evidence preserves prior values
+  - review/edit modal with current-vs-proposed Author Note comparison before applying to panel state
+  - panel edits autosave immediately
 - story text completion now supports explicit stop control (`Stop Active Generation` command + editor-menu stop while running)
 - optional operation log captures full LLM request/response payloads for completion and planner calls
 
-Planned steering primitives:
+Planned/active steering primitives:
 
 - explicit steering layers:
-  - pinned session instructions (style/tone/constraints)
-  - per-story author-note style steering
-  - scene/chapter intent block
+  - note-level author-note markdown block (user-defined structure)
 - optional inline shorthand directives with strict prefix:
   - accepted syntax: `[LV: ...]` and `<!-- LV: ... -->`
   - non-prefixed bracket notes are treated as normal prose and ignored by steering parser
@@ -359,7 +358,7 @@ Planned steering primitives:
   - directives are surfaced as an explicit inspector layer
 - configurable placement for each layer (`system`, pre-history, pre-response context)
 - deterministic token-budget partitioning per layer with clear reserves and headroom
-- deterministic overflow policy (fixed trim/compress order, no silent drop of pinned steering)
+- deterministic overflow policy (fixed trim/compress order)
 - continuity-state layer (active threads, unresolved commitments, canon deltas)
 
 Directive safety constraints:

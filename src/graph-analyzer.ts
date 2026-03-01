@@ -46,7 +46,7 @@ export class GraphAnalyzer {
               // Create edge from source to target
               try {
                 this.graph.addEdge(uid, linkedUid.toString());
-              } catch (e) {
+              } catch (_e) {
                 // Edge might already exist, ignore
               }
             }

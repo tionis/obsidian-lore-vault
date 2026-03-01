@@ -12,9 +12,11 @@ export async function writeVaultBinary(
 ): Promise<string> {
   const normalizedPath = normalizeVaultFilePath(outputPath);
   await ensureParentVaultFolderForFile(app, normalizedPath);
+  const payload = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(payload).set(bytes);
   await app.vault.adapter.writeBinary(
     normalizedPath,
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    payload
   );
   return normalizedPath;
 }

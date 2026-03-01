@@ -61,7 +61,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
 }
 
 function coerceKind(value: unknown): CompletionOperationKind {
-  if (value === 'completion' || value === 'completion_stream' || value === 'tool_planner') {
+  if (value === 'completion' || value === 'completion_stream' || value === 'tool_planner' || value === 'embedding') {
     return value;
   }
   return 'completion';

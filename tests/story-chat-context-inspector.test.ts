@@ -15,6 +15,9 @@ function buildMeta(overrides: Partial<StoryChatContextMeta> = {}): StoryChatCont
     usedInlineDirectives: true,
     usedContinuityState: true,
     scopes: ['universe/yggdrasil'],
+    steeringSourceRefs: ['note:stories/ch03.md'],
+    steeringSourceScopes: ['global:global', 'story:chronicles-main'],
+    unresolvedSteeringSourceRefs: [],
     specificNotePaths: [],
     unresolvedNoteRefs: [],
     chapterMemoryItems: ['Chapter 2', 'Chapter 3'],
@@ -54,6 +57,7 @@ function buildMeta(overrides: Partial<StoryChatContextMeta> = {}): StoryChatCont
 test('buildStoryChatContextInspectorSummary exposes directive counts and scope list', () => {
   const summary = buildStoryChatContextInspectorSummary(buildMeta());
   assert.match(summary, /scopes universe\/yggdrasil/);
+  assert.match(summary, /steering refs 1/);
   assert.match(summary, /directives 2/);
   assert.match(summary, /world_info 5/);
   assert.match(summary, /fallback 1/);
@@ -62,6 +66,9 @@ test('buildStoryChatContextInspectorSummary exposes directive counts and scope l
 
 test('buildStoryChatContextInspectorLines renders inline directives and optional diagnostics', () => {
   const lines = buildStoryChatContextInspectorLines(buildMeta());
+  assert.ok(lines.includes('steering refs: note:stories/ch03.md'));
+  assert.ok(lines.includes('steering scopes: global:global, story:chronicles-main'));
+  assert.ok(lines.includes('unresolved steering refs: (none)'));
   assert.ok(lines.includes('inline directives: Keep POV narrow | Do not resolve cliffhanger'));
   assert.ok(lines.includes('chat tools: calls get_steering_scope: note:lvn-abc123'));
   assert.ok(lines.includes('chat tools: writes (none)'));
@@ -74,6 +81,9 @@ test('buildStoryChatContextInspectorLines renders inline directives and optional
 test('buildStoryChatContextInspectorLines renders none markers when optional lists are empty', () => {
   const lines = buildStoryChatContextInspectorLines(buildMeta({
     scopes: [],
+    steeringSourceRefs: [],
+    steeringSourceScopes: [],
+    unresolvedSteeringSourceRefs: [],
     specificNotePaths: [],
     unresolvedNoteRefs: [],
     chapterMemoryItems: [],
@@ -92,6 +102,9 @@ test('buildStoryChatContextInspectorLines renders none markers when optional lis
   }));
 
   assert.ok(lines.includes('inline directives: (none)'));
+  assert.ok(lines.includes('steering refs: (none)'));
+  assert.ok(lines.includes('steering scopes: (none)'));
+  assert.ok(lines.includes('unresolved steering refs: (none)'));
   assert.ok(lines.includes('chat tools: calls (none)'));
   assert.ok(lines.includes('chat tools: writes (none)'));
   assert.ok(lines.includes('chat tool trace: (none)'));

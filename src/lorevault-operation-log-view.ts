@@ -395,7 +395,8 @@ export class LorevaultOperationLogView extends ItemView {
       { value: 'all', label: 'All Kinds' },
       { value: 'completion', label: 'completion' },
       { value: 'completion_stream', label: 'completion_stream' },
-      { value: 'tool_planner', label: 'tool_planner' }
+      { value: 'tool_planner', label: 'tool_planner' },
+      { value: 'embedding', label: 'embedding' }
     ];
     for (const optionSpec of kindOptions) {
       const option = kindSelect.createEl('option');
@@ -405,7 +406,7 @@ export class LorevaultOperationLogView extends ItemView {
     kindSelect.value = this.kindFilter;
     kindSelect.addEventListener('change', () => {
       const value = kindSelect.value;
-      if (value === 'completion' || value === 'completion_stream' || value === 'tool_planner') {
+      if (value === 'completion' || value === 'completion_stream' || value === 'tool_planner' || value === 'embedding') {
         this.kindFilter = value;
       } else {
         this.kindFilter = 'all';

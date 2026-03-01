@@ -138,7 +138,8 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
     operationLog: {
       enabled: false,
       path: '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
-      maxEntries: 400
+      maxEntries: 400,
+      includeEmbeddings: false
     },
     completion: {
       enabled: false,
@@ -167,6 +168,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       selectedScopes: [],
       useLorebookContext: true,
       manualContext: '',
+      steeringScopeRefs: [],
       pinnedInstructions: '',
       storyNotes: '',
       sceneIntent: '',

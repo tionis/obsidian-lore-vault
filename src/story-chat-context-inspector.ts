@@ -19,13 +19,16 @@ function formatLayerUsage(meta: StoryChatContextMeta): string | null {
 }
 
 export function buildStoryChatContextInspectorSummary(meta: StoryChatContextMeta): string {
-  return `Injected context · scopes ${joinOrNone(meta.scopes, ', ')} · directives ${(meta.inlineDirectiveItems ?? []).length} · notes ${meta.specificNotePaths.length} · world_info ${meta.worldInfoCount} · fallback ${meta.ragCount} · tools ${(meta.chatToolCalls ?? []).length}`;
+  return `Injected context · scopes ${joinOrNone(meta.scopes, ', ')} · steering refs ${(meta.steeringSourceRefs ?? []).length} · directives ${(meta.inlineDirectiveItems ?? []).length} · notes ${meta.specificNotePaths.length} · world_info ${meta.worldInfoCount} · fallback ${meta.ragCount} · tools ${(meta.chatToolCalls ?? []).length}`;
 }
 
 export function buildStoryChatContextInspectorLines(meta: StoryChatContextMeta): string[] {
   const lines: string[] = [
     `Tokens: ${meta.contextTokens} | lorebook: ${meta.usedLorebookContext ? 'on' : 'off'} | manual: ${meta.usedManualContext ? 'on' : 'off'} | inline-directives: ${meta.usedInlineDirectives ? 'on' : 'off'} | specific-notes: ${meta.usedSpecificNotesContext ? 'on' : 'off'}`,
     `chapter-memory: ${meta.usedChapterMemoryContext ? 'on' : 'off'} | chapters: ${joinOrNone(meta.chapterMemoryItems, ', ')}`,
+    `steering refs: ${joinOrNone(meta.steeringSourceRefs, ', ')}`,
+    `steering scopes: ${joinOrNone(meta.steeringSourceScopes, ', ')}`,
+    `unresolved steering refs: ${joinOrNone(meta.unresolvedSteeringSourceRefs, ', ')}`,
     `specific notes: ${joinOrNone(meta.specificNotePaths, ', ')}`,
     `unresolved note refs: ${joinOrNone(meta.unresolvedNoteRefs, ', ')}`,
     `inline directives: ${joinOrNone(meta.inlineDirectiveItems, ' | ')}`,

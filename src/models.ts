@@ -193,6 +193,9 @@ export interface StoryChatContextMeta {
   usedInlineDirectives?: boolean;
   usedContinuityState?: boolean;
   scopes: string[];
+  steeringSourceRefs?: string[];
+  steeringSourceScopes?: string[];
+  unresolvedSteeringSourceRefs?: string[];
   specificNotePaths: string[];
   unresolvedNoteRefs: string[];
   chapterMemoryItems?: string[];
@@ -230,6 +233,7 @@ export interface StoryChatForkSnapshot {
   selectedScopes: string[];
   useLorebookContext: boolean;
   manualContext: string;
+  steeringScopeRefs: string[];
   pinnedInstructions: string;
   storyNotes: string;
   sceneIntent: string;
@@ -398,6 +402,7 @@ export interface ConverterSettings {
     enabled: boolean;
     path: string;
     maxEntries: number;
+    includeEmbeddings: boolean;
   };
   completion: {
     enabled: boolean;
@@ -426,6 +431,7 @@ export interface ConverterSettings {
     selectedScopes: string[];
     useLorebookContext: boolean;
     manualContext: string;
+    steeringScopeRefs: string[];
     pinnedInstructions: string;
     storyNotes: string;
     sceneIntent: string;
@@ -547,7 +553,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   operationLog: {
     enabled: false,
     path: '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
-    maxEntries: 400
+    maxEntries: 400,
+    includeEmbeddings: false
   },
   completion: {
     enabled: false,
@@ -576,6 +583,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     selectedScopes: [],
     useLorebookContext: true,
     manualContext: '',
+    steeringScopeRefs: [],
     pinnedInstructions: '',
     storyNotes: '',
     sceneIntent: '',

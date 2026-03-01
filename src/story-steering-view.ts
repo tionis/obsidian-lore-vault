@@ -27,8 +27,13 @@ export class StorySteeringView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedScopeType: StorySteeringCanonicalScopeType = 'note';
   private selectedScopeKey = '';
+  private loadedScope: StorySteeringScope = { type: 'global', key: 'global' };
   private state: StorySteeringState = createEmptyStorySteeringState();
   private isLoading = false;
+  private hasPendingEdits = false;
+  private autosaveTimer: number | null = null;
+  private saveInFlight = false;
+  private saveQueued = false;
   private extractionInFlight = false;
   private extractionSource: 'active_note' | 'story_window' | null = null;
   private extractionAbortController: AbortController | null = null;
@@ -55,11 +60,16 @@ export class StorySteeringView extends ItemView {
     const suggested = await this.plugin.getSuggestedStorySteeringScope('note');
     this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
     this.selectedScopeKey = suggested.key;
-    await this.loadSelectedScope();
+    await this.loadScope(this.getSelectedScopeFromInputs());
     await this.render();
   }
 
   async onClose(): Promise<void> {
+    if (this.autosaveTimer !== null) {
+      window.clearTimeout(this.autosaveTimer);
+      this.autosaveTimer = null;
+    }
+    await this.persistScopeIfDirty(true);
     this.contentEl.empty();
   }
 
@@ -112,8 +122,10 @@ export class StorySteeringView extends ItemView {
         return;
       }
       this.state = normalizeStorySteeringState(review.state);
+      this.markDirty();
+      await this.persistScopeIfDirty(true);
       await this.render();
-      new Notice('Applied extracted steering to panel. Click Save Scope to persist.');
+      new Notice(`Updated steering scope: ${formatScope(this.loadedScope)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/aborted/i.test(message)) {
@@ -171,6 +183,7 @@ export class StorySteeringView extends ItemView {
     next.push(normalized);
     next.sort((left, right) => left.localeCompare(right));
     this.state.activeLorebooks = next;
+    this.markDirty();
     void this.render();
   }
 
@@ -181,6 +194,7 @@ export class StorySteeringView extends ItemView {
     }
     this.state.activeLorebooks = this.getNormalizedActiveLorebooks()
       .filter(item => item !== normalized);
+    this.markDirty();
     void this.render();
   }
 
@@ -188,20 +202,98 @@ export class StorySteeringView extends ItemView {
     return this.plugin.getCachedLorebookScopes();
   }
 
-  private getSelectedScope(): StorySteeringScope {
+  private getSelectedScopeFromInputs(): StorySteeringScope {
     return {
       type: normalizeStorySteeringScopeType(this.selectedScopeType),
       key: this.selectedScopeType === 'global' ? 'global' : this.selectedScopeKey.trim()
     };
   }
 
-  private async loadSelectedScope(): Promise<void> {
-    const scope = this.getSelectedScope();
-    if (scope.type !== 'global' && !scope.key) {
-      this.state = createEmptyStorySteeringState();
+  private areScopesEqual(left: StorySteeringScope, right: StorySteeringScope): boolean {
+    return normalizeStorySteeringScopeType(left.type) === normalizeStorySteeringScopeType(right.type)
+      && (left.key || '').trim() === (right.key || '').trim();
+  }
+
+  private markDirty(): void {
+    this.hasPendingEdits = true;
+    this.scheduleAutosave();
+  }
+
+  private scheduleAutosave(): void {
+    if (this.autosaveTimer !== null) {
+      window.clearTimeout(this.autosaveTimer);
+    }
+    this.autosaveTimer = window.setTimeout(() => {
+      this.autosaveTimer = null;
+      void this.persistScopeIfDirty();
+    }, 280);
+  }
+
+  private async persistScopeIfDirty(force = false): Promise<void> {
+    if (!force && !this.hasPendingEdits) {
       return;
     }
-    this.state = await this.plugin.loadStorySteeringScope(scope);
+    if (this.saveInFlight) {
+      this.saveQueued = true;
+      return;
+    }
+
+    const targetScope = this.loadedScope;
+    if (targetScope.type !== 'global' && !targetScope.key.trim()) {
+      if (force && this.hasPendingEdits) {
+        new Notice('Scope key is required before saving this steering scope.');
+      }
+      return;
+    }
+
+    this.saveInFlight = true;
+    try {
+      await this.plugin.saveStorySteeringScope(targetScope, this.state);
+      this.hasPendingEdits = false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to save steering scope: ${message}`);
+    } finally {
+      this.saveInFlight = false;
+      if (this.saveQueued) {
+        this.saveQueued = false;
+        if (this.hasPendingEdits) {
+          await this.persistScopeIfDirty(true);
+        }
+      }
+    }
+  }
+
+  private async loadScope(scope: StorySteeringScope): Promise<void> {
+    const normalizedScope: StorySteeringScope = {
+      type: normalizeStorySteeringScopeType(scope.type),
+      key: normalizeStorySteeringScopeType(scope.type) === 'global' ? 'global' : scope.key.trim()
+    };
+    if (normalizedScope.type !== 'global' && !normalizedScope.key) {
+      this.loadedScope = normalizedScope;
+      this.state = createEmptyStorySteeringState();
+      this.hasPendingEdits = false;
+      return;
+    }
+    this.state = await this.plugin.loadStorySteeringScope(normalizedScope);
+    this.loadedScope = normalizedScope;
+    this.hasPendingEdits = false;
+  }
+
+  private async switchToSelectedScope(): Promise<void> {
+    const nextScope = this.getSelectedScopeFromInputs();
+    if (this.areScopesEqual(this.loadedScope, nextScope)) {
+      return;
+    }
+    try {
+      await this.persistScopeIfDirty(true);
+      await this.loadScope(nextScope);
+      await this.render();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to load steering scope: ${message}`);
+      await this.render();
+    }
   }
 
   private renderEffectiveState(container: HTMLElement, effective: StorySteeringEffectiveState): void {
@@ -265,12 +357,17 @@ export class StorySteeringView extends ItemView {
       }
       scopeTypeSelect.value = this.selectedScopeType;
       scopeTypeSelect.addEventListener('change', () => {
-        const next = normalizeStorySteeringScopeType(scopeTypeSelect.value as StorySteeringScopeType);
-        this.selectedScopeType = next;
-        if (next === 'global') {
-          this.selectedScopeKey = 'global';
-        }
-        void this.render();
+        void (async () => {
+          const previousType = this.selectedScopeType;
+          const next = normalizeStorySteeringScopeType(scopeTypeSelect.value as StorySteeringScopeType);
+          this.selectedScopeType = next;
+          if (next === 'global') {
+            this.selectedScopeKey = 'global';
+          } else if (previousType === 'global' && this.selectedScopeKey === 'global') {
+            this.selectedScopeKey = '';
+          }
+          await this.switchToSelectedScope();
+        })();
       });
 
       const scopeKeyRow = scopeSection.createDiv({ cls: 'lorevault-chat-scope-row' });
@@ -286,6 +383,16 @@ export class StorySteeringView extends ItemView {
       scopeKeyInput.addEventListener('input', () => {
         this.selectedScopeKey = scopeKeyInput.value;
       });
+      scopeKeyInput.addEventListener('blur', () => {
+        void this.switchToSelectedScope();
+      });
+      scopeKeyInput.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') {
+          return;
+        }
+        event.preventDefault();
+        void this.switchToSelectedScope();
+      });
 
       const actions = scopeSection.createDiv({ cls: 'lorevault-help-actions' });
 
@@ -296,7 +403,7 @@ export class StorySteeringView extends ItemView {
             const suggested = await this.plugin.getSuggestedStorySteeringScope(this.selectedScopeType);
             this.selectedScopeType = normalizeStorySteeringScopeType(suggested.type);
             this.selectedScopeKey = suggested.key;
-            await this.render();
+            await this.switchToSelectedScope();
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Failed to resolve active-note scope: ${message}`);
@@ -304,33 +411,22 @@ export class StorySteeringView extends ItemView {
         })();
       });
 
-      const loadButton = actions.createEl('button', { text: 'Load Scope' });
-      loadButton.addEventListener('click', async () => {
-        try {
-          await this.loadSelectedScope();
-          await this.render();
-          new Notice(`Loaded steering scope: ${formatScope(this.getSelectedScope())}`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          new Notice(`Failed to load steering scope: ${message}`);
-        }
-      });
-
-      const saveButton = actions.createEl('button', { text: 'Save Scope' });
-      saveButton.addClass('mod-cta');
-      saveButton.addEventListener('click', async () => {
-        try {
-          const path = await this.plugin.saveStorySteeringScope(this.getSelectedScope(), this.state);
-          new Notice(`Saved steering scope: ${path}`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          new Notice(`Failed to save steering scope: ${message}`);
-        }
-      });
-
       const openButton = actions.createEl('button', { text: 'Open Scope Note' });
       openButton.addEventListener('click', () => {
-        void this.plugin.openStorySteeringScopeNote(this.getSelectedScope());
+        void (async () => {
+          try {
+            await this.persistScopeIfDirty(true);
+            await this.plugin.openStorySteeringScopeNote(this.loadedScope);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to open steering scope note: ${message}`);
+          }
+        })();
+      });
+
+      scopeSection.createEl('p', {
+        cls: 'lorevault-help-note',
+        text: 'Edits autosave immediately. Switching scope type/key autosaves current changes, then loads the selected scope.'
       });
 
       const activeLorebooksSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
@@ -398,6 +494,7 @@ export class StorySteeringView extends ItemView {
       pinnedInput.placeholder = 'Stable constraints for this scope.';
       pinnedInput.addEventListener('input', () => {
         this.state.pinnedInstructions = pinnedInput.value.trim();
+        this.markDirty();
       });
 
       editorSection.createEl('label', { text: 'Story Notes' });
@@ -406,6 +503,7 @@ export class StorySteeringView extends ItemView {
       notesInput.placeholder = 'Author-note style guidance.';
       notesInput.addEventListener('input', () => {
         this.state.storyNotes = notesInput.value.trim();
+        this.markDirty();
       });
 
       editorSection.createEl('label', { text: 'Scene Intent' });
@@ -414,6 +512,7 @@ export class StorySteeringView extends ItemView {
       intentInput.placeholder = 'What this scene/chapter should accomplish.';
       intentInput.addEventListener('input', () => {
         this.state.sceneIntent = intentInput.value.trim();
+        this.markDirty();
       });
 
       editorSection.createEl('label', { text: 'Active Plot Threads (one per line)' });
@@ -421,6 +520,7 @@ export class StorySteeringView extends ItemView {
       threadsInput.value = this.formatListInput(this.state.plotThreads);
       threadsInput.addEventListener('input', () => {
         this.state.plotThreads = this.parseListInput(threadsInput.value);
+        this.markDirty();
       });
 
       editorSection.createEl('label', { text: 'Open Loops (one per line)' });
@@ -428,6 +528,7 @@ export class StorySteeringView extends ItemView {
       loopsInput.value = this.formatListInput(this.state.openLoops);
       loopsInput.addEventListener('input', () => {
         this.state.openLoops = this.parseListInput(loopsInput.value);
+        this.markDirty();
       });
 
       editorSection.createEl('label', { text: 'Canon Deltas (one per line)' });
@@ -435,12 +536,13 @@ export class StorySteeringView extends ItemView {
       deltasInput.value = this.formatListInput(this.state.canonDeltas);
       deltasInput.addEventListener('input', () => {
         this.state.canonDeltas = this.parseListInput(deltasInput.value);
+        this.markDirty();
       });
 
       const extractionSection = contentEl.createDiv({ cls: 'lorevault-help-section' });
       extractionSection.createEl('h3', { text: 'LLM Assistance' });
       extractionSection.createEl('p', {
-        text: 'Update steering from story text, review/edit in a modal, then optionally save.'
+        text: 'Update steering from story text, review/edit in a modal, then save immediately to the active scope.'
       });
       extractionSection.createEl('p', {
         cls: 'lorevault-help-note',

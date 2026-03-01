@@ -91,3 +91,25 @@ test('parseOperationLogJsonl coerces partial records safely', () => {
   assert.equal(entry.attempts[0].url, '44');
   assert.equal(entry.usage?.promptTokens, 8);
 });
+
+test('parseOperationLogJsonl keeps embedding kind records', () => {
+  const raw = JSON.stringify({
+    id: 'op-embedding',
+    kind: 'embedding',
+    operationName: 'embeddings_embed_query',
+    provider: 'openrouter',
+    model: 'qwen/qwen3-embedding-8b',
+    endpoint: 'https://example.test/embeddings',
+    startedAt: 20,
+    finishedAt: 26,
+    durationMs: 6,
+    status: 'ok',
+    aborted: false,
+    request: { textCount: 1 },
+    attempts: [{ index: 1, url: 'https://example.test/embeddings', requestBody: { model: 'm', input: ['x'] } }]
+  });
+
+  const parsed = parseOperationLogJsonl(raw);
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0].record.kind, 'embedding');
+});

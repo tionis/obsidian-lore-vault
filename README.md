@@ -254,7 +254,7 @@ Behavior:
 - supports continuation continuity-state frontmatter lists/toggles:
   - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
   - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
-- Story Steering LLM assistance supports optional update prompts so users can request targeted steering changes before review/save
+- Story Steering LLM assistance supports optional update prompts so users can request targeted steering changes before review/apply
 - Story Steering update review modal shows field-level `Current` vs `Proposed` values for manual comparison before apply
 - sends context + local near-cursor story context to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
@@ -272,6 +272,7 @@ Behavior:
 Configure generation under Settings -> LoreVault -> Writing Completion.
 Key completion controls include context window tokens and prompt reserve tokens for stricter budget management.
 For debugging, `LLM Operation Log` settings can persist full request/response content (including tool-planner calls) to a vault JSONL file.
+`Include Embedding Backend Calls` optionally adds embedding request/response logs (`kind: embedding`) for semantic-retrieval troubleshooting.
 Use command `Open LLM Operation Log Explorer` (or Settings -> `Open LLM Operation Log Explorer`) to browse/search entries, inspect parsed request messages in expandable textboxes, and view full raw payload JSON in-plugin.
 Cost Tracking settings can optionally record usage/cost entries to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`, with pricing provenance and optional budgets by operation/model/scope.
 Use commands `Export Usage Report (JSON)` and `Export Usage Report (CSV)` for deterministic report exports.
@@ -336,6 +337,7 @@ Behavior:
 Story-level scope override:
 
 - Preferred: set `Active Lorebooks` in Story Steering scope notes (`global`/`story`/`chapter`/`note`).
+- Story Steering panel edits autosave immediately to the active scope; changing scope type/key saves current edits, then loads the selected scope.
 - Frontmatter keys remain supported as fallback.
 
 Frontmatter fallback example:
@@ -423,8 +425,10 @@ Current capabilities:
 - per-chat lorebook scope selection (including none)
 - `Use Lorebook Context` toggle
 - manual context block (for manual-only or mixed mode)
-- per-chat steering fields (pinned instructions, story notes, scene intent)
-- per-chat continuity controls (plot threads, open loops, canon deltas, per-group inclusion toggles)
+- steering source references (`note:*`, `story:*`, `chapter:*`)
+  - note steering refs also pull that note body into specific-note context
+  - story/chapter refs pull steering layers only
+- per-chat continuity inclusion toggles (plot threads, open loops, canon deltas)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
   - search/read selected lorebook entries
@@ -435,7 +439,7 @@ Current capabilities:
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
 - regenerate appends a new assistant message version; users can switch active versions
-- per-response context inspector (scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
+- per-response context inspector (scopes, steering refs/scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 - per-response layer budget/overflow inspector (`reserved`, `used`, `headroom`, trim rationale)
 - per-response continuity inspector (included threads/open loops/canon deltas)
 - per-response agent tool inspector rows (tool call summaries, write actions, and tool-loop trace)

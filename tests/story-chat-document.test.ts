@@ -17,6 +17,7 @@ test('normalizeConversationDocument sanitizes malformed conversation payloads', 
     schemaVersion: 'bad',
     title: '  Test Chat  ',
     selectedScopes: ['universe', 'universe', 'world/a'],
+    steeringScopeRefs: ['story:chronicles-main', 'Characters/Alice', 'note:Characters/Alice'],
     noteContextRefs: ['Characters/Alice', '', 'Characters/Alice'],
     messages: [
       {
@@ -54,6 +55,7 @@ test('normalizeConversationDocument sanitizes malformed conversation payloads', 
   assert.equal(normalized.title, 'Test Chat');
   assert.deepEqual(normalized.selectedScopes, ['universe', 'world/a']);
   assert.deepEqual(normalized.noteContextRefs, ['Characters/Alice']);
+  assert.deepEqual(normalized.steeringScopeRefs, ['story:chronicles-main', 'note:Characters/Alice']);
   assert.equal(normalized.pinnedInstructions, '');
   assert.equal(normalized.storyNotes, '');
   assert.equal(normalized.sceneIntent, '');
@@ -85,6 +87,7 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
     selectedScopes: ['universe/core'],
     useLorebookContext: true,
     manualContext: 'Manual context',
+    steeringScopeRefs: ['note:stories/ch01.md', 'story:chronicles-main'],
     pinnedInstructions: 'Keep the narration in close third person.',
     storyNotes: 'Avoid sudden POV shifts.',
     sceneIntent: 'Escalate conflict before chapter close.',
@@ -129,6 +132,9 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
               usedInlineDirectives: false,
               usedContinuityState: true,
               scopes: ['universe/core'],
+              steeringSourceRefs: [],
+              steeringSourceScopes: [],
+              unresolvedSteeringSourceRefs: [],
               specificNotePaths: ['Characters/Alice.md'],
               unresolvedNoteRefs: [],
               chapterMemoryItems: [],

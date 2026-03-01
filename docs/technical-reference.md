@@ -39,6 +39,7 @@ This document is the implementation-level reference for core architecture and ru
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - scope-based steering storage (`global`/`story`/`chapter`/`note`)
+  - panel edits autosave to current scope; scope-switch saves current state before loading next scope
   - compatibility alias for legacy `thread` scope files/keys
   - per-scope `activeLorebooks` list used as primary scope selection source for continuation
   - move-safe scope linking via `lvNoteId` frontmatter IDs
@@ -400,11 +401,12 @@ Conversation persistence is note-backed in `storyChat.chatFolder`.
 Stored structure:
 
 - conversation metadata
-- per-conversation steering fields (pinned instructions, story notes, scene intent)
-- per-conversation continuity state (plot threads, open loops, canon deltas, inclusion toggles)
+- per-conversation steering source refs (`note:*`, `story:*`, `chapter:*`)
+- per-conversation continuity inclusion toggles (plot threads/open loops/canon deltas)
+- legacy steering text/list fields remain parse-compatible for older chats
 - per-turn messages
 - message versions with active version selector
-- optional context inspector metadata on assistant versions (including agent tool traces/calls/writes)
+- optional context inspector metadata on assistant versions (including steering source resolution and agent tool traces/calls/writes)
 
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
 
@@ -504,12 +506,14 @@ Optional debugging surface (`settings.operationLog.*`):
 - `enabled`: toggles persistence
 - `path`: vault-relative JSONL log file
 - `maxEntries`: retention cap (oldest entries trimmed deterministically by file order)
+- `includeEmbeddings`: optional embedding backend request/response logging (`kind: embedding`)
 
 Captured records include:
 
 - completion calls (`requestStoryContinuation`)
 - streaming completion calls (`requestStoryContinuationStream`)
 - completion tool-planner calls (`createCompletionToolPlanner`)
+- embedding backend calls (`requestEmbeddings`) when `includeEmbeddings` is enabled
 
 Each record stores:
 

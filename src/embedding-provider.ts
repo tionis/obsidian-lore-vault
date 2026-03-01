@@ -1,12 +1,42 @@
 import { ConverterSettings } from './models';
+import {
+  CompletionOperationLogAttempt,
+  CompletionOperationLogRecord,
+  CompletionOperationLogger
+} from './completion-provider';
 
 export interface EmbeddingRequest {
   texts: string[];
   instruction: string;
+  operationName?: string;
+  onOperationLog?: CompletionOperationLogger;
 }
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
+}
+
+function createOperationId(): string {
+  return `embedding-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /aborted|cancelled/i.test(message);
+}
+
+async function emitOperationLog(
+  logger: CompletionOperationLogger | undefined,
+  record: CompletionOperationLogRecord
+): Promise<void> {
+  if (!logger) {
+    return;
+  }
+  try {
+    await logger(record);
+  } catch (error) {
+    console.warn('LoreVault: Failed to write embedding operation log:', error);
+  }
 }
 
 function withInstruction(text: string, instruction: string): string {
@@ -54,7 +84,8 @@ async function fetchJson(
   url: string,
   body: unknown,
   headers: Record<string, string>,
-  timeoutMs: number
+  timeoutMs: number,
+  attempt: CompletionOperationLogAttempt
 ): Promise<any> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -69,10 +100,18 @@ async function fetchJson(
 
     if (!response.ok) {
       const text = await response.text();
+      attempt.responseText = text;
+      try {
+        attempt.responseBody = JSON.parse(text);
+      } catch (_error) {
+        // Keep responseText when payload is not JSON.
+      }
       throw new Error(`Embedding request failed (${response.status}): ${text}`);
     }
 
-    return await response.json();
+    const payload = await response.json();
+    attempt.responseBody = payload;
+    return payload;
   } finally {
     clearTimeout(timer);
   }
@@ -101,6 +140,9 @@ export async function requestEmbeddings(
   config: ConverterSettings['embeddings'],
   request: EmbeddingRequest
 ): Promise<number[][]> {
+  const operationId = createOperationId();
+  const operationName = request.operationName?.trim() || 'embeddings';
+  const startedAt = Date.now();
   const texts = request.texts.map(text => withInstruction(text, request.instruction));
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
@@ -110,19 +152,71 @@ export async function requestEmbeddings(
     headers.Authorization = `Bearer ${config.apiKey}`;
   }
 
-  if (config.provider === 'ollama') {
-    const url = resolveOllamaEmbedUrl(config.endpoint);
-    const payload = await fetchJson(url, {
+  const attempts: CompletionOperationLogAttempt[] = [];
+  let finalError = '';
+  let aborted = false;
+  let vectors: number[][] = [];
+
+  try {
+    if (config.provider === 'ollama') {
+      const url = resolveOllamaEmbedUrl(config.endpoint);
+      const body = {
+        model: config.model,
+        input: texts
+      };
+      const attempt: CompletionOperationLogAttempt = {
+        index: 1,
+        url,
+        requestBody: body
+      };
+      attempts.push(attempt);
+      const payload = await fetchJson(url, body, headers, config.timeoutMs, attempt);
+      vectors = ensureVectorCount(parseOllamaEmbeddings(payload), texts.length);
+      return vectors;
+    }
+
+    const url = resolveOpenAiEmbeddingsUrl(config.endpoint);
+    const body = {
       model: config.model,
       input: texts
-    }, headers, config.timeoutMs);
-    return ensureVectorCount(parseOllamaEmbeddings(payload), texts.length);
+    };
+    const attempt: CompletionOperationLogAttempt = {
+      index: 1,
+      url,
+      requestBody: body
+    };
+    attempts.push(attempt);
+    const payload = await fetchJson(url, body, headers, config.timeoutMs, attempt);
+    vectors = ensureVectorCount(parseOpenAiStyleEmbeddings(payload), texts.length);
+    return vectors;
+  } catch (error) {
+    finalError = error instanceof Error ? error.message : String(error);
+    aborted = isAbortLikeError(error);
+    if (attempts.length > 0) {
+      attempts[attempts.length - 1].error = finalError;
+    }
+    throw error;
+  } finally {
+    const finishedAt = Date.now();
+    await emitOperationLog(request.onOperationLog, {
+      id: operationId,
+      kind: 'embedding',
+      operationName,
+      provider: config.provider,
+      model: config.model,
+      endpoint: config.endpoint,
+      startedAt,
+      finishedAt,
+      durationMs: Math.max(0, finishedAt - startedAt),
+      status: finalError ? 'error' : 'ok',
+      aborted,
+      ...(finalError ? { error: finalError } : {}),
+      request: {
+        texts,
+        textCount: texts.length,
+        instruction: request.instruction
+      },
+      attempts
+    });
   }
-
-  const url = resolveOpenAiEmbeddingsUrl(config.endpoint);
-  const payload = await fetchJson(url, {
-    model: config.model,
-    input: texts
-  }, headers, config.timeoutMs);
-  return ensureVectorCount(parseOpenAiStyleEmbeddings(payload), texts.length);
 }

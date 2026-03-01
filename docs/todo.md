@@ -274,11 +274,17 @@ Reference design: `docs/planning.md`.
   - [x] expose chat tool call/write traces in context inspector metadata
 - [x] LLM operation logging:
   - [x] add vault-backed JSONL operation log for completion + streaming + tool planner calls
+  - [x] add optional embedding backend call logging (`kind: embedding`)
   - [x] add settings for operation-log enable/path/max-entry retention
   - [x] add operation-log explorer panel with command, filters, and full payload inspection
 - [x] Story Steering review/wording clarity:
   - [x] show field-level `Current` vs `Proposed` values in steering update review modal
   - [x] rename ambiguous `Story Window` extraction source label to `Near-Cursor Context` and document behavior
+- [x] Story Steering + Story Chat scope UX polish:
+  - [x] autosave Story Steering panel edits immediately (remove manual save workflow)
+  - [x] autosave current steering scope before scope-type/key switch, then load selected scope
+  - [x] replace chat manual steering text fields with steering source refs (`note`/`story`/`chapter`)
+  - [x] resolve chat steering refs into steering layers and inspector traces each turn
 - [x] Story completion stop UX:
   - [x] add command: `Stop Active Generation`
   - [x] expose editor menu stop action while generation is active

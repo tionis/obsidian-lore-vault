@@ -130,7 +130,12 @@ import {
   normalizeVaultPath,
   normalizeVaultRelativePath
 } from './vault-path-utils';
-import { extractAdaptiveQueryWindow, extractAdaptiveStoryWindow } from './context-window-strategy';
+import {
+  estimateChapterMemoryPriorChapterWindow,
+  estimateChapterMemorySummaryTokenBudget,
+  extractAdaptiveQueryWindow,
+  extractAdaptiveStoryWindow
+} from './context-window-strategy';
 import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
 import {
   createEmptyStorySteeringState,
@@ -6191,18 +6196,34 @@ export default class LoreBookConverterPlugin extends Plugin {
       return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
     }
 
+    const normalizedBudget = Math.max(96, Math.floor(tokenBudget));
     const nodeByPath = new Map(nodes.map(node => [node.path, node]));
+    const maxPriorChapters = estimateChapterMemoryPriorChapterWindow(normalizedBudget);
     const priorPaths = resolution.orderedPaths
       .slice(0, resolution.currentIndex)
-      .slice(-4);
+      .slice(-maxPriorChapters);
+    if (priorPaths.length === 0) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
 
-    const sections: string[] = [];
-    const items: string[] = [];
-    const layerTrace: string[] = [];
+    const perSummaryTokenBudget = estimateChapterMemorySummaryTokenBudget(
+      normalizedBudget,
+      priorPaths.length
+    );
+    const priorOrderByPath = new Map(priorPaths.map((path, index) => [path, index]));
+    const includedSections: Array<{
+      order: number;
+      section: string;
+      chapterTitle: string;
+      sectionTokens: number;
+      source: string;
+    }> = [];
     let usedTokens = 0;
 
-    for (const priorPath of priorPaths) {
-      if (usedTokens >= tokenBudget) {
+    // Prioritize recent chapters when budget is constrained, then render chronologically.
+    for (const priorPath of [...priorPaths].reverse()) {
+      const remainingBudget = normalizedBudget - usedTokens;
+      if (remainingBudget < 48) {
         break;
       }
 
@@ -6216,9 +6237,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       const summary = await this.chapterSummaryStore.resolveSummary(
         file,
         frontmatter,
-        body => this.trimTextHeadToTokenBudget(body, 180)
+        body => this.trimTextHeadToTokenBudget(body, perSummaryTokenBudget)
       );
-      if (!summary?.text.trim()) {
+      const rawSummaryText = summary?.text.trim() ?? '';
+      const summarySource = summary?.source ?? 'excerpt';
+      if (!rawSummaryText) {
         continue;
       }
 
@@ -6227,23 +6250,56 @@ export default class LoreBookConverterPlugin extends Plugin {
         ? `Chapter ${node.chapter}`
         : 'Chapter';
       const chapterTitle = node?.chapterTitle || node?.title || file.basename;
-      const section = [
+      const buildSection = (summaryText: string): string => [
         `### ${chapterPrefix}: ${chapterTitle}`,
         `Source: \`${priorPath}\``,
         '',
-        summary.text
+        summaryText
       ].join('\n');
 
-      const sectionTokens = this.estimateTokens(section);
-      if (usedTokens + sectionTokens > tokenBudget) {
+      let summaryText = this.trimTextHeadToTokenBudget(
+        rawSummaryText,
+        Math.max(48, Math.min(perSummaryTokenBudget, remainingBudget - 24))
+      ).trim();
+      if (!summaryText) {
         continue;
       }
 
+      let section = buildSection(summaryText);
+      let sectionTokens = this.estimateTokens(section);
+      if (sectionTokens > remainingBudget) {
+        summaryText = this.trimTextHeadToTokenBudget(rawSummaryText, Math.max(48, remainingBudget - 24)).trim();
+        if (!summaryText) {
+          continue;
+        }
+        section = buildSection(summaryText);
+        sectionTokens = this.estimateTokens(section);
+        if (sectionTokens > remainingBudget) {
+          continue;
+        }
+      }
+
       usedTokens += sectionTokens;
-      sections.push(section);
-      items.push(chapterTitle);
-      layerTrace.push(`chapter_memory:${chapterTitle} (${summary.source}, ~${sectionTokens} tokens)`);
+      includedSections.push({
+        order: priorOrderByPath.get(priorPath) ?? Number.MAX_SAFE_INTEGER,
+        section,
+        chapterTitle,
+        sectionTokens,
+        source: summarySource
+      });
     }
+
+    if (includedSections.length === 0) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
+
+    includedSections.sort((left, right) => left.order - right.order);
+    const sections = includedSections.map(item => item.section);
+    const items = includedSections.map(item => item.chapterTitle);
+    const layerTrace = [
+      `chapter_memory_window: ${includedSections.length}/${priorPaths.length} summaries (budget ~${normalizedBudget} tokens)`,
+      ...includedSections.map(item => `chapter_memory:${item.chapterTitle} (${item.source}, ~${item.sectionTokens} tokens)`)
+    ];
 
     return {
       markdown: sections.join('\n\n---\n\n'),

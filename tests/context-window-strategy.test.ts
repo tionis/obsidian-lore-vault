@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  estimateChapterMemoryPriorChapterWindow,
+  estimateChapterMemorySummaryTokenBudget,
   extractAdaptiveQueryWindow,
   extractAdaptiveStoryWindow
 } from '../src/context-window-strategy';
@@ -77,4 +79,25 @@ test('extractAdaptiveStoryWindow scales for 200k-context models with bounded cap
   assert.ok(windowed.includes('TAIL-SENTINEL'));
   assert.ok(windowed.length <= 900000);
   assert.ok(windowed.length >= 500000);
+});
+
+test('chapter-memory prior chapter window scales with larger token budgets', () => {
+  const lowBudgetWindow = estimateChapterMemoryPriorChapterWindow(120);
+  const mediumBudgetWindow = estimateChapterMemoryPriorChapterWindow(900);
+  const highBudgetWindow = estimateChapterMemoryPriorChapterWindow(3200);
+
+  assert.equal(lowBudgetWindow, 4);
+  assert.equal(mediumBudgetWindow, 6);
+  assert.equal(highBudgetWindow, 18);
+});
+
+test('chapter-memory per-summary token budget adapts by budget and chapter count', () => {
+  const compact = estimateChapterMemorySummaryTokenBudget(900, 10);
+  const expanded = estimateChapterMemorySummaryTokenBudget(900, 4);
+  const capped = estimateChapterMemorySummaryTokenBudget(12000, 2);
+
+  assert.ok(expanded > compact);
+  assert.equal(compact, 120);
+  assert.equal(expanded, 270);
+  assert.equal(capped, 320);
 });

@@ -140,6 +140,7 @@ export class LorevaultHelpView extends ItemView {
         'Use command `Stop Active Generation` (or editor menu while running) to abort story text completion.',
         'Works on desktop and mobile editor menus.',
         'Context assembly order: local near-cursor story context -> chapter memory -> lorebook retrieval -> optional fallback/tool retrieval.',
+        'Chapter-memory depth expands automatically when more context budget is available.',
         'With embeddings enabled, long query windows are chunked/averaged for semantic query embeddings; failures fall back to lexical retrieval so completion continues.',
         'Generation Monitor in Manager shows context usage, selected entries, and trim decisions.',
         'Inline directives are supported with strict syntax: `[LV: ...]` or `<!-- LV: ... -->`.'

@@ -263,6 +263,7 @@ Behavior:
 - reports active scopes and pulled `world_info`/fallback items at generation start
 - adds right-click editor context-menu actions:
   - `LoreVault: Continue Story with Context`
+  - `LoreVault: Insert Inline Directive` (for story notes with chapter metadata or `authorNote` link)
   - `LoreVault: Run Text Command on Selection` (only when editor selection is non-empty)
   - `LoreVault: Generate Keywords` (for lorebook-tagged notes)
   - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)

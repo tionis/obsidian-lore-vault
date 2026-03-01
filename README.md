@@ -254,8 +254,8 @@ Behavior:
 - supports continuation continuity-state frontmatter lists/toggles:
   - lists: `lvPlotThreads`, `lvOpenLoops`, `lvCanonDeltas`
   - toggles: `lvIncludePlotThreads`, `lvIncludeOpenLoops`, `lvIncludeCanonDeltas`
-- Story Steering LLM assistance supports optional update prompts so users can request targeted steering changes before review/apply
-- Story Steering update review modal compares current vs proposed Author Note markdown before apply
+- Author Note rewrite supports an optional update prompt so users can request targeted changes before review/apply
+- Author Note rewrite review modal compares current vs proposed markdown before apply
 - sends context + local near-cursor story context to configured completion provider
 - streams generated continuation text into the editor at cursor (no raw context dump)
 - generation can be aborted with command `Stop Active Generation` (also available as editor-menu action while a run is in progress)
@@ -350,7 +350,7 @@ Story-level scope override:
 
 - Preferred: set lorebook scopes directly in frontmatter on the story note.
 - Optional: set lorebook scopes in Author Note frontmatter (used when story-note frontmatter does not define scopes).
-- Story Steering panel is note-level only; edits autosave immediately and active-note switches load the next note-level Author Note.
+- Link a story note to an Author Note with `authorNote: [[path/to/author-note]]`.
 - No active-scope fallback is applied for continuation/chat scope selection.
 
 Frontmatter example:
@@ -441,19 +441,18 @@ Current capabilities:
 - manual context block (for manual-only or mixed mode)
 - steering source references (`note:*`)
   - note steering refs pull that note body into specific-note context plus note-level author-note steering
-  - legacy `story:`/`chapter:` steering refs are ignored during normalization
 - per-chat continuity inclusion toggles (plot threads, open loops, canon deltas)
 - specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
 - optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
   - search/read selected lorebook entries
   - search/read linked story and manually selected note context
-  - read/update the active note-level author note (scope is implicit)
+  - read/update the linked note-level author note
   - optionally create lorebook-tagged notes when write actions are enabled
 - each chat/fork is saved as a markdown note under `LoreVault/chat`
 - chat conversation folder is configurable in settings (`Story Chat Conversation Folder`)
 - message-level actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
 - regenerate appends a new assistant message version; users can switch active versions
-- per-response context inspector (scopes, steering refs/scopes, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
+- per-response context inspector (scopes, steering refs, specific notes, unresolved refs, token estimate, `world_info`/`rag` items)
 - per-response layer budget/overflow inspector (`reserved`, `used`, `headroom`, trim rationale)
 - per-response continuity inspector (included threads/open loops/canon deltas)
 - per-response agent tool inspector rows (tool call summaries, write actions, and tool-loop trace)

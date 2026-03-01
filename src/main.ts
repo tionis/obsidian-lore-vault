@@ -111,6 +111,7 @@ import {
 import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
 import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text-command-modal';
 import { TextCommandReviewModal } from './text-command-review-modal';
+import { AuthorNoteRewriteModal } from './author-note-rewrite-modal';
 import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
@@ -140,6 +141,7 @@ import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline
 import {
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
+  parseStorySteeringMarkdown,
   normalizeStorySteeringState,
   parseStorySteeringExtractionResponse,
   sanitizeStorySteeringExtractionState,
@@ -277,8 +279,6 @@ interface StoryChatAgentToolRunResult {
   callSummaries: string[];
   writeSummaries: string[];
 }
-
-export type StorySteeringExtractionSource = 'active_note' | 'story_window';
 
 interface ConvertToLorebookOptions {
   silentSuccessNotice?: boolean;
@@ -1606,30 +1606,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized || DEFAULT_SETTINGS.storySteering.folder;
   }
 
-  public async getSuggestedStorySteeringScope(options?: {
-    ensureIds?: boolean;
-  }): Promise<StorySteeringScope> {
-    const activeFile = this.app.workspace.getActiveFile();
-    if (!activeFile) {
-      return {
-        type: 'note',
-        key: ''
-      };
-    }
-
-    const scope = await this.storySteeringStore.getScopeForFile(activeFile, {
-      ensureIds: options?.ensureIds ?? false
-    });
-    if (scope) {
-      return scope;
-    }
-
-    return {
-      type: 'note',
-      key: normalizeVaultPath(activeFile.path)
-    };
-  }
-
   public async loadStorySteeringScope(scope: StorySteeringScope): Promise<StorySteeringState> {
     return this.storySteeringStore.loadScope(scope);
   }
@@ -1639,8 +1615,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   public async openStorySteeringScopeNote(scope: StorySteeringScope): Promise<void> {
-    const existingState = await this.storySteeringStore.loadScope(scope);
-    const path = await this.storySteeringStore.saveScope(scope, existingState);
+    const path = this.storySteeringStore.resolveScopePath(scope);
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) {
       new Notice(`Unable to open steering note at ${path}`);
@@ -1654,17 +1629,194 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
   }
 
-  public async extractStorySteeringProposal(
-    source: StorySteeringExtractionSource,
-    currentState: StorySteeringState,
-    updateInstruction = '',
-    abortSignal?: AbortSignal
-  ): Promise<{
-    proposal: StorySteeringState;
-    notePath: string;
-    sourceLabel: string;
-    sourceChars: number;
+  public async resolveAuthorNoteWorkspaceContext(file?: TFile | null): Promise<{
+    mode: 'story' | 'author_note' | 'none';
+    activeFilePath: string;
+    authorNotePath: string;
+    linkedStoryPaths: string[];
+    missingAuthorNoteRef: string;
   }> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      return {
+        mode: 'none',
+        activeFilePath: '',
+        authorNotePath: '',
+        linkedStoryPaths: [],
+        missingAuthorNoteRef: ''
+      };
+    }
+
+    const linkedAuthorNote = await this.storySteeringStore.resolveAuthorNoteFileForStory(activeFile);
+    const storyRef = this.storySteeringStore.getAuthorNoteRefForStory(activeFile);
+    if (linkedAuthorNote || storyRef) {
+      const linkedStories = linkedAuthorNote
+        ? await this.storySteeringStore.getLinkedStoryFilesForAuthorNote(linkedAuthorNote)
+        : [];
+      const linkedStoryPaths = uniqueStrings(
+        [...linkedStories.map(item => item.path), activeFile.path]
+      ).sort((a, b) => a.localeCompare(b));
+      return {
+        mode: 'story',
+        activeFilePath: activeFile.path,
+        authorNotePath: linkedAuthorNote?.path ?? '',
+        linkedStoryPaths,
+        missingAuthorNoteRef: linkedAuthorNote ? '' : storyRef
+      };
+    }
+
+    if (await this.storySteeringStore.isAuthorNoteFile(activeFile)) {
+      const linkedStories = await this.storySteeringStore.getLinkedStoryFilesForAuthorNote(activeFile);
+      return {
+        mode: 'author_note',
+        activeFilePath: activeFile.path,
+        authorNotePath: activeFile.path,
+        linkedStoryPaths: linkedStories.map(item => item.path),
+        missingAuthorNoteRef: ''
+      };
+    }
+
+    return {
+      mode: 'none',
+      activeFilePath: activeFile.path,
+      authorNotePath: '',
+      linkedStoryPaths: [],
+      missingAuthorNoteRef: ''
+    };
+  }
+
+  public async openOrCreateLinkedAuthorNoteForActiveNote(): Promise<TFile | null> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('No active markdown note.');
+      return null;
+    }
+
+    let authorNoteFile = await this.storySteeringStore.resolveAuthorNoteFileForStory(activeFile);
+    if (!(authorNoteFile instanceof TFile)) {
+      if (await this.storySteeringStore.isAuthorNoteFile(activeFile)) {
+        authorNoteFile = activeFile;
+      } else {
+        authorNoteFile = await this.storySteeringStore.ensureAuthorNoteForStory(activeFile);
+      }
+    }
+
+    await this.app.workspace.getLeaf(true).openFile(authorNoteFile);
+    this.refreshStorySteeringViews();
+    return authorNoteFile;
+  }
+
+  private async promptForAuthorNoteRewriteInstruction(): Promise<string | null> {
+    const modal = new AuthorNoteRewriteModal(this.app);
+    const resultPromise = modal.waitForResult();
+    modal.open();
+    const result = await resultPromise;
+    if (result.action !== 'rewrite') {
+      return null;
+    }
+    return result.updateInstruction.trim();
+  }
+
+  private async resolveAuthorNoteRewriteTarget(file: TFile | null): Promise<{
+    authorNoteFile: TFile;
+    linkedStoryFiles: TFile[];
+  } | null> {
+    if (!(file instanceof TFile)) {
+      return null;
+    }
+
+    const directAuthorNote = await this.storySteeringStore.resolveAuthorNoteFileForStory(file);
+    if (directAuthorNote) {
+      const linked = await this.storySteeringStore.getLinkedStoryFilesForAuthorNote(directAuthorNote);
+      const linkedMap = new Map<string, TFile>(linked.map(item => [item.path, item]));
+      linkedMap.set(file.path, file);
+      return {
+        authorNoteFile: directAuthorNote,
+        linkedStoryFiles: [...linkedMap.values()].sort((a, b) => a.path.localeCompare(b.path))
+      };
+    }
+
+    if (await this.storySteeringStore.isAuthorNoteFile(file)) {
+      const linked = await this.storySteeringStore.getLinkedStoryFilesForAuthorNote(file);
+      return {
+        authorNoteFile: file,
+        linkedStoryFiles: linked
+      };
+    }
+
+    const created = await this.storySteeringStore.ensureAuthorNoteForStory(file);
+    return {
+      authorNoteFile: created,
+      linkedStoryFiles: [file]
+    };
+  }
+
+  private async buildAuthorNoteRewriteStoryContext(linkedStoryFiles: TFile[], tokenBudget: number): Promise<{
+    markdown: string;
+    querySeed: string;
+  }> {
+    if (linkedStoryFiles.length === 0 || tokenBudget <= 0) {
+      return {
+        markdown: '',
+        querySeed: ''
+      };
+    }
+
+    const sections: string[] = [];
+    const queryParts: string[] = [];
+    let usedTokens = 0;
+    const maxPerStory = Math.max(220, Math.floor(tokenBudget / Math.max(1, linkedStoryFiles.length)));
+
+    for (const storyFile of linkedStoryFiles) {
+      const remaining = Math.max(0, tokenBudget - usedTokens);
+      if (remaining < 120) {
+        break;
+      }
+      const allowed = Math.max(120, Math.min(maxPerStory, remaining));
+      const raw = await this.app.vault.cachedRead(storyFile);
+      const body = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+      if (!body) {
+        continue;
+      }
+      const snippet = this.trimTextHeadToTokenBudget(body, allowed);
+      usedTokens += this.estimateTokens(snippet);
+      sections.push([
+        `### Story Source: ${storyFile.path}`,
+        snippet
+      ].join('\n'));
+      queryParts.push(snippet);
+    }
+
+    const querySeed = this.trimTextToTokenBudget(queryParts.join('\n\n'), Math.max(256, Math.floor(tokenBudget * 0.35)));
+    return {
+      markdown: sections.join('\n\n'),
+      querySeed
+    };
+  }
+
+  private async buildAuthorNoteRewriteLoreContext(scopes: string[], querySeed: string, tokenBudget: number): Promise<string> {
+    if (scopes.length === 0 || tokenBudget <= 0) {
+      return '';
+    }
+
+    const perScopeBudget = Math.max(120, Math.floor(tokenBudget / Math.max(1, scopes.length)));
+    const parts: string[] = [];
+    for (const scope of scopes) {
+      const context = await this.liveContextIndex.query({
+        queryText: querySeed || scope,
+        tokenBudget: perScopeBudget,
+        maxWorldInfoEntries: 12,
+        maxRagDocuments: 8
+      }, scope);
+      if (context.markdown.trim()) {
+        parts.push(context.markdown);
+      }
+    }
+
+    return parts.join('\n\n---\n\n');
+  }
+
+  public async rewriteAuthorNoteFromActiveNote(): Promise<void> {
     if (!this.settings.completion.enabled) {
       throw new Error('Writing completion is disabled. Enable it under LoreVault Settings -> Writing Completion.');
     }
@@ -1677,50 +1829,55 @@ export default class LoreBookConverterPlugin extends Plugin {
       throw new Error('No active markdown note.');
     }
 
-    const raw = await this.app.vault.cachedRead(activeFile);
-    const noteBody = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
-    const editorWindow = this.getActiveEditorTextBeforeCursor().trim();
-
-    let sourceText = '';
-    let sourceLabel = '';
-    if (source === 'active_note') {
-      sourceText = noteBody;
-      sourceLabel = 'Active note body';
-    } else {
-      sourceText = editorWindow || noteBody;
-      sourceLabel = editorWindow
-        ? 'Near-cursor editor context (text before cursor)'
-        : 'Near-cursor editor context (fallback to active note body)';
+    const target = await this.resolveAuthorNoteRewriteTarget(activeFile);
+    if (!target) {
+      throw new Error('No rewrite target could be resolved for the active note.');
     }
 
-    if (!sourceText) {
-      throw new Error('Active note content is empty.');
+    const updateInstruction = await this.promptForAuthorNoteRewriteInstruction();
+    if (updateInstruction === null) {
+      return;
     }
 
     const completion = this.settings.completion;
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
-    const sourceTokenBudget = Math.max(800, Math.min(64000, Math.floor(maxInputTokens * 0.6)));
-    const truncatedSource = source === 'story_window'
-      ? this.extractStoryWindow(sourceText, sourceTokenBudget)
-      : this.trimTextHeadToTokenBudget(sourceText, sourceTokenBudget);
+    const sourceTokenBudget = Math.max(800, Math.min(64000, Math.floor(maxInputTokens * 0.42)));
+    const loreContextBudget = Math.max(256, Math.min(32000, Math.floor(maxInputTokens * 0.28)));
 
-    const normalizedCurrent = normalizeStorySteeringState(currentState);
-    const normalizedUpdateInstruction = updateInstruction.trim();
+    const authorNoteMarkdown = await this.app.vault.cachedRead(target.authorNoteFile);
+    const normalizedCurrent = parseStorySteeringMarkdown(authorNoteMarkdown);
+    const linkedStoryFiles = target.linkedStoryFiles;
+    const storyContext = await this.buildAuthorNoteRewriteStoryContext(linkedStoryFiles, sourceTokenBudget);
+    const selectedScopes = new Set<string>();
+    for (const storyFile of linkedStoryFiles) {
+      const selection = await this.resolveStoryScopeSelection(storyFile);
+      for (const scope of selection.scopes) {
+        selectedScopes.add(scope);
+      }
+    }
+    const loreContextMarkdown = await this.buildAuthorNoteRewriteLoreContext(
+      [...selectedScopes].sort((a, b) => a.localeCompare(b)),
+      storyContext.querySeed,
+      loreContextBudget
+    );
+
+    const normalizedUpdateInstruction = updateInstruction;
     const systemPrompt = [
       'You are a writing assistant updating a single markdown Author Note for story generation.',
       'Return JSON only. No markdown, no prose, no reasoning.',
       'Output exactly one object with key `authorNote`.',
       'The value must be markdown text.',
-      'Treat existing author-note JSON as the baseline state and update it to reflect current story state.',
+      'Treat existing author-note markdown as baseline and update it to reflect current story state.',
       'Keep content concise and actionable for story generation guidance.',
-      'Do NOT restate encyclopedic lore that belongs in lorebook entries.',
-      'Exclude static character bios, world/location descriptions, appearance/personality summaries, and backstory recaps.',
-      'Only keep writer-control guidance, active plot pressure, unresolved questions, and recent canon changes that matter for next generation.',
+      'Do not restate encyclopedic lore that belongs in lorebook entries.',
+      'Only keep writer-control guidance, active plot pressure, unresolved questions, canon deltas, and near-term plan guidance.',
       'If optional update instructions are provided, prioritize them while preserving valid existing constraints.',
       'If the source does not provide evidence for updates, preserve the existing value.'
     ].join('\n');
     const userPrompt = [
-      `Source mode: ${sourceLabel}`,
+      `Active note: ${activeFile.path}`,
+      `Author note: ${target.authorNoteFile.path}`,
+      `Linked story count: ${linkedStoryFiles.length}`,
       normalizedUpdateInstruction
         ? [
           '',
@@ -1730,13 +1887,17 @@ export default class LoreBookConverterPlugin extends Plugin {
         ].join('\n')
         : '',
       '',
-      '<existing_steering_json>',
-      JSON.stringify(normalizedCurrent, null, 2),
-      '</existing_steering_json>',
+      '<existing_author_note_markdown>',
+      normalizedCurrent.authorNote || '[Empty author note]',
+      '</existing_author_note_markdown>',
       '',
-      '<story_source>',
-      truncatedSource,
-      '</story_source>',
+      '<story_sources>',
+      storyContext.markdown || '[No linked story content found.]',
+      '</story_sources>',
+      '',
+      '<lorebook_context>',
+      loreContextMarkdown || '[No lorebook context available.]',
+      '</lorebook_context>',
       '',
       'Return JSON with the required key only.'
     ].join('\n');
@@ -1745,8 +1906,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const rawResponse = await requestStoryContinuation(completion, {
       systemPrompt,
       userPrompt,
-      operationName: 'story_steering_extract',
-      abortSignal,
+      operationName: 'author_note_rewrite',
       onOperationLog: record => this.appendCompletionOperationLog(record),
       onUsage: usage => {
         usageReport = usage;
@@ -1754,9 +1914,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     if (usageReport) {
-      await this.recordCompletionUsage('story_steering_extract', usageReport, {
-        notePath: activeFile.path,
-        source
+      await this.recordCompletionUsage('author_note_rewrite', usageReport, {
+        notePath: target.authorNoteFile.path,
+        linkedStoryPaths: linkedStoryFiles.map(item => item.path)
       });
     }
 
@@ -1764,12 +1924,28 @@ export default class LoreBookConverterPlugin extends Plugin {
     const proposal = this.settings.storySteering.extractionSanitization === 'off'
       ? normalizeStorySteeringState(parsed)
       : sanitizeStorySteeringExtractionState(parsed);
-    return {
-      proposal,
-      notePath: activeFile.path,
-      sourceLabel,
-      sourceChars: truncatedSource.length
+    const reviewModal = new TextCommandReviewModal(
+      this.app,
+      normalizedCurrent.authorNote,
+      proposal.authorNote,
+      'Rewrite Author Note'
+    );
+    const reviewPromise = reviewModal.waitForResult();
+    reviewModal.open();
+    const review = await reviewPromise;
+    if (review.action !== 'apply') {
+      return;
+    }
+
+    const scope: StorySteeringScope = {
+      type: 'note',
+      key: target.authorNoteFile.path
     };
+    await this.saveStorySteeringScope(scope, {
+      authorNote: review.revisedText.trim()
+    });
+    this.refreshStorySteeringViews();
+    new Notice(`Updated author note: ${target.authorNoteFile.path}`);
   }
 
   public getStoryChatMessages(): StoryChatMessage[] {
@@ -2047,6 +2223,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         }
 
         const effective = await this.storySteeringStore.resolveEffectiveStateForFile(file);
+        if (effective.layers.length === 0) {
+          if (!unresolvedRefs.includes(rawRef)) {
+            unresolvedRefs.push(rawRef);
+          }
+          continue;
+        }
         mergedStates.push(effective.merged);
 
         const canonicalRef = stringifyStoryChatSteeringRef({
@@ -2539,9 +2721,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     const allowStoryNotes = allowedStoryFiles.length > 0;
 
-    const activeSteeringScope = await this.storySteeringStore.getScopeForFile(args.activeStoryFile, {
-      ensureIds: true
-    });
+    const activeSteeringScope = await this.storySteeringStore.getScopeForFile(args.activeStoryFile);
     const allowSteering = Boolean(activeSteeringScope?.key?.trim());
 
     const writeIntent = this.hasExplicitStoryChatWriteIntent(args.userMessage);
@@ -2872,37 +3052,11 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (!rawState) {
           return buildErrorResult(toolName, 'state object is required');
         }
-        const existing = await this.loadStorySteeringScope(scope);
-        const legacySections: string[] = [];
-        const legacyTextFields: Array<{title: string; value: unknown}> = [
-          { title: 'General Writing Instructions', value: rawState.pinnedInstructions },
-          { title: 'Story Notes', value: rawState.storyNotes },
-          { title: 'Scene Intent', value: rawState.sceneIntent }
-        ];
-        for (const field of legacyTextFields) {
-          if (typeof field.value !== 'string' || !field.value.trim()) {
-            continue;
-          }
-          legacySections.push(`## ${field.title}\n\n${field.value.trim()}`);
+        if (typeof rawState.authorNote !== 'string') {
+          return buildErrorResult(toolName, 'state.authorNote must be a string');
         }
-        const legacyListFields: Array<{title: string; value: unknown}> = [
-          { title: 'Active Lorebooks', value: rawState.activeLorebooks },
-          { title: 'Active Plot Threads', value: rawState.plotThreads },
-          { title: 'Open Questions', value: rawState.openLoops },
-          { title: 'Canon Deltas', value: rawState.canonDeltas }
-        ];
-        for (const field of legacyListFields) {
-          const items = this.parseToolStringArray(field.value);
-          if (items.length === 0) {
-            continue;
-          }
-          legacySections.push(`## ${field.title}\n\n${items.map(item => `- ${item}`).join('\n')}`);
-        }
-        const legacyAuthorNote = legacySections.join('\n\n').trim();
         const updated = normalizeStorySteeringState({
-          authorNote: typeof rawState.authorNote === 'string'
-            ? rawState.authorNote.trim()
-            : (legacyAuthorNote || existing.authorNote)
+          authorNote: rawState.authorNote.trim()
         });
         const path = await this.saveStorySteeringScope(scope, updated);
         const resultPayload: Record<string, unknown> = {
@@ -3768,6 +3922,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     const effectiveSystemPrompt = systemSteeringMarkdown
       ? [
         completion.systemPrompt,
+        '',
+        'Follow guidance in `<story_author_note>` and `<inline_story_directives>` when present.',
+        'Treat `<inline_story_directives>` as extracted instruction comments (`[LV: ...]` / `<!-- LV: ... -->`).',
         '',
         '<lorevault_steering_system>',
         systemSteeringMarkdown,
@@ -5275,7 +5432,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       void this.openStoryChatView();
     });
 
-    this.addRibbonIcon('lorevault-steering', 'Open Story Steering', () => {
+    this.addRibbonIcon('lorevault-steering', 'Open Story Author Note Panel', () => {
       void this.openStorySteeringView();
     });
 
@@ -5326,9 +5483,28 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-story-steering',
-      name: 'Open Story Steering',
+      name: 'Open Story Author Note Panel',
       callback: () => {
         void this.openStorySteeringView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-or-create-linked-author-note',
+      name: 'Open or Create Linked Author Note',
+      callback: () => {
+        void this.openOrCreateLinkedAuthorNoteForActiveNote();
+      }
+    });
+
+    this.addCommand({
+      id: 'rewrite-author-note',
+      name: 'Rewrite Author Note',
+      callback: () => {
+        void this.rewriteAuthorNoteFromActiveNote().catch(error => {
+          console.error('LoreVault: Failed to rewrite author note:', error);
+          new Notice(`Failed to rewrite author note: ${error instanceof Error ? error.message : String(error)}`);
+        });
       }
     });
 
@@ -5569,6 +5745,29 @@ export default class LoreBookConverterPlugin extends Plugin {
             void this.continueStoryWithContext();
           });
       });
+
+      if (targetFile) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Open or Create Linked Author Note')
+            .setIcon('book-text')
+            .onClick(() => {
+              void this.openOrCreateLinkedAuthorNoteForActiveNote();
+            });
+        });
+
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Rewrite Author Note')
+            .setIcon('wand')
+            .onClick(() => {
+              void this.rewriteAuthorNoteFromActiveNote().catch(error => {
+                console.error('LoreVault: Failed to rewrite author note:', error);
+                new Notice(`Failed to rewrite author note: ${error instanceof Error ? error.message : String(error)}`);
+              });
+            });
+        });
+      }
 
       if (hasSelection) {
         menu.addItem(item => {
@@ -5963,20 +6162,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       return [];
     }
 
-    const noteScope = await this.storySteeringStore.getScopeForFile(activeFile, {
-      ensureIds: true
-    });
-    if (!noteScope) {
+    const authorNoteFile = await this.storySteeringStore.resolveAuthorNoteFileForStory(activeFile);
+    if (!(authorNoteFile instanceof TFile)) {
       return [];
     }
 
-    const path = this.storySteeringStore.resolveScopePath(noteScope);
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) {
-      return [];
-    }
-
-    const cache = this.app.metadataCache.getFileCache(file);
+    const cache = this.app.metadataCache.getFileCache(authorNoteFile);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
     return parseStoryScopesFromFrontmatter(frontmatter, this.settings.tagScoping.tagPrefix);
   }
@@ -6625,6 +6816,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       const effectiveSystemPrompt = systemSteeringMarkdown
         ? [
           completion.systemPrompt,
+          '',
+          'Follow guidance in `<story_author_note>` and `<inline_story_directives>` when present.',
+          'Treat `<inline_story_directives>` as extracted instruction comments (`[LV: ...]` / `<!-- LV: ... -->`).',
           '',
           '<lorevault_steering_system>',
           systemSteeringMarkdown,

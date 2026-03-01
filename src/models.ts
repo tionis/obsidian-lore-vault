@@ -608,7 +608,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     }
   },
   storySteering: {
-    folder: 'LoreVault/steering',
+    folder: 'LoreVault/author-notes',
     extractionSanitization: 'strict'
   },
   textCommands: {

@@ -11,11 +11,12 @@ export function parseStoryChatSteeringRef(raw: string): StoryChatSteeringRef | n
     return null;
   }
 
-  if (trimmed.toLowerCase().startsWith('story:') || trimmed.toLowerCase().startsWith('chapter:')) {
+  const lower = trimmed.toLowerCase();
+  if (/^[a-z][a-z0-9_+-]*:/.test(lower) && !lower.startsWith('note:')) {
     return null;
   }
 
-  const key = trimmed.toLowerCase().startsWith('note:')
+  const key = lower.startsWith('note:')
     ? trimmed.slice('note:'.length).trim()
     : trimmed;
   if (!key) {

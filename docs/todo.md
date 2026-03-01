@@ -282,13 +282,13 @@ Reference design: `docs/planning.md`.
   - [x] rename ambiguous `Story Window` extraction source label to `Near-Cursor Context` and document behavior
 - [x] Story Steering + Story Chat scope UX polish:
   - [x] autosave Story Steering panel edits immediately (remove manual save workflow)
-  - [x] autosave current steering scope before scope-type switch, then load selected scope
-  - [x] derive Story Steering scope keys from active note; auto-sync on active-note switch and auto-create missing `lvNoteId`/`lvStoryId`/`lvChapterId`
-  - [x] replace chat manual steering text fields with steering source refs (`note`/`story`/`chapter`)
+  - [x] replace chat manual steering text fields with steering source refs (`note`)
   - [x] resolve chat steering refs into steering layers and inspector traces each turn
 - [x] Story Steering simplification (Author Note model):
-  - [x] collapse steering state to one note-level `authorNote` markdown field
-  - [x] simplify Story Steering panel/review modal to Author Note markdown editing
+  - [x] collapse steering state to one note-level `authorNote` markdown layer
+  - [x] link story notes to Author Notes via `authorNote` frontmatter (no manual scope key workflow)
+  - [x] simplify Story Author Note panel to native-note workflow controls (open/create + rewrite)
+  - [x] remove legacy scope-based steering storage/backward-compat parsing paths
   - [x] remove multi-scope steering merge in continuation/chat (note-level only)
   - [x] resolve lorebook scope selection from story-note frontmatter, then Author Note frontmatter (no active-scope fallback)
   - [x] limit Story Chat steering refs/tool scope access to note-level steering only

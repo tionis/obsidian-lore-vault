@@ -146,19 +146,21 @@ export class LorevaultHelpView extends ItemView {
         'Inline directives are supported with strict syntax: `[LV: ...]` or `<!-- LV: ... -->`.'
       ],
       actions: [
-        { label: 'Open Story Steering', onClick: () => void this.plugin.openStorySteeringView() },
+        { label: 'Open Story Author Note Panel', onClick: () => void this.plugin.openStorySteeringView() },
         { label: 'Open Query Simulation', onClick: () => void this.plugin.openQuerySimulationView() }
       ]
     });
 
-    this.renderSection(contentEl, 'Story Steering and Chat', {
+    this.renderSection(contentEl, 'Story Author Note and Chat', {
       bullets: [
-        'Story Steering now uses one note-level Author Note markdown document per active note.',
-        'Story Steering edits autosave immediately; switching active notes autosaves current edits before loading the next note-level Author Note.',
+        'Story Steering is now a linked Author Note workflow: set `authorNote: [[path/to/note]]` on story notes.',
+        'Author Note content is edited directly in native Obsidian notes (no separate LoreVault textarea editor).',
+        'Use `Open or Create Linked Author Note` to create/link an Author Note in the configured Author Note folder.',
         'Lorebook scope selection for continuation/chat is resolved from active-note frontmatter first, then Author Note frontmatter.',
+        'If multiple story notes link to the same Author Note, LoreVault injects all linked stories as rewrite context.',
         'Steering layers are simplified to `Author Note` plus parsed inline directives.',
-        'Story Steering LLM assistance supports optional update prompts so you can direct what should change before review/apply.',
-        'Steering update review shows Current vs Proposed Author Note markdown before apply.',
+        'Author Note rewrite supports optional update prompts so you can direct what should change before review/apply.',
+        'Author Note rewrite review shows Current vs Proposed markdown with diff before apply.',
         '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
         'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
         'Story Chat supports per-conversation scopes, manual context, note steering refs (`note:*`), specific notes, and fork/regenerate.',
@@ -168,7 +170,7 @@ export class LorevaultHelpView extends ItemView {
       ],
       actions: [
         { label: 'Open Story Chat', onClick: () => void this.plugin.openStoryChatView() },
-        { label: 'Open Story Steering', onClick: () => void this.plugin.openStorySteeringView() }
+        { label: 'Open Story Author Note Panel', onClick: () => void this.plugin.openStorySteeringView() }
       ]
     });
 
@@ -239,7 +241,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Command Coverage', {
       bullets: [
         'Build/Manage: `Build Active Lorebook Scope`, `Open LoreVault Manager`, `Open LoreVault Lorebook Auditor`, `Open LoreVault Query Simulation`.',
-        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Steering`, `Create Next Story Chapter`, `Split Active Story Note into Chapter Notes`, `Split Active Story Note into Chapter Notes (Pick Folder)`.',
+        'Story Tools: `Continue Story with Context`, `Stop Active Generation`, `Open Story Chat`, `Open Story Author Note Panel`, `Open or Create Linked Author Note`, `Rewrite Author Note`, `Create Next Story Chapter`, `Split Active Story Note into Chapter Notes`, `Split Active Story Note into Chapter Notes (Pick Folder)`.',
         'Summary/Keyword: `Generate World Info Summary (Active Note)`, `Generate Keywords (Active Note)`, `Generate Chapter Summary (Active Note)`.',
         'Batch Summary: `Generate World Info Summaries (Active Scope)`, `Generate Chapter Summaries (Current Story)`.',
         'Import/Update: `Import SillyTavern Lorebook`, `Extract Wiki Pages from Story`, `Apply Story Delta to Existing Wiki`.',

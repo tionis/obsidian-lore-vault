@@ -137,7 +137,8 @@ If you prefer to build the plugin from source:
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`storyId`, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
-   - Story Steering writes/uses `lvNoteId` in frontmatter for move-safe note/chapter scope links (auto-generated when needed)
+   - Story Steering scope keys are derived from the active note (manual key entry removed)
+   - Story Steering writes/uses `lvNoteId` and auto-creates `lvStoryId`/`lvChapterId` as needed for story/chapter scope resolution
    - Story Steering LLM assistance supports optional update prompts so you can request targeted steering changes before review/apply
    - In Story Steering, `Update from Near-Cursor Context` uses text before cursor in the active editor (fallback: active note body)
    - Story Steering review modal shows `Current` vs `Proposed` values per field before apply

@@ -282,7 +282,8 @@ Reference design: `docs/planning.md`.
   - [x] rename ambiguous `Story Window` extraction source label to `Near-Cursor Context` and document behavior
 - [x] Story Steering + Story Chat scope UX polish:
   - [x] autosave Story Steering panel edits immediately (remove manual save workflow)
-  - [x] autosave current steering scope before scope-type/key switch, then load selected scope
+  - [x] autosave current steering scope before scope-type switch, then load selected scope
+  - [x] derive Story Steering scope keys from active note; auto-sync on active-note switch and auto-create missing `lvNoteId`/`lvStoryId`/`lvChapterId`
   - [x] replace chat manual steering text fields with steering source refs (`note`/`story`/`chapter`)
   - [x] resolve chat steering refs into steering layers and inspector traces each turn
 - [x] Story completion stop UX:

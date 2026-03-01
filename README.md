@@ -350,7 +350,8 @@ Commands:
 Story-level scope override:
 
 - Preferred: set `Active Lorebooks` in Story Steering scope notes (`global`/`story`/`chapter`/`note`).
-- Story Steering panel edits autosave immediately to the active scope; changing scope type/key saves current edits, then loads the selected scope.
+- Story Steering panel edits autosave immediately to the active scope; changing scope type or switching active note saves current edits, then loads the note-derived scope.
+- Story Steering scope keys are derived from the active note (manual scope-key editing removed); missing `lvNoteId`/`lvStoryId`/`lvChapterId` are auto-created when needed.
 - Frontmatter keys remain supported as fallback.
 
 Frontmatter fallback example:

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   buildStorySteeringScopeResolutions,
   buildStorySteeringFilePath,
+  createStorySteeringChapterId,
+  createStorySteeringStoryId,
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
   parseStorySteeringExtractionResponse,
@@ -120,6 +122,22 @@ test('story steering file paths are scoped and deterministic', () => {
   assert.match(legacyThreadPath, /^LoreVault\/steering\/thread\/chronicles-main-[a-f0-9]{10}\.md$/);
   assert.match(notePath, /^LoreVault\/steering\/note\/ch07\.md-[a-f0-9]{10}\.md$/);
   assert.equal(globalPath, 'LoreVault/steering/global.md');
+});
+
+test('auto-generated story/chapter steering ids are deterministic and scoped to note identity', () => {
+  const path = 'stories/act1/chapter-07.md';
+  const noteId = 'lvn-abc123';
+
+  const storyIdA = createStorySteeringStoryId(path, noteId);
+  const storyIdB = createStorySteeringStoryId(path, noteId);
+  const chapterIdA = createStorySteeringChapterId(path, noteId);
+  const chapterIdB = createStorySteeringChapterId(path, noteId);
+
+  assert.equal(storyIdA, storyIdB);
+  assert.equal(chapterIdA, chapterIdB);
+  assert.match(storyIdA, /^chapter-07-[a-f0-9]{6}$/);
+  assert.match(chapterIdA, /^chapter-07-[a-f0-9]{6}$/);
+  assert.notEqual(storyIdA, chapterIdA);
 });
 
 test('story steering extraction parser accepts plain json and fenced json payloads', () => {

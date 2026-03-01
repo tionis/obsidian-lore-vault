@@ -89,7 +89,8 @@ root: true
 ```
 
 Entry content defaults to the markdown body (frontmatter block removed).  
-If a `## Summary` section is present, LoreVault reads only the first paragraph under that heading as summary content.  
+If a `## Summary` section is present, LoreVault reads summary content from that section.  
+When `<!-- LV_BEGIN_SUMMARY -->` / `<!-- LV_END_SUMMARY -->` markers are present, the full delimited block is used.  
 If section summary is missing, LoreVault falls back to frontmatter `summary`, then note body content.
 
 ## Retrieval Routing
@@ -213,7 +214,8 @@ Current capabilities:
 
 - open/create linked Author Note from the active story note
 - link an existing Author Note interactively from the panel
-- create the next chapter from the panel (same command as palette/context menu)
+- create the next chapter from the panel
+- generate chapter summary from the panel
 - trigger `Rewrite Author Note` with optional change prompt + diff review
 - quick actions: `Continue Story`, `Stop`, `Insert Directive`, `Open Story Chat`
 - live generation monitor (state, status, model, scopes, token/output usage)
@@ -284,8 +286,8 @@ Behavior:
   - `LoreVault: Run Text Command on Selection` (only when editor selection is non-empty)
   - `LoreVault: Generate Keywords` (for lorebook-tagged notes)
   - `LoreVault: Generate World Info Summary` (only when note has lorebook scope tags)
-  - `LoreVault: Generate Chapter Summary` (only when note has chapter/story frontmatter)
-  - `LoreVault: Create Next Story Chapter` (only when note has chapter/story frontmatter)
+  - `LoreVault: Rewrite Author Note` (author-note documents only)
+  - `LoreVault: Continue Story with Context` is hidden for author-note documents
 - mobile note: `Continue Story with Context` is also registered as an editor action command for mobile editor menus.
 
 Configure generation under Settings -> LoreVault -> Writing Completion.
@@ -341,17 +343,18 @@ Right-click editor menu:
 
 - `LoreVault: Generate Keywords` appears for notes tagged into a lorebook scope.
 - `LoreVault: Generate World Info Summary` appears for notes tagged into a lorebook scope.
-- `LoreVault: Generate Chapter Summary` appears for notes with story/chapter frontmatter.
+- chapter summary generation is available from command palette and Story Writing panel.
 
 Behavior:
 
-- uses configured completion provider/model to propose a compact summary
+- uses configured completion provider/model to propose summary text
 - opens review modal before acceptance
 - review action:
   - `Write Summary Section`: write/update `## Summary` section in the note body
 - precedence:
-  - world_info content: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> note body
-  - chapter memory: first paragraph under `## Summary` -> `frontmatter summary` (fallback) -> deterministic excerpt
+  - world_info content: summary section content (`LV_BEGIN/LV_END` delimited block when present, otherwise first paragraph) -> `frontmatter summary` (fallback) -> note body
+  - chapter memory: summary section content (`LV_BEGIN/LV_END` delimited block when present, otherwise first paragraph) -> `frontmatter summary` (fallback) -> deterministic excerpt
+  - chapter summaries are not hard-length capped; multi-paragraph summaries are wrapped with `<!-- LV_BEGIN_SUMMARY -->` and `<!-- LV_END_SUMMARY -->` when written
 - chapter note utilities:
   - split command parses active note chapters from `##` headings (`#` treated as story title), writes linked chapter notes with chapter/front-link metadata, and links each chapter to the same Author Note
   - create-next command creates a new chapter note in the current folder, links current note `nextChapter`, links new note `previousChapter`, and links new chapter to the same Author Note

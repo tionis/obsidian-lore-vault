@@ -4,21 +4,40 @@ export type NoteSummarySource = 'section' | 'frontmatter';
 const SUMMARY_SECTION_HEADING_PATTERN = /^\s{0,3}##\s+summary\s*$/i;
 const MAJOR_HEADING_PATTERN = /^\s{0,3}#{1,2}\s+\S/;
 const H1_HEADING_PATTERN = /^\s{0,3}#\s+\S/;
+const SUMMARY_BEGIN_MARKER_PATTERN = /^\s*<!--\s*LV_BEGIN_SUMMARY\s*-->\s*$/i;
+const SUMMARY_END_MARKER_PATTERN = /^\s*<!--\s*LV_END_SUMMARY\s*-->\s*$/i;
 
-export function normalizeGeneratedSummaryText(text: string, maxChars: number): string {
-  const sanitized = sanitizeSummaryModelOutput(text);
-  const singleLine = sanitized
-    .replace(/\r?\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!singleLine) {
+interface NormalizeSummaryOptions {
+  allowParagraphs?: boolean;
+}
+
+export function normalizeGeneratedSummaryText(
+  text: string,
+  maxChars?: number,
+  options: NormalizeSummaryOptions = {}
+): string {
+  const allowParagraphs = options.allowParagraphs === true;
+  const sanitized = sanitizeSummaryModelOutput(text, { allowParagraphs });
+  const normalized = allowParagraphs
+    ? sanitized
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    : sanitized
+      .replace(/\r?\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  if (!normalized) {
     return '';
   }
-  const limit = Math.max(80, Math.floor(maxChars));
-  if (singleLine.length <= limit) {
-    return singleLine;
+  const limit = typeof maxChars === 'number' && Number.isFinite(maxChars)
+    ? Math.max(80, Math.floor(maxChars))
+    : 0;
+  if (limit <= 0 || normalized.length <= limit) {
+    return normalized;
   }
-  return `${singleLine.slice(0, limit).trimEnd()}...`;
+  return `${normalized.slice(0, limit).trimEnd()}...`;
 }
 
 function removeThinkBlocks(text: string): string {
@@ -109,10 +128,24 @@ function stripReasoningPreamble(text: string): string {
   return remaining.join(' ').trim();
 }
 
-export function sanitizeSummaryModelOutput(text: string): string {
+export function sanitizeSummaryModelOutput(
+  text: string,
+  options: NormalizeSummaryOptions = {}
+): string {
+  const allowParagraphs = options.allowParagraphs === true;
   const withoutThinkBlocks = removeThinkBlocks(text);
   const withoutLabels = stripSummaryLabels(withoutThinkBlocks);
-  return stripReasoningPreamble(withoutLabels).trim();
+  if (!allowParagraphs) {
+    return stripReasoningPreamble(withoutLabels).trim();
+  }
+
+  const paragraphs = withoutLabels
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map(paragraph => stripReasoningPreamble(paragraph))
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean);
+  return paragraphs.join('\n\n').trim();
 }
 
 interface SummarySectionRange {
@@ -120,6 +153,7 @@ interface SummarySectionRange {
   endLineExclusive: number;
   paragraphStartLine: number | null;
   paragraphEndLineExclusive: number | null;
+  isDelimited: boolean;
 }
 
 function normalizeMarkdownNewlines(text: string): string {
@@ -135,6 +169,18 @@ function normalizeSingleSummaryParagraph(text: string): string {
   return firstParagraph
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeMultiParagraphSummary(text: string): string {
+  return normalizeMarkdownNewlines(text)
+    .trim()
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function hasMultipleParagraphs(text: string): boolean {
+  return /\n\s*\n/.test(normalizeMarkdownNewlines(text).trim());
 }
 
 function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
@@ -155,8 +201,38 @@ function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
         startLine: index,
         endLineExclusive: cursor,
         paragraphStartLine: null,
-        paragraphEndLineExclusive: null
+        paragraphEndLineExclusive: null,
+        isDelimited: false
       };
+    }
+
+    if (SUMMARY_BEGIN_MARKER_PATTERN.test(lines[cursor])) {
+      let markerEndLine: number | null = null;
+      let markerCursor = cursor + 1;
+      while (markerCursor < lines.length) {
+        if (SUMMARY_END_MARKER_PATTERN.test(lines[markerCursor])) {
+          markerEndLine = markerCursor;
+          break;
+        }
+        if (MAJOR_HEADING_PATTERN.test(lines[markerCursor])) {
+          break;
+        }
+        markerCursor += 1;
+      }
+
+      if (markerEndLine !== null) {
+        let endLineExclusive = markerEndLine + 1;
+        while (endLineExclusive < lines.length && lines[endLineExclusive].trim().length === 0) {
+          endLineExclusive += 1;
+        }
+        return {
+          startLine: index,
+          endLineExclusive,
+          paragraphStartLine: cursor + 1,
+          paragraphEndLineExclusive: markerEndLine,
+          isDelimited: true
+        };
+      }
     }
 
     let paragraphEnd = cursor;
@@ -189,7 +265,8 @@ function findSummarySectionRange(bodyText: string): SummarySectionRange | null {
       startLine: index,
       endLineExclusive,
       paragraphStartLine: cursor,
-      paragraphEndLineExclusive
+      paragraphEndLineExclusive,
+      isDelimited: false
     };
   }
 
@@ -220,11 +297,13 @@ export function extractSummarySectionFromBody(bodyText: string): string {
   }
 
   const lines = normalized.split('\n');
-  return normalizeSingleSummaryParagraph(
-    lines
-      .slice(range.paragraphStartLine, range.paragraphEndLineExclusive)
-      .join('\n')
-  );
+  const extracted = lines
+    .slice(range.paragraphStartLine, range.paragraphEndLineExclusive)
+    .join('\n');
+  if (range.isDelimited) {
+    return normalizeMultiParagraphSummary(extracted);
+  }
+  return normalizeSingleSummaryParagraph(extracted);
 }
 
 export function stripSummarySectionFromBody(bodyText: string): string {
@@ -269,8 +348,18 @@ export function resolveNoteSummary(
   return null;
 }
 
-export function upsertSummarySectionInMarkdown(rawContent: string, summaryText: string): string {
-  const summary = normalizeSingleSummaryParagraph(summaryText);
+export function upsertSummarySectionInMarkdown(
+  rawContent: string,
+  summaryText: string,
+  options: { allowMultiParagraph?: boolean } = {}
+): string {
+  const allowMultiParagraph = options.allowMultiParagraph === true;
+  const normalizedBlock = allowMultiParagraph
+    ? normalizeMultiParagraphSummary(summaryText)
+    : normalizeSingleSummaryParagraph(summaryText);
+  const summary = allowMultiParagraph
+    ? normalizedBlock
+    : normalizeSingleSummaryParagraph(normalizedBlock);
   const { frontmatterBlock, bodyText } = splitFrontmatterAndBody(rawContent);
   const bodyNormalized = normalizeMarkdownNewlines(bodyText);
   const lines = bodyNormalized.length > 0 ? bodyNormalized.split('\n') : [];
@@ -292,12 +381,16 @@ export function upsertSummarySectionInMarkdown(rawContent: string, summaryText: 
     insertionIndex += 1;
   }
 
-  const summaryLines = [
-    '## Summary',
-    '',
-    summary,
-    ''
-  ];
+  const summaryLines = ['## Summary', ''];
+  if (allowMultiParagraph && hasMultipleParagraphs(summary)) {
+    summaryLines.push('<!-- LV_BEGIN_SUMMARY -->');
+    summaryLines.push(...summary.split('\n'));
+    summaryLines.push('<!-- LV_END_SUMMARY -->');
+    summaryLines.push('');
+  } else {
+    summaryLines.push(summary);
+    summaryLines.push('');
+  }
   if (
     insertionIndex > 0 &&
     linesWithoutSummary[insertionIndex - 1].trim().length > 0

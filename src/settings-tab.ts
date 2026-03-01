@@ -1409,7 +1409,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Summary Max Output Chars')
-      .setDesc('Hard cap for normalized generated summary text.')
+      .setDesc('Hard cap for normalized world_info summaries. Chapter summaries are not length-capped.')
       .addText(text => text
         .setValue(this.plugin.settings.summaries.maxSummaryChars.toString())
         .onChange(async (value) => {

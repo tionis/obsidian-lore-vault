@@ -17,6 +17,15 @@ test('normalizeGeneratedSummaryText flattens whitespace and enforces max chars',
   assert.ok(clipped.endsWith('...'));
 });
 
+test('normalizeGeneratedSummaryText preserves paragraphs when requested', () => {
+  const normalized = normalizeGeneratedSummaryText(
+    'Para one.\n\nPara two.\n\nPara three.',
+    undefined,
+    { allowParagraphs: true }
+  );
+  assert.equal(normalized, 'Para one.\n\nPara two.\n\nPara three.');
+});
+
 test('sanitizeSummaryModelOutput removes reasoning preambles and think blocks', () => {
   const reasoningOutput = [
     'I need to create a concise canonical summary of Baalthasar.',
@@ -104,6 +113,32 @@ test('summary section extraction only reads the first summary paragraph', () => 
   );
 });
 
+test('summary section extraction supports LV delimited multi-paragraph summary blocks', () => {
+  const body = [
+    '# Chapter',
+    '',
+    '## Summary',
+    '',
+    '<!-- LV_BEGIN_SUMMARY -->',
+    'Paragraph one line one.',
+    '',
+    'Paragraph two line one.',
+    '<!-- LV_END_SUMMARY -->',
+    '',
+    'Body starts here.',
+    'More body.'
+  ].join('\n');
+
+  assert.equal(
+    extractSummarySectionFromBody(body),
+    ['Paragraph one line one.', '', 'Paragraph two line one.'].join('\n')
+  );
+  assert.equal(
+    stripSummarySectionFromBody(body),
+    ['# Chapter', '', 'Body starts here.', 'More body.'].join('\n')
+  );
+});
+
 test('upsertSummarySectionInMarkdown places summary after first h1 and replaces existing summary section', () => {
   const withH1 = [
     '---',
@@ -140,4 +175,34 @@ test('upsertSummarySectionInMarkdown writes exactly one summary paragraph', () =
 
   assert.ok(inserted.includes('## Summary\n\nFirst summary line. Second summary line.\n\nBody starts here.'));
   assert.equal(inserted.includes('Ignored second paragraph.'), false);
+});
+
+test('upsertSummarySectionInMarkdown writes LV markers for multi-paragraph summaries when enabled', () => {
+  const source = [
+    '# Title',
+    '',
+    'Body starts here.'
+  ].join('\n');
+
+  const inserted = upsertSummarySectionInMarkdown(
+    source,
+    'Paragraph one.\n\nParagraph two.',
+    { allowMultiParagraph: true }
+  );
+
+  assert.ok(
+    inserted.includes(
+      [
+        '## Summary',
+        '',
+        '<!-- LV_BEGIN_SUMMARY -->',
+        'Paragraph one.',
+        '',
+        'Paragraph two.',
+        '<!-- LV_END_SUMMARY -->',
+        '',
+        'Body starts here.'
+      ].join('\n')
+    )
+  );
 });

@@ -383,6 +383,50 @@ export default class LoreBookConverterPlugin extends Plugin {
     return Math.max(1, Math.ceil(text.length / 4));
   }
 
+  private resolveMarkdownViewForFile(file: TFile | null): MarkdownView | null {
+    const activeMarkdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (activeMarkdownView?.editor) {
+      if (!file || activeMarkdownView.file?.path === file.path) {
+        return activeMarkdownView;
+      }
+    }
+
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+    for (const leaf of markdownLeaves) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView) || !view.editor) {
+        continue;
+      }
+      if (!file || view.file?.path === file.path) {
+        return view;
+      }
+    }
+
+    return null;
+  }
+
+  private async resolveEditableMarkdownViewForFile(file: TFile | null): Promise<MarkdownView | null> {
+    const existing = this.resolveMarkdownViewForFile(file);
+    if (existing) {
+      return existing;
+    }
+
+    if (file) {
+      const leaf = this.app.workspace.getLeaf(false);
+      await leaf.openFile(file);
+      const opened = leaf.view;
+      if (opened instanceof MarkdownView && opened.editor) {
+        return opened;
+      }
+    }
+
+    const fallback = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (fallback?.editor) {
+      return fallback;
+    }
+    return null;
+  }
+
   private getActiveEditorTextBeforeCursor(): string {
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!markdownView) {
@@ -1814,9 +1858,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     editorOverride?: Editor,
     infoOverride?: MarkdownView | MarkdownFileInfo
   ): Promise<void> {
+    const targetFile = infoOverride instanceof MarkdownView
+      ? (infoOverride.file ?? this.app.workspace.getActiveFile())
+      : (infoOverride?.file ?? this.app.workspace.getActiveFile());
     const markdownView = infoOverride instanceof MarkdownView
       ? infoOverride
-      : this.app.workspace.getActiveViewOfType(MarkdownView);
+      : await this.resolveEditableMarkdownViewForFile(targetFile);
     const editor = editorOverride ?? markdownView?.editor;
     if (!editor) {
       new Notice('No active markdown editor found.');
@@ -3696,22 +3743,27 @@ export default class LoreBookConverterPlugin extends Plugin {
   } {
     const maxChars = this.settings.summaries.maxInputChars;
     const truncated = bodyText.length > maxChars ? bodyText.slice(0, maxChars) : bodyText;
-    const modeInstruction = mode === 'chapter'
-      ? 'Summarize this chapter for long-form continuity memory.'
-      : 'Summarize this lore entry for compact world_info retrieval.';
-
-    const systemPrompt = [
-      'You write concise canonical summaries for a fiction writing assistant.',
-      'Output one plain-text paragraph only.',
-      `Keep summary under ${this.settings.summaries.maxSummaryChars} characters.`,
-      'Focus on durable facts, names, states, and consequences.',
-      'Do not include headings, markdown, or bullet points.',
-      'Do not include reasoning, analysis, or preambles like "I need to..." or numbered planning.',
-      'Start directly with the factual summary content.',
-      'Bad output example: "I need to create a summary. 1. ... 2. ..."',
-      'Good output example: "Baalthasar is a dark elven Archmage whose unmatched mind magic and arcana priorities define his strategic role."',
-      modeInstruction
-    ].join('\n');
+    const systemPrompt = mode === 'chapter'
+      ? [
+        'You write chapter continuity summaries for a fiction writing assistant.',
+        'Focus on durable facts, state changes, consequences, unresolved tensions, and near-term setup.',
+        'Do not include headings or bullet points.',
+        'Avoid reasoning preambles, analysis narration, and numbered planning.',
+        'Start directly with summary content.',
+        'Multiple paragraphs are allowed and encouraged when useful.'
+      ].join('\n')
+      : [
+        'You write concise canonical summaries for a fiction writing assistant.',
+        'Output one plain-text paragraph only.',
+        `Keep summary under ${this.settings.summaries.maxSummaryChars} characters.`,
+        'Focus on durable facts, names, states, and consequences.',
+        'Do not include headings, markdown, or bullet points.',
+        'Do not include reasoning, analysis, or preambles like "I need to..." or numbered planning.',
+        'Start directly with the factual summary content.',
+        'Bad output example: "I need to create a summary. 1. ... 2. ..."',
+        'Good output example: "Baalthasar is a dark elven Archmage whose unmatched mind magic and arcana priorities define his strategic role."',
+        'Summarize this lore entry for compact world_info retrieval.'
+      ].join('\n');
 
     const userPrompt = [
       `Title: ${title}`,
@@ -3776,7 +3828,8 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const normalizedSummary = normalizeGeneratedSummaryText(
       rawSummary,
-      this.settings.summaries.maxSummaryChars
+      mode === 'chapter' ? undefined : this.settings.summaries.maxSummaryChars,
+      { allowParagraphs: mode === 'chapter' }
     );
     if (!normalizedSummary) {
       throw new Error('Summary model returned empty text.');
@@ -3807,9 +3860,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
   }
 
-  private async applySummaryToNoteSection(file: TFile, summary: string): Promise<void> {
+  private async applySummaryToNoteSection(file: TFile, summary: string, mode: GeneratedSummaryMode): Promise<void> {
     const raw = await this.app.vault.cachedRead(file);
-    const next = upsertSummarySectionInMarkdown(raw, summary);
+    const next = upsertSummarySectionInMarkdown(raw, summary, {
+      allowMultiParagraph: mode === 'chapter'
+    });
     await this.app.vault.modify(file, next);
   }
 
@@ -3828,7 +3883,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       return 'cancelled';
     }
 
-    await this.applySummaryToNoteSection(file, review.summaryText);
+    await this.applySummaryToNoteSection(file, review.summaryText, mode);
 
     this.liveContextIndex.requestFullRefresh();
     this.chapterSummaryStore.invalidatePath(file.path);
@@ -3855,7 +3910,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  private async generateSummaryForActiveNote(mode: GeneratedSummaryMode): Promise<void> {
+  public async generateSummaryForActiveNote(mode: GeneratedSummaryMode): Promise<void> {
     const activeFile = this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       new Notice('No active markdown note.');
@@ -5822,6 +5877,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       const targetFile = this.resolveFileFromEditorMenuInfo(info);
       const isLorebookNote = targetFile ? this.noteBelongsToLorebookScope(targetFile) : false;
       const isChapterNote = targetFile ? this.noteHasChapterFrontmatter(targetFile) : false;
+      const isAuthorNote = targetFile ? this.noteIsAuthorNote(targetFile) : false;
       const hasSelection = editor.somethingSelected() && Boolean(editor.getSelection().trim());
 
       menu.addSeparator();
@@ -5846,31 +5902,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         });
       }
 
-      if (targetFile && isChapterNote) {
+      if (this.generationInFlight) {
         menu.addItem(item => {
-          item
-            .setTitle('LoreVault: Generate Chapter Summary')
-            .setIcon('file-text')
-            .onClick(() => {
-              void this.generateSummaryForNote(targetFile, 'chapter');
-            });
-        });
-
-        menu.addItem(item => {
-          item
-            .setTitle('LoreVault: Create Next Story Chapter')
-            .setIcon('file-plus')
-            .onClick(() => {
-              void this.createNextStoryChapterForFile(targetFile).catch(error => {
-                console.error('LoreVault: Failed to create next story chapter:', error);
-                new Notice(`Failed to create next chapter: ${error instanceof Error ? error.message : String(error)}`);
-              });
-            });
-        });
-      }
-
-      menu.addItem(item => {
-        if (this.generationInFlight) {
           item
             .setTitle('LoreVault: Stop Active Generation')
             .setIcon('square')
@@ -5879,19 +5912,20 @@ export default class LoreBookConverterPlugin extends Plugin {
               this.setGenerationStatus('stopping generation...', 'busy');
               new Notice('Stopping active generation...');
             });
-          return;
-        }
-
-        item
-          .setTitle('LoreVault: Continue Story with Context')
-          .setIcon('book-open-text')
-          .onClick(() => {
-            void this.continueStoryWithContext();
-          });
-      });
+        });
+      } else if (!isAuthorNote) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Continue Story with Context')
+            .setIcon('book-open-text')
+            .onClick(() => {
+              void this.continueStoryWithContext();
+            });
+        });
+      }
 
       const shouldShowStoryActions = Boolean(
-        targetFile && (isChapterNote || this.noteHasAuthorNoteLink(targetFile))
+        targetFile && !isAuthorNote && (isChapterNote || this.noteHasAuthorNoteLink(targetFile))
       );
       if (targetFile && shouldShowStoryActions) {
         menu.addItem(item => {
@@ -5900,15 +5934,6 @@ export default class LoreBookConverterPlugin extends Plugin {
             .setIcon('message-square-plus')
             .onClick(() => {
               void this.insertInlineDirectiveAtCursor(editor, info);
-            });
-        });
-
-        menu.addItem(item => {
-          item
-            .setTitle('LoreVault: Open or Create Linked Author Note')
-            .setIcon('book-text')
-            .onClick(() => {
-              void this.openOrCreateLinkedAuthorNoteForActiveNote();
             });
         });
 
@@ -5924,6 +5949,9 @@ export default class LoreBookConverterPlugin extends Plugin {
             });
         });
 
+      }
+
+      if (targetFile && isAuthorNote) {
         menu.addItem(item => {
           item
             .setTitle('LoreVault: Rewrite Author Note')
@@ -6127,6 +6155,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
     const authorNote = asString(getFrontmatterValue(frontmatter, 'authorNote')) ?? '';
     return Boolean(authorNote.trim());
+  }
+
+  private noteIsAuthorNote(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const rawDocType = asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '';
+    const normalizedDocType = rawDocType
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, '');
+    return normalizedDocType === 'authornote';
   }
 
   public canCreateNextStoryChapterForActiveNote(): boolean {
@@ -6955,20 +6994,21 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const activeFile = this.app.workspace.getActiveFile();
+    const markdownView = await this.resolveEditableMarkdownViewForFile(activeFile);
     if (!markdownView) {
       new Notice('No active markdown editor found.');
       return;
     }
 
     const editor = markdownView.editor;
-    const activeFile = markdownView.file ?? this.app.workspace.getActiveFile();
+    const resolvedActiveFile = markdownView.file ?? activeFile;
     const cursor = editor.getCursor();
     const rawTextBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
     const inlineDirectiveResolution = this.resolveInlineDirectivesFromText(rawTextBeforeCursor);
     const inlineDirectives = inlineDirectiveResolution.directives;
     const textBeforeCursor = stripInlineLoreDirectives(rawTextBeforeCursor);
-    const fallbackQuery = activeFile?.basename ?? 'story continuation';
+    const fallbackQuery = resolvedActiveFile?.basename ?? 'story continuation';
     let targetScopes: string[] = [];
     let targetScopeLabels: string[] = ['(none)'];
     let initialScopeLabel = '(none)';
@@ -6987,8 +7027,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       const completion = this.settings.completion;
-      const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeFile);
-      const scopeSelection = await this.resolveStoryScopeSelection(activeFile);
+      const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(resolvedActiveFile);
+      const scopeSelection = await this.resolveStoryScopeSelection(resolvedActiveFile);
       scopeSelectionSource = scopeSelection.source;
       targetScopes = scopeSelection.scopes;
       targetScopeLabels = targetScopes.length > 0
@@ -7014,7 +7054,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
       const mergedAuthorNote = scopedSteering.merged.authorNote;
-      const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(activeFile);
+      const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(resolvedActiveFile);
       const mergedContinuity = {
         plotThreads: this.mergeSteeringList(
           continuityFromFrontmatter.plotThreads
@@ -7107,12 +7147,12 @@ export default class LoreBookConverterPlugin extends Plugin {
       let chapterMemoryTokens = 0;
       let chapterMemoryItems: string[] = [];
       let chapterMemoryLayerTrace: string[] = [];
-      if (availableForContext > 96 && activeFile) {
+      if (availableForContext > 96 && resolvedActiveFile) {
         const chapterMemoryBudget = Math.min(
           900,
           Math.max(96, Math.floor(Math.max(0, availableForContext) * 0.3))
         );
-        const chapterMemory = await this.buildChapterMemoryContext(activeFile, chapterMemoryBudget);
+        const chapterMemory = await this.buildChapterMemoryContext(resolvedActiveFile, chapterMemoryBudget);
         chapterMemoryMarkdown = chapterMemory.markdown;
         chapterMemoryTokens = chapterMemory.usedTokens;
         chapterMemoryItems = chapterMemory.items;

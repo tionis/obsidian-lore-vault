@@ -173,6 +173,17 @@ export class StorySteeringView extends ItemView {
     }
   }
 
+  private async generateChapterSummary(): Promise<void> {
+    try {
+      await this.plugin.generateSummaryForActiveNote('chapter');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to generate chapter summary: ${message}`);
+    } finally {
+      await this.render(true);
+    }
+  }
+
   private async rewriteAuthorNote(): Promise<void> {
     try {
       await this.plugin.rewriteAuthorNoteFromActiveNote();
@@ -299,6 +310,12 @@ export class StorySteeringView extends ItemView {
       createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
       createNextChapterButton.addEventListener('click', () => {
         void this.createNextChapter();
+      });
+
+      const chapterSummaryButton = actions.createEl('button', { text: 'Generate Chapter Summary' });
+      chapterSummaryButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
+      chapterSummaryButton.addEventListener('click', () => {
+        void this.generateChapterSummary();
       });
 
       const rewriteAuthorNoteButton = actions.createEl('button', { text: 'Rewrite Author Note' });

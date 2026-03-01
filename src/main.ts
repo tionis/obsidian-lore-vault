@@ -5936,19 +5936,6 @@ export default class LoreBookConverterPlugin extends Plugin {
               void this.insertInlineDirectiveAtCursor(editor, info);
             });
         });
-
-        menu.addItem(item => {
-          item
-            .setTitle('LoreVault: Link Existing Author Note')
-            .setIcon('link')
-            .onClick(() => {
-              void this.linkExistingAuthorNoteForActiveNote().catch(error => {
-                console.error('LoreVault: Failed to link existing author note:', error);
-                new Notice(`Failed to link existing author note: ${error instanceof Error ? error.message : String(error)}`);
-              });
-            });
-        });
-
       }
 
       if (targetFile && isAuthorNote) {

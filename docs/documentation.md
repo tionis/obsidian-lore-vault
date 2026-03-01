@@ -841,14 +841,11 @@ Current behavior:
 - supports streaming send/stop controls
 - shows a conversation dropdown and supports creating new chats inline
 - stores per-chat context controls:
-  - selected lorebook scopes
-  - `Use Lorebook Context` toggle
+  - selected lorebook scopes (add/remove list)
   - manual context text
-  - steering source refs (`note:*`)
-    - note refs pull note content + note-level author-note steering
-  - continuity per-group inclusion toggles (threads/open loops/canon deltas)
-  - specific notes list managed by note picker (`Add Note` / `Add Active` / remove per item)
-- allows manual-context-only operation by disabling lorebook context or selecting no scopes
+  - author note refs (interactive picker + remove; stored as `note:*` refs)
+  - chapter/raw note refs (interactive picker + remove)
+- allows manual-context-only operation by leaving lorebook selection empty
 - supports per-message actions:
   - `Edit` past user/assistant messages
   - `Fork Here` to create a new conversation note from any turn
@@ -874,9 +871,10 @@ Turn context assembly:
   - optionally create lorebook notes when write actions are enabled and current turn includes explicit write intent
 - optional tool-retrieved context layer (when enabled and budget allows)
 - explicit steering layers (author note, inline directives)
-- optional continuity-state layer (plot threads, open loops, canon deltas) with selectable inclusion
+- optional continuity-state layer (plot threads, open loops, canon deltas; no per-chat checkbox UI)
 - optional manual context block
 - optional specific-note context blocks resolved from note references
+- optional author-note context blocks resolved from selected author notes
 - recent chat history window
 - deterministic context inspector metadata attached to assistant turns:
   - selected scopes

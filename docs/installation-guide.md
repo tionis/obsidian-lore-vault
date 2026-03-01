@@ -184,9 +184,10 @@ If you prefer to build the plugin from source:
    - Run command "Open Story Chat"
    - Use the conversation dropdown at the top to switch chats; use `New Chat` to create one
    - Optional: set the conversation note folder in Settings -> LoreVault -> `Story Chat Conversation Folder`
-   - Select lorebook scopes to use (or disable lorebook context for manual-only chat)
+   - Select lorebooks to use via the add/remove list (leave empty for manual-only chat)
    - Optional: add manual context text in the panel
-   - Optional: add specific note references using `Add Note` or `Add Active`; remove list items as needed
+   - Optional: add author notes via `Add Author Note` and remove list items as needed
+   - Optional: add chapter/raw notes via `Add Chapter` / `Add Note` and remove list items as needed
    - Optional: enable Story Chat tool calls in settings to allow bounded lorebook/story/steering tools during chat turns
    - Send prompts and watch streamed responses
    - Use message actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)

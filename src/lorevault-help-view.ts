@@ -166,8 +166,8 @@ export class LorevaultHelpView extends ItemView {
         'Author Note rewrite review shows Current vs Proposed markdown with diff before apply.',
         '`Near-Cursor Context` in steering assistance means text before cursor in the active editor (fallback: note body).',
         'Chapter workflow commands: split monolithic story notes by `##` chapters and create linked next-chapter notes with managed story frontmatter.',
-        'Story Chat supports per-conversation scopes, manual context, note steering refs (`note:*`), specific notes, and fork/regenerate.',
-        'Story Chat continuity items are conversation-level toggles; they are no longer sourced from multi-scope steering fields.',
+        'Story Chat supports per-conversation context lists for lorebooks, author notes, chapters/raw notes, plus manual context and fork/regenerate.',
+        'Story Chat no longer shows legacy continuity checkboxes in context controls.',
         'Optional Story Chat tool calls can search/read selected lorebooks, read linked story notes, and read/update the active note-level Author Note.',
         'Chat and continuation both show context-layer traces and token usage diagnostics.'
       ],

@@ -457,13 +457,11 @@ Current capabilities:
 - in-chat generation monitor (state, scopes, context/output token usage)
 - conversation selector (dropdown) with `New Chat` creation
 - streaming assistant responses
-- per-chat lorebook scope selection (including none)
-- `Use Lorebook Context` toggle
-- manual context block (for manual-only or mixed mode)
-- steering source references (`note:*`)
-  - note steering refs pull that note body into specific-note context plus note-level author-note steering
-- per-chat continuity inclusion toggles (plot threads, open loops, canon deltas)
-- specific notes context via note picker list (`Add Note`, `Add Active`, remove per item)
+- per-chat lorebook selection via add/remove list
+- manual context block
+- author note context list via interactive picker + remove actions
+- chapter/raw note context list via interactive picker + remove actions
+- no continuity checkboxes in chat context controls (continuity handling is automatic)
 - optional bounded Story Chat tool-calling loop (OpenAI-compatible providers) that can:
   - search/read selected lorebook entries
   - search/read linked story and manually selected note context

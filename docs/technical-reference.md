@@ -435,8 +435,9 @@ Conversation persistence is note-backed in `storyChat.chatFolder`.
 Stored structure:
 
 - conversation metadata
-- per-conversation steering source refs (`note:*`)
-- per-conversation continuity inclusion toggles (plot threads/open loops/canon deltas)
+- per-conversation author-note refs (`note:*`)
+- per-conversation chapter/raw note refs
+- per-conversation lorebook scope selection
 - per-turn messages
 - message versions with active version selector
 - optional context inspector metadata on assistant versions (including steering source resolution and agent tool traces/calls/writes)

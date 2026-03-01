@@ -9,6 +9,14 @@ import {
 } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import {
+  asNumber,
+  asString,
+  asStringArray,
+  FrontmatterData,
+  getFrontmatterValue,
+  normalizeFrontmatter
+} from './frontmatter-utils';
+import {
   StoryChatContextMeta,
   StoryChatMessage
 } from './models';
@@ -78,11 +86,11 @@ class NotePickerModal extends FuzzySuggestModal<TFile> {
   private files: TFile[];
   private onChoose: (file: TFile) => void;
 
-  constructor(app: App, files: TFile[], onChoose: (file: TFile) => void) {
+  constructor(app: App, files: TFile[], onChoose: (file: TFile) => void, placeholder = 'Pick a note...') {
     super(app);
     this.files = [...files].sort((a, b) => a.path.localeCompare(b.path));
     this.onChoose = onChoose;
-    this.setPlaceholder('Pick a note to add as specific context...');
+    this.setPlaceholder(placeholder);
   }
 
   getItems(): TFile[] {
@@ -98,6 +106,30 @@ class NotePickerModal extends FuzzySuggestModal<TFile> {
   }
 }
 
+class ScopePickerModal extends FuzzySuggestModal<string> {
+  private scopes: string[];
+  private onChoose: (scope: string) => void;
+
+  constructor(app: App, scopes: string[], onChoose: (scope: string) => void) {
+    super(app);
+    this.scopes = [...scopes].sort((a, b) => a.localeCompare(b));
+    this.onChoose = onChoose;
+    this.setPlaceholder('Pick a lorebook scope to add...');
+  }
+
+  getItems(): string[] {
+    return this.scopes;
+  }
+
+  getItemText(scope: string): string {
+    return formatScope(scope);
+  }
+
+  onChooseItem(scope: string): void {
+    this.onChoose(scope);
+  }
+}
+
 export class StoryChatView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private chatFolder = 'LoreVault/chat';
@@ -106,7 +138,6 @@ export class StoryChatView extends ItemView {
   private conversationTitle = '';
   private conversationCreatedAt = 0;
   private selectedScopes = new Set<string>();
-  private useLorebookContext = true;
   private manualContext = '';
   private steeringScopeRefs: string[] = [];
   private continuitySelection = {
@@ -309,10 +340,13 @@ export class StoryChatView extends ItemView {
     this.conversationTitle = document.title;
     this.conversationCreatedAt = document.createdAt;
     this.selectedScopes = new Set(document.selectedScopes);
-    this.useLorebookContext = document.useLorebookContext;
     this.manualContext = document.manualContext;
     this.steeringScopeRefs = normalizeStoryChatSteeringRefs(document.steeringScopeRefs ?? []);
-    this.continuitySelection = { ...document.continuitySelection };
+    this.continuitySelection = {
+      includePlotThreads: true,
+      includeOpenLoops: true,
+      includeCanonDeltas: true
+    };
     this.noteContextRefs = [...document.noteContextRefs];
     this.messages = document.messages.map(message => this.cloneMessage(message));
     this.editingMessageId = null;
@@ -328,7 +362,7 @@ export class StoryChatView extends ItemView {
       createdAt: this.conversationCreatedAt || updatedAt,
       updatedAt,
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
-      useLorebookContext: this.useLorebookContext,
+      useLorebookContext: this.selectedScopes.size > 0,
       manualContext: this.manualContext,
       steeringScopeRefs: [...this.steeringScopeRefs],
       pinnedInstructions: '',
@@ -435,7 +469,7 @@ export class StoryChatView extends ItemView {
       createdAt: now,
       updatedAt: now,
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
-      useLorebookContext: this.useLorebookContext,
+      useLorebookContext: this.selectedScopes.size > 0,
       manualContext: this.manualContext,
       steeringScopeRefs: [...this.steeringScopeRefs],
       pinnedInstructions: '',
@@ -605,63 +639,7 @@ export class StoryChatView extends ItemView {
   private renderContextControls(container: HTMLElement): void {
     const controls = container.createDiv({ cls: 'lorevault-chat-controls' });
     controls.createEl('h3', { text: 'Context Controls' });
-
-    const toggleRow = controls.createDiv({ cls: 'lorevault-chat-toggle-row' });
-    const toggleInput = toggleRow.createEl('input', { type: 'checkbox' });
-    toggleInput.checked = this.useLorebookContext;
-    toggleInput.addEventListener('change', () => {
-      this.useLorebookContext = toggleInput.checked;
-      this.scheduleConversationSave();
-      this.render();
-    });
-    toggleRow.createEl('label', { text: 'Use Lorebook Context' });
-
-    const scopeSection = controls.createDiv({ cls: 'lorevault-chat-scopes' });
-    const scopeHeader = scopeSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
-    scopeHeader.createEl('strong', { text: 'Active Scopes' });
-
-    const scopeButtons = scopeHeader.createDiv({ cls: 'lorevault-chat-scope-buttons' });
-    const allButton = scopeButtons.createEl('button', { text: 'All' });
-    allButton.disabled = !this.useLorebookContext;
-    allButton.addEventListener('click', () => {
-      if (!this.useLorebookContext) {
-        return;
-      }
-      const scopes = this.plugin.getAvailableScopes();
-      this.selectedScopes = new Set(scopes);
-      this.scheduleConversationSave();
-      this.render();
-    });
-
-    const noneButton = scopeButtons.createEl('button', { text: 'None' });
-    noneButton.disabled = !this.useLorebookContext;
-    noneButton.addEventListener('click', () => {
-      this.selectedScopes.clear();
-      this.scheduleConversationSave();
-      this.render();
-    });
-
-    const scopeList = scopeSection.createDiv({ cls: 'lorevault-chat-scope-list' });
-    const scopes = this.plugin.getAvailableScopes();
-    if (scopes.length === 0) {
-      scopeList.createEl('p', { text: 'No scopes discovered yet.' });
-    } else {
-      for (const scope of scopes) {
-        const row = scopeList.createDiv({ cls: 'lorevault-chat-scope-row' });
-        const checkbox = row.createEl('input', { type: 'checkbox' });
-        checkbox.checked = this.selectedScopes.has(scope);
-        checkbox.disabled = !this.useLorebookContext;
-        checkbox.addEventListener('change', () => {
-          if (checkbox.checked) {
-            this.selectedScopes.add(scope);
-          } else {
-            this.selectedScopes.delete(scope);
-          }
-          this.scheduleConversationSave();
-        });
-        row.createEl('label', { text: formatScope(scope) });
-      }
-    }
+    this.renderLorebookContextControls(controls);
 
     const manualSection = controls.createDiv({ cls: 'lorevault-chat-manual' });
     manualSection.createEl('strong', { text: 'Manual Context' });
@@ -674,44 +652,179 @@ export class StoryChatView extends ItemView {
       this.manualContext = manualInput.value;
       this.scheduleConversationSave();
     });
+    this.renderAuthorNotesContextControls(controls);
+    this.renderStoryNotesContextControls(controls);
+  }
 
-    this.renderSteeringSourcesControls(controls);
+  private readFrontmatter(file: TFile): FrontmatterData {
+    const cache = this.app.metadataCache.getFileCache(file);
+    return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+  }
 
-    const continuitySection = controls.createDiv({ cls: 'lorevault-chat-manual' });
-    continuitySection.createEl('strong', { text: 'Continuity State' });
-    continuitySection.createEl('p', {
-      text: 'Continuity items come from resolved steering sources and active-note steering. Toggle categories on/off per conversation.'
+  private normalizeLinkLikeValue(raw: string): string {
+    let normalized = raw.trim();
+    if (!normalized) {
+      return '';
+    }
+
+    const wikiMatch = normalized.match(/^\[\[([\s\S]+)\]\]$/);
+    if (wikiMatch) {
+      normalized = wikiMatch[1].trim();
+    }
+
+    const markdownLinkMatch = normalized.match(/^\[[^\]]*\]\(([^)]+)\)$/);
+    if (markdownLinkMatch) {
+      normalized = markdownLinkMatch[1].trim();
+    }
+
+    const angleBracketMatch = normalized.match(/^<([\s\S]+)>$/);
+    if (angleBracketMatch) {
+      normalized = angleBracketMatch[1].trim();
+    }
+
+    const pipeIndex = normalized.indexOf('|');
+    if (pipeIndex >= 0) {
+      normalized = normalized.slice(0, pipeIndex).trim();
+    }
+
+    return normalized.replace(/\\/g, '/').trim();
+  }
+
+  private resolveNoteRefToFile(ref: string, sourcePath = ''): TFile | null {
+    const normalizedRef = this.normalizeLinkLikeValue(ref);
+    if (!normalizedRef) {
+      return null;
+    }
+
+    const resolvedFromLink = this.app.metadataCache.getFirstLinkpathDest(normalizedRef, sourcePath);
+    if (resolvedFromLink instanceof TFile) {
+      return resolvedFromLink;
+    }
+
+    const directCandidates = normalizedRef.toLowerCase().endsWith('.md')
+      ? [normalizedRef]
+      : [normalizedRef, `${normalizedRef}.md`];
+    for (const candidate of directCandidates) {
+      const found = this.app.vault.getAbstractFileByPath(candidate);
+      if (found instanceof TFile) {
+        return found;
+      }
+    }
+
+    const basename = normalizedRef.split('/').pop()?.replace(/\.md$/i, '').trim() ?? '';
+    if (!basename) {
+      return null;
+    }
+    const byBasename = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.basename.localeCompare(basename, undefined, { sensitivity: 'accent' }) === 0);
+    return byBasename.length === 1 ? byBasename[0] : null;
+  }
+
+  private addLorebookScope(scope: string): void {
+    const normalized = scope.trim();
+    if (!normalized || this.selectedScopes.has(normalized)) {
+      return;
+    }
+    this.selectedScopes.add(normalized);
+    this.scheduleConversationSave();
+    this.render();
+  }
+
+  private renderLorebookContextControls(container: HTMLElement): void {
+    const lorebooksSection = container.createDiv({ cls: 'lorevault-chat-manual' });
+    const header = lorebooksSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
+    header.createEl('strong', { text: 'Lorebooks' });
+
+    const buttons = header.createDiv({ cls: 'lorevault-chat-scope-buttons' });
+    const addButton = buttons.createEl('button', { text: 'Add Lorebook' });
+    addButton.addEventListener('click', () => {
+      const available = this.plugin.getAvailableScopes()
+        .filter(scope => !this.selectedScopes.has(scope));
+      if (available.length === 0) {
+        new Notice('No additional lorebooks available.');
+        return;
+      }
+
+      const modal = new ScopePickerModal(this.app, available, scope => {
+        this.addLorebookScope(scope);
+      });
+      modal.open();
     });
 
-    const continuityToggleRow = continuitySection.createDiv({ cls: 'lorevault-chat-scope-list' });
-    const plotToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
-    const plotToggle = plotToggleRow.createEl('input', { type: 'checkbox' });
-    plotToggle.checked = this.continuitySelection.includePlotThreads;
-    plotToggle.addEventListener('change', () => {
-      this.continuitySelection.includePlotThreads = plotToggle.checked;
+    const clearButton = buttons.createEl('button', { text: 'Clear' });
+    clearButton.disabled = this.selectedScopes.size === 0;
+    clearButton.addEventListener('click', () => {
+      this.selectedScopes.clear();
       this.scheduleConversationSave();
+      this.render();
     });
-    plotToggleRow.createEl('label', { text: 'Include Active Plot Threads' });
 
-    const openLoopToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
-    const openLoopToggle = openLoopToggleRow.createEl('input', { type: 'checkbox' });
-    openLoopToggle.checked = this.continuitySelection.includeOpenLoops;
-    openLoopToggle.addEventListener('change', () => {
-      this.continuitySelection.includeOpenLoops = openLoopToggle.checked;
-      this.scheduleConversationSave();
+    const selected = [...this.selectedScopes].sort((a, b) => a.localeCompare(b));
+    const list = lorebooksSection.createDiv({ cls: 'lorevault-chat-note-list' });
+    if (selected.length === 0) {
+      list.createEl('p', { text: 'No lorebooks selected.' });
+      return;
+    }
+
+    for (const scope of selected) {
+      const row = list.createDiv({ cls: 'lorevault-chat-note-row' });
+      row.createEl('span', { text: formatScope(scope) });
+      const removeButton = row.createEl('button', { text: 'Remove' });
+      removeButton.addEventListener('click', () => {
+        this.selectedScopes.delete(scope);
+        this.scheduleConversationSave();
+        this.render();
+      });
+    }
+  }
+
+  private getAuthorNoteRefFromFrontmatter(frontmatter: FrontmatterData): string {
+    const value = getFrontmatterValue(frontmatter, 'authorNote');
+    const refs = asStringArray(value)
+      .map(item => this.normalizeLinkLikeValue(item))
+      .filter(Boolean);
+    return refs[0] ?? '';
+  }
+
+  private hasAuthorNoteDocType(frontmatter: FrontmatterData): boolean {
+    const docType = (asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '')
+      .trim()
+      .toLowerCase();
+    return docType === 'authornote';
+  }
+
+  private buildAuthorNoteBacklinkCounts(files: TFile[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const file of files) {
+      const frontmatter = this.readFrontmatter(file);
+      const authorNoteRef = this.getAuthorNoteRefFromFrontmatter(frontmatter);
+      if (!authorNoteRef) {
+        continue;
+      }
+      const resolved = this.resolveNoteRefToFile(authorNoteRef, file.path);
+      if (!resolved) {
+        continue;
+      }
+      counts.set(resolved.path, (counts.get(resolved.path) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private getAuthorNoteCandidateFiles(): TFile[] {
+    const files = [...this.app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
+    const backlinkCounts = this.buildAuthorNoteBacklinkCounts(files);
+    return files.filter(file => {
+      const frontmatter = this.readFrontmatter(file);
+      if (this.hasAuthorNoteDocType(frontmatter)) {
+        return true;
+      }
+      if (backlinkCounts.has(file.path)) {
+        return true;
+      }
+      const linkedStory = asString(getFrontmatterValue(frontmatter, 'authorNoteLinkedStory'));
+      return Boolean(linkedStory);
     });
-    openLoopToggleRow.createEl('label', { text: 'Include Unresolved Commitments' });
-
-    const canonToggleRow = continuityToggleRow.createDiv({ cls: 'lorevault-chat-scope-row' });
-    const canonToggle = canonToggleRow.createEl('input', { type: 'checkbox' });
-    canonToggle.checked = this.continuitySelection.includeCanonDeltas;
-    canonToggle.addEventListener('change', () => {
-      this.continuitySelection.includeCanonDeltas = canonToggle.checked;
-      this.scheduleConversationSave();
-    });
-    canonToggleRow.createEl('label', { text: 'Include Recent Canon Deltas' });
-
-    this.renderSpecificNotesControls(controls);
   }
 
   private addSteeringScopeRef(rawRef: string): void {
@@ -728,29 +841,33 @@ export class StoryChatView extends ItemView {
     this.render();
   }
 
-  private renderSteeringSourcesControls(container: HTMLElement): void {
+  private renderAuthorNotesContextControls(container: HTMLElement): void {
     const steeringSection = container.createDiv({ cls: 'lorevault-chat-manual' });
     const steeringHeader = steeringSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
-    steeringHeader.createEl('strong', { text: 'Steering Sources' });
+    steeringHeader.createEl('strong', { text: 'Author Notes' });
     const steeringButtons = steeringHeader.createDiv({ cls: 'lorevault-chat-scope-buttons' });
 
-    const addNoteButton = steeringButtons.createEl('button', { text: 'Add Note' });
-    addNoteButton.addEventListener('click', () => {
-      const files = this.app.vault.getMarkdownFiles();
-      const modal = new NotePickerModal(this.app, files, file => {
-        this.addSteeringScopeRef(`note:${file.path}`);
-      });
-      modal.open();
-    });
-
-    const addActiveButton = steeringButtons.createEl('button', { text: 'Add Active' });
-    addActiveButton.addEventListener('click', () => {
-      const active = this.app.workspace.getActiveFile();
-      if (!active) {
-        new Notice('No active note to add.');
+    const addButton = steeringButtons.createEl('button', { text: 'Add Author Note' });
+    addButton.addEventListener('click', () => {
+      const selectedRefs = new Set(extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs));
+      const candidates = this.getAuthorNoteCandidateFiles()
+        .filter(file => !selectedRefs.has(file.path));
+      const fallback = [...this.app.vault.getMarkdownFiles()]
+        .sort((a, b) => a.path.localeCompare(b.path))
+        .filter(file => !selectedRefs.has(file.path));
+      const files = candidates.length > 0 ? candidates : fallback;
+      if (files.length === 0) {
+        new Notice('No notes available to add as author note context.');
         return;
       }
-      this.addSteeringScopeRef(`note:${active.path}`);
+
+      const placeholder = candidates.length > 0
+        ? 'Pick an author note...'
+        : 'No detected author notes. Pick a note to treat as author note context...';
+      const modal = new NotePickerModal(this.app, files, file => {
+        this.addSteeringScopeRef(`note:${file.path}`);
+      }, placeholder);
+      modal.open();
     });
 
     const clearButton = steeringButtons.createEl('button', { text: 'Clear' });
@@ -761,17 +878,13 @@ export class StoryChatView extends ItemView {
       this.render();
     });
 
-    steeringSection.createEl('p', {
-      text: 'Sources are resolved each turn. Only note sources are supported; each note pulls both note content and author-note steering.'
-    });
-
     const noteRefs = extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs);
     const notePreview = this.plugin.previewNoteContextRefs(noteRefs);
     const unresolvedNoteRefs = new Set(notePreview.unresolvedRefs);
 
     const list = steeringSection.createDiv({ cls: 'lorevault-chat-note-list' });
     if (this.steeringScopeRefs.length === 0) {
-      list.createEl('p', { text: 'No steering sources selected.' });
+      list.createEl('p', { text: 'No author notes selected.' });
       return;
     }
 
@@ -783,7 +896,7 @@ export class StoryChatView extends ItemView {
       }
 
       const row = list.createDiv({ cls: 'lorevault-chat-note-row' });
-      const label = row.createEl('span', { text: stringifyStoryChatSteeringRef(parsed) });
+      const label = row.createEl('span', { text: parsed.key });
       if (parsed.type === 'note') {
         if (unresolvedNoteRefs.has(parsed.key)) {
           label.addClass('lorevault-chat-note-unresolved');
@@ -802,43 +915,93 @@ export class StoryChatView extends ItemView {
 
     if (notePreview.unresolvedRefs.length > 0) {
       const unresolved = steeringSection.createEl('p', {
-        text: `Unresolved note steering refs: ${notePreview.unresolvedRefs.join(', ')}`
+        text: `Unresolved author note references: ${notePreview.unresolvedRefs.join(', ')}`
       });
       unresolved.addClass('lorevault-manager-warning-item');
     }
   }
 
-  private renderSpecificNotesControls(container: HTMLElement): void {
+  private getChapterInfo(file: TFile): {chapter: number | null; chapterTitle: string} {
+    const frontmatter = this.readFrontmatter(file);
+    const chapterValue = asNumber(getFrontmatterValue(frontmatter, 'chapter', 'chapterIndex', 'scene'));
+    const chapter = Number.isFinite(chapterValue)
+      ? Math.max(0, Math.floor(chapterValue as number))
+      : null;
+    const chapterTitle = asString(getFrontmatterValue(frontmatter, 'chapterTitle', 'sceneTitle')) ?? '';
+    return {
+      chapter,
+      chapterTitle
+    };
+  }
+
+  private isChapterLikeFile(file: TFile): boolean {
+    const chapterInfo = this.getChapterInfo(file);
+    if (typeof chapterInfo.chapter === 'number') {
+      return true;
+    }
+    const frontmatter = this.readFrontmatter(file);
+    const previousRefs = asStringArray(getFrontmatterValue(frontmatter, 'previousChapter', 'prevChapter'));
+    const nextRefs = asStringArray(getFrontmatterValue(frontmatter, 'nextChapter'));
+    return previousRefs.length > 0 || nextRefs.length > 0;
+  }
+
+  private addNoteContextRef(ref: string): void {
+    const normalizedRef = ref.trim();
+    if (!normalizedRef || this.noteContextRefs.includes(normalizedRef)) {
+      return;
+    }
+    this.noteContextRefs.push(normalizedRef);
+    this.scheduleConversationSave();
+    this.render();
+  }
+
+  private formatNoteContextRefLabel(ref: string): string {
+    const resolved = this.resolveNoteRefToFile(ref);
+    if (!resolved) {
+      return ref;
+    }
+    const chapterInfo = this.getChapterInfo(resolved);
+    if (typeof chapterInfo.chapter === 'number') {
+      const titleSuffix = chapterInfo.chapterTitle ? ` - ${chapterInfo.chapterTitle}` : '';
+      return `Chapter ${chapterInfo.chapter}${titleSuffix}: ${resolved.path}`;
+    }
+    return resolved.path;
+  }
+
+  private renderStoryNotesContextControls(container: HTMLElement): void {
     const notesSection = container.createDiv({ cls: 'lorevault-chat-manual' });
     const notesHeader = notesSection.createDiv({ cls: 'lorevault-chat-scopes-header' });
-    notesHeader.createEl('strong', { text: 'Specific Notes Context' });
+    notesHeader.createEl('strong', { text: 'Chapters and Raw Notes' });
     const notesButtons = notesHeader.createDiv({ cls: 'lorevault-chat-scope-buttons' });
 
-    const addNoteButton = notesButtons.createEl('button', { text: 'Add Note' });
-    addNoteButton.addEventListener('click', () => {
-      const files = this.app.vault.getMarkdownFiles();
-      const modal = new NotePickerModal(this.app, files, file => {
-        if (!this.noteContextRefs.includes(file.path)) {
-          this.noteContextRefs.push(file.path);
-          this.scheduleConversationSave();
-          this.render();
-        }
-      });
+    const addChapterButton = notesButtons.createEl('button', { text: 'Add Chapter' });
+    addChapterButton.addEventListener('click', () => {
+      const selectedRefs = new Set(this.noteContextRefs);
+      const candidates = this.app.vault.getMarkdownFiles()
+        .filter(file => this.isChapterLikeFile(file) && !selectedRefs.has(file.path));
+      if (candidates.length === 0) {
+        new Notice('No additional chapter notes available.');
+        return;
+      }
+      const modal = new NotePickerModal(this.app, candidates, file => {
+        this.addNoteContextRef(file.path);
+      }, 'Pick a chapter note...');
       modal.open();
     });
 
-    const addActiveButton = notesButtons.createEl('button', { text: 'Add Active' });
-    addActiveButton.addEventListener('click', () => {
-      const active = this.app.workspace.getActiveFile();
-      if (!active) {
-        new Notice('No active note to add.');
+    const addNoteButton = notesButtons.createEl('button', { text: 'Add Note' });
+    addNoteButton.addEventListener('click', () => {
+      const selectedRefs = new Set(this.noteContextRefs);
+      const files = this.app.vault.getMarkdownFiles()
+        .filter(file => !selectedRefs.has(file.path));
+      if (files.length === 0) {
+        new Notice('No additional notes available to add.');
         return;
       }
-      if (!this.noteContextRefs.includes(active.path)) {
-        this.noteContextRefs.push(active.path);
-        this.scheduleConversationSave();
-        this.render();
-      }
+      const modal = new NotePickerModal(this.app, files, file => {
+        this.addNoteContextRef(file.path);
+      });
+      modal.open();
     });
 
     const clearButton = notesButtons.createEl('button', { text: 'Clear' });
@@ -855,16 +1018,16 @@ export class StoryChatView extends ItemView {
     const list = notesSection.createDiv({ cls: 'lorevault-chat-note-list' });
 
     if (this.noteContextRefs.length === 0) {
-      list.createEl('p', { text: 'No specific notes selected.' });
+      list.createEl('p', { text: 'No chapter/raw notes selected.' });
       return;
     }
 
     for (let index = 0; index < this.noteContextRefs.length; index += 1) {
       const ref = this.noteContextRefs[index];
       const row = list.createDiv({ cls: 'lorevault-chat-note-row' });
-      const label = row.createEl('span', { text: ref });
-
-      if (resolvedSet.has(ref)) {
+      const resolved = this.resolveNoteRefToFile(ref);
+      const label = row.createEl('span', { text: this.formatNoteContextRefLabel(ref) });
+      if (resolved && resolvedSet.has(resolved.path)) {
         label.addClass('lorevault-chat-note-resolved');
       } else if (unresolvedSet.has(ref)) {
         label.addClass('lorevault-chat-note-unresolved');
@@ -1201,18 +1364,19 @@ export class StoryChatView extends ItemView {
     this.editingVersionId = null;
     this.editingMessageDraft = '';
 
-    const steeringNoteRefs = extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs);
-    const combinedNoteContextRefs = [...this.noteContextRefs];
-    for (const ref of steeringNoteRefs) {
-      if (!combinedNoteContextRefs.includes(ref)) {
-        combinedNoteContextRefs.push(ref);
-      }
+    const authorNoteRefs = extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs);
+    const authorNotePreview = this.plugin.previewNoteContextRefs(authorNoteRefs);
+    if (authorNoteRefs.length > 0 && authorNotePreview.resolvedPaths.length === 0) {
+      new Notice('No author note references could be resolved.');
+    } else if (authorNotePreview.unresolvedRefs.length > 0) {
+      new Notice(`Some author note references were unresolved (${authorNotePreview.unresolvedRefs.length}).`);
     }
-    const preview = this.plugin.previewNoteContextRefs(combinedNoteContextRefs);
-    if (combinedNoteContextRefs.length > 0 && preview.resolvedPaths.length === 0) {
-      new Notice('No note sources could be resolved from current specific/steering references.');
-    } else if (preview.unresolvedRefs.length > 0) {
-      new Notice(`Some note source references were unresolved (${preview.unresolvedRefs.length}).`);
+
+    const notePreview = this.plugin.previewNoteContextRefs(this.noteContextRefs);
+    if (this.noteContextRefs.length > 0 && notePreview.resolvedPaths.length === 0) {
+      new Notice('No chapter/raw note references could be resolved.');
+    } else if (notePreview.unresolvedRefs.length > 0) {
+      new Notice(`Some chapter/raw note references were unresolved (${notePreview.unresolvedRefs.length}).`);
     }
 
     if (appendUser) {
@@ -1291,7 +1455,7 @@ export class StoryChatView extends ItemView {
       const result = await this.plugin.runStoryChatTurn({
         userMessage: prompt,
         selectedScopes: [...this.selectedScopes],
-        useLorebookContext: this.useLorebookContext,
+        useLorebookContext: this.selectedScopes.size > 0,
         manualContext: this.manualContext,
         steeringScopeRefs: [...this.steeringScopeRefs],
         pinnedInstructions: '',
@@ -1301,7 +1465,7 @@ export class StoryChatView extends ItemView {
         continuityOpenLoops: [],
         continuityCanonDeltas: [],
         continuitySelection: { ...this.continuitySelection },
-        noteContextRefs: combinedNoteContextRefs,
+        noteContextRefs: [...this.noteContextRefs],
         history: this.buildHistoryForGeneration(targetAssistantMessage.id),
         onDelta: delta => {
           targetVersion.content += delta;

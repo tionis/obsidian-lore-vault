@@ -589,6 +589,28 @@
   overflow-wrap: anywhere;
 }
 
+.lorevault-steering-lorebook-row {
+  align-items: center;
+  border: 1px solid var(--background-modifier-border-hover);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--background-secondary);
+}
+
+.lorevault-steering-remove-icon {
+  color: var(--text-error, var(--color-red));
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.lorevault-steering-remove-icon:hover {
+  background: var(--background-modifier-error-hover, var(--background-modifier-hover));
+}
+
 .lorevault-chat-note-resolved {
   color: var(--text-normal);
 }
@@ -637,6 +659,52 @@
 
 .lorevault-chat-version-select {
   min-width: 140px;
+}
+
+.lorevault-profile-select {
+  min-width: 260px;
+  flex: 1 1 320px;
+}
+
+.lorevault-profile-override-warning {
+  margin: -4px 0 0;
+  color: var(--text-error, var(--color-red));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lorevault-cost-breakdown-updated {
+  margin-top: 4px;
+}
+
+.lorevault-cost-breakdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-cost-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  font-size: 12px;
+}
+
+.lorevault-cost-breakdown-label {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.lorevault-cost-breakdown-value {
+  color: var(--text-muted);
+  text-align: right;
 }
 
 .lorevault-chat-message-content {

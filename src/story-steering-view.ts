@@ -1,4 +1,4 @@
-import { ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
+import { App, FuzzySuggestModal, ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { UsageLedgerReportSnapshot, UsageLedgerTotals } from './usage-ledger-report';
 import { formatRelativeTime } from './time-format';
@@ -16,18 +16,61 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
-function formatCostSummary(label: string, totals: UsageLedgerTotals): string {
-  return `${label}: ${totals.requests} req | tokens ${formatTokenValue(totals.totalTokens)} | known ${formatUsd(totals.costUsdKnown)}`;
+function formatCostSummaryValue(totals: UsageLedgerTotals): string {
+  return `${totals.requests} req | tokens ${formatTokenValue(totals.totalTokens)} | known ${formatUsd(totals.costUsdKnown)}`;
 }
 
-function formatScopeSourceLabel(source: 'frontmatter' | 'author_note_frontmatter' | 'none'): string {
-  if (source === 'frontmatter') {
-    return 'story note frontmatter';
+class LorebookScopeSuggestModal extends FuzzySuggestModal<string> {
+  private readonly scopes: string[];
+  private resolveResult: ((value: string | null) => void) | null = null;
+  private resolved = false;
+  private selectedScope: string | null = null;
+
+  constructor(
+    app: App,
+    scopes: string[]
+  ) {
+    super(app);
+    this.scopes = [...scopes].sort((a, b) => a.localeCompare(b));
+    this.setPlaceholder('Pick a lorebook scope to add...');
   }
-  if (source === 'author_note_frontmatter') {
-    return 'author note frontmatter (fallback)';
+
+  waitForSelection(): Promise<string | null> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
   }
-  return 'none';
+
+  getItems(): string[] {
+    return this.scopes;
+  }
+
+  getItemText(scope: string): string {
+    return scope || '(all)';
+  }
+
+  onChooseItem(scope: string): void {
+    this.selectedScope = scope;
+    this.finish(scope);
+  }
+
+  onClose(): void {
+    super.onClose();
+    window.setTimeout(() => {
+      this.finish(this.selectedScope);
+    }, 0);
+  }
+
+  private finish(value: string | null): void {
+    if (this.resolved) {
+      return;
+    }
+    this.resolved = true;
+    if (this.resolveResult) {
+      this.resolveResult(value);
+      this.resolveResult = null;
+    }
+  }
 }
 
 export class StorySteeringView extends ItemView {
@@ -90,9 +133,24 @@ export class StorySteeringView extends ItemView {
     void this.render(true);
   }
 
+  private hasFocusedFormControl(): boolean {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) {
+      return false;
+    }
+    if (!this.contentEl.contains(active)) {
+      return false;
+    }
+    const tag = active.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable;
+  }
+
   private startTelemetryPolling(): void {
     this.stopTelemetryPolling();
     this.telemetryTimer = window.setInterval(() => {
+      if (this.hasFocusedFormControl()) {
+        return;
+      }
       void this.render(false);
     }, 900);
   }
@@ -153,6 +211,30 @@ export class StorySteeringView extends ItemView {
     } finally {
       await this.render(true);
     }
+  }
+
+  private async setDeviceCompletionProfile(presetId: string): Promise<void> {
+    try {
+      await this.plugin.setDeviceActiveCompletionPresetId(presetId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to switch device profile: ${message}`);
+    } finally {
+      await this.render(false);
+    }
+  }
+
+  private async pickLorebookScope(scopes: string[]): Promise<string | null> {
+    const uniqueScopes = [...new Set(scopes.map(scope => scope.trim()).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right));
+    if (uniqueScopes.length === 0) {
+      new Notice('No additional lorebooks available.');
+      return null;
+    }
+    const modal = new LorebookScopeSuggestModal(this.app, uniqueScopes);
+    const selectionPromise = modal.waitForSelection();
+    modal.open();
+    return selectionPromise;
   }
 
   private async createNextChapter(): Promise<void> {
@@ -217,6 +299,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async render(forceUsageRefresh: boolean): Promise<void> {
+    if (!forceUsageRefresh && this.hasFocusedFormControl()) {
+      return;
+    }
     if (this.isRendering) {
       return;
     }
@@ -231,25 +316,20 @@ export class StorySteeringView extends ItemView {
       const linkedStoryItems = workspaceContext.mode === 'author_note' && workspaceContext.authorNotePath
         ? await this.plugin.resolveLinkedStoryDisplayForAuthorNote(workspaceContext.authorNotePath)
         : [];
+      const workspaceFile = workspaceContext.activeFilePath
+        ? this.getMarkdownFileByPath(workspaceContext.activeFilePath)
+        : null;
+      const completionStatus = await this.plugin.getCompletionProfileWorkspaceStatus(workspaceFile);
+      const completionPresets = this.plugin.getCompletionPresetItems();
 
-      let editableStoryPath = '';
+      let lorebookTargetPath = '';
       let selectedScopes: string[] = [];
-      let scopeSource: 'frontmatter' | 'author_note_frontmatter' | 'none' = 'none';
-      if (workspaceContext.mode === 'story' && workspaceContext.activeFilePath) {
-        const activeStoryFile = this.getMarkdownFileByPath(workspaceContext.activeFilePath);
-        if (activeStoryFile) {
-          editableStoryPath = activeStoryFile.path;
-          const selection = await this.plugin.resolveStoryScopeSelection(activeStoryFile);
+      if (workspaceContext.authorNotePath) {
+        const authorNoteFile = this.getMarkdownFileByPath(workspaceContext.authorNotePath);
+        if (authorNoteFile) {
+          lorebookTargetPath = authorNoteFile.path;
+          const selection = await this.plugin.resolveStoryScopeSelection(authorNoteFile);
           selectedScopes = selection.scopes;
-          scopeSource = selection.source;
-        }
-      } else if (workspaceContext.mode === 'author_note' && workspaceContext.linkedStoryPaths.length === 1) {
-        const linkedStoryFile = this.getMarkdownFileByPath(workspaceContext.linkedStoryPaths[0]);
-        if (linkedStoryFile) {
-          editableStoryPath = linkedStoryFile.path;
-          const selection = await this.plugin.resolveStoryScopeSelection(linkedStoryFile);
-          selectedScopes = selection.scopes;
-          scopeSource = selection.source;
         }
       }
 
@@ -384,7 +464,7 @@ export class StorySteeringView extends ItemView {
 
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
-        text: `Model: ${this.plugin.settings.completion.provider}/${this.plugin.settings.completion.model}`
+        text: `Model: ${completionStatus.effective.completion.provider}/${completionStatus.effective.completion.model}`
       });
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
@@ -430,31 +510,29 @@ export class StorySteeringView extends ItemView {
 
       const scopeCard = contentEl.createDiv({ cls: 'lorevault-chat-controls' });
       scopeCard.createEl('h3', { text: 'Selected Lorebooks' });
-      scopeCard.createEl('p', {
-        text: `Source: ${formatScopeSourceLabel(scopeSource)}`
-      });
-      if (!editableStoryPath) {
+      if (!lorebookTargetPath) {
         scopeCard.createEl('p', {
-          text: workspaceContext.mode === 'author_note'
-            ? 'Open a linked story note to edit lorebooks for writing.'
-            : 'No editable story note context available.'
+          text: 'Link an Author Note to edit lorebooks for writing.'
         });
       } else {
-        scopeCard.createEl('p', {
-          text: `Editing: ${editableStoryPath}`
-        });
-
         const selectedList = scopeCard.createDiv({ cls: 'lorevault-chat-note-list' });
         if (selectedScopes.length === 0) {
           selectedList.createEl('p', { text: 'No lorebooks selected.' });
         } else {
           for (const scope of selectedScopes) {
-            const row = selectedList.createDiv({ cls: 'lorevault-chat-note-row' });
-            row.createEl('span', { text: scope });
-            const removeButton = row.createEl('button', { text: 'Remove' });
+            const row = selectedList.createDiv({ cls: 'lorevault-chat-note-row lorevault-steering-lorebook-row' });
+            row.createEl('code', { text: scope });
+            const removeButton = row.createEl('button', {
+              cls: 'clickable-icon lorevault-steering-remove-icon',
+              attr: {
+                'aria-label': `Remove lorebook ${scope}`,
+                title: `Remove lorebook ${scope}`
+              }
+            });
+            setIcon(removeButton, 'trash-2');
             removeButton.addEventListener('click', () => {
               const nextScopes = selectedScopes.filter(item => item !== scope);
-              void this.plugin.updateStoryNoteLorebookScopes(editableStoryPath, nextScopes)
+              void this.plugin.updateStoryNoteLorebookScopes(lorebookTargetPath, nextScopes)
                 .then(() => this.render(true))
                 .catch(error => {
                   const message = error instanceof Error ? error.message : String(error);
@@ -464,86 +542,87 @@ export class StorySteeringView extends ItemView {
           }
         }
 
-        const scopeButtons = scopeCard.createDiv({ cls: 'lorevault-chat-scope-buttons' });
-        const allButton = scopeButtons.createEl('button', { text: 'All' });
-        allButton.addEventListener('click', () => {
-          void this.plugin.updateStoryNoteLorebookScopes(editableStoryPath, availableScopes)
-            .then(() => this.render(true))
-            .catch(error => {
-              const message = error instanceof Error ? error.message : String(error);
-              new Notice(`Failed to update lorebooks: ${message}`);
-            });
-        });
-
-        const noneButton = scopeButtons.createEl('button', { text: 'None' });
-        noneButton.addEventListener('click', () => {
-          void this.plugin.updateStoryNoteLorebookScopes(editableStoryPath, [])
-            .then(() => this.render(true))
-            .catch(error => {
-              const message = error instanceof Error ? error.message : String(error);
-              new Notice(`Failed to update lorebooks: ${message}`);
-            });
-        });
-
         const addRow = scopeCard.createDiv({ cls: 'lorevault-chat-scope-row' });
-        const addSelect = addRow.createEl('select');
-        for (const scope of availableForAdd) {
-          const option = addSelect.createEl('option');
-          option.value = scope;
-          option.text = scope;
-        }
-        addSelect.disabled = availableForAdd.length === 0;
-
         const addButton = addRow.createEl('button', { text: 'Add Lorebook' });
         addButton.disabled = availableForAdd.length === 0;
         addButton.addEventListener('click', () => {
-          const candidate = addSelect.value.trim();
-          if (!candidate) {
-            return;
-          }
-          const nextScopes = [...selectedScopes, candidate];
-          void this.plugin.updateStoryNoteLorebookScopes(editableStoryPath, nextScopes)
-            .then(() => this.render(true))
-            .catch(error => {
+          void (async () => {
+            try {
+              const candidate = await this.pickLorebookScope(availableForAdd);
+              if (!candidate) {
+                return;
+              }
+              const nextScopes = [...selectedScopes, candidate];
+              await this.plugin.updateStoryNoteLorebookScopes(lorebookTargetPath, nextScopes);
+              await this.render(true);
+            } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
               new Notice(`Failed to update lorebooks: ${message}`);
-            });
+            }
+          })();
         });
       }
 
-      const costCard = contentEl.createDiv({ cls: 'lorevault-manager-card lorevault-manager-generation-card' });
-      const costDetails = costCard.createEl('details', { cls: 'lorevault-manager-debug' });
+      const profileCard = contentEl.createDiv({ cls: 'lorevault-chat-controls' });
+      profileCard.createEl('h3', { text: 'Profile and Cost' });
+
+      const deviceProfileRow = profileCard.createDiv({ cls: 'lorevault-chat-scope-row' });
+      const deviceProfileSelect = deviceProfileRow.createEl('select', { cls: 'dropdown lorevault-profile-select' });
+      deviceProfileSelect.createEl('option', { value: '', text: '(base settings)' });
+      for (const preset of completionPresets) {
+        deviceProfileSelect.createEl('option', {
+          value: preset.id,
+          text: preset.name
+        });
+      }
+      const isAuthorNoteOverridden = completionStatus.effective.source === 'author_note';
+      deviceProfileSelect.value = completionStatus.devicePresetId;
+      deviceProfileSelect.disabled = generationRunning || isAuthorNoteOverridden;
+      deviceProfileSelect.addEventListener('change', () => {
+        void this.setDeviceCompletionProfile(deviceProfileSelect.value.trim());
+      });
+      if (isAuthorNoteOverridden) {
+        profileCard.createEl('p', {
+          cls: 'lorevault-profile-override-warning',
+          text: 'Overridden by Author Note'
+        });
+      }
+
+      const costDetails = profileCard.createEl('details', { cls: 'lorevault-manager-debug' });
       costDetails.open = this.costDetailsOpen;
       costDetails.addEventListener('toggle', () => {
         this.costDetailsOpen = costDetails.open;
       });
       costDetails.createEl('summary', { text: 'Cost Breakdown' });
+      costDetails.createEl('p', {
+        cls: 'lorevault-manager-generation-stats',
+        text: completionStatus.costProfile
+          ? `Cost profile in usage ledger: ${completionStatus.costProfile}`
+          : `Cost profile in usage ledger: ${completionStatus.effectiveCostProfile || '(none)'} (auto from API key hash)`
+      });
 
       if (this.usageSummary) {
-        costDetails.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
+        const updatedAt = costDetails.createEl('p', {
+          cls: 'lorevault-manager-generation-stats lorevault-cost-breakdown-updated',
           text: `Updated ${formatRelativeTime(this.usageSummary.generatedAt)}`
         });
-        costDetails.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: formatCostSummary('Session', this.usageSummary.totals.session)
-        });
-        costDetails.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: formatCostSummary('Today (UTC)', this.usageSummary.totals.day)
-        });
-        costDetails.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: formatCostSummary('This Week (UTC)', this.usageSummary.totals.week)
-        });
-        costDetails.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: formatCostSummary('This Month (UTC)', this.usageSummary.totals.month)
-        });
-        costDetails.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: formatCostSummary('Project', this.usageSummary.totals.project)
-        });
+        updatedAt.addClass('is-muted');
+        const costList = costDetails.createEl('ul', { cls: 'lorevault-cost-breakdown-list' });
+        const items: Array<{ label: string; totals: UsageLedgerTotals }> = [
+          { label: 'Session', totals: this.usageSummary.totals.session },
+          { label: 'Today (UTC)', totals: this.usageSummary.totals.day },
+          { label: 'This Week (UTC)', totals: this.usageSummary.totals.week },
+          { label: 'This Month (UTC)', totals: this.usageSummary.totals.month },
+          { label: 'Project', totals: this.usageSummary.totals.project }
+        ];
+        for (const item of items) {
+          const row = costList.createEl('li', { cls: 'lorevault-cost-breakdown-row' });
+          row.createEl('span', { cls: 'lorevault-cost-breakdown-label', text: item.label });
+          row.createEl('span', {
+            cls: 'lorevault-cost-breakdown-value',
+            text: formatCostSummaryValue(item.totals)
+          });
+        }
         if (this.usageSummary.warnings.length > 0) {
           const warningList = costDetails.createEl('ul', { cls: 'lorevault-manager-warnings' });
           for (const warning of this.usageSummary.warnings.slice(0, 5)) {

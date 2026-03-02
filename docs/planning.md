@@ -338,7 +338,7 @@ Current status:
   - story-note `authorNote` frontmatter linking to markdown Author Note files
   - native Obsidian note editing for Author Note content
   - merged with chat/continuation steering assembly
-  - lorebook scope selection resolves from story-note frontmatter first, then Author Note frontmatter
+  - lorebook scope selection resolves from Author Note frontmatter first, then story-note frontmatter fallback
 - LLM-assisted Author Note rewrite actions are implemented:
   - optional per-run update prompt to steer what should change
   - rewrite context includes linked story notes + lorebook context + current Author Note

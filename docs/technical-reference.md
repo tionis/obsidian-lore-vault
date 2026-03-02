@@ -9,6 +9,9 @@ This document is the implementation-level reference for core architecture and ru
   - command/ribbon registration
   - export pipeline orchestration
   - completion orchestration
+  - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings`)
+  - API key migration/hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs and optional existing-secret selection
+  - device-local profile state via Obsidian local storage (active completion preset + optional cost profile label; auto API-key hash fallback when blank)
   - story-chat turn orchestration
   - vault-backed LLM operation log persistence (`operationLog` settings) + explorer-view refresh hooks
 - `src/live-context-index.ts`
@@ -44,12 +47,14 @@ This document is the implementation-level reference for core architecture and ru
   - when an Author Note is active, panel lists linked chapters/stories
   - markdown editing remains native Obsidian note editing for Author Note content
   - single note-level author-note layer only (no global/story/chapter scope hierarchy)
-  - lorebook scope selection reads story-note frontmatter first, then author-note frontmatter
+  - lorebook scope selection reads linked Author Note frontmatter first, then story-note frontmatter fallback
   - linked-story detection is driven by story-note `authorNote` references (supports multi-story shared author notes)
   - LLM-assisted author-note rewrite flow with optional per-run update prompt
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
   - markdown-backed author-note parse/serialize (frontmatter preserved on body writes)
   - effective author-note merge for chat/continuation prompt assembly
+  - author-note completion profile override is managed by command (`Set Author Note Completion Profile`) and persisted as frontmatter `completionProfile`
+  - device completion profile selection is a direct dropdown (no apply button) and shares a combined profile+cost section with cost breakdown
 - `src/lorebook-scope-cache.ts`
   - shared metadata/scope cache reused by manager/steering/auditor UI
   - explicit invalidation on vault and settings mutations
@@ -314,6 +319,7 @@ Budget diagnostics:
 Supported keys (case-insensitive normalization):
 
 - `authorNote` (primary thread anchor)
+- `completionProfile` (optional Author Note-only completion preset id override)
 - `chapter`
 - `chapterTitle`
 - `previousChapter` / `prevChapter` / `previous` / `prev`

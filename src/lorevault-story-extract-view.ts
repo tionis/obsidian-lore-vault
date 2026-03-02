@@ -4,6 +4,7 @@ import { requestStoryContinuation } from './completion-provider';
 import { applyImportedWikiPages, ImportedWikiPage } from './sillytavern-import';
 import { extractWikiPagesFromStory, StoryExtractionResult } from './story-extraction';
 import { openVaultFolderPicker } from './folder-suggest-modal';
+import { ConverterSettings } from './models';
 
 export const LOREVAULT_STORY_EXTRACT_VIEW_TYPE = 'lorevault-story-extract-view';
 
@@ -51,17 +52,18 @@ export class LorevaultStoryExtractView extends ItemView {
     this.render();
   }
 
-  private canUseCompletion(): boolean {
-    const completion = this.plugin.settings.completion;
+  private async resolveCompletionConfig(): Promise<ConverterSettings['completion']> {
+    const resolution = await this.plugin.resolveEffectiveCompletionForFile();
+    const completion = resolution.completion;
     if (!completion.enabled) {
       new Notice('Writing completion is disabled. Enable it in settings first.');
-      return false;
+      throw new Error('Writing completion is disabled.');
     }
     if (completion.provider !== 'ollama' && !completion.apiKey) {
       new Notice('Missing completion API key. Configure it in settings first.');
-      return false;
+      throw new Error('Missing completion API key.');
     }
-    return true;
+    return completion;
   }
 
   private async runPreview(): Promise<void> {
@@ -72,7 +74,10 @@ export class LorevaultStoryExtractView extends ItemView {
       new Notice('Paste story markdown before running extraction.');
       return;
     }
-    if (!this.canUseCompletion()) {
+    let completion: ConverterSettings['completion'];
+    try {
+      completion = await this.resolveCompletionConfig();
+    } catch {
       return;
     }
 
@@ -83,7 +88,6 @@ export class LorevaultStoryExtractView extends ItemView {
     this.render();
 
     try {
-      const completion = this.plugin.settings.completion;
       const result = await extractWikiPagesFromStory({
         storyMarkdown: this.storyMarkdown,
         targetFolder: this.targetFolder,

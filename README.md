@@ -7,7 +7,7 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 ## Compatibility
 
 - Plugin id: `lore-vault`
-- Minimum Obsidian version: `1.1.0`
+- Minimum Obsidian version: `1.11.4`
 - Desktop and mobile supported (`isDesktopOnly: false`)
 
 ## What LoreVault Does
@@ -36,6 +36,7 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 | --- | --- | --- |
 | Lorebook scope membership | Tags (`#lorebook/...`) | Determines scope inclusion |
 | Story-to-author-note link | Story frontmatter `authorNote` | Anchors writing instructions |
+| Author-note completion profile | Author note frontmatter `completionProfile` | Optional per-story model profile override |
 | Story lorebook selection | Story frontmatter `lorebooks` | Selects scopes for continuation/chat |
 | Chapter ordering | `chapter`, `previousChapter`, `nextChapter` | Determines chapter threading/memory |
 | Inline directives | Story body (`<!-- LV: ... -->` or `[LV: ...]`) | Turn-level writing guidance |
@@ -74,6 +75,7 @@ nextChapter: [[story/ch08-the-reckoning]]
 ---
 lvDocType: authorNote
 lorebooks: [universe/yggdrasil]
+completionProfile: preset-openrouter-main
 ---
 ```
 
@@ -91,11 +93,14 @@ The panel also shows:
 
 - active note + linked author note state
 - linked stories when an author note is active
-- current completion model
+- active completion model
+- device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)
+- command `Set Author Note Completion Profile` updates author-note frontmatter `completionProfile` override
 - generation status and token usage
 - selected context items (`world_info` + fallback)
-- selected lorebooks (add/remove/all/none)
-- collapsible cost breakdown (session/day/week/month/project)
+- selected lorebooks from linked Author Note (interactive add + per-item remove)
+- device-local cost profile label configured in settings (usage metadata tagging; auto-derived from API key hash when empty)
+- collapsible cost breakdown (session/day/week/month/project) in the same panel section as the profile selector
 
 ## Story Chat Workflow
 
@@ -194,6 +199,9 @@ Operations and reporting:
 - Optional operation log captures full LLM request/response payloads.
 - Optional embedding backend call logging can be enabled for retrieval debugging.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
+- Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
+- Secret IDs are user-configurable; you can pick existing IDs in settings to reuse one secret across multiple presets.
+- Active completion preset and cost-profile label are device-local (Obsidian local storage), not shared vault settings.
 - Budget warnings are available for configured thresholds.
 
 ## Development

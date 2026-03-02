@@ -293,7 +293,7 @@ Reference design: `docs/planning.md`.
   - [x] show linked chapters/stories in Story Writing panel when active note is an Author Note
   - [x] remove legacy scope-based steering storage/backward-compat parsing paths
   - [x] remove multi-scope steering merge in continuation/chat (note-level only)
-  - [x] resolve lorebook scope selection from story-note frontmatter, then Author Note frontmatter (no active-scope fallback)
+  - [x] resolve lorebook scope selection from Author Note frontmatter, then story-note frontmatter fallback (no active-scope fallback)
   - [x] limit Story Chat steering refs/tool scope access to note-level steering only
 - [x] Story completion stop UX:
   - [x] add command: `Stop Active Generation`

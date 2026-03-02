@@ -17,6 +17,7 @@ import { normalizeVaultPath } from './vault-path-utils';
 import { FrontmatterData, stripFrontmatter } from './frontmatter-utils';
 import { parseStoryThreadNodeFromFrontmatter, resolveStoryThread, StoryThreadNode } from './story-thread-resolver';
 import { resolveStoryDeltaSourcePaths, StoryDeltaSourceMode } from './story-delta-source';
+import { ConverterSettings } from './models';
 
 export const LOREVAULT_STORY_DELTA_VIEW_TYPE = 'lorevault-story-delta-view';
 
@@ -149,17 +150,18 @@ export class LorevaultStoryDeltaView extends ItemView {
     this.render();
   }
 
-  private canUseCompletion(): boolean {
-    const completion = this.plugin.settings.completion;
+  private async resolveCompletionConfig(): Promise<ConverterSettings['completion']> {
+    const resolution = await this.plugin.resolveEffectiveCompletionForFile();
+    const completion = resolution.completion;
     if (!completion.enabled) {
       new Notice('Writing completion is disabled. Enable it in settings first.');
-      return false;
+      throw new Error('Writing completion is disabled.');
     }
     if (completion.provider !== 'ollama' && !completion.apiKey) {
       new Notice('Missing completion API key. Configure it in settings first.');
-      return false;
+      throw new Error('Missing completion API key.');
     }
-    return true;
+    return completion;
   }
 
   private async resolveStoryMarkdown(): Promise<string> {
@@ -458,7 +460,10 @@ export class LorevaultStoryDeltaView extends ItemView {
     if (this.running) {
       return;
     }
-    if (!this.canUseCompletion()) {
+    let completion: ConverterSettings['completion'];
+    try {
+      completion = await this.resolveCompletionConfig();
+    } catch {
       return;
     }
 
@@ -473,7 +478,6 @@ export class LorevaultStoryDeltaView extends ItemView {
       this.lastExistingPageCount = existingPages.length;
       const selectedScopes = this.getNormalizedSelectedScopes();
 
-      const completion = this.plugin.settings.completion;
       const result = await buildStoryDeltaPlan({
         storyMarkdown,
         newNoteFolder: this.newNoteTargetFolder,

@@ -11,6 +11,7 @@ function createConfig(): ConverterSettings['embeddings'] {
     provider: 'openrouter',
     endpoint: 'https://example.test/v1',
     apiKey: 'test-key',
+    apiKeySecretName: 'lorevault-embeddings-default',
     model: 'embedding-model',
     instruction: '',
     batchSize: 8,

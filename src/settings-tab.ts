@@ -43,6 +43,56 @@ class FolderSuggestModal extends FuzzySuggestModal<string> {
   }
 }
 
+class SecretNameSuggestModal extends FuzzySuggestModal<string> {
+  private readonly secretNames: string[];
+  private resolveResult: ((value: string | null) => void) | null = null;
+  private finished = false;
+  private selectedSecret: string | null = null;
+
+  constructor(app: App, secretNames: string[]) {
+    super(app);
+    this.secretNames = secretNames;
+    this.setPlaceholder('Select existing secret id');
+  }
+
+  waitForResult(): Promise<string | null> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  getItems(): string[] {
+    return this.secretNames;
+  }
+
+  getItemText(item: string): string {
+    return item;
+  }
+
+  onChooseItem(item: string): void {
+    this.selectedSecret = item;
+    this.finish(item);
+  }
+
+  onClose(): void {
+    super.onClose();
+    window.setTimeout(() => {
+      this.finish(this.selectedSecret);
+    }, 0);
+  }
+
+  private finish(value: string | null): void {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+    if (this.resolveResult) {
+      this.resolveResult(value);
+      this.resolveResult = null;
+    }
+  }
+}
+
 class TextValueModal extends Modal {
   private readonly titleText: string;
   private readonly fieldLabel: string;
@@ -315,6 +365,30 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     return result;
   }
 
+  private async pickExistingSecretId(initialValue: string): Promise<string | null> {
+    const known = new Set<string>();
+    const seed = initialValue.trim();
+    if (seed) {
+      known.add(seed);
+    }
+    const listed = await this.plugin.listSecretIds();
+    for (const id of listed) {
+      const trimmed = id.trim();
+      if (trimmed) {
+        known.add(trimmed);
+      }
+    }
+    const secretIds = [...known].sort((left, right) => left.localeCompare(right));
+    if (secretIds.length === 0) {
+      new Notice('No secrets found in Obsidian Secret Storage yet.');
+      return null;
+    }
+    const modal = new SecretNameSuggestModal(this.app, secretIds);
+    const result = modal.waitForResult();
+    modal.open();
+    return result;
+  }
+
   private async requestConfirmation(
     titleText: string,
     message: string,
@@ -342,6 +416,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       provider: completion.provider,
       endpoint: completion.endpoint,
       apiKey: completion.apiKey,
+      apiKeySecretName: completion.apiKeySecretName,
       model: completion.model,
       systemPrompt: completion.systemPrompt,
       temperature: completion.temperature,
@@ -357,6 +432,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     completion.provider = preset.provider;
     completion.endpoint = preset.endpoint;
     completion.apiKey = preset.apiKey;
+    completion.apiKeySecretName = preset.apiKeySecretName;
     completion.model = preset.model;
     completion.systemPrompt = preset.systemPrompt;
     completion.temperature = preset.temperature;
@@ -893,10 +969,11 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     containerEl.createEl('p', {
       text: 'Configure LLM generation for "Continue Story with Context".'
     });
+    const activeDevicePresetId = this.plugin.getDeviceActiveCompletionPresetId();
 
     new Setting(containerEl)
-      .setName('Active Completion Preset')
-      .setDesc('Selecting a preset immediately applies provider/model/token settings.')
+      .setName('Active Completion Preset (This Device)')
+      .setDesc('Per-device selection. Selecting a preset immediately applies provider/model/token settings in this vault on this device.')
       .addDropdown(dropdown => {
         dropdown.addOption('', '(none)');
         const sortedPresets = [...this.plugin.settings.completion.presets]
@@ -904,12 +981,11 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         for (const preset of sortedPresets) {
           dropdown.addOption(preset.id, preset.name);
         }
-        dropdown.setValue(this.plugin.settings.completion.activePresetId || '');
+        dropdown.setValue(activeDevicePresetId || '');
         dropdown.onChange(async (value) => {
           const activeId = value.trim();
           if (!activeId) {
-            this.plugin.settings.completion.activePresetId = '';
-            await this.persistSettings();
+            await this.plugin.setDeviceActiveCompletionPresetId('');
             return;
           }
 
@@ -920,11 +996,57 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
 
           this.applyCompletionPreset(preset);
-          this.plugin.settings.completion.activePresetId = preset.id;
+          await this.plugin.setDeviceActiveCompletionPresetId(preset.id);
           await this.persistSettings();
           this.display();
         });
       });
+
+    const activePreset = this.plugin.settings.completion.presets
+      .find(item => item.id === activeDevicePresetId) ?? null;
+    const defaultCompletionSecretName = this.plugin.settings.completion.apiKeySecretName;
+    new Setting(containerEl)
+      .setName('Active Preset API Secret Name')
+      .setDesc('Optional secret id for the active preset. Use the same id across presets to share one API key.')
+      .addText(text => {
+        text
+          .setPlaceholder(defaultCompletionSecretName || 'lorevault-completion-default')
+          .setValue(activePreset?.apiKeySecretName ?? '')
+          .setDisabled(!activePreset)
+          .onChange(async value => {
+            if (!activePreset) {
+              return;
+            }
+            activePreset.apiKeySecretName = value.trim();
+            await this.persistSettings();
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Use Default')
+        .setDisabled(!activePreset)
+        .onClick(async () => {
+          if (!activePreset) {
+            return;
+          }
+          activePreset.apiKeySecretName = defaultCompletionSecretName;
+          await this.persistSettings();
+          this.display();
+        }))
+      .addButton(button => button
+        .setButtonText('Pick Existing')
+        .setDisabled(!activePreset)
+        .onClick(async () => {
+          if (!activePreset) {
+            return;
+          }
+          const selected = await this.pickExistingSecretId(activePreset.apiKeySecretName || defaultCompletionSecretName);
+          if (!selected) {
+            return;
+          }
+          activePreset.apiKeySecretName = selected;
+          await this.persistSettings();
+          this.display();
+        }));
 
     const presetActions = new Setting(containerEl)
       .setName('Preset Actions')
@@ -944,7 +1066,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           ...this.plugin.settings.completion.presets,
           preset
         ];
-        this.plugin.settings.completion.activePresetId = preset.id;
+        await this.plugin.setDeviceActiveCompletionPresetId(preset.id);
         await this.persistSettings();
         new Notice(`Saved preset: ${name}`);
         this.display();
@@ -953,7 +1075,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     presetActions.addButton(button => button
       .setButtonText('Update Active')
       .onClick(async () => {
-        const activePresetId = this.plugin.settings.completion.activePresetId;
+        const activePresetId = this.plugin.getDeviceActiveCompletionPresetId();
         if (!activePresetId) {
           new Notice('No active preset selected.');
           return;
@@ -972,7 +1094,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }
 
         this.plugin.settings.completion.presets[index] = this.snapshotCurrentCompletion(name, existing.id);
-        this.plugin.settings.completion.activePresetId = existing.id;
+        await this.plugin.setDeviceActiveCompletionPresetId(existing.id);
         await this.persistSettings();
         new Notice(`Updated preset: ${name}`);
         this.display();
@@ -981,7 +1103,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     presetActions.addButton(button => button
       .setButtonText('Delete Active')
       .onClick(async () => {
-        const activePresetId = this.plugin.settings.completion.activePresetId;
+        const activePresetId = this.plugin.getDeviceActiveCompletionPresetId();
         if (!activePresetId) {
           new Notice('No active preset selected.');
           return;
@@ -1004,7 +1126,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
         this.plugin.settings.completion.presets = this.plugin.settings.completion.presets
           .filter(item => item.id !== activePresetId);
-        this.plugin.settings.completion.activePresetId = '';
+        await this.plugin.setDeviceActiveCompletionPresetId('');
         await this.persistSettings();
         new Notice(`Deleted preset: ${existing.name}`);
         this.display();
@@ -1052,12 +1174,48 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Completion API Key')
-      .setDesc('API key for provider auth (not required for local Ollama).')
+      .setDesc('API key for provider auth (not required for local Ollama). Stored in Obsidian Secret Storage, not in plugin data.json.')
+      .addText(text => {
+        text
+          .setPlaceholder('sk-...')
+          .setValue(this.plugin.settings.completion.apiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.completion.apiKey = value.trim();
+            await this.plugin.saveData(this.plugin.settings);
+          });
+        text.inputEl.type = 'password';
+      });
+
+    new Setting(containerEl)
+      .setName('Completion API Secret Name')
+      .setDesc('Secret id used for the default completion API key (lowercase letters, numbers, dashes; max 64). Multiple presets can share this name.')
       .addText(text => text
-        .setPlaceholder('sk-...')
-        .setValue(this.plugin.settings.completion.apiKey)
+        .setPlaceholder('lorevault-completion-default')
+        .setValue(this.plugin.settings.completion.apiKeySecretName)
         .onChange(async (value) => {
-          this.plugin.settings.completion.apiKey = value.trim();
+          this.plugin.settings.completion.apiKeySecretName = value.trim();
+          await this.plugin.saveData(this.plugin.settings);
+        }))
+      .addButton(button => button
+        .setButtonText('Pick Existing')
+        .onClick(async () => {
+          const selected = await this.pickExistingSecretId(this.plugin.settings.completion.apiKeySecretName);
+          if (!selected) {
+            return;
+          }
+          this.plugin.settings.completion.apiKeySecretName = selected;
+          await this.persistSettings();
+          this.display();
+        }));
+
+    new Setting(containerEl)
+      .setName('Preset API Secret Prefix')
+      .setDesc('Prefix for auto-generated preset secret ids when a preset does not define its own secret name.')
+      .addText(text => text
+        .setPlaceholder('lorevault-completion-preset')
+        .setValue(this.plugin.settings.completion.presetApiKeySecretPrefix)
+        .onChange(async (value) => {
+          this.plugin.settings.completion.presetApiKeySecretPrefix = value.trim();
           await this.plugin.saveData(this.plugin.settings);
         }));
 
@@ -1433,6 +1591,16 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Device Cost Profile Label')
+      .setDesc('Optional per-device label attached to usage ledger metadata (for shared vaults across users/devices).')
+      .addText(text => text
+        .setPlaceholder('writer-a')
+        .setValue(this.plugin.getDeviceActiveCostProfile())
+        .onChange(async (value) => {
+          await this.plugin.setDeviceActiveCostProfile(value);
+        }));
+
+    new Setting(containerEl)
       .setName('Usage Ledger Path')
       .setDesc('Path to usage ledger JSON file inside your vault.')
       .addText(text => text
@@ -1717,13 +1885,38 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedding API Key')
-      .setDesc('API key for provider auth (if required).')
+      .setDesc('API key for provider auth (if required). Stored in Obsidian Secret Storage, not in plugin data.json.')
+      .addText(text => {
+        text
+          .setPlaceholder('sk-...')
+          .setValue(this.plugin.settings.embeddings.apiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.embeddings.apiKey = value.trim();
+            await this.plugin.saveData(this.plugin.settings);
+          });
+        text.inputEl.type = 'password';
+      });
+
+    new Setting(containerEl)
+      .setName('Embedding API Secret Name')
+      .setDesc('Secret id used for embeddings API key (lowercase letters, numbers, dashes; max 64).')
       .addText(text => text
-        .setPlaceholder('sk-...')
-        .setValue(this.plugin.settings.embeddings.apiKey)
+        .setPlaceholder('lorevault-embeddings-default')
+        .setValue(this.plugin.settings.embeddings.apiKeySecretName)
         .onChange(async (value) => {
-          this.plugin.settings.embeddings.apiKey = value.trim();
+          this.plugin.settings.embeddings.apiKeySecretName = value.trim();
           await this.plugin.saveData(this.plugin.settings);
+        }))
+      .addButton(button => button
+        .setButtonText('Pick Existing')
+        .onClick(async () => {
+          const selected = await this.pickExistingSecretId(this.plugin.settings.embeddings.apiKeySecretName);
+          if (!selected) {
+            return;
+          }
+          this.plugin.settings.embeddings.apiKeySecretName = selected;
+          await this.persistSettings();
+          this.display();
         }));
 
     new Setting(containerEl)

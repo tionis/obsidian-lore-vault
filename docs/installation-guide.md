@@ -4,7 +4,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
 
 ## Prerequisites
 
-- [Obsidian](https://obsidian.md/) (version 1.1.0 or higher)
+- [Obsidian](https://obsidian.md/) (version 1.11.4 or higher)
 - Desktop or mobile environment
 - A basic understanding of file management
 - Comfort with accessing hidden folders (like `.obsidian`)
@@ -100,7 +100,10 @@ If you prefer to build the plugin from source:
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
-   - Optional: create model presets and select an active completion preset for quick A/B comparison
+   - API keys are stored via Obsidian Secret Storage (not in plugin `data.json`)
+   - Secret IDs are configurable; use `Pick Existing` to reuse one stored secret across multiple presets
+   - Optional: create model presets; active preset selection is device-local (not synced between devices)
+   - Optional: set a device-local cost profile label for usage metadata tagging (if empty, LoreVault auto-derives one from API key hash)
    - Optional: configure Story Chat tool calling (`Enable Story Chat Tool Calls`, call/token/time limits, optional write-action gate)
    - Optional: enable LLM Operation Log (full request/response debug logs), choose log path/retention, and optionally include embedding backend calls
    - Optional: open `LLM Operation Log Explorer` from settings (or command palette) to inspect/search captured calls in-plugin
@@ -141,8 +144,11 @@ If you prefer to build the plugin from source:
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Author Note content is edited directly in the linked note (native Obsidian editor)
+   - Optional: set `completionProfile: <preset-id>` in Author Note frontmatter (or via command `Set Author Note Completion Profile`) to override the completion profile for linked story operations
    - `Rewrite Author Note` supports an optional change prompt and shows a diff review before apply
-   - Lorebook scope selection for continuation/chat resolves from story-note frontmatter first, then Author Note frontmatter (no active-scope fallback)
+   - Lorebook scope selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-scope fallback)
+   - In Story Writing panel, the device completion profile is selected from a dropdown and applies immediately
+   - Cost profile label is configured in settings (not in Story Writing panel)
    - Inline instruction comments are supported as `[LV: ...]` and `<!-- LV: ... -->` and are injected as an explicit steering layer
    - Long-form chapter QoL commands:
      - `Split Active Story Note into Chapter Notes`

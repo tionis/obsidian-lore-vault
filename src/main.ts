@@ -1,4 +1,6 @@
 import {
+  App,
+  FuzzySuggestModal,
   MarkdownView,
   Plugin,
   Notice,
@@ -294,6 +296,96 @@ interface ConvertToLorebookOptions {
   quietProgress?: boolean;
 }
 
+interface LoreVaultSecretStorage {
+  setSecret(key: string, value: string): Promise<void>;
+  getSecret(key: string): Promise<string | null>;
+  listSecrets?(): Promise<string[]> | string[];
+}
+
+interface DeviceProfileState {
+  activeCompletionPresetId: string;
+  activeCostProfile: string;
+}
+
+type CompletionProfileSource = 'author_note' | 'device' | 'base';
+
+interface CompletionProfileResolution {
+  completion: ConverterSettings['completion'];
+  source: CompletionProfileSource;
+  presetId: string;
+  presetName: string;
+  authorNotePath: string;
+}
+
+interface CompletionProfileWorkspaceStatus {
+  effective: CompletionProfileResolution;
+  devicePresetId: string;
+  devicePresetName: string;
+  authorNotePresetId: string;
+  authorNotePresetName: string;
+  authorNotePath: string;
+  costProfile: string;
+  effectiveCostProfile: string;
+}
+
+interface CompletionPresetSuggestItem {
+  id: string;
+  label: string;
+}
+
+class CompletionPresetSuggestModal extends FuzzySuggestModal<CompletionPresetSuggestItem> {
+  private readonly items: CompletionPresetSuggestItem[];
+  private resolveResult: ((value: CompletionPresetSuggestItem | null) => void) | null = null;
+  private resolved = false;
+  private selectedItem: CompletionPresetSuggestItem | null = null;
+
+  constructor(app: App, items: CompletionPresetSuggestItem[], placeholder: string) {
+    super(app);
+    this.items = items;
+    this.setPlaceholder(placeholder);
+  }
+
+  waitForSelection(): Promise<CompletionPresetSuggestItem | null> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  getItems(): CompletionPresetSuggestItem[] {
+    return this.items;
+  }
+
+  getItemText(item: CompletionPresetSuggestItem): string {
+    return item.label;
+  }
+
+  onChooseItem(item: CompletionPresetSuggestItem): void {
+    this.selectedItem = item;
+    this.finish(item);
+  }
+
+  onClose(): void {
+    super.onClose();
+    window.setTimeout(() => {
+      this.finish(this.selectedItem);
+    }, 0);
+  }
+
+  private finish(value: CompletionPresetSuggestItem | null): void {
+    if (this.resolved) {
+      return;
+    }
+    this.resolved = true;
+    if (this.resolveResult) {
+      this.resolveResult(value);
+      this.resolveResult = null;
+    }
+  }
+}
+
+const LOREVAULT_DEVICE_STATE_KEY = 'lorevault/device-state/v1';
+const AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY = 'completionProfile';
+
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
   liveContextIndex: LiveContextIndex;
@@ -314,6 +406,13 @@ export default class LoreBookConverterPlugin extends Plugin {
   private pendingExportScopes = new Set<string>();
   private operationLogWriteQueue: Promise<void> = Promise.resolve();
   private operationLogViewRefreshTimer: number | null = null;
+  private deviceProfileState: DeviceProfileState = {
+    activeCompletionPresetId: '',
+    activeCostProfile: ''
+  };
+  private lastSyncedCompletionSecret = '';
+  private lastSyncedEmbeddingsSecret = '';
+  private lastSyncedPresetSecrets = new Map<string, string>();
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
@@ -377,6 +476,517 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
     await this.appendOperationLogRecord(record);
+  }
+
+  private getSecretStorage(): LoreVaultSecretStorage | null {
+    const maybe = (this.app as App & {secretStorage?: LoreVaultSecretStorage}).secretStorage;
+    if (
+      maybe
+      && typeof maybe.setSecret === 'function'
+      && typeof maybe.getSecret === 'function'
+    ) {
+      return maybe;
+    }
+    return null;
+  }
+
+  public async listSecretIds(): Promise<string[]> {
+    const storage = this.getSecretStorage();
+    if (!storage || typeof storage.listSecrets !== 'function') {
+      return [];
+    }
+    try {
+      const listed = await Promise.resolve(storage.listSecrets());
+      if (!Array.isArray(listed)) {
+        return [];
+      }
+      const unique = new Set<string>();
+      for (const value of listed) {
+        const normalized = value.toString().trim();
+        if (normalized) {
+          unique.add(normalized);
+        }
+      }
+      return [...unique].sort((left, right) => left.localeCompare(right));
+    } catch (error) {
+      console.warn('LoreVault: Failed to list secret ids:', error);
+      return [];
+    }
+  }
+
+  private buildStableSecretHash(value: string): string {
+    const normalized = value.trim().toLowerCase();
+    const fnv1a32 = (input: string): string => {
+      let hash = 0x811c9dc5;
+      for (let index = 0; index < input.length; index += 1) {
+        hash ^= input.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+      }
+      return (hash >>> 0).toString(16).padStart(8, '0');
+    };
+    const left = fnv1a32(normalized);
+    const right = fnv1a32(normalized.split('').reverse().join(''));
+    return `${left}${right}`;
+  }
+
+  private buildAutoCostProfileLabel(apiKey: string): string {
+    const normalized = apiKey.trim();
+    if (!normalized) {
+      return '';
+    }
+    return `key-${this.buildStableSecretHash(normalized).slice(0, 12)}`;
+  }
+
+  private normalizeSecretIdentifier(value: string, fallback: string): string {
+    const normalize = (raw: string): string => raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
+    return normalize(value) || normalize(fallback);
+  }
+
+  private resolveCompletionSecretKey(): string {
+    return this.normalizeSecretIdentifier(
+      this.settings.completion.apiKeySecretName,
+      DEFAULT_SETTINGS.completion.apiKeySecretName
+    );
+  }
+
+  private resolveEmbeddingsSecretKey(): string {
+    return this.normalizeSecretIdentifier(
+      this.settings.embeddings.apiKeySecretName,
+      DEFAULT_SETTINGS.embeddings.apiKeySecretName
+    );
+  }
+
+  private resolvePresetSecretPrefix(): string {
+    const normalized = this.normalizeSecretIdentifier(
+      this.settings.completion.presetApiKeySecretPrefix,
+      DEFAULT_SETTINGS.completion.presetApiKeySecretPrefix
+    );
+    return normalized
+      .slice(0, 48)
+      .replace(/-+$/g, '') || DEFAULT_SETTINGS.completion.presetApiKeySecretPrefix;
+  }
+
+  private resolvePresetSecretName(preset: CompletionPreset): string {
+    return this.normalizeSecretIdentifier(
+      preset.apiKeySecretName,
+      this.resolveCompletionSecretKey()
+    );
+  }
+
+  private getCompletionPresetSecretKey(preset: CompletionPreset): string {
+    const explicitSecretName = this.normalizeSecretIdentifier(preset.apiKeySecretName, '');
+    if (explicitSecretName) {
+      return explicitSecretName;
+    }
+    const normalized = preset.id.trim().toLowerCase();
+    const slug = normalized
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 18);
+    const hash = this.buildStableSecretHash(normalized);
+    const prefix = this.resolvePresetSecretPrefix();
+    const key = `${prefix}-${slug ? `${slug}-` : ''}${hash}`;
+    return key
+      .slice(0, 64)
+      .replace(/-+$/g, '');
+  }
+
+  private normalizeDeviceProfileState(raw: unknown): DeviceProfileState {
+    if (!raw || typeof raw !== 'object') {
+      return {
+        activeCompletionPresetId: '',
+        activeCostProfile: ''
+      };
+    }
+    const objectState = raw as Partial<DeviceProfileState>;
+    return {
+      activeCompletionPresetId: (objectState.activeCompletionPresetId ?? '').toString().trim(),
+      activeCostProfile: (objectState.activeCostProfile ?? '').toString().trim()
+    };
+  }
+
+  private async loadDeviceProfileState(): Promise<void> {
+    let rawState: unknown = null;
+    try {
+      rawState = await this.app.loadLocalStorage(LOREVAULT_DEVICE_STATE_KEY);
+    } catch (error) {
+      console.warn('LoreVault: Failed to load local device profile state:', error);
+    }
+
+    const loaded = this.normalizeDeviceProfileState(rawState);
+    if (!loaded.activeCompletionPresetId) {
+      const legacySharedPresetId = (this.settings.completion.activePresetId ?? '').toString().trim();
+      if (legacySharedPresetId) {
+        loaded.activeCompletionPresetId = legacySharedPresetId;
+      }
+    }
+
+    if (
+      loaded.activeCompletionPresetId
+      && !this.settings.completion.presets.some(preset => preset.id === loaded.activeCompletionPresetId)
+    ) {
+      loaded.activeCompletionPresetId = '';
+    }
+
+    this.deviceProfileState = loaded;
+    try {
+      await this.app.saveLocalStorage(LOREVAULT_DEVICE_STATE_KEY, this.deviceProfileState);
+    } catch (error) {
+      console.warn('LoreVault: Failed to persist local device profile state:', error);
+    }
+  }
+
+  private async persistDeviceProfileState(): Promise<void> {
+    try {
+      await this.app.saveLocalStorage(LOREVAULT_DEVICE_STATE_KEY, this.deviceProfileState);
+    } catch (error) {
+      console.warn('LoreVault: Failed to persist local device profile state:', error);
+    }
+  }
+
+  public getDeviceActiveCompletionPresetId(): string {
+    return this.deviceProfileState.activeCompletionPresetId;
+  }
+
+  public getDeviceActiveCostProfile(): string {
+    return this.deviceProfileState.activeCostProfile;
+  }
+
+  public async setDeviceActiveCompletionPresetId(presetId: string): Promise<void> {
+    const normalized = presetId.trim();
+    const nextId = normalized && this.settings.completion.presets.some(preset => preset.id === normalized)
+      ? normalized
+      : '';
+    if (nextId === this.deviceProfileState.activeCompletionPresetId) {
+      return;
+    }
+    this.deviceProfileState.activeCompletionPresetId = nextId;
+    await this.persistDeviceProfileState();
+    this.syncIdleGenerationTelemetryToSettings();
+    this.refreshStorySteeringViews();
+  }
+
+  public async setDeviceActiveCostProfile(costProfile: string): Promise<void> {
+    const normalized = costProfile.trim();
+    if (normalized === this.deviceProfileState.activeCostProfile) {
+      return;
+    }
+    this.deviceProfileState.activeCostProfile = normalized;
+    await this.persistDeviceProfileState();
+    this.refreshStorySteeringViews();
+  }
+
+  public getCompletionPresetById(presetId: string): CompletionPreset | null {
+    const normalized = presetId.trim();
+    if (!normalized) {
+      return null;
+    }
+    return this.settings.completion.presets.find(preset => preset.id === normalized) ?? null;
+  }
+
+  public getCompletionPresetItems(): CompletionPreset[] {
+    return [...this.settings.completion.presets]
+      .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
+      .map(item => ({ ...item }));
+  }
+
+  private async promptCompletionPresetSelection(
+    options: {
+      includeNoneOption?: boolean;
+      noneLabel?: string;
+      placeholder?: string;
+    } = {}
+  ): Promise<string | null> {
+    const includeNoneOption = options.includeNoneOption !== false;
+    const noneLabel = options.noneLabel?.trim() || '(none)';
+    const placeholder = options.placeholder?.trim() || 'Pick a completion profile...';
+    const presetItems = this.getCompletionPresetItems().map(item => ({
+      id: item.id,
+      label: item.name
+    }));
+    const items: CompletionPresetSuggestItem[] = includeNoneOption
+      ? [{ id: '', label: noneLabel }, ...presetItems]
+      : presetItems;
+    if (items.length === 0) {
+      new Notice('No completion presets available.');
+      return null;
+    }
+    const modal = new CompletionPresetSuggestModal(this.app, items, placeholder);
+    const resultPromise = modal.waitForSelection();
+    modal.open();
+    const result = await resultPromise;
+    if (!result) {
+      return null;
+    }
+    return result.id;
+  }
+
+  public async promptAndSetAuthorNoteCompletionPresetForActiveNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    const authorNoteFile = await this.resolveAuthorNoteForCompletion(activeFile);
+    if (!(authorNoteFile instanceof TFile)) {
+      throw new Error('No author note is linked to the active note.');
+    }
+    const selection = await this.promptCompletionPresetSelection({
+      includeNoneOption: true,
+      noneLabel: '(clear author-note override)',
+      placeholder: 'Pick author-note completion profile...'
+    });
+    if (selection === null) {
+      return;
+    }
+    await this.setAuthorNoteCompletionPresetForPath(authorNoteFile.path, selection);
+    if (selection) {
+      const preset = this.getCompletionPresetById(selection);
+      new Notice(`Author note completion profile set: ${preset?.name ?? selection}`);
+    } else {
+      new Notice('Author note completion profile cleared.');
+    }
+  }
+
+  private cloneCompletionConfig(config: ConverterSettings['completion']): ConverterSettings['completion'] {
+    return {
+      ...config,
+      layerPlacement: { ...config.layerPlacement },
+      presets: config.presets.map(preset => ({ ...preset }))
+    };
+  }
+
+  private applyCompletionPresetToConfig(
+    base: ConverterSettings['completion'],
+    preset: CompletionPreset
+  ): ConverterSettings['completion'] {
+    return {
+      ...this.cloneCompletionConfig(base),
+      provider: preset.provider,
+      endpoint: preset.endpoint,
+      apiKey: preset.apiKey,
+      apiKeySecretName: preset.apiKeySecretName,
+      model: preset.model,
+      systemPrompt: preset.systemPrompt,
+      temperature: preset.temperature,
+      maxOutputTokens: preset.maxOutputTokens,
+      contextWindowTokens: preset.contextWindowTokens,
+      promptReserveTokens: preset.promptReserveTokens,
+      timeoutMs: preset.timeoutMs
+    };
+  }
+
+  private resolveAuthorNoteCompletionPresetId(authorNoteFile: TFile | null): string {
+    if (!(authorNoteFile instanceof TFile)) {
+      return '';
+    }
+    const cache = this.app.metadataCache.getFileCache(authorNoteFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    return (asString(getFrontmatterValue(frontmatter, AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY)) ?? '').trim();
+  }
+
+  private async resolveAuthorNoteForCompletion(file: TFile | null): Promise<TFile | null> {
+    if (!(file instanceof TFile)) {
+      return null;
+    }
+    if (this.noteIsAuthorNote(file)) {
+      return file;
+    }
+    const linkedAuthorNote = await this.storySteeringStore.resolveAuthorNoteFileForStory(file);
+    if (linkedAuthorNote) {
+      return linkedAuthorNote;
+    }
+    if (await this.storySteeringStore.isAuthorNoteFile(file)) {
+      return file;
+    }
+    return null;
+  }
+
+  public async setAuthorNoteCompletionPresetForPath(authorNotePath: string, presetId: string): Promise<void> {
+    const normalizedPath = normalizeVaultPath(authorNotePath);
+    const authorNoteFile = this.app.vault.getAbstractFileByPath(normalizedPath);
+    if (!(authorNoteFile instanceof TFile)) {
+      throw new Error(`Author note not found: ${normalizedPath}`);
+    }
+    const normalizedPresetId = presetId.trim();
+    const hasPreset = normalizedPresetId && this.settings.completion.presets.some(preset => preset.id === normalizedPresetId);
+    await this.app.fileManager.processFrontMatter(authorNoteFile, frontmatter => {
+      if (hasPreset) {
+        frontmatter[AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY] = normalizedPresetId;
+      } else {
+        delete frontmatter[AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY];
+      }
+    });
+    this.refreshStorySteeringViews();
+  }
+
+  public async setAuthorNoteCompletionPresetForActiveNote(presetId: string): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    const authorNoteFile = await this.resolveAuthorNoteForCompletion(activeFile);
+    if (!(authorNoteFile instanceof TFile)) {
+      throw new Error('No author note is linked to the active note.');
+    }
+    await this.setAuthorNoteCompletionPresetForPath(authorNoteFile.path, presetId);
+  }
+
+  public async resolveEffectiveCompletionForFile(file?: TFile | null): Promise<CompletionProfileResolution> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
+    const baseCompletion = this.cloneCompletionConfig(this.settings.completion);
+
+    const authorNoteFile = await this.resolveAuthorNoteForCompletion(activeFile ?? null);
+    const authorNotePath = authorNoteFile?.path ?? '';
+    const authorNotePresetId = this.resolveAuthorNoteCompletionPresetId(authorNoteFile);
+    if (authorNotePresetId) {
+      const preset = this.getCompletionPresetById(authorNotePresetId);
+      if (preset) {
+        return {
+          completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
+          source: 'author_note',
+          presetId: preset.id,
+          presetName: preset.name,
+          authorNotePath
+        };
+      }
+    }
+
+    const devicePresetId = this.deviceProfileState.activeCompletionPresetId;
+    if (devicePresetId) {
+      const preset = this.getCompletionPresetById(devicePresetId);
+      if (preset) {
+        return {
+          completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
+          source: 'device',
+          presetId: preset.id,
+          presetName: preset.name,
+          authorNotePath
+        };
+      }
+    }
+
+    return {
+      completion: baseCompletion,
+      source: 'base',
+      presetId: '',
+      presetName: '',
+      authorNotePath
+    };
+  }
+
+  public async getCompletionProfileWorkspaceStatus(file?: TFile | null): Promise<CompletionProfileWorkspaceStatus> {
+    const effective = await this.resolveEffectiveCompletionForFile(file);
+    const devicePreset = this.getCompletionPresetById(this.deviceProfileState.activeCompletionPresetId);
+    let authorNotePresetId = '';
+    if (effective.authorNotePath) {
+      const authorNoteFile = this.app.vault.getAbstractFileByPath(effective.authorNotePath);
+      if (authorNoteFile instanceof TFile) {
+        authorNotePresetId = this.resolveAuthorNoteCompletionPresetId(authorNoteFile);
+      }
+    }
+    const authorNotePreset = this.getCompletionPresetById(authorNotePresetId);
+    const explicitCostProfile = this.deviceProfileState.activeCostProfile.trim();
+    const effectiveCostProfile = explicitCostProfile || this.buildAutoCostProfileLabel(effective.completion.apiKey);
+
+    return {
+      effective,
+      devicePresetId: devicePreset?.id ?? '',
+      devicePresetName: devicePreset?.name ?? '',
+      authorNotePresetId: authorNotePreset?.id ?? '',
+      authorNotePresetName: authorNotePreset?.name ?? '',
+      authorNotePath: effective.authorNotePath,
+      costProfile: explicitCostProfile,
+      effectiveCostProfile
+    };
+  }
+
+  private hasInlineApiKeys(settings: ConverterSettings): boolean {
+    if (settings.completion.apiKey.trim() || settings.embeddings.apiKey.trim()) {
+      return true;
+    }
+    return settings.completion.presets.some(preset => preset.apiKey.trim().length > 0);
+  }
+
+  private sanitizeSettingsForStorage(settings: ConverterSettings): ConverterSettings {
+    const sanitized = this.mergeSettings(settings);
+    sanitized.completion.apiKey = '';
+    sanitized.embeddings.apiKey = '';
+    sanitized.completion.presets = sanitized.completion.presets.map(preset => ({
+      ...preset,
+      apiKey: ''
+    }));
+    sanitized.completion.activePresetId = '';
+    return sanitized;
+  }
+
+  private async syncSettingsApiKeysToSecretStorage(): Promise<void> {
+    const storage = this.getSecretStorage();
+    if (!storage) {
+      return;
+    }
+
+    const completionSecretKey = this.resolveCompletionSecretKey();
+    const completionApiKey = this.settings.completion.apiKey.trim();
+    if (completionApiKey !== this.lastSyncedCompletionSecret) {
+      await storage.setSecret(completionSecretKey, completionApiKey);
+      this.lastSyncedCompletionSecret = completionApiKey;
+    }
+
+    const embeddingsSecretKey = this.resolveEmbeddingsSecretKey();
+    const embeddingsApiKey = this.settings.embeddings.apiKey.trim();
+    if (embeddingsApiKey !== this.lastSyncedEmbeddingsSecret) {
+      await storage.setSecret(embeddingsSecretKey, embeddingsApiKey);
+      this.lastSyncedEmbeddingsSecret = embeddingsApiKey;
+    }
+
+    for (const preset of this.settings.completion.presets) {
+      preset.apiKeySecretName = this.resolvePresetSecretName(preset);
+      const presetApiKey = preset.apiKey.trim();
+      if (presetApiKey === this.lastSyncedPresetSecrets.get(preset.id)) {
+        continue;
+      }
+      await storage.setSecret(this.getCompletionPresetSecretKey(preset), presetApiKey);
+      this.lastSyncedPresetSecrets.set(preset.id, presetApiKey);
+    }
+  }
+
+  private async hydrateSettingsApiKeysFromSecretStorage(): Promise<void> {
+    const storage = this.getSecretStorage();
+    if (!storage) {
+      return;
+    }
+
+    const completionSecretKey = this.resolveCompletionSecretKey();
+    this.settings.completion.apiKey = (await storage.getSecret(completionSecretKey) ?? '').trim();
+    this.lastSyncedCompletionSecret = this.settings.completion.apiKey;
+    const embeddingsSecretKey = this.resolveEmbeddingsSecretKey();
+    this.settings.embeddings.apiKey = (await storage.getSecret(embeddingsSecretKey) ?? '').trim();
+    this.lastSyncedEmbeddingsSecret = this.settings.embeddings.apiKey;
+    for (const preset of this.settings.completion.presets) {
+      preset.apiKeySecretName = this.resolvePresetSecretName(preset);
+      preset.apiKey = (await storage.getSecret(this.getCompletionPresetSecretKey(preset)) ?? '').trim();
+      this.lastSyncedPresetSecrets.set(preset.id, preset.apiKey);
+    }
+  }
+
+  private async persistSettingsSnapshot(syncSecrets = true): Promise<void> {
+    const hasSecretStorage = Boolean(this.getSecretStorage());
+    if (syncSecrets && hasSecretStorage) {
+      try {
+        await this.syncSettingsApiKeysToSecretStorage();
+        await this.hydrateSettingsApiKeysFromSecretStorage();
+      } catch (error) {
+        console.error('LoreVault: Failed to sync secrets. Falling back to plain settings persistence.', error);
+        await super.saveData(this.settings);
+        return;
+      }
+    }
+    if (hasSecretStorage) {
+      await super.saveData(this.sanitizeSettingsForStorage(this.settings));
+      return;
+    }
+    await super.saveData(this.settings);
   }
 
   private estimateTokens(text: string): number {
@@ -848,6 +1458,16 @@ export default class LoreBookConverterPlugin extends Plugin {
   private enrichUsageMetadata(metadata: {[key: string]: unknown}): {[key: string]: unknown} {
     const base = { ...metadata };
     const resolvedScopes = new Set<string>();
+    const explicitCostProfile = this.deviceProfileState.activeCostProfile.trim();
+    const autoCostProfile = typeof base.autoCostProfile === 'string'
+      ? base.autoCostProfile.trim()
+      : '';
+    delete base.autoCostProfile;
+    if (explicitCostProfile) {
+      base.costProfile = explicitCostProfile;
+    } else if (autoCostProfile) {
+      base.costProfile = autoCostProfile;
+    }
 
     if (Array.isArray(base.scopes)) {
       for (const item of base.scopes) {
@@ -1118,7 +1738,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const completion = this.settings.completion;
+    const baseCompletion = this.cloneCompletionConfig(this.settings.completion);
+    const devicePreset = this.getCompletionPresetById(this.deviceProfileState.activeCompletionPresetId);
+    const completion = devicePreset
+      ? this.applyCompletionPresetToConfig(baseCompletion, devicePreset)
+      : baseCompletion;
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     this.updateGenerationTelemetry({
       state: 'idle',
@@ -1986,16 +2610,18 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   public async rewriteAuthorNoteFromActiveNote(): Promise<void> {
-    if (!this.settings.completion.enabled) {
-      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings -> Writing Completion.');
-    }
-    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
-      throw new Error('Missing completion API key. Configure it under LoreVault Settings -> Writing Completion.');
-    }
-
     const activeFile = this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       throw new Error('No active markdown note.');
+    }
+
+    const completionResolution = await this.resolveEffectiveCompletionForFile(activeFile);
+    const completion = completionResolution.completion;
+    if (!completion.enabled) {
+      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings -> Writing Completion.');
+    }
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
+      throw new Error('Missing completion API key. Configure it under LoreVault Settings -> Writing Completion.');
     }
 
     const target = await this.resolveAuthorNoteRewriteTarget(activeFile);
@@ -2008,7 +2634,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const completion = this.settings.completion;
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const sourceTokenBudget = Math.max(800, Math.min(64000, Math.floor(maxInputTokens * 0.42)));
     const loreContextBudget = Math.max(256, Math.min(32000, Math.floor(maxInputTokens * 0.28)));
@@ -2085,7 +2710,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (usageReport) {
       await this.recordCompletionUsage('author_note_rewrite', usageReport, {
         notePath: target.authorNoteFile.path,
-        linkedStoryPaths: linkedStoryFiles.map(item => item.path)
+        linkedStoryPaths: linkedStoryFiles.map(item => item.path),
+        completionProfileSource: completionResolution.source,
+        completionProfileId: completionResolution.presetId,
+        completionProfileName: completionResolution.presetName,
+        autoCostProfile: this.buildAutoCostProfileLabel(completionResolution.completion.apiKey)
       });
     }
 
@@ -2215,7 +2844,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     });
     this.settings = merged;
-    await super.saveData(this.settings);
+    await this.persistSettingsSnapshot(false);
     this.refreshStoryChatViews();
   }
 
@@ -2511,6 +3140,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     queryText: string,
     scopes: string[],
     tokenBudget: number,
+    completion: ConverterSettings['completion'],
     abortSignal?: AbortSignal
   ): Promise<{
     markdown: string;
@@ -2527,7 +3157,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       };
     }
 
-    const planner = createCompletionRetrievalToolPlanner(this.settings.completion, {
+    const planner = createCompletionRetrievalToolPlanner(completion, {
       operationName: 'retrieval_tool_hooks',
       onOperationLog: record => this.appendCompletionOperationLog(record)
     });
@@ -2817,6 +3447,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     specificNotePaths: string[];
     activeStoryFile: TFile | null;
     tokenBudget: number;
+    completion: ConverterSettings['completion'];
     abortSignal?: AbortSignal;
   }): Promise<StoryChatAgentToolRunResult> {
     if (!this.settings.storyChat.toolCalls.enabled || args.tokenBudget <= 0) {
@@ -2829,7 +3460,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       };
     }
 
-    const planner = createCompletionToolPlanner(this.settings.completion, {
+    const planner = createCompletionToolPlanner(args.completion, {
       operationName: 'story_chat_agent_tools',
       onOperationLog: record => this.appendCompletionOperationLog(record)
     });
@@ -3535,10 +4166,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     keywords: string[];
     existingKeywords: string[];
   }> {
-    if (!this.settings.completion.enabled) {
+    const completionResolution = await this.resolveEffectiveCompletionForFile(file);
+    const completion = completionResolution.completion;
+    if (!completion.enabled) {
       throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
     }
-    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
       throw new Error('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
     }
 
@@ -3563,7 +4196,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       bodyText
     );
     let usageReport: CompletionUsageReport | null = null;
-    const responseText = await requestStoryContinuation(this.settings.completion, {
+    const responseText = await requestStoryContinuation(completion, {
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
       operationName: 'keywords_generate',
@@ -3575,7 +4208,11 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     if (usageReport) {
       await this.recordCompletionUsage('keywords_generate', usageReport, {
-        notePath: file.path
+        notePath: file.path,
+        completionProfileSource: completionResolution.source,
+        completionProfileId: completionResolution.presetId,
+        completionProfileName: completionResolution.presetName,
+        autoCostProfile: this.buildAutoCostProfileLabel(completionResolution.completion.apiKey)
       });
     }
 
@@ -3786,10 +4423,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     normalizedSummary: string;
     existingSummary: string;
   }> {
-    if (!this.settings.completion.enabled) {
+    const completionResolution = await this.resolveEffectiveCompletionForFile(file);
+    const completion = completionResolution.completion;
+    if (!completion.enabled) {
       throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
     }
-    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
       throw new Error('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
     }
 
@@ -3807,7 +4446,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const prompt = this.buildSummaryPrompt(mode, file.basename, bodyText);
     let usageReport: CompletionUsageReport | null = null;
-    const rawSummary = await requestStoryContinuation(this.settings.completion, {
+    const rawSummary = await requestStoryContinuation(completion, {
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
       operationName: mode === 'chapter' ? 'summary_chapter' : 'summary_world_info',
@@ -3821,7 +4460,11 @@ export default class LoreBookConverterPlugin extends Plugin {
         mode === 'chapter' ? 'summary_chapter' : 'summary_world_info',
         usageReport,
         {
-          notePath: file.path
+          notePath: file.path,
+          completionProfileSource: completionResolution.source,
+          completionProfileId: completionResolution.presetId,
+          completionProfileName: completionResolution.presetName,
+          autoCostProfile: this.buildAutoCostProfileLabel(completionResolution.completion.apiKey)
         }
       );
     }
@@ -4032,14 +4675,16 @@ export default class LoreBookConverterPlugin extends Plugin {
       throw new Error('LoreVault generation is already running.');
     }
 
-    if (!this.settings.completion.enabled) {
+    const activeStoryFile = this.app.workspace.getActiveFile();
+    const completionResolution = await this.resolveEffectiveCompletionForFile(activeStoryFile);
+    const completion = completionResolution.completion;
+    if (!completion.enabled) {
       throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
     }
-    if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
       throw new Error('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
     }
 
-    const completion = this.settings.completion;
     const requestedScopes = request.selectedScopes.length > 0
       ? request.selectedScopes.map(scope => normalizeScope(scope)).filter(Boolean)
       : [];
@@ -4047,7 +4692,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     const noteContextRefs = request.noteContextRefs
       .map(ref => this.normalizeNoteContextRef(ref))
       .filter((ref, index, array): ref is string => Boolean(ref) && array.indexOf(ref) === index);
-    const activeStoryFile = this.app.workspace.getActiveFile();
     const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(activeStoryFile);
     const steeringSourceResolution = await this.resolveStoryChatSteeringSources(steeringScopeRefs);
     const mergedScopedSteering = mergeStorySteeringStates([
@@ -4227,7 +4871,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         const toolContext = await this.buildToolHooksContext(
           querySeed || request.userMessage,
           selectedScopes,
-          toolContextBudget
+          toolContextBudget,
+          completion
         );
         toolContextMarkdown = toolContext.markdown;
         toolContextTokens = toolContext.usedTokens;
@@ -4256,7 +4901,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         useLorebookContext,
         specificNotePaths,
         activeStoryFile,
-        tokenBudget: chatAgentToolContextBudget
+        tokenBudget: chatAgentToolContextBudget,
+        completion
       });
       chatAgentToolContextMarkdown = chatAgentTools.markdown;
       chatAgentToolContextTrace = chatAgentTools.trace;
@@ -4725,7 +5371,11 @@ export default class LoreBookConverterPlugin extends Plugin {
           (continuitySelection.includePlotThreads ? continuityPlotThreads.length : 0)
           + (continuitySelection.includeOpenLoops ? continuityOpenLoops.length : 0)
           + (continuitySelection.includeCanonDeltas ? continuityCanonDeltas.length : 0)
-        )
+        ),
+        completionProfileSource: completionResolution.source,
+        completionProfileId: completionResolution.presetId,
+        completionProfileName: completionResolution.presetName,
+        autoCostProfile: this.buildAutoCostProfileLabel(completionResolution.completion.apiKey)
       });
     }
 
@@ -4775,6 +5425,17 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   private mergeSettings(data: Partial<ConverterSettings> | null | undefined): ConverterSettings {
+    const normalizeSecretIdentifier = (value: unknown, fallback: string, maxLength = 64): string => {
+      const normalize = (input: unknown): string => String(input ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, maxLength);
+      return normalize(value) || normalize(fallback);
+    };
+
     const merged: ConverterSettings = {
       ...DEFAULT_SETTINGS,
       ...data,
@@ -4920,6 +5581,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     ) ? merged.embeddings.provider : 'openrouter';
     merged.embeddings.endpoint = merged.embeddings.endpoint.trim();
     merged.embeddings.apiKey = merged.embeddings.apiKey.trim();
+    merged.embeddings.apiKeySecretName = normalizeSecretIdentifier(
+      merged.embeddings.apiKeySecretName,
+      DEFAULT_SETTINGS.embeddings.apiKeySecretName
+    );
     merged.embeddings.model = merged.embeddings.model.trim() || DEFAULT_SETTINGS.embeddings.model;
     merged.embeddings.instruction = merged.embeddings.instruction.trim();
     merged.embeddings.batchSize = Math.max(1, Math.floor(merged.embeddings.batchSize));
@@ -5108,6 +5773,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     ) ? merged.completion.provider : 'openrouter';
     merged.completion.endpoint = merged.completion.endpoint.trim() || DEFAULT_SETTINGS.completion.endpoint;
     merged.completion.apiKey = merged.completion.apiKey.trim();
+    merged.completion.apiKeySecretName = normalizeSecretIdentifier(
+      merged.completion.apiKeySecretName,
+      DEFAULT_SETTINGS.completion.apiKeySecretName
+    );
+    merged.completion.presetApiKeySecretPrefix = normalizeSecretIdentifier(
+      merged.completion.presetApiKeySecretPrefix,
+      DEFAULT_SETTINGS.completion.presetApiKeySecretPrefix,
+      48
+    );
     merged.completion.model = merged.completion.model.trim() || DEFAULT_SETTINGS.completion.model;
     merged.completion.systemPrompt = merged.completion.systemPrompt.trim() || DEFAULT_SETTINGS.completion.systemPrompt;
     merged.completion.temperature = Math.max(0, Math.min(2, Number(merged.completion.temperature)));
@@ -5160,6 +5834,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         provider,
         endpoint: (candidate.endpoint ?? DEFAULT_SETTINGS.completion.endpoint).toString().trim() || DEFAULT_SETTINGS.completion.endpoint,
         apiKey: (candidate.apiKey ?? '').toString().trim(),
+        apiKeySecretName: normalizeSecretIdentifier(
+          candidate.apiKeySecretName,
+          merged.completion.apiKeySecretName
+        ),
         model: (candidate.model ?? DEFAULT_SETTINGS.completion.model).toString().trim() || DEFAULT_SETTINGS.completion.model,
         systemPrompt: (candidate.systemPrompt ?? DEFAULT_SETTINGS.completion.systemPrompt).toString().trim() || DEFAULT_SETTINGS.completion.systemPrompt,
         temperature: Math.max(0, Math.min(2, Number(candidate.temperature ?? DEFAULT_SETTINGS.completion.temperature))),
@@ -5545,7 +6223,19 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async onload() {
     // Load the settings
-    this.settings = this.mergeSettings(await this.loadData());
+    const loadedSettings = await this.loadData() as Partial<ConverterSettings> | null | undefined;
+    this.settings = this.mergeSettings(loadedSettings);
+    await this.loadDeviceProfileState();
+    const hadInlineApiKeys = this.hasInlineApiKeys(this.settings);
+    try {
+      await this.syncSettingsApiKeysToSecretStorage();
+      await this.hydrateSettingsApiKeysFromSecretStorage();
+      if (hadInlineApiKeys) {
+        await this.persistSettingsSnapshot();
+      }
+    } catch (error) {
+      console.error('LoreVault: Secret storage initialization failed. Continuing without secret migration.', error);
+    }
     this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
     this.storySteeringStore = new StorySteeringStore(
       this.app,
@@ -5692,6 +6382,17 @@ export default class LoreBookConverterPlugin extends Plugin {
         void this.rewriteAuthorNoteFromActiveNote().catch(error => {
           console.error('LoreVault: Failed to rewrite author note:', error);
           new Notice(`Failed to rewrite author note: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
+      id: 'set-author-note-completion-profile',
+      name: 'Set Author Note Completion Profile',
+      callback: () => {
+        void this.promptAndSetAuthorNoteCompletionPresetForActiveNote().catch(error => {
+          console.error('LoreVault: Failed to set author note completion profile:', error);
+          new Notice(`Failed to set author note completion profile: ${error instanceof Error ? error.message : String(error)}`);
         });
       }
     });
@@ -6073,7 +6774,18 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async saveData(settings: any) {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
-    await super.saveData(this.settings);
+    const presetIdSet = new Set(this.settings.completion.presets.map(preset => preset.id));
+    for (const presetId of [...this.lastSyncedPresetSecrets.keys()]) {
+      if (!presetIdSet.has(presetId)) {
+        this.lastSyncedPresetSecrets.delete(presetId);
+      }
+    }
+    const activeDevicePresetId = this.deviceProfileState.activeCompletionPresetId;
+    if (activeDevicePresetId && !this.settings.completion.presets.some(preset => preset.id === activeDevicePresetId)) {
+      this.deviceProfileState.activeCompletionPresetId = '';
+      await this.persistDeviceProfileState();
+    }
+    await this.persistSettingsSnapshot();
     this.syncUsageLedgerStorePath();
     this.invalidateLorebookScopeCache();
     this.exportScopeIndexByPath = new Map(
@@ -6408,19 +7120,19 @@ export default class LoreBookConverterPlugin extends Plugin {
   public async resolveStoryScopeSelection(
     activeFile: TFile | null
   ): Promise<{ scopes: string[]; source: 'frontmatter' | 'author_note_frontmatter' | 'none' }> {
-    const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
-    if (frontmatterScopes.length > 0) {
-      return {
-        scopes: frontmatterScopes,
-        source: 'frontmatter'
-      };
-    }
-
     const authorNoteFrontmatterScopes = await this.resolveStoryScopesFromAuthorNoteFrontmatter(activeFile);
     if (authorNoteFrontmatterScopes.length > 0) {
       return {
         scopes: authorNoteFrontmatterScopes,
         source: 'author_note_frontmatter'
+      };
+    }
+
+    const frontmatterScopes = this.resolveStoryScopesFromFrontmatter(activeFile);
+    if (frontmatterScopes.length > 0) {
+      return {
+        scopes: frontmatterScopes,
+        source: 'frontmatter'
       };
     }
 
@@ -6863,11 +7575,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.generationInFlight = true;
       this.generationAbortController = new AbortController();
       this.setGenerationStatus('running text command', 'busy');
-      if (!this.settings.completion.enabled) {
+      const completionResolution = await this.resolveEffectiveCompletionForFile(activeFile);
+      const completion = completionResolution.completion;
+      if (!completion.enabled) {
         new Notice('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
         return;
       }
-      if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+      if (completion.provider !== 'ollama' && !completion.apiKey) {
         new Notice('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
         return;
       }
@@ -6882,7 +7596,6 @@ export default class LoreBookConverterPlugin extends Plugin {
         ragDetails = context.ragDetails;
       }
 
-      const completion = this.settings.completion;
       const userPrompt = [
         `<instruction>${selection.promptText}</instruction>`,
         '',
@@ -6912,7 +7625,11 @@ export default class LoreBookConverterPlugin extends Plugin {
             worldInfoCount,
             ragCount,
             scopeCount: scopeLabels.length,
-            scopes: scopeLabels
+            scopes: scopeLabels,
+            completionProfileSource: completionResolution.source,
+            completionProfileId: completionResolution.presetId,
+            completionProfileName: completionResolution.presetName,
+            autoCostProfile: this.buildAutoCostProfileLabel(completionResolution.completion.apiKey)
           });
         }
       });
@@ -7004,16 +7721,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     try {
       this.generationInFlight = true;
       this.generationAbortController = new AbortController();
-      if (!this.settings.completion.enabled) {
+      const completionResolution = await this.resolveEffectiveCompletionForFile(resolvedActiveFile);
+      const completion = completionResolution.completion;
+      if (!completion.enabled) {
         new Notice('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
         return;
       }
-      if (this.settings.completion.provider !== 'ollama' && !this.settings.completion.apiKey) {
+      if (completion.provider !== 'ollama' && !completion.apiKey) {
         new Notice('Missing completion API key. Configure it under LoreVault Settings → Writing Completion.');
         return;
       }
-
-      const completion = this.settings.completion;
       const scopedSteering = await this.storySteeringStore.resolveEffectiveStateForFile(resolvedActiveFile);
       const scopeSelection = await this.resolveStoryScopeSelection(resolvedActiveFile);
       scopeSelectionSource = scopeSelection.source;
@@ -7219,6 +7936,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           scopedQuery,
           targetScopes,
           toolContextBudget,
+          completion,
           this.generationAbortController.signal
         );
         toolContextMarkdown = toolContext.markdown;
@@ -7548,7 +8266,11 @@ export default class LoreBookConverterPlugin extends Plugin {
             (mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads.length : 0)
             + (mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops.length : 0)
             + (mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas.length : 0)
-          )
+          ),
+          completionProfileSource: completionResolution.source,
+          completionProfileId: completionResolution.presetId,
+          completionProfileName: completionResolution.presetName,
+          autoCostProfile: this.buildAutoCostProfileLabel(completionResolution.completion.apiKey)
         });
       }
 
@@ -7715,7 +8437,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       if (exportTimestampChanged) {
-        await super.saveData(this.settings);
+        await this.persistSettingsSnapshot(false);
       }
 
       if (!silentSuccessNotice) {

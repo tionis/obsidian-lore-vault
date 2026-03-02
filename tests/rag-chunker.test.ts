@@ -9,6 +9,7 @@ function baseEmbeddingSettings(overrides: Partial<ConverterSettings['embeddings'
     provider: 'openrouter',
     endpoint: 'https://openrouter.ai/api/v1',
     apiKey: '',
+    apiKeySecretName: 'lorevault-embeddings-default',
     model: 'qwen/qwen3-embedding-8b',
     instruction: '',
     batchSize: 16,

@@ -250,6 +250,7 @@ export interface CompletionPreset {
   provider: 'openrouter' | 'ollama' | 'openai_compatible';
   endpoint: string;
   apiKey: string;
+  apiKeySecretName: string;
   model: string;
   systemPrompt: string;
   temperature: number;
@@ -350,6 +351,7 @@ export interface ConverterSettings {
     provider: 'openrouter' | 'ollama' | 'openai_compatible';
     endpoint: string;
     apiKey: string;
+    apiKeySecretName: string;
     model: string;
     instruction: string;
     batchSize: number;
@@ -409,6 +411,8 @@ export interface ConverterSettings {
     provider: 'openrouter' | 'ollama' | 'openai_compatible';
     endpoint: string;
     apiKey: string;
+    apiKeySecretName: string;
+    presetApiKeySecretPrefix: string;
     model: string;
     systemPrompt: string;
     temperature: number;
@@ -509,6 +513,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     provider: 'openrouter',
     endpoint: 'https://openrouter.ai/api/v1',
     apiKey: '',
+    apiKeySecretName: 'lorevault-embeddings-default',
     model: 'qwen/qwen3-embedding-8b',
     instruction: '',
     batchSize: 16,
@@ -561,6 +566,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     provider: 'openrouter',
     endpoint: 'https://openrouter.ai/api/v1',
     apiKey: '',
+    apiKeySecretName: 'lorevault-completion-default',
+    presetApiKeySecretPrefix: 'lorevault-completion-preset',
     model: 'openai/gpt-4o-mini',
     systemPrompt: 'You are a story-writing assistant. Continue the story in the same tone, perspective, and tense. Use provided lore context as constraints. Output only the continuation text with no explanations or headings.',
     temperature: 0.7,

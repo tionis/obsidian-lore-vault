@@ -19,7 +19,7 @@ Core scope boundary:
 
 - Plugin id: `lore-vault`
 - Plugin name: `LoreVault`
-- Minimum Obsidian version: `1.1.0`
+- Minimum Obsidian version: `1.11.4`
 - Desktop and mobile supported (`isDesktopOnly: false`)
 - Mobile compatibility matrix and QA checklist: `docs/mobile-compatibility-plan.md`
 
@@ -324,7 +324,10 @@ Settings:
 
 - enable/disable completion
 - provider, endpoint, api key, model
-- reusable model presets (save/update/delete + active preset selection)
+- completion/embedding API keys are persisted in Obsidian Secret Storage (not in plugin `data.json`)
+- secret IDs are user-defined; settings expose `Pick Existing` (from Obsidian secret storage) so multiple presets can share one key
+- reusable model presets (save/update/delete)
+- active completion preset is device-local (Obsidian local storage), not shared vault settings
 - system prompt
 - temperature
 - max output tokens
@@ -337,8 +340,8 @@ Settings:
 
 Story lorebook scope selection order:
 
-1. Story note frontmatter scope keys (preferred)
-2. Author Note frontmatter scope keys (fallback)
+1. Linked Author Note frontmatter scope keys (preferred)
+2. Story note frontmatter scope keys (fallback)
 3. no implicit scope fallback
 
 Story frontmatter scope keys:
@@ -378,6 +381,7 @@ Author Note model:
 
 - one note-level Author Note markdown document per story note link
 - Author Note content is edited directly in native Obsidian notes
+- optional `completionProfile` frontmatter can pin an Author Note to a completion preset id
 - optional frontmatter lorebook scopes use the same accepted scope keys as story notes
 - default creation folder is configurable in settings (`Story Steering -> Author Note Folder`)
 - optional `lvDocType: authorNote` frontmatter marks notes as explicit Author Notes
@@ -578,6 +582,7 @@ Capabilities:
 ## Story Writing Panel
 
 Command: `Open Story Writing Panel` (persistent right-side workspace panel)
+Author-note profile command: `Set Author Note Completion Profile`
 
 Capabilities:
 
@@ -588,16 +593,23 @@ Capabilities:
 - Author Note workflow:
   - linked from story frontmatter `authorNote`
   - authored in native Obsidian note editor
+  - optional per-author-note completion profile override (`completionProfile`) managed via command `Set Author Note Completion Profile`
   - rewrite flow uses optional change prompt + diff review
   - when an Author Note is active, panel lists linked chapters/stories (chapter-ordered when available)
+- completion profile controls:
+  - device-local active preset selector (dropdown, applies immediately)
+  - selector is disabled when Author Note `completionProfile` override is active and shows `Overridden by Author Note`
+  - active-preset secret-id field (optional) for shared API keys across presets
+  - device-local cost profile label is configured in settings (usage metadata tagging only); if empty, usage falls back to an automatic API-key hash profile
+  - cost breakdown is shown in the same section directly under the profile selector
 - lorebook scope controls for active story note:
-  - show selected scopes
-  - add/remove scopes
-  - `All` / `None`
-  - writes canonical story-note `lorebooks` key and clears legacy aliases
+  - show selected scopes from linked Author Note frontmatter
+  - add scopes via interactive picker
+  - remove scopes via per-item remove action
+  - writes canonical `lorebooks` key on linked Author Note frontmatter
 - generation monitor details:
   - state/status
-  - configured provider/model
+  - effective provider/model
   - active scopes, token usage, output progress
   - collapsible selected context items (`world_info`, fallback items)
 - compact collapsible usage/cost summary:
@@ -751,8 +763,8 @@ Query behavior:
 - query text source: active editor content up to cursor (last window)
 - inline directives source: strict-prefix directives in near-cursor editor window (`[LV: ...]`, `<!-- LV: ... -->`)
 - scope resolution:
-  - story note frontmatter (`lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`)
-  - otherwise linked Author Note frontmatter (same keys)
+  - linked Author Note frontmatter (`lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`)
+  - otherwise story note frontmatter (same keys)
   - otherwise no lorebook retrieval scopes are selected
 - scoring:
   - `world_info` (primary):

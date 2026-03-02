@@ -882,6 +882,7 @@ Current behavior:
 - persists each chat/fork as a markdown note under `LoreVault/chat`
 - conversation-note format is human-readable (`agent-session` frontmatter + `## User` / `## Model` transcript sections)
 - conversation frontmatter stores `completion_preset_id` as a snapshot of the active Story Chat profile when the conversation is saved
+- assistant turns store expanded Message Info table rows plus a collapsed `Context Meta` callout containing a fenced `yaml` metadata payload
 - legacy JSON code-block conversation notes are not loaded; Story Chat expects `agent-session` notes
 - plugin settings persist active conversation path and chat folder
 - chat folder path is configurable in settings (`Story Chat Conversation Folder`)

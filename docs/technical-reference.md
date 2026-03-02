@@ -451,6 +451,8 @@ Stored structure:
 - per-conversation lorebook scope selection
 - per-turn transcript sections (`## User` / `## Model`)
 - message versions with active version selector
+- assistant message info table includes generation/profile/context summary rows
+- full assistant turn context metadata is persisted in collapsed `Context Meta` metadata callouts with fenced `yaml` payloads
 - optional context inspector metadata on assistant versions (including steering source resolution, effective completion profile/model, and agent tool traces/calls/writes)
 
 Story Chat UI behavior:

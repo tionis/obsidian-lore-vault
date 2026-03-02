@@ -121,6 +121,7 @@ Additional behavior:
 - edit/fork/regenerate message actions
 - assistant message metadata shows the profile/model used for that response
 - chat sessions are saved as readable markdown notes with frontmatter + `## User` / `## Model` transcript sections
+- full turn context metadata is stored in collapsed `Context Meta` callouts with fenced `yaml` blocks
 - optional bounded tool-calling (search/read lorebooks and selected notes, read/update linked author note)
 - per-response context inspector and layer/token diagnostics
 

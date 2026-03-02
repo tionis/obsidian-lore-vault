@@ -211,6 +211,7 @@ If you prefer to build the plugin from source:
    - Use message version selectors to switch between regenerated assistant variants
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
    - Conversation notes use a readable session format (frontmatter + `## User` / `## Model` sections)
+   - Assistant context metadata in saved notes is kept in collapsed `Context Meta` callouts (fenced `yaml`) plus expanded Message Info table rows
    - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, retrieval tool-hook traces, and chat agent tool call/write traces
 
 9. **Import Existing Lorebook JSON (Phase 14)**

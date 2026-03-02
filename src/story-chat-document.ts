@@ -528,6 +528,222 @@ function parseMetadataTableValues(sectionBody: string): Record<string, string> {
   return result;
 }
 
+function countLeadingSpaces(value: string): number {
+  const match = value.match(/^ */);
+  return match ? match[0].length : 0;
+}
+
+function parseYamlScalar(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return '';
+  }
+  if (trimmed === 'true') {
+    return true;
+  }
+  if (trimmed === 'false') {
+    return false;
+  }
+  if (trimmed === 'null' || trimmed === '~') {
+    return null;
+  }
+  if (trimmed === '{}') {
+    return {};
+  }
+  if (trimmed === '[]') {
+    return [];
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch (_error) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch (_error) {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function parseYamlBlock(
+  lines: string[],
+  startIndex: number,
+  indent: number
+): { value: unknown; nextIndex: number } {
+  let index = startIndex;
+  while (index < lines.length && lines[index].trim() === '') {
+    index += 1;
+  }
+  if (index >= lines.length) {
+    return { value: undefined, nextIndex: index };
+  }
+
+  const firstLine = lines[index];
+  const firstIndent = countLeadingSpaces(firstLine);
+  if (firstIndent < indent) {
+    return { value: undefined, nextIndex: index };
+  }
+  const firstTrimmed = firstLine.trim();
+
+  if (firstTrimmed.startsWith('-')) {
+    const values: unknown[] = [];
+    while (index < lines.length) {
+      const line = lines[index];
+      if (line.trim() === '') {
+        index += 1;
+        continue;
+      }
+
+      const lineIndent = countLeadingSpaces(line);
+      if (lineIndent < indent) {
+        break;
+      }
+      if (lineIndent !== indent || !line.trim().startsWith('-')) {
+        break;
+      }
+
+      const trimmed = line.trim();
+      const remainder = trimmed.slice(1).trim();
+      if (!remainder) {
+        const nested = parseYamlBlock(lines, index + 1, indent + 2);
+        values.push(nested.value ?? null);
+        index = nested.nextIndex;
+        continue;
+      }
+
+      values.push(parseYamlScalar(remainder));
+      index += 1;
+    }
+    return { value: values, nextIndex: index };
+  }
+
+  const objectValue: Record<string, unknown> = {};
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === '') {
+      index += 1;
+      continue;
+    }
+
+    const lineIndent = countLeadingSpaces(line);
+    if (lineIndent < indent) {
+      break;
+    }
+    if (lineIndent !== indent) {
+      break;
+    }
+
+    const trimmed = line.trim();
+    if (trimmed.startsWith('-')) {
+      break;
+    }
+
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex < 0) {
+      index += 1;
+      continue;
+    }
+
+    const key = trimmed.slice(0, colonIndex).trim();
+    const remainder = trimmed.slice(colonIndex + 1).trim();
+    if (!key) {
+      index += 1;
+      continue;
+    }
+
+    if (remainder) {
+      objectValue[key] = parseYamlScalar(remainder);
+      index += 1;
+      continue;
+    }
+
+    let lookahead = index + 1;
+    while (lookahead < lines.length && lines[lookahead].trim() === '') {
+      lookahead += 1;
+    }
+    if (lookahead >= lines.length) {
+      objectValue[key] = '';
+      index += 1;
+      continue;
+    }
+
+    const nextIndent = countLeadingSpaces(lines[lookahead]);
+    if (nextIndent <= lineIndent) {
+      objectValue[key] = '';
+      index += 1;
+      continue;
+    }
+
+    const nested = parseYamlBlock(lines, lookahead, lineIndent + 2);
+    objectValue[key] = nested.value;
+    index = nested.nextIndex;
+  }
+
+  return { value: objectValue, nextIndex: index };
+}
+
+function extractMetadataCalloutBody(sectionBody: string, heading: string): string {
+  const markerPattern = new RegExp(`^>\\s*\\[!metadata\\]-\\s*${escapeRegex(heading)}\\s*$`, 'im');
+  const markerMatch = markerPattern.exec(sectionBody);
+  if (!markerMatch) {
+    return '';
+  }
+
+  const start = markerMatch.index + markerMatch[0].length;
+  const lines = sectionBody
+    .slice(start)
+    .replace(/^\r?\n/, '')
+    .split(/\r?\n/);
+  const contentLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('>')) {
+      contentLines.push(line.replace(/^>\s?/, ''));
+      continue;
+    }
+    if (line.trim() === '' && contentLines.length === 0) {
+      continue;
+    }
+    break;
+  }
+  return trimTrailingBlankLines(contentLines).join('\n');
+}
+
+function parseContextMetaFromMetadataCallout(sectionBody: string): StoryChatContextMeta | undefined {
+  const calloutBody = extractMetadataCalloutBody(sectionBody, 'Context Meta');
+  if (!calloutBody) {
+    return undefined;
+  }
+
+  const codeblockMatch = calloutBody.match(/```(?:yaml|yml)\s*\r?\n([\s\S]*?)\r?\n```/i);
+  if (!codeblockMatch) {
+    return undefined;
+  }
+
+  const payload = codeblockMatch[1].trim();
+  if (!payload) {
+    return undefined;
+  }
+
+  try {
+    if (payload.startsWith('{') || payload.startsWith('[')) {
+      return normalizeContextMeta(JSON.parse(payload) as unknown);
+    }
+    const parsed = parseYamlBlock(payload.replace(/\r/g, '').split('\n'), 0, 0).value;
+    return normalizeContextMeta(parsed);
+  } catch (error) {
+    console.error('Failed to parse Story Chat context metadata block:', error);
+  }
+  return undefined;
+}
+
 function extractCalloutContent(sectionBody: string, role: 'user' | 'assistant'): string {
   const calloutType = role === 'user' ? 'user' : 'assistant';
   const markerPattern = new RegExp(`^>\\s*\\[!${calloutType}\\]\\+\\s*$`, 'm');
@@ -593,13 +809,15 @@ function parseMessageSections(body: string, createId: CreateIdFn): ConversationM
     const versionCreatedAt = parseTimestampValue(tableValues.time) ?? Date.now();
     const activeVersion = parseBooleanText(tableValues['active version']) === true;
 
-    const contextMetaMatch = sectionBody.match(/<!--\s*LV_CHAT_CONTEXT_META:\s*([\s\S]*?)\s*-->/i);
-    let contextMeta: StoryChatContextMeta | undefined;
-    if (contextMetaMatch) {
-      try {
-        contextMeta = normalizeContextMeta(JSON.parse(contextMetaMatch[1].trim()) as unknown);
-      } catch (error) {
-        console.error('Failed to parse Story Chat context metadata:', error);
+    let contextMeta = parseContextMetaFromMetadataCallout(sectionBody);
+    if (!contextMeta) {
+      const legacyContextMetaMatch = sectionBody.match(/<!--\s*LV_CHAT_CONTEXT_META:\s*([\s\S]*?)\s*-->/i);
+      if (legacyContextMetaMatch) {
+        try {
+          contextMeta = normalizeContextMeta(JSON.parse(legacyContextMetaMatch[1].trim()) as unknown);
+        } catch (error) {
+          console.error('Failed to parse Story Chat context metadata:', error);
+        }
       }
     }
 
@@ -694,6 +912,119 @@ function renderTextSection(lines: string[], heading: string, content: string): v
   }
   lines.push('```');
   lines.push('');
+}
+
+function toBooleanText(value: boolean | undefined): string {
+  return value ? 'true' : 'false';
+}
+
+function toCountText(values: string[] | undefined): string {
+  return String(Array.isArray(values) ? values.length : 0);
+}
+
+function toListOrNone(values: string[] | undefined): string {
+  if (!Array.isArray(values) || values.length === 0) {
+    return '(none)';
+  }
+  return values.join(', ');
+}
+
+function toProfileLabel(meta: StoryChatContextMeta): string {
+  return meta.completionProfileName?.trim()
+    || meta.completionProfileId?.trim()
+    || meta.completionProfileSource?.trim()
+    || '(none)';
+}
+
+function isYamlScalarValue(value: unknown): boolean {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
+}
+
+function serializeYamlScalarValue(value: unknown): string {
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (value === null) {
+    return 'null';
+  }
+  return JSON.stringify(String(value ?? ''));
+}
+
+function appendYamlValueLines(lines: string[], value: unknown, indent: number): void {
+  const padding = ' '.repeat(indent);
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      lines.push(`${padding}[]`);
+      return;
+    }
+    for (const item of value) {
+      if (isYamlScalarValue(item)) {
+        lines.push(`${padding}- ${serializeYamlScalarValue(item)}`);
+        continue;
+      }
+      lines.push(`${padding}-`);
+      appendYamlValueLines(lines, item, indent + 2);
+    }
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined);
+    if (entries.length === 0) {
+      lines.push(`${padding}{}`);
+      return;
+    }
+
+    for (const [key, entryValue] of entries) {
+      if (isYamlScalarValue(entryValue)) {
+        lines.push(`${padding}${key}: ${serializeYamlScalarValue(entryValue)}`);
+        continue;
+      }
+      if (Array.isArray(entryValue) && entryValue.length === 0) {
+        lines.push(`${padding}${key}: []`);
+        continue;
+      }
+      if (entryValue && typeof entryValue === 'object' && Object.keys(entryValue).length === 0) {
+        lines.push(`${padding}${key}: {}`);
+        continue;
+      }
+      lines.push(`${padding}${key}:`);
+      appendYamlValueLines(lines, entryValue, indent + 2);
+    }
+    return;
+  }
+
+  lines.push(`${padding}${serializeYamlScalarValue(value)}`);
+}
+
+function serializeContextMetaAsYaml(meta: StoryChatContextMeta): string {
+  const normalized = cloneStoryChatContextMeta(meta);
+  if (!normalized) {
+    return '';
+  }
+  const lines: string[] = [];
+  appendYamlValueLines(lines, normalized, 0);
+  return lines.join('\n');
+}
+
+function quoteCodeFenceCallout(content: string, language: string): string[] {
+  const normalized = content.replace(/\r/g, '');
+  const rawLines = normalized.split('\n');
+  const lines: string[] = [`> \`\`\`${language}`];
+  for (const line of rawLines) {
+    lines.push(line ? `> ${line}` : '>');
+  }
+  lines.push('> ```');
+  return lines;
 }
 
 export function parseConversationMarkdown(
@@ -796,13 +1127,38 @@ export function serializeConversationMarkdown(document: ConversationDocument): s
       lines.push(`> | Message ID | ${message.id} |`);
       lines.push(`> | Version ID | ${version.id} |`);
       lines.push(`> | Active Version | ${isActiveVersion ? 'true' : 'false'} |`);
+      if (message.role === 'assistant' && version.contextMeta) {
+        const meta = version.contextMeta;
+        lines.push(`> | Completion Profile | ${toProfileLabel(meta)} |`);
+        lines.push(`> | Completion Model | ${meta.completionModel?.trim() || '(unknown)'} |`);
+        lines.push(`> | Scopes | ${toListOrNone(meta.scopes)} |`);
+        lines.push(`> | Context Tokens | ${String(meta.contextTokens)} |`);
+        lines.push(`> | world_info Count | ${String(meta.worldInfoCount)} |`);
+        lines.push(`> | Fallback Count | ${String(meta.ragCount)} |`);
+        lines.push(`> | Used Lorebook Context | ${toBooleanText(meta.usedLorebookContext)} |`);
+        lines.push(`> | Used Manual Context | ${toBooleanText(meta.usedManualContext)} |`);
+        lines.push(`> | Used Specific Notes | ${toBooleanText(meta.usedSpecificNotesContext)} |`);
+        lines.push(`> | Used Chapter Memory | ${toBooleanText(meta.usedChapterMemoryContext)} |`);
+        lines.push(`> | Used Inline Directives | ${toBooleanText(meta.usedInlineDirectives)} |`);
+        lines.push(`> | Used Continuity State | ${toBooleanText(meta.usedContinuityState)} |`);
+        lines.push(`> | Specific Notes Count | ${toCountText(meta.specificNotePaths)} |`);
+        lines.push(`> | Unresolved Note Refs Count | ${toCountText(meta.unresolvedNoteRefs)} |`);
+        lines.push(`> | Directive Count | ${toCountText(meta.inlineDirectiveItems)} |`);
+        lines.push(`> | Plot Thread Count | ${toCountText(meta.continuityPlotThreads)} |`);
+        lines.push(`> | Open Loop Count | ${toCountText(meta.continuityOpenLoops)} |`);
+        lines.push(`> | Canon Delta Count | ${toCountText(meta.continuityCanonDeltas)} |`);
+        lines.push(`> | Tool Call Count | ${toCountText(meta.chatToolCalls)} |`);
+        lines.push(`> | Tool Write Count | ${toCountText(meta.chatToolWrites)} |`);
+      }
       lines.push('');
       lines.push(`> [!${calloutType}]+`);
       lines.push(...quoteMarkdownCallout(version.content));
       lines.push('');
 
       if (version.contextMeta) {
-        lines.push(`<!-- LV_CHAT_CONTEXT_META: ${JSON.stringify(cloneStoryChatContextMeta(version.contextMeta))} -->`);
+        const serializedMeta = serializeContextMetaAsYaml(version.contextMeta);
+        lines.push('> [!metadata]- Context Meta');
+        lines.push(...quoteCodeFenceCallout(serializedMeta, 'yaml'));
         lines.push('');
       }
 

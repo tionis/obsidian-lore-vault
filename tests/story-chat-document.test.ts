@@ -186,6 +186,9 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
   assert.match(markdown, /^## User$/m);
   assert.match(markdown, /^## Model$/m);
   assert.match(markdown, /^> \[!assistant\]\+$/m);
+  assert.match(markdown, /^> \[!metadata\]- Context Meta$/m);
+  assert.match(markdown, /^> ```yaml$/m);
+  assert.doesNotMatch(markdown, /LV_CHAT_CONTEXT_META/);
   assert.equal(parsed?.id, document.id);
   assert.equal(parsed?.title, document.title);
   assert.equal(parsed?.completionPresetId, document.completionPresetId);
@@ -292,4 +295,76 @@ test('parseConversationMarkdown reads sample-style agent session markdown', () =
     'Summarize the political landscape of Yggdrasil based on the Cosmology notes'
   );
   assert.equal(parsed?.messages[1].versions[0].content, 'Based on the Cosmology notes...');
+});
+
+test('parseConversationMarkdown reads legacy LV_CHAT_CONTEXT_META comments', () => {
+  const markdown = [
+    '---',
+    'session_id: "legacy-1"',
+    'type: agent-session',
+    'title: "Legacy"',
+    'selected_lorebooks: []',
+    'use_lorebook_context: false',
+    'author_note_refs: []',
+    'note_context_refs: []',
+    'continuity_plot_threads: []',
+    'continuity_open_loops: []',
+    'continuity_canon_deltas: []',
+    'continuity_selection:',
+    '  includePlotThreads: true',
+    '  includeOpenLoops: true',
+    '  includeCanonDeltas: true',
+    'created: "2026-03-01T16:32:20.438Z"',
+    'last_active: "2026-03-01T16:33:57.282Z"',
+    'metadata:',
+    '  source: "lorevault"',
+    '---',
+    '',
+    '# Agent Session: Legacy',
+    '',
+    '## Conversation Context',
+    '',
+    '### Manual Context',
+    '```text',
+    '',
+    '```',
+    '',
+    '### Pinned Instructions',
+    '```text',
+    '',
+    '```',
+    '',
+    '### Story Notes',
+    '```text',
+    '',
+    '```',
+    '',
+    '### Scene Intent',
+    '```text',
+    '',
+    '```',
+    '',
+    '## Model',
+    '',
+    '> [!metadata]- Message Info',
+    '> | Property | Value |',
+    '> | -------- | ----- |',
+    '> | Time | 2026-03-01T16:33:57.274Z |',
+    '> | Message ID | assistant-1 |',
+    '> | Version ID | ver-2 |',
+    '> | Active Version | true |',
+    '',
+    '> [!assistant]+',
+    '> Legacy payload response.',
+    '',
+    '<!-- LV_CHAT_CONTEXT_META: {"usedLorebookContext":true,"usedManualContext":false,"usedSpecificNotesContext":false,"scopes":["u/core"],"specificNotePaths":[],"unresolvedNoteRefs":[],"contextTokens":42,"worldInfoCount":2,"ragCount":1,"worldInfoItems":["Alice"],"ragItems":["Doc"]} -->',
+    '',
+    '---',
+    ''
+  ].join('\n');
+
+  const parsed = parseConversationMarkdown(markdown, 'Fallback');
+  assert.ok(parsed);
+  assert.equal(parsed?.messages[0].versions[0].contextMeta?.contextTokens, 42);
+  assert.equal(parsed?.messages[0].versions[0].contextMeta?.worldInfoCount, 2);
 });

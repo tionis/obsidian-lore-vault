@@ -90,7 +90,7 @@ This document is the implementation-level reference for core architecture and ru
   - fixed-order overflow trimming with locked-layer protection
   - per-layer usage/headroom metadata helpers
 - `src/summary-review-modal.ts`
-  - review/approval UI for generated summary candidates
+  - review/approval UI for generated summary candidates with side-by-side source diff preview
 - `src/hash-utils.ts`
   - deterministic hashing and identifier normalization (`@noble/hashes` sync + WebCrypto async)
   - `sha256HexAsync` requires WebCrypto (`crypto.subtle`) at runtime
@@ -104,8 +104,11 @@ This document is the implementation-level reference for core architecture and ru
   - keyword model-output parsing and deterministic frontmatter keyword upsert helpers
 - `src/text-command-modal.ts`
   - prompt/template selection modal for selection rewrite commands
+- `src/source-diff.ts` + `src/source-diff-view.ts`
+  - deterministic source-diff hunk builder (LCS with bounded fallback)
+  - side-by-side diff renderer with context-window omission markers and truncation guardrails
 - `src/text-command-review-modal.ts` + `src/text-command-diff.ts`
-  - diff preview + review/apply flow for selection edits
+  - live side-by-side review/apply flow for selection edits and Author Note rewrites
 - `src/cost-utils.ts`
   - usage-cost estimation helpers (`provider_reported` vs `estimated` vs `unknown`)
 - `src/usage-ledger-store.ts`
@@ -139,6 +142,7 @@ This document is the implementation-level reference for core architecture and ru
   - low-confidence gating
   - existing page matching and idempotent merge planning
   - deterministic conflict extraction from update diff churn
+  - shared side-by-side diff preview generation for planned page writes
   - progress callbacks for chunk and render stages
 - `src/lorebook-scope-suggest-modal.ts`
   - shared interactive lorebook scope picker modal
@@ -427,7 +431,7 @@ Flow:
 3. optionally retrieve lore context (scope/frontmatter resolution mirrors continuation behavior)
 4. call completion provider with text-command system prompt + user prompt payload
 5. optionally record usage ledger entry (`operation = text_command_edit`)
-6. if auto-accept disabled, open review modal with unified diff preview (`src/text-command-review-modal.ts`)
+6. if auto-accept disabled, open review modal with side-by-side source diff (`src/text-command-review-modal.ts`)
 7. apply replacement only when selection still matches captured source text
 
 Settings contract (`ConverterSettings.textCommands`):
@@ -625,7 +629,7 @@ Implemented:
 - schema-constrained delta operations including confidence + rationale
 - low-confidence operation skip policy with warnings/preview counts
 - deterministic operation matching (`pageKey` first, title fallback, then deterministic create)
-- dry-run diff generation for each planned change (deterministic coarse line diff)
+- dry-run diff generation for each planned change (deterministic side-by-side source hunks with bounded context)
 - per-change approval selection in panel and `Apply Selected` writes only approved changes
 - merge policies:
   - `safe_append`: preserve metadata on existing notes, append unique content blocks
@@ -635,9 +639,10 @@ Implemented:
 - fixture-backed tests for parsing, gating, deterministic paths, and idempotence behavior
 - story-delta chunk/render progress callbacks surfaced in panel UI
 
-Still pending in this phase:
+Conflict review UX is now integrated in the panel:
 
-- structured-merge conflict UX refinements (current behavior is deterministic merge without dedicated conflict-review UI)
+- conflict decisions (`accept`/`reject`/`keep_both`) are made directly next to inline side-by-side diffs
+- processed conflicts/changes are visibly marked and can be hidden after apply
 
 ## Determinism Requirements (Implementation)
 

@@ -1,5 +1,6 @@
 import { App, Modal } from 'obsidian';
 import { buildTextCommandDiffPreview } from './text-command-diff';
+import { renderSourceDiffPreview } from './source-diff-view';
 
 export interface TextCommandReviewResult {
   action: 'cancel' | 'apply';
@@ -35,17 +36,14 @@ export class TextCommandReviewModal extends Modal {
       text: `Prompt: ${this.promptName}`
     });
 
-    const diff = buildTextCommandDiffPreview(this.originalText, this.revisedText);
-    this.contentEl.createEl('p', {
-      text: `Diff: +${diff.addedLines} / -${diff.removedLines}${diff.truncated ? ' (truncated)' : ''}`
-    });
-    const diffDetails = this.contentEl.createEl('details');
-    diffDetails.createEl('summary', {
-      text: `Diff Preview${diff.truncated ? ' (truncated)' : ''}`
-    });
-    diffDetails.createEl('pre', {
-      text: diff.preview
-    });
+    const diffStats = this.contentEl.createEl('p');
+    const diffRoot = this.contentEl.createDiv();
+    const renderDiff = (): void => {
+      const diff = buildTextCommandDiffPreview(this.originalText, this.revisedText);
+      diffStats.setText(`Diff: +${diff.addedLines} / -${diff.removedLines}${diff.truncated ? ' (truncated)' : ''}`);
+      renderSourceDiffPreview(diffRoot, diff);
+    };
+    renderDiff();
 
     const existing = this.contentEl.createDiv({ cls: 'lorevault-summary-existing' });
     existing.createEl('h4', { text: 'Original Selection' });
@@ -61,6 +59,7 @@ export class TextCommandReviewModal extends Modal {
     revisedTextarea.rows = Math.min(18, Math.max(8, Math.ceil(this.revisedText.length / 120)));
     revisedTextarea.addEventListener('input', () => {
       this.revisedText = revisedTextarea.value;
+      renderDiff();
     });
 
     const actions = this.contentEl.createDiv({ cls: 'lorevault-summary-actions' });

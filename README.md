@@ -101,6 +101,7 @@ The panel also shows:
 - selected lorebooks from linked Author Note (interactive add + per-item remove)
 - device-local cost profile label configured in settings (usage metadata tagging; auto-derived from API key hash when empty)
 - collapsible cost breakdown (session/day/week/month/project) in the same panel section as the profile selector
+- rewrite/edit review modals use side-by-side source diffs (with omitted-line markers for large unchanged ranges)
 
 ## Story Chat Workflow
 
@@ -198,6 +199,7 @@ Import/extraction/update panel behavior:
 - extraction and lorebook-update previews report chunk-stage progress while running
 - import and apply flows report live write progress while files are being created/updated
 - lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
+- story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions
 
 Operations and reporting:
 

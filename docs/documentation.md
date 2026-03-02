@@ -395,7 +395,7 @@ Author Note rewrite behavior:
 - rewrite/update focuses on Author Note markdown only
 - optional per-run update prompt can steer what should be changed
 - rewrite context includes linked story note content, selected lorebook context, and current Author Note
-- review modal shows `Current` vs `Proposed` Author Note markdown diff before apply
+- review modal shows a side-by-side source diff (`Current` vs `Proposed`) with context windows and omitted-line markers before apply
 - optional sanitization mode controls filtering:
   - `strict` (default): filters obvious lorebook-style profile facts (for example static character bios) to reduce duplicated context
   - `off`: keeps raw extracted content
@@ -424,7 +424,7 @@ Run flow:
 3. LoreVault optionally retrieves scoped lore context using selected text as query
 4. LoreVault sends prompt + selected text (+ optional context) to completion provider
 5. response text is treated as replacement candidate
-6. if auto-accept is off, review modal shows original + diff preview before apply
+6. if auto-accept is off, review modal shows an editable review with side-by-side source diff before apply
 7. selected range is replaced only if selection still matches original text
 8. default `Canon Consistency Pass` template emphasizes lorebook factual consistency and only minimal style edits needed to fix canon conflicts
 
@@ -457,7 +457,7 @@ Review/acceptance flow:
 
 1. LoreVault reads note body and builds a constrained summary prompt.
 2. Completion provider returns candidate summary.
-3. Review modal lets user edit and choose:
+3. Review modal shows side-by-side source diff (`existing` -> `proposed`), lets user edit, and choose:
   - `Write Summary Section` (writes/updates `## Summary` section)
   - `Cancel`
 
@@ -704,8 +704,9 @@ Current merge policy (default):
 - story delta can use inline markdown or load source markdown from a selected story source note
 - source note mode supports deterministic `note`, `chapter`, or `story` expansion from the selected note (with picker support)
 - story delta selects existing notes from one or more chosen lorebook scopes
-- story delta preview includes per-change dry-run diff snippets (`+`/`-` line summary + collapsed preview block)
+- story delta preview includes per-change side-by-side source diffs with context windows and omitted-line markers
 - story delta preview includes conflict-review rows for update churn with quick decisions (`accept`, `reject`, `keep_both`)
+- conflict rows render diff details inline at the decision point (no separate detached diff section)
 - story delta preview includes conflict counters and filter controls (`all`, `pending`, `accept`, `reject`, `keep_both`)
 - story delta apply persists per-conflict decisions from preview:
   - `accept`: apply planned update

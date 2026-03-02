@@ -2729,17 +2729,36 @@ export default class LoreBookConverterPlugin extends Plugin {
     markdownView: MarkdownView,
     text: string,
     pos: { line: number; ch: number }
-  ): void {
+  ): boolean {
     const scroller = this.resolveMarkdownEditorScroller(markdownView);
-    if (!scroller) {
-      editor.replaceRange(text, pos);
-      return;
+    const scrollInfo = editor.getScrollInfo();
+    const selections = editor.listSelections().map(selection => ({
+      from: selection.anchor,
+      to: selection.head
+    }));
+    try {
+      editor.transaction({
+        changes: [{
+          from: pos,
+          to: pos,
+          text
+        }],
+        selections
+      }, 'lorevault-stream-insert');
+    } catch (error) {
+      try {
+        editor.replaceRange(text, pos);
+      } catch {
+        console.error('LoreVault: Failed to apply editor insertion:', error);
+        return false;
+      }
     }
-    const top = scroller.scrollTop;
-    const left = scroller.scrollLeft;
-    editor.replaceRange(text, pos);
-    scroller.scrollTop = top;
-    scroller.scrollLeft = left;
+    editor.scrollTo(scrollInfo.left, scrollInfo.top);
+    if (scroller) {
+      scroller.scrollTop = scrollInfo.top;
+      scroller.scrollLeft = scrollInfo.left;
+    }
+    return true;
   }
 
   private async resolveAuthorNoteRewriteTarget(file: TFile | null): Promise<{
@@ -8495,43 +8514,109 @@ export default class LoreBookConverterPlugin extends Plugin {
         '</story_so_far>'
       ].join('\n');
 
-      let insertPos = cursor;
+      let insertOffset = editor.posToOffset(cursor);
+      const clampOffset = (offset: number): number => {
+        const length = editor.getValue().length;
+        if (offset <= 0) {
+          return 0;
+        }
+        if (offset >= length) {
+          return length;
+        }
+        return offset;
+      };
       if (cursor.ch !== 0) {
-        this.replaceRangePreservingViewport(editor, markdownView, '\n', insertPos);
-        const offset = editor.posToOffset(insertPos) + 1;
-        insertPos = editor.offsetToPos(offset);
+        const insertedBreak = this.replaceRangePreservingViewport(editor, markdownView, '\n', cursor);
+        if (insertedBreak) {
+          insertOffset = editor.posToOffset(cursor) + 1;
+        }
       }
 
       let generatedText = '';
+      let detachedDeltaBuffer = '';
       let lastStatusUpdate = 0;
       let completionUsage: CompletionUsageReport | null = null;
       let pendingDelta = '';
       let flushTimer: number | null = null;
-      const flushPendingDelta = (): void => {
+      let knownDocLength = editor.getValue().length;
+      let applyingInsert = false;
+      let lastUserEditAt = 0;
+
+      const updateOutputTelemetry = (force = false): void => {
+        const now = Date.now();
+        if (!force && now - lastStatusUpdate < 250) {
+          return;
+        }
+        lastStatusUpdate = now;
+        const outTokens = this.estimateTokens(generatedText);
+        this.updateGenerationTelemetry({
+          generatedTokens: outTokens,
+          statusText: 'generating'
+        });
+        this.setGenerationStatus(
+          `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
+          'busy'
+        );
+      };
+
+      const editorChangeRef = this.app.workspace.on('editor-change', (changedEditor: Editor) => {
+        if (changedEditor !== editor) {
+          return;
+        }
+        const nextLength = editor.getValue().length;
+        if (applyingInsert) {
+          knownDocLength = nextLength;
+          return;
+        }
+        const delta = nextLength - knownDocLength;
+        knownDocLength = nextLength;
+        if (delta === 0) {
+          return;
+        }
+        const cursorOffset = editor.posToOffset(editor.getCursor('to'));
+        if (cursorOffset <= insertOffset) {
+          insertOffset = clampOffset(insertOffset + delta);
+        }
+        lastUserEditAt = Date.now();
+      });
+
+      const clearFlushTimer = (): void => {
+        if (flushTimer !== null) {
+          window.clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+      };
+
+      const flushPendingDelta = (force = false): void => {
         if (!pendingDelta) {
+          return;
+        }
+        if (!force && Date.now() - lastUserEditAt < 180) {
+          scheduleDeltaFlush();
           return;
         }
         const nextChunk = pendingDelta;
         pendingDelta = '';
-        this.replaceRangePreservingViewport(editor, markdownView, nextChunk, insertPos);
-        const nextOffset = editor.posToOffset(insertPos) + nextChunk.length;
-        insertPos = editor.offsetToPos(nextOffset);
-        generatedText += nextChunk;
 
-        const now = Date.now();
-        if (now - lastStatusUpdate >= 250) {
-          lastStatusUpdate = now;
-          const outTokens = this.estimateTokens(generatedText);
-          this.updateGenerationTelemetry({
-            generatedTokens: outTokens,
-            statusText: 'generating'
-          });
-          this.setGenerationStatus(
-            `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
-            'busy'
-          );
+        if (detachedDeltaBuffer.length > 0) {
+          detachedDeltaBuffer += nextChunk;
+          return;
         }
+
+        const insertPos = editor.offsetToPos(clampOffset(insertOffset));
+        applyingInsert = true;
+        const ok = this.replaceRangePreservingViewport(editor, markdownView, nextChunk, insertPos);
+        applyingInsert = false;
+        if (!ok) {
+          detachedDeltaBuffer += nextChunk;
+          lastUserEditAt = Date.now();
+          return;
+        }
+
+        insertOffset = clampOffset(insertOffset + nextChunk.length);
+        knownDocLength = editor.getValue().length;
       };
+
       const scheduleDeltaFlush = (): void => {
         if (flushTimer !== null) {
           return;
@@ -8539,33 +8624,41 @@ export default class LoreBookConverterPlugin extends Plugin {
         flushTimer = window.setTimeout(() => {
           flushTimer = null;
           flushPendingDelta();
-        }, 50);
+        }, 110);
       };
 
-      await requestStoryContinuationStream(completion, {
-        systemPrompt: effectiveSystemPrompt,
-        userPrompt,
-        operationName: 'editor_continuation',
-        onOperationLog: record => this.appendCompletionOperationLog(record, {
-          costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
-        }),
-        onDelta: (delta: string) => {
-          if (!delta) {
-            return;
-          }
-          pendingDelta += delta;
-          scheduleDeltaFlush();
-        },
-        onUsage: usage => {
-          completionUsage = usage;
-        },
-        abortSignal: this.generationAbortController.signal
-      });
-      if (flushTimer !== null) {
-        window.clearTimeout(flushTimer);
-        flushTimer = null;
+      try {
+        await requestStoryContinuationStream(completion, {
+          systemPrompt: effectiveSystemPrompt,
+          userPrompt,
+          operationName: 'editor_continuation',
+          onOperationLog: record => this.appendCompletionOperationLog(record, {
+            costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+          }),
+          onDelta: (delta: string) => {
+            if (!delta) {
+              return;
+            }
+            generatedText += delta;
+            if (detachedDeltaBuffer.length > 0) {
+              detachedDeltaBuffer += delta;
+            } else {
+              pendingDelta += delta;
+            }
+            updateOutputTelemetry();
+            scheduleDeltaFlush();
+          },
+          onUsage: usage => {
+            completionUsage = usage;
+          },
+          abortSignal: this.generationAbortController.signal
+        });
+      } finally {
+        clearFlushTimer();
+        flushPendingDelta(true);
+        this.app.workspace.offref(editorChangeRef);
       }
-      flushPendingDelta();
+      updateOutputTelemetry(true);
 
       if (completionUsage) {
         await this.recordCompletionUsage('editor_continuation', completionUsage, {
@@ -8590,7 +8683,25 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (!generatedText.trim()) {
         throw new Error('Completion provider returned empty output.');
       }
-      this.replaceRangePreservingViewport(editor, markdownView, '\n', insertPos);
+      if (detachedDeltaBuffer.length > 0) {
+        const fallbackCursor = editor.getCursor();
+        const fallbackBaseOffset = editor.posToOffset(fallbackCursor);
+        let fallbackText = detachedDeltaBuffer;
+        if (fallbackCursor.ch !== 0 && !fallbackText.startsWith('\n')) {
+          fallbackText = `\n${fallbackText}`;
+        }
+        const fallbackInserted = this.replaceRangePreservingViewport(editor, markdownView, fallbackText, fallbackCursor);
+        if (fallbackInserted) {
+          const fallbackEndPos = editor.offsetToPos(clampOffset(fallbackBaseOffset + fallbackText.length));
+          this.replaceRangePreservingViewport(editor, markdownView, '\n', fallbackEndPos);
+          new Notice('Story changed while streaming. Remaining generated text was inserted at the current cursor.');
+        } else {
+          new Notice('Story changed while streaming. Could not auto-insert the remaining generated text.');
+        }
+      } else {
+        const insertPos = editor.offsetToPos(clampOffset(insertOffset));
+        this.replaceRangePreservingViewport(editor, markdownView, '\n', insertPos);
+      }
       const generatedTokens = this.estimateTokens(generatedText);
       this.updateGenerationTelemetry({
         state: 'idle',

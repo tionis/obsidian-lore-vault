@@ -181,7 +181,8 @@ export class LorevaultHelpView extends ItemView {
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',
-        'All three panels show staged progress while preview/apply is running.'
+        'All three panels show staged progress while preview/apply is running.',
+        'Story-delta and rewrite review steps show side-by-side source diffs at the point where you accept/reject changes.'
       ],
       actions: [
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },

@@ -15,6 +15,7 @@ import {
   sanitizeWikiTitle
 } from './wiki-markdown-format';
 import { stripInlineLoreDirectives } from './inline-directives';
+import { buildSourceDiffPreview, SourceDiffPreview } from './source-diff';
 
 export type StoryDeltaUpdatePolicy = 'safe_append' | 'structured_merge';
 
@@ -114,12 +115,7 @@ export interface StoryDeltaUpdateOptions {
   onProgress?: (event: StoryDeltaProgressEvent) => void;
 }
 
-export interface StoryDeltaDiffPreview {
-  addedLines: number;
-  removedLines: number;
-  preview: string;
-  truncated: boolean;
-}
+export type StoryDeltaDiffPreview = SourceDiffPreview;
 
 interface SplitFrontmatter {
   frontmatter: string | null;
@@ -652,100 +648,18 @@ function renderStateContent(state: PageState, policy: StoryDeltaUpdatePolicy): s
   return upsertSummarySectionInMarkdown(baseContent, state.summary);
 }
 
-function splitLines(content: string): string[] {
-  const normalized = content.replace(/\r\n?/g, '\n');
-  if (!normalized) {
-    return [];
-  }
-  return normalized.split('\n');
-}
-
-function buildCreateDiffPreview(content: string): StoryDeltaDiffPreview {
-  const lines = splitLines(content);
-  const maxLines = 220;
-  const raw = [
-    `@@ -0,0 +1,${lines.length} @@`,
-    ...lines.map(line => `+${line}`)
-  ];
-  const truncated = raw.length > maxLines;
-  const previewLines = truncated
-    ? [...raw.slice(0, maxLines), '... [truncated]']
-    : raw;
-  return {
-    addedLines: lines.length,
-    removedLines: 0,
-    preview: previewLines.join('\n'),
-    truncated
-  };
-}
-
-function buildUpdateDiffPreview(previousContent: string, nextContent: string): StoryDeltaDiffPreview {
-  if (previousContent === nextContent) {
-    return {
-      addedLines: 0,
-      removedLines: 0,
-      preview: '(no changes)',
-      truncated: false
-    };
-  }
-
-  const before = splitLines(previousContent);
-  const after = splitLines(nextContent);
-
-  let prefix = 0;
-  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) {
-    prefix += 1;
-  }
-
-  let beforeEnd = before.length - 1;
-  let afterEnd = after.length - 1;
-  while (beforeEnd >= prefix && afterEnd >= prefix && before[beforeEnd] === after[afterEnd]) {
-    beforeEnd -= 1;
-    afterEnd -= 1;
-  }
-
-  const removedSegment = before.slice(prefix, beforeEnd + 1);
-  const addedSegment = after.slice(prefix, afterEnd + 1);
-
-  const raw: string[] = [];
-  raw.push(`@@ -${prefix + 1},${removedSegment.length} +${prefix + 1},${addedSegment.length} @@`);
-
-  if (prefix > 0) {
-    raw.push(` ${before[prefix - 1]}`);
-  }
-  for (const line of removedSegment) {
-    raw.push(`-${line}`);
-  }
-  for (const line of addedSegment) {
-    raw.push(`+${line}`);
-  }
-  if (beforeEnd + 1 < before.length) {
-    raw.push(` ${before[beforeEnd + 1]}`);
-  }
-
-  const maxLines = 220;
-  const truncated = raw.length > maxLines;
-  const previewLines = truncated
-    ? [...raw.slice(0, maxLines), '... [truncated]']
-    : raw;
-
-  return {
-    addedLines: addedSegment.length,
-    removedLines: removedSegment.length,
-    preview: previewLines.join('\n'),
-    truncated
-  };
-}
-
 function buildDiffPreview(
   action: 'create' | 'update',
   previousContent: string | null,
   nextContent: string
 ): StoryDeltaDiffPreview {
-  if (action === 'create' || !previousContent) {
-    return buildCreateDiffPreview(nextContent);
-  }
-  return buildUpdateDiffPreview(previousContent, nextContent);
+  const beforeContent = action === 'create'
+    ? ''
+    : (previousContent ?? '');
+  return buildSourceDiffPreview(beforeContent, nextContent, {
+    contextLines: 4,
+    maxRenderRows: 360
+  });
 }
 
 function resolveConflictSeverity(addedLines: number, removedLines: number): StoryDeltaConflictSeverity {

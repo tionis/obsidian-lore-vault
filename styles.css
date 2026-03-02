@@ -1117,6 +1117,11 @@
   padding: 8px;
 }
 
+.lorevault-story-delta-change.is-processed {
+  opacity: 0.62;
+  border-style: dashed;
+}
+
 .lorevault-story-delta-conflict-section {
   margin-top: 10px;
   border: 1px solid var(--background-modifier-border);
@@ -1131,6 +1136,15 @@
   background: var(--background-secondary);
 }
 
+.lorevault-story-delta-conflict-row.is-decided {
+  background: var(--background-primary-alt);
+}
+
+.lorevault-story-delta-conflict-row.is-processed {
+  opacity: 0.62;
+  border-style: dashed;
+}
+
 .lorevault-story-delta-change-header {
   display: flex;
   align-items: flex-start;
@@ -1138,16 +1152,82 @@
   font-size: 12px;
 }
 
-.lorevault-story-delta-change pre {
-  max-height: 220px;
-  overflow: auto;
+.lorevault-source-diff {
   margin-top: 8px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  padding: 8px;
-  background: var(--background-secondary);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
+  max-height: 360px;
+  overflow: auto;
+}
+
+.lorevault-source-diff-hunk + .lorevault-source-diff-hunk {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.lorevault-source-diff-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+  font-family: var(--font-monospace);
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.4;
+}
+
+.lorevault-source-diff-row + .lorevault-source-diff-row {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.lorevault-source-diff-line-number {
+  text-align: right;
+  padding: 4px 6px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.lorevault-source-diff-cell {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 4px 6px;
+}
+
+.lorevault-source-diff-row-add .lorevault-source-diff-cell-right {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.lorevault-source-diff-row-remove .lorevault-source-diff-cell-left {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.lorevault-source-diff-row-replace .lorevault-source-diff-cell-left {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.lorevault-source-diff-row-replace .lorevault-source-diff-cell-right {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.lorevault-source-diff-row-omitted {
+  grid-template-columns: 1fr;
+  padding: 4px 8px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  font-family: var(--font-monospace);
+  font-size: 11px;
+}
+
+.lorevault-source-diff-truncated {
+  padding: 6px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 1000px) {
+  .lorevault-source-diff-row {
+    grid-template-columns: 46px minmax(0, 1fr) 46px minmax(0, 1fr);
+  }
 }
 
 .lorevault-operation-log-view {

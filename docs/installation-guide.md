@@ -151,7 +151,7 @@ If you prefer to build the plugin from source:
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Author Note content is edited directly in the linked note (native Obsidian editor)
    - Optional: set `completionProfile: <preset-id>` in Author Note frontmatter (or via command `Set Author Note Completion Profile`) to override the completion profile for linked story operations
-   - `Rewrite Author Note` supports an optional change prompt and shows a diff review before apply
+   - `Rewrite Author Note` supports an optional change prompt and shows a side-by-side source diff review before apply
    - Lorebook scope selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-scope fallback)
    - In Story Writing panel, the device completion profile is selected from a dropdown and applies immediately
    - Cost profile label is configured in settings (not in Story Writing panel)
@@ -193,7 +193,7 @@ If you prefer to build the plugin from source:
    - Right-click and run `LoreVault: Run Text Command on Selection` (or run command palette action `Run Text Command on Selection`)
    - Choose/edit prompt template and optional lorebook-context toggle
    - Prompt templates are markdown notes from your prompt folder (`Text Command Prompt Notes Folder` in settings)
-   - Review diff modal and click `Apply Edit` (unless auto-accept is enabled)
+   - Review the side-by-side diff modal and click `Apply Edit` (unless auto-accept is enabled)
    - Configure defaults in Settings -> LoreVault -> `Text Commands`
 
 8. **Use Story Chat (Phase 10 foundation)**
@@ -249,7 +249,7 @@ If you prefer to build the plugin from source:
    - Set low-confidence threshold (operations below threshold are skipped in preview)
    - Click `Preview Story Delta` to inspect planned create/update writes
    - Monitor live chunk-stage progress while preview runs
-   - Review per-change dry-run diff previews
+   - Review per-change side-by-side dry-run diffs
    - Select approved changes and click `Apply Selected` (live per-file apply progress)
 
 ## Troubleshooting

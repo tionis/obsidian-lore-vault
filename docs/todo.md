@@ -20,6 +20,7 @@ Reference design: `docs/planning.md`.
 - Story Chat agentic tool layer is complete (bounded lorebook/story/steering tool calls with scoped access and optional write gating).
 - LLM operation log is complete (full request/response/tool-planner/embedding payload persistence, per-cost-profile files, retention controls, and in-plugin explorer view).
 - Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
+- Cross-panel diff UX is now standardized on side-by-side source diffs (text-command review + story-delta review).
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order
@@ -161,7 +162,7 @@ Reference design: `docs/planning.md`.
 - [x] Add command + editor context-menu action: `Run Text Command on Selection`.
 - [x] Add text-command prompt modal with template picker, custom prompt editing, and per-run context toggle.
 - [x] Add optional lorebook-context retrieval injection for text commands.
-- [x] Add review/approval modal with unified diff preview before apply.
+- [x] Add review/approval modal with side-by-side source diff preview before apply.
 - [x] Add auto-accept setting (default off) for direct apply.
 - [x] Add settings-backed prompt collection with JSON editor + load-defaults action.
 - [x] Add tests for deterministic diff preview generation.
@@ -257,6 +258,10 @@ Reference design: `docs/planning.md`.
   - [x] add dedicated conflict review rows with quick accept/reject/keep-both controls
   - [x] add conflict counters + filters in preview UI
   - [x] persist deterministic per-conflict override decisions into apply phase
+- [x] Diff UX clarity pass:
+  - [x] replace coarse preview blocks with side-by-side source diff hunks
+  - [x] add omitted-line markers and bounded truncation for long diffs
+  - [x] reuse one shared diff model across text-command and story-delta reviews
 - [x] Export freshness and rebuild policy:
   - [x] add setting: `manual` | `on_build` | `background_debounced`
   - [x] in background mode, debounce vault events and rebuild only impacted scopes

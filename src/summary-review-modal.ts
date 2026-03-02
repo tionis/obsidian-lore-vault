@@ -1,5 +1,7 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
 import { GeneratedSummaryMode } from './summary-utils';
+import { buildSourceDiffPreview } from './source-diff';
+import { renderSourceDiffPreview } from './source-diff-view';
 
 export interface SummaryReviewResult {
   action: 'cancel' | 'section';
@@ -42,6 +44,18 @@ export class SummaryReviewModal extends Modal {
     contentEl.createEl('h2', { text: `${modeLabel(this.mode)} Summary Review` });
     contentEl.createEl('p', { text: `Note: ${this.notePath}` });
 
+    const diffStats = contentEl.createEl('p');
+    const diffRoot = contentEl.createDiv();
+    const renderDiff = (): void => {
+      const diff = buildSourceDiffPreview(this.existingSummary, this.summaryText, {
+        contextLines: 2,
+        maxRenderRows: 200
+      });
+      diffStats.setText(`Diff: +${diff.addedLines} / -${diff.removedLines}${diff.truncated ? ' (truncated)' : ''}`);
+      renderSourceDiffPreview(diffRoot, diff);
+    };
+    renderDiff();
+
     if (this.existingSummary.trim()) {
       const existing = contentEl.createDiv({ cls: 'lorevault-summary-existing' });
       existing.createEl('h3', { text: 'Existing Summary' });
@@ -59,6 +73,7 @@ export class SummaryReviewModal extends Modal {
     textarea.rows = Math.min(14, Math.max(8, Math.ceil(this.summaryText.length / 120)));
     textarea.addEventListener('input', () => {
       this.summaryText = textarea.value;
+      renderDiff();
     });
 
     const actions = contentEl.createDiv({ cls: 'lorevault-summary-actions' });

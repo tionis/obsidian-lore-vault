@@ -983,6 +983,20 @@ export async function requestStoryContinuationStream(
   let finalText = '';
   let finalError = '';
   let aborted = false;
+  let downstreamDeltaError = '';
+  const safeOnDelta = (delta: string): void => {
+    if (!delta) {
+      return;
+    }
+    try {
+      request.onDelta(delta);
+    } catch (error) {
+      if (!downstreamDeltaError) {
+        downstreamDeltaError = error instanceof Error ? error.message : String(error);
+      }
+      console.error('LoreVault: Streaming delta consumer failed; continuing stream.', error);
+    }
+  };
 
   const controller = new AbortController();
   let timedOut = false;
@@ -1024,7 +1038,7 @@ export async function requestStoryContinuationStream(
         throw new Error(`Completion request failed (${response.status}): ${text}`);
       }
 
-      const result = await consumeOllamaNdjsonStream(response, request.onDelta);
+      const result = await consumeOllamaNdjsonStream(response, safeOnDelta);
       finalText = result.text;
       attempt.responseText = result.text;
       if (result.usage && request.onUsage) {
@@ -1079,7 +1093,7 @@ export async function requestStoryContinuationStream(
       throw new Error(`Completion request failed (${response.status}): ${text}`);
     }
 
-    const result = await consumeOpenAiSseStream(response, request.onDelta);
+    const result = await consumeOpenAiSseStream(response, safeOnDelta);
     finalText = result.text;
     attempt.responseText = result.text;
     if (result.usage && request.onUsage) {
@@ -1141,7 +1155,8 @@ export async function requestStoryContinuationStream(
       aborted,
       ...(finalError ? { error: finalError } : {}),
       request: {
-        messages
+        messages,
+        ...(downstreamDeltaError ? { deltaConsumerError: downstreamDeltaError } : {})
       },
       attempts,
       ...(finalText ? { finalText } : {}),

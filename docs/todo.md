@@ -315,8 +315,9 @@ Reference design: `docs/planning.md`.
   - [x] scale prior-chapter memory depth by available context budget (deterministic window expansion)
   - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output and shared Author Note linking
   - [x] add `Create Next Story Chapter` command + chapter-frontmatter-gated editor context action
-- [x] Text command canon consistency default prompt update:
-  - [x] bias default template toward lorebook factual consistency constraints
+- [x] Text command consistency default prompt updates:
+  - [x] bias `Canon Consistency Pass` template toward lorebook factual consistency constraints
+  - [x] add `Scene Consistency Pass` template for internal scene continuity fixes (character positions, movement continuity, object state, spatial logic)
 - [x] Repository release automation:
   - [x] add versioned release command that validates monotonic semver bump against `manifest.json`
   - [x] update `manifest.json` + `versions.json`, commit/tag, and push branch + tag with configurable remote/branch

@@ -431,6 +431,7 @@ Run flow:
 6. if auto-accept is off, review modal shows an editable review with side-by-side source diff before apply
 7. selected range is replaced only if selection still matches original text
 8. default `Canon Consistency Pass` template emphasizes lorebook factual consistency and only minimal style edits needed to fix canon conflicts
+9. default `Scene Consistency Pass` template focuses on internal scene continuity (character positions, movement continuity, object state, and immediate spatial logic) with minimal edits
 
 Settings (LoreVault -> Text Commands):
 

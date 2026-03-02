@@ -452,6 +452,11 @@ Prompt note frontmatter contract (per note in `promptsFolder`):
 - `id` (optional stable template id)
 - `includeLorebookContext: true|false` (default from settings)
 
+Built-in fallback templates (used when no prompt notes are found) include:
+
+- `Canon Consistency Pass`
+- `Scene Consistency Pass` (internal scene continuity pass)
+
 ## Story Chat Persistence
 
 Conversation persistence is note-backed in `storyChat.chatFolder`.

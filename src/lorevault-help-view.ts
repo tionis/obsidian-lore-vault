@@ -171,7 +171,8 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Use **Lorebook Auditor** to find weak entries and generate keywords.',
         'Use **Query Simulation** to inspect what context would be selected.',
-        'Use chapter/world summary commands to maintain concise memory context.'
+        'Use chapter/world summary commands to maintain concise memory context.',
+        'Use `Run Text Command on Selection` with built-in `Canon Consistency Pass` or `Scene Consistency Pass` templates for fast rewrite passes.'
       ],
       actions: [
         { label: 'Open Lorebook Auditor', onClick: () => void this.plugin.openLorebookAuditorView() },

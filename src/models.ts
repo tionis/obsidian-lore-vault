@@ -308,6 +308,12 @@ export const DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES: TextCommandPromptTemplate[] 
     name: 'Canon Consistency Pass',
     prompt: 'Edit this text to maximize factual consistency with lorebook facts and established character/world canon. Preserve intent, voice, and pacing; change only what is needed to resolve canon conflicts.',
     includeLorebookContext: true
+  },
+  {
+    id: 'scene-consistency',
+    name: 'Scene Consistency Pass',
+    prompt: 'Edit this text for internal scene consistency. Resolve contradictions in character positions, body orientation, movement continuity, prop/object state, and immediate spatial logic while preserving intent, voice, and pacing. Keep changes minimal and local to consistency fixes.',
+    includeLorebookContext: true
   }
 ];
 

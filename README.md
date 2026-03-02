@@ -19,6 +19,7 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 - Supports optional embedding-assisted fallback retrieval.
 - Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
 - Provides a Story Chat panel with per-conversation context controls.
+- Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass` and `Scene Consistency Pass`.
 - Keeps retrieval/debug behavior deterministic and inspectable.
 
 ## Quick Start

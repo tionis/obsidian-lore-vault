@@ -10,6 +10,7 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = process.argv[2] === "production";
+const externalBuiltins = builtins.filter((moduleName) => moduleName.replace(/^node:/, "") !== "events");
 
 const buildOptions = {
   banner: {
@@ -30,7 +31,7 @@ const buildOptions = {
     "@codemirror/view",
     "@lezer/common",
     "@lezer/highlight",
-    ...builtins,
+    ...externalBuiltins,
   ],
   format: "cjs",
   target: "es2018",

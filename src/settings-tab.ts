@@ -1247,7 +1247,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Completion API Key')
-      .setDesc('API key for the selected preset (not required for local Ollama). Stored in Obsidian Secret Storage, not in plugin data.json.')
+      .setDesc('Bootstrap key for the selected preset (not required for local Ollama). LoreVault only creates missing secrets and never overwrites existing secret values; update existing keys in Obsidian Secret Storage.')
       .addText(text => {
         text
           .setPlaceholder('sk-...')
@@ -1915,7 +1915,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedding API Key')
-      .setDesc('API key for provider auth (if required). Stored in Obsidian Secret Storage, not in plugin data.json.')
+      .setDesc('Bootstrap key for embeddings auth. LoreVault only creates missing secrets and never overwrites existing secret values; update existing keys in Obsidian Secret Storage.')
       .addText(text => {
         text
           .setPlaceholder('sk-...')

@@ -104,6 +104,7 @@ If you prefer to build the plugin from source:
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - API keys are stored via Obsidian Secret Storage (not in plugin `data.json`)
+   - LoreVault only creates missing secrets and never overwrites existing secret values
    - Secret IDs are configurable; use `Pick Existing` to reuse one stored secret across multiple presets
    - Each completion preset has its own `Completion API Secret Name` used for that preset's key
    - Optional: create model presets (`New Preset`, `Clone Current`, `Delete Selected`); preset edits auto-save and active preset selection is device-local (not synced between devices)

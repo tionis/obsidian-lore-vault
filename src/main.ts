@@ -425,8 +425,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     activeCompletionPresetId: '',
     activeCostProfile: ''
   };
-  private lastSyncedEmbeddingsSecret = '';
-  private lastSyncedPresetSecrets = new Map<string, string>();
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
@@ -1026,21 +1024,24 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
+    const createSecretIfMissing = async (secretKey: string, candidateValue: string): Promise<void> => {
+      const normalizedValue = candidateValue.trim();
+      if (!normalizedValue) {
+        return;
+      }
+      const existing = await storage.getSecret(secretKey);
+      if (existing !== null) {
+        return;
+      }
+      await storage.setSecret(secretKey, normalizedValue);
+    };
+
     const embeddingsSecretKey = this.resolveEmbeddingsSecretKey();
-    const embeddingsApiKey = this.settings.embeddings.apiKey.trim();
-    if (embeddingsApiKey !== this.lastSyncedEmbeddingsSecret) {
-      await storage.setSecret(embeddingsSecretKey, embeddingsApiKey);
-      this.lastSyncedEmbeddingsSecret = embeddingsApiKey;
-    }
+    await createSecretIfMissing(embeddingsSecretKey, this.settings.embeddings.apiKey);
 
     for (const preset of this.settings.completion.presets) {
       preset.apiKeySecretName = this.resolvePresetSecretName(preset);
-      const presetApiKey = preset.apiKey.trim();
-      if (presetApiKey === this.lastSyncedPresetSecrets.get(preset.id)) {
-        continue;
-      }
-      await storage.setSecret(this.getCompletionPresetSecretKey(preset), presetApiKey);
-      this.lastSyncedPresetSecrets.set(preset.id, presetApiKey);
+      await createSecretIfMissing(this.getCompletionPresetSecretKey(preset), preset.apiKey);
     }
   }
 
@@ -1051,11 +1052,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     const embeddingsSecretKey = this.resolveEmbeddingsSecretKey();
     this.settings.embeddings.apiKey = (await storage.getSecret(embeddingsSecretKey) ?? '').trim();
-    this.lastSyncedEmbeddingsSecret = this.settings.embeddings.apiKey;
     for (const preset of this.settings.completion.presets) {
       preset.apiKeySecretName = this.resolvePresetSecretName(preset);
       preset.apiKey = (await storage.getSecret(this.getCompletionPresetSecretKey(preset)) ?? '').trim();
-      this.lastSyncedPresetSecrets.set(preset.id, preset.apiKey);
     }
   }
 
@@ -6370,7 +6369,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         await this.persistSettingsSnapshot();
       }
     } catch (error) {
-      console.error('LoreVault: Secret storage initialization failed. Continuing without secret migration.', error);
+      console.error('LoreVault: Secret storage initialization failed. Continuing without secret hydration.', error);
     }
     this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
     this.storySteeringStore = new StorySteeringStore(
@@ -6922,12 +6921,6 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async saveData(settings: any) {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
-    const presetIdSet = new Set(this.settings.completion.presets.map(preset => preset.id));
-    for (const presetId of [...this.lastSyncedPresetSecrets.keys()]) {
-      if (!presetIdSet.has(presetId)) {
-        this.lastSyncedPresetSecrets.delete(presetId);
-      }
-    }
     const activeDevicePresetId = this.deviceProfileState.activeCompletionPresetId;
     if (activeDevicePresetId && !this.settings.completion.presets.some(preset => preset.id === activeDevicePresetId)) {
       this.deviceProfileState.activeCompletionPresetId = '';

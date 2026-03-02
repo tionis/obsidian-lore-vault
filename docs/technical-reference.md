@@ -10,7 +10,7 @@ This document is the implementation-level reference for core architecture and ru
   - export pipeline orchestration
   - completion orchestration
   - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings`)
-  - API key migration/hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs and optional existing-secret selection
+  - API key hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs; plugin only creates missing secrets and never overwrites existing values
   - device-local profile state via Obsidian local storage (active completion preset + optional cost profile label; auto API-key hash fallback when blank)
   - story-chat turn orchestration
   - vault-backed LLM operation log persistence (`operationLog` settings) with per-cost-profile JSONL namespace + explorer-view refresh hooks

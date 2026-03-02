@@ -204,6 +204,7 @@ Operations and reporting:
 - Operation Log Explorer includes a cost-profile selector and defaults to the active device profile.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
+- LoreVault only creates missing secrets; it never overwrites an existing secret value.
 - Secret IDs are user-configurable; you can pick existing IDs in settings to reuse one secret across multiple presets.
 - Each completion preset has its own `Completion API Secret Name` used to load that preset's API key.
 - Active completion preset and cost-profile label are device-local (Obsidian local storage), not shared vault settings.

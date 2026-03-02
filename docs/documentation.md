@@ -325,6 +325,7 @@ Settings:
 - enable/disable completion
 - provider, endpoint, api key, model
 - completion/embedding API keys are persisted in Obsidian Secret Storage (not in plugin `data.json`)
+- LoreVault only creates missing secrets and never overwrites existing secret values
 - secret IDs are user-defined; settings expose `Pick Existing` (from Obsidian secret storage) so multiple presets can share one key
 - reusable model presets (`New Preset`, `Clone Current`, `Delete Selected`)
 - preset edits are auto-saved; no separate update/save step
@@ -596,6 +597,7 @@ Capabilities:
   - device-local active preset selector (dropdown, applies immediately)
   - selector is disabled when Author Note `completionProfile` override is active and shows `Overridden by Author Note`
   - selected preset `Completion API Secret Name` for secret storage key mapping
+  - API key bootstrap fields only create missing secrets; update existing secret values via Obsidian Secret Storage
   - device-local cost profile label is configured in settings (usage metadata tagging only); if empty, usage falls back to an automatic API-key hash profile
   - cost breakdown is shown in the same section directly under the profile selector
 - lorebook scope controls for active story note:

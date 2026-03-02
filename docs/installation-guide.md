@@ -198,6 +198,7 @@ If you prefer to build the plugin from source:
 8. **Use Story Chat (Phase 10 foundation)**
    - Run command "Open Story Chat"
    - Use `Open Conversation` to interactively switch chats; use `New Chat` to create one
+   - Set `Chat Completion Profile` once for this device (shared across conversations), or leave it unset to use device/default completion settings
    - Optional: set the conversation note folder in Settings -> LoreVault -> `Story Chat Conversation Folder`
    - Select lorebooks to use via the add/remove list (leave empty for manual-only chat)
    - Optional: add manual context text in the panel
@@ -205,6 +206,7 @@ If you prefer to build the plugin from source:
    - Optional: add chapter/raw notes via `Add Chapter` / `Add Note` and remove list items as needed
    - Optional: enable Story Chat tool calls in settings to allow bounded lorebook/story/steering tools during chat turns
    - Send prompts and watch streamed responses
+   - Assistant message metadata shows the profile/model that generated each response
    - Use message actions: `Edit`, `Fork Here`, and `Regenerate` (latest assistant message)
    - Use message version selectors to switch between regenerated assistant variants
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`

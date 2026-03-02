@@ -22,6 +22,7 @@ export interface ConversationDocument {
   schemaVersion: number;
   id: string;
   title: string;
+  completionPresetId: string;
   createdAt: number;
   updatedAt: number;
   selectedScopes: string[];
@@ -74,6 +75,11 @@ export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined
 
   return {
     ...meta,
+    completionProfileSource: meta.completionProfileSource,
+    completionProfileId: meta.completionProfileId,
+    completionProfileName: meta.completionProfileName,
+    completionProvider: meta.completionProvider,
+    completionModel: meta.completionModel,
     scopes: [...meta.scopes],
     steeringSourceRefs: [...(meta.steeringSourceRefs ?? [])],
     steeringSourceScopes: [...(meta.steeringSourceScopes ?? [])],
@@ -103,6 +109,21 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
   }
 
   const meta = raw as Record<string, unknown>;
+  const completionProfileSource = typeof meta.completionProfileSource === 'string'
+    ? meta.completionProfileSource.trim()
+    : '';
+  const completionProfileId = typeof meta.completionProfileId === 'string'
+    ? meta.completionProfileId.trim()
+    : '';
+  const completionProfileName = typeof meta.completionProfileName === 'string'
+    ? meta.completionProfileName.trim()
+    : '';
+  const completionProvider = typeof meta.completionProvider === 'string'
+    ? meta.completionProvider.trim()
+    : '';
+  const completionModel = typeof meta.completionModel === 'string'
+    ? meta.completionModel.trim()
+    : '';
   return {
     usedLorebookContext: Boolean(meta.usedLorebookContext),
     usedManualContext: Boolean(meta.usedManualContext),
@@ -110,6 +131,11 @@ function normalizeContextMeta(raw: unknown): StoryChatContextMeta | undefined {
     usedChapterMemoryContext: Boolean(meta.usedChapterMemoryContext),
     usedInlineDirectives: Boolean(meta.usedInlineDirectives),
     usedContinuityState: Boolean(meta.usedContinuityState),
+    ...(completionProfileSource ? { completionProfileSource } : {}),
+    ...(completionProfileId ? { completionProfileId } : {}),
+    ...(completionProfileName ? { completionProfileName } : {}),
+    ...(completionProvider ? { completionProvider } : {}),
+    ...(completionModel ? { completionModel } : {}),
     scopes: Array.isArray(meta.scopes)
       ? meta.scopes.map(value => String(value ?? ''))
       : [],
@@ -267,6 +293,9 @@ export function normalizeConversationDocument(
   const selectedScopes = Array.isArray(payload.selectedScopes)
     ? dedupeStrings(payload.selectedScopes.map(value => String(value ?? '').trim()))
     : [];
+  const completionPresetId = typeof payload.completionPresetId === 'string'
+    ? payload.completionPresetId.trim()
+    : '';
   const noteContextRefs = Array.isArray(payload.noteContextRefs)
     ? dedupeStrings(payload.noteContextRefs.map(value => String(value ?? '').trim()))
     : [];
@@ -287,6 +316,7 @@ export function normalizeConversationDocument(
     schemaVersion: Number.isFinite(payload.schemaVersion) ? Math.floor(Number(payload.schemaVersion)) : CHAT_SCHEMA_VERSION,
     id: typeof payload.id === 'string' && payload.id.trim() ? payload.id : createId('conv'),
     title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : fallbackTitle,
+    completionPresetId,
     createdAt: Number.isFinite(payload.createdAt) ? Math.floor(Number(payload.createdAt)) : now,
     updatedAt: Number.isFinite(payload.updatedAt) ? Math.floor(Number(payload.updatedAt)) : now,
     selectedScopes,
@@ -684,6 +714,7 @@ export function parseConversationMarkdown(
     schemaVersion: parsed.frontmatter.schema_version,
     id: parsed.frontmatter.session_id,
     title: parsed.frontmatter.title,
+    completionPresetId: parsed.frontmatter.completion_preset_id,
     createdAt: parseTimestampValue(parsed.frontmatter.created),
     updatedAt: parseTimestampValue(parsed.frontmatter.last_active),
     selectedScopes: asStringArray(parsed.frontmatter.selected_lorebooks),
@@ -722,6 +753,7 @@ export function serializeConversationMarkdown(document: ConversationDocument): s
   lines.push('type: agent-session');
   lines.push(`schema_version: ${CHAT_SCHEMA_VERSION}`);
   lines.push(`title: ${serializeYamlScalar(document.title)}`);
+  lines.push(`completion_preset_id: ${serializeYamlScalar(document.completionPresetId ?? '')}`);
   appendYamlArray(lines, 'selected_lorebooks', normalizedSelectedScopes);
   lines.push(`use_lorebook_context: ${serializeYamlScalar(document.useLorebookContext)}`);
   appendYamlArray(lines, 'author_note_refs', normalizedSteeringRefs);

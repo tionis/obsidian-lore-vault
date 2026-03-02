@@ -66,6 +66,7 @@ test('buildStoryChatContextInspectorSummary exposes directive counts and scope l
 
 test('buildStoryChatContextInspectorLines renders inline directives and optional diagnostics', () => {
   const lines = buildStoryChatContextInspectorLines(buildMeta());
+  assert.ok(lines.includes('completion profile: base settings | model: (unknown)'));
   assert.ok(lines.includes('steering refs: note:stories/ch03.md'));
   assert.ok(lines.includes('steering scopes: global:global, story:chronicles-main'));
   assert.ok(lines.includes('unresolved steering refs: (none)'));

@@ -116,8 +116,10 @@ Per-conversation context controls are ordered as:
 Additional behavior:
 
 - `Open Conversation` picker + `New Chat`
+- device-level `Chat Completion Profile` selector in Story Chat (independent from Story Writing panel profile selection; shared across conversations)
 - markdown-rendered messages
 - edit/fork/regenerate message actions
+- assistant message metadata shows the profile/model used for that response
 - chat sessions are saved as readable markdown notes with frontmatter + `## User` / `## Model` transcript sections
 - optional bounded tool-calling (search/read lorebooks and selected notes, read/update linked author note)
 - per-response context inspector and layer/token diagnostics

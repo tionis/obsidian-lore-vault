@@ -23,7 +23,13 @@ export function buildStoryChatContextInspectorSummary(meta: StoryChatContextMeta
 }
 
 export function buildStoryChatContextInspectorLines(meta: StoryChatContextMeta): string[] {
+  const completionProfileLabel = meta.completionProfileName
+    || meta.completionProfileId
+    || meta.completionProfileSource
+    || 'base settings';
+  const completionModelLabel = meta.completionModel || '(unknown)';
   const lines: string[] = [
+    `completion profile: ${completionProfileLabel} | model: ${completionModelLabel}`,
     `Tokens: ${meta.contextTokens} | lorebook: ${meta.usedLorebookContext ? 'on' : 'off'} | manual: ${meta.usedManualContext ? 'on' : 'off'} | inline-directives: ${meta.usedInlineDirectives ? 'on' : 'off'} | specific-notes: ${meta.usedSpecificNotesContext ? 'on' : 'off'}`,
     `chapter-memory: ${meta.usedChapterMemoryContext ? 'on' : 'off'} | chapters: ${joinOrNone(meta.chapterMemoryItems, ', ')}`,
     `steering refs: ${joinOrNone(meta.steeringSourceRefs, ', ')}`,

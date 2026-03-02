@@ -192,6 +192,11 @@ export interface StoryChatContextMeta {
   usedChapterMemoryContext?: boolean;
   usedInlineDirectives?: boolean;
   usedContinuityState?: boolean;
+  completionProfileSource?: string;
+  completionProfileId?: string;
+  completionProfileName?: string;
+  completionProvider?: string;
+  completionModel?: string;
   scopes: string[];
   steeringSourceRefs?: string[];
   steeringSourceScopes?: string[];

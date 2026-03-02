@@ -152,8 +152,10 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Open chat with `Open Story Chat`.',
         'Switch chats with `Open Conversation` and create new ones with `New Chat`.',
+        'Story Chat uses a device-level `Chat Completion Profile` selector independent from Story Writing profile selection.',
         'Per-chat context lists: Lorebooks, Author Notes, Chapters/Raw Notes, and Manual Context.',
         'Chat messages render markdown and support edit/fork/regenerate.',
+        'Assistant message metadata shows which profile/model generated that response.',
         'Conversations are saved as readable markdown session notes.'
       ],
       actions: [

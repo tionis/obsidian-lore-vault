@@ -234,6 +234,7 @@ export interface GenerationTelemetry {
 export interface StoryChatTurnRequest {
   userMessage: string;
   selectedScopes: string[];
+  completionPresetId?: string;
   useLorebookContext: boolean;
   manualContext: string;
   steeringScopeRefs: string[];
@@ -309,10 +310,12 @@ interface LoreVaultSecretStorage {
 
 interface DeviceProfileState {
   activeCompletionPresetId: string;
+  activeStoryChatPresetId: string;
   activeCostProfile: string;
 }
 
 type CompletionProfileSource = 'author_note' | 'device' | 'base';
+type StoryChatCompletionProfileSource = 'chat' | 'device' | 'base';
 
 interface CompletionProfileResolution {
   completion: ConverterSettings['completion'];
@@ -423,6 +426,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private operationLogViewRefreshTimer: number | null = null;
   private deviceProfileState: DeviceProfileState = {
     activeCompletionPresetId: '',
+    activeStoryChatPresetId: '',
     activeCostProfile: ''
   };
 
@@ -637,12 +641,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (!raw || typeof raw !== 'object') {
       return {
         activeCompletionPresetId: '',
+        activeStoryChatPresetId: '',
         activeCostProfile: ''
       };
     }
     const objectState = raw as Partial<DeviceProfileState>;
     return {
       activeCompletionPresetId: (objectState.activeCompletionPresetId ?? '').toString().trim(),
+      activeStoryChatPresetId: (objectState.activeStoryChatPresetId ?? '').toString().trim(),
       activeCostProfile: (objectState.activeCostProfile ?? '').toString().trim()
     };
   }
@@ -669,6 +675,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     ) {
       loaded.activeCompletionPresetId = '';
     }
+    if (!loaded.activeStoryChatPresetId) {
+      loaded.activeStoryChatPresetId = loaded.activeCompletionPresetId;
+    }
+    if (
+      loaded.activeStoryChatPresetId
+      && !this.settings.completion.presets.some(preset => preset.id === loaded.activeStoryChatPresetId)
+    ) {
+      loaded.activeStoryChatPresetId = '';
+    }
 
     this.deviceProfileState = loaded;
     try {
@@ -688,6 +703,10 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   public getDeviceActiveCompletionPresetId(): string {
     return this.deviceProfileState.activeCompletionPresetId;
+  }
+
+  public getDeviceActiveStoryChatPresetId(): string {
+    return this.deviceProfileState.activeStoryChatPresetId;
   }
 
   public getDeviceActiveCostProfile(): string {
@@ -769,6 +788,19 @@ export default class LoreBookConverterPlugin extends Plugin {
     await this.persistDeviceProfileState();
     this.syncIdleGenerationTelemetryToSettings();
     this.refreshStorySteeringViews();
+  }
+
+  public async setDeviceActiveStoryChatPresetId(presetId: string): Promise<void> {
+    const normalized = presetId.trim();
+    const nextId = normalized && this.settings.completion.presets.some(preset => preset.id === normalized)
+      ? normalized
+      : '';
+    if (nextId === this.deviceProfileState.activeStoryChatPresetId) {
+      return;
+    }
+    this.deviceProfileState.activeStoryChatPresetId = nextId;
+    await this.persistDeviceProfileState();
+    this.refreshStoryChatViews();
   }
 
   public async setDeviceActiveCostProfile(costProfile: string): Promise<void> {
@@ -950,6 +982,50 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     }
 
+    const fallback = this.resolveEffectiveCompletionForStoryChat('');
+    const fallbackSource: CompletionProfileSource = fallback.source === 'device' ? 'device' : 'base';
+    return {
+      completion: fallback.completion,
+      source: fallbackSource,
+      presetId: fallback.presetId,
+      presetName: fallback.presetName,
+      authorNotePath
+    };
+  }
+
+  public resolveEffectiveCompletionForStoryChat(chatPresetId?: string | null): {
+    completion: ConverterSettings['completion'];
+    source: StoryChatCompletionProfileSource;
+    presetId: string;
+    presetName: string;
+  } {
+    const baseCompletion = this.cloneCompletionConfig(this.settings.completion);
+    const requestedPresetId = (chatPresetId ?? '').trim();
+    if (requestedPresetId) {
+      const preset = this.getCompletionPresetById(requestedPresetId);
+      if (preset) {
+        return {
+          completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
+          source: 'chat',
+          presetId: preset.id,
+          presetName: preset.name
+        };
+      }
+    }
+
+    const deviceStoryChatPresetId = this.deviceProfileState.activeStoryChatPresetId;
+    if (deviceStoryChatPresetId) {
+      const preset = this.getCompletionPresetById(deviceStoryChatPresetId);
+      if (preset) {
+        return {
+          completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
+          source: 'chat',
+          presetId: preset.id,
+          presetName: preset.name
+        };
+      }
+    }
+
     const devicePresetId = this.deviceProfileState.activeCompletionPresetId;
     if (devicePresetId) {
       const preset = this.getCompletionPresetById(devicePresetId);
@@ -958,8 +1034,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
           source: 'device',
           presetId: preset.id,
-          presetName: preset.name,
-          authorNotePath
+          presetName: preset.name
         };
       }
     }
@@ -968,8 +1043,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       completion: baseCompletion,
       source: 'base',
       presetId: '',
-      presetName: '',
-      authorNotePath
+      presetName: ''
     };
   }
 
@@ -4814,7 +4888,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const activeStoryFile = this.app.workspace.getActiveFile();
-    const completionResolution = await this.resolveEffectiveCompletionForFile(activeStoryFile);
+    const completionResolution = this.resolveEffectiveCompletionForStoryChat(request.completionPresetId ?? '');
     const completion = completionResolution.completion;
     if (!completion.enabled) {
       throw new Error('Writing completion is disabled. Enable it under LoreVault Settings → Writing Completion.');
@@ -5342,6 +5416,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       usedSpecificNotesContext: specificNotePaths.length > 0,
       usedChapterMemoryContext: chapterMemoryItems.length > 0,
       usedInlineDirectives: resolvedInlineDirectiveItems.length > 0,
+      completionProfileSource: completionResolution.source,
+      completionProfileId: completionResolution.presetId,
+      completionProfileName: completionResolution.presetName,
+      completionProvider: completion.provider,
+      completionModel: completion.model,
       scopes: selectedScopes,
       steeringSourceRefs: steeringSourceResolution.resolvedRefs,
       steeringSourceScopes: steeringSourceResolution.resolvedScopeLabels,
@@ -5489,7 +5568,21 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
     } catch (error) {
       if (!this.isAbortLikeError(error)) {
-        streamFailure = error instanceof Error ? error : new Error(String(error));
+        const normalizedError = error instanceof Error ? error : new Error(String(error));
+        const normalizedMessage = normalizedError.message.toLowerCase();
+        if (normalizedMessage.includes('401') || normalizedMessage.includes('unauthorized')) {
+          const profileLabel = completionResolution.presetName
+            || (completionResolution.source === 'device' ? 'device profile' : 'default profile');
+          const profileSecret = completionResolution.presetId
+            ? (this.getCompletionPresetById(completionResolution.presetId)?.apiKeySecretName ?? '').trim()
+            : completion.apiKeySecretName.trim();
+          const secretHint = profileSecret ? ` Check secret "${profileSecret}" for this profile.` : '';
+          streamFailure = new Error(
+            `Chat completion authentication failed for ${profileLabel}.${secretHint} ${normalizedError.message}`.trim()
+          );
+        } else {
+          streamFailure = normalizedError;
+        }
       }
     } finally {
       this.generationInFlight = false;
@@ -6921,9 +7014,21 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   async saveData(settings: any) {
     this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
+    let localStateUpdated = false;
     const activeDevicePresetId = this.deviceProfileState.activeCompletionPresetId;
     if (activeDevicePresetId && !this.settings.completion.presets.some(preset => preset.id === activeDevicePresetId)) {
       this.deviceProfileState.activeCompletionPresetId = '';
+      localStateUpdated = true;
+    }
+    const activeStoryChatPresetId = this.deviceProfileState.activeStoryChatPresetId;
+    if (
+      activeStoryChatPresetId
+      && !this.settings.completion.presets.some(preset => preset.id === activeStoryChatPresetId)
+    ) {
+      this.deviceProfileState.activeStoryChatPresetId = '';
+      localStateUpdated = true;
+    }
+    if (localStateUpdated) {
       await this.persistDeviceProfileState();
     }
     await this.persistSettingsSnapshot();

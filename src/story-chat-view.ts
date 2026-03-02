@@ -168,6 +168,7 @@ export class StoryChatView extends ItemView {
   private activeConversationPath = '';
   private conversationId = '';
   private conversationTitle = '';
+  private completionPresetId = '';
   private conversationCreatedAt = 0;
   private selectedScopes = new Set<string>();
   private manualContext = '';
@@ -277,6 +278,7 @@ export class StoryChatView extends ItemView {
     const config = this.plugin.getStoryChatConfig();
     this.chatFolder = config.chatFolder?.trim() || 'LoreVault/chat';
     this.activeConversationPath = config.activeConversationPath?.trim() || '';
+    this.completionPresetId = this.plugin.getDeviceActiveStoryChatPresetId();
   }
 
   private async persistSettingsState(): Promise<void> {
@@ -391,6 +393,7 @@ export class StoryChatView extends ItemView {
       schemaVersion: CHAT_SCHEMA_VERSION,
       id: this.conversationId || this.createId('conv'),
       title: this.conversationTitle || 'Story Chat',
+      completionPresetId: this.completionPresetId,
       createdAt: this.conversationCreatedAt || updatedAt,
       updatedAt,
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
@@ -498,6 +501,7 @@ export class StoryChatView extends ItemView {
       schemaVersion: CHAT_SCHEMA_VERSION,
       id: this.createId('conv'),
       title: title.trim() || 'Story Chat',
+      completionPresetId: this.completionPresetId,
       createdAt: now,
       updatedAt: now,
       selectedScopes: [...this.selectedScopes].sort((a, b) => a.localeCompare(b)),
@@ -619,6 +623,16 @@ export class StoryChatView extends ItemView {
     );
   }
 
+  private getCompletionProfileSourceLabel(source: string): string {
+    if (source === 'chat') {
+      return 'chat profile';
+    }
+    if (source === 'device') {
+      return 'device profile';
+    }
+    return 'base settings';
+  }
+
   private renderConversationBar(container: HTMLElement): void {
     const row = container.createDiv({ cls: 'lorevault-chat-conversation-row' });
     row.createEl('strong', { text: 'Conversation' });
@@ -646,6 +660,55 @@ export class StoryChatView extends ItemView {
     newButton.addEventListener('click', () => {
       void this.createConversationAndRender('Story Chat', null);
     });
+
+    const profileRow = container.createDiv({ cls: 'lorevault-chat-conversation-row lorevault-chat-profile-row' });
+    profileRow.createEl('strong', { text: 'Chat Completion Profile' });
+    const profileSelect = profileRow.createEl('select', {
+      cls: 'dropdown lorevault-chat-profile-select'
+    });
+    profileSelect.createEl('option', { value: '', text: '(Use device/default)' });
+    const availablePresets = this.plugin.getCompletionPresetItems();
+    for (const preset of availablePresets) {
+      profileSelect.createEl('option', { value: preset.id, text: preset.name });
+    }
+
+    const selectedPresetId = this.completionPresetId.trim();
+    const selectedPreset = selectedPresetId
+      ? this.plugin.getCompletionPresetById(selectedPresetId)
+      : null;
+    if (selectedPresetId && !selectedPreset) {
+      profileSelect.createEl('option', {
+        value: selectedPresetId,
+        text: `[Missing] ${selectedPresetId}`
+      });
+    }
+    profileSelect.value = selectedPresetId;
+    profileSelect.disabled = this.isSending;
+    profileSelect.addEventListener('change', () => {
+      this.completionPresetId = profileSelect.value.trim();
+      this.render();
+      void this.plugin.setDeviceActiveStoryChatPresetId(this.completionPresetId).catch(error => {
+        console.error('Failed to set story chat completion profile:', error);
+        new Notice(`Failed to set story chat completion profile: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    });
+
+    const profileSummary = this.plugin.resolveEffectiveCompletionForStoryChat(this.completionPresetId);
+    const summaryLabel = [
+      profileSummary.presetName || this.getCompletionProfileSourceLabel(profileSummary.source),
+      profileSummary.completion.model
+    ].filter(Boolean).join(' · ');
+    profileRow.createEl('span', {
+      cls: 'lorevault-chat-profile-summary',
+      text: `Effective: ${summaryLabel}`
+    });
+
+    if (selectedPresetId && !selectedPreset) {
+      profileRow.createEl('span', {
+        cls: 'lorevault-chat-profile-warning',
+        text: `Missing preset "${selectedPresetId}". Falling back to device/default chat profile resolution.`
+      });
+    }
   }
 
   private renderHeader(container: HTMLElement): void {
@@ -1104,6 +1167,19 @@ export class StoryChatView extends ItemView {
     }
   }
 
+  private formatAssistantProfileMeta(meta: StoryChatContextMeta | undefined): string {
+    if (!meta) {
+      return '';
+    }
+    const sourceLabel = this.getCompletionProfileSourceLabel(meta.completionProfileSource ?? '');
+    const profileLabel = (meta.completionProfileName ?? '').trim() || (meta.completionProfileId ?? '').trim() || sourceLabel;
+    const modelLabel = (meta.completionModel ?? '').trim();
+    if (!modelLabel) {
+      return `Profile: ${profileLabel}`;
+    }
+    return `Profile: ${profileLabel} · Model: ${modelLabel}`;
+  }
+
   private renderMessageEditor(container: HTMLElement): void {
     const editor = container.createEl('textarea', { cls: 'lorevault-chat-message-editor' });
     editor.value = this.editingMessageDraft;
@@ -1175,7 +1251,17 @@ export class StoryChatView extends ItemView {
       row.setAttr('data-message-id', message.id);
 
       const meta = row.createDiv({ cls: 'lorevault-chat-message-meta' });
-      meta.setText(`${message.role === 'assistant' ? 'Assistant' : 'You'} · ${formatTime(message.createdAt)}`);
+      const metaParts = [
+        message.role === 'assistant' ? 'Assistant' : 'You',
+        formatTime(message.createdAt)
+      ];
+      if (message.role === 'assistant') {
+        const profileMeta = this.formatAssistantProfileMeta(version.contextMeta);
+        if (profileMeta) {
+          metaParts.push(profileMeta);
+        }
+      }
+      meta.setText(metaParts.join(' · '));
 
       this.renderMessageVersionSwitcher(row, message);
       this.renderAssistantContextMeta(row, version, message);
@@ -1493,6 +1579,7 @@ export class StoryChatView extends ItemView {
       const result = await this.plugin.runStoryChatTurn({
         userMessage: prompt,
         selectedScopes: [...this.selectedScopes],
+        completionPresetId: this.completionPresetId,
         useLorebookContext: this.selectedScopes.size > 0,
         manualContext: this.manualContext,
         steeringScopeRefs: [...this.steeringScopeRefs],

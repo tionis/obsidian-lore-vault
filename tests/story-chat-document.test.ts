@@ -53,6 +53,7 @@ test('normalizeConversationDocument sanitizes malformed conversation payloads', 
 
   assert.equal(normalized.schemaVersion, CHAT_SCHEMA_VERSION);
   assert.equal(normalized.title, 'Test Chat');
+  assert.equal(normalized.completionPresetId, '');
   assert.deepEqual(normalized.selectedScopes, ['universe', 'world/a']);
   assert.deepEqual(normalized.noteContextRefs, ['Characters/Alice']);
   assert.deepEqual(normalized.steeringScopeRefs, ['note:Characters/Alice']);
@@ -82,6 +83,7 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
     schemaVersion: CHAT_SCHEMA_VERSION,
     id: 'conv-1',
     title: 'Story Chat',
+    completionPresetId: 'chat-high-consistency',
     createdAt: 1700000000000,
     updatedAt: 1700000100000,
     selectedScopes: ['universe/core'],
@@ -180,11 +182,13 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
   assert.ok(parsed);
   assert.match(markdown, /^---\n/);
   assert.match(markdown, /^type: agent-session$/m);
+  assert.match(markdown, /^completion_preset_id: "chat-high-consistency"$/m);
   assert.match(markdown, /^## User$/m);
   assert.match(markdown, /^## Model$/m);
   assert.match(markdown, /^> \[!assistant\]\+$/m);
   assert.equal(parsed?.id, document.id);
   assert.equal(parsed?.title, document.title);
+  assert.equal(parsed?.completionPresetId, document.completionPresetId);
   assert.equal(parsed?.messages.length, document.messages.length);
   assert.equal(parsed?.messages[0].versions[0].content, document.messages[0].versions[0].content);
   assert.deepEqual(parsed?.messages[1].versions[0].contextMeta, document.messages[1].versions[0].contextMeta);
@@ -279,6 +283,7 @@ test('parseConversationMarkdown reads sample-style agent session markdown', () =
   assert.ok(parsed);
   assert.equal(parsed?.id, 'session_1772382740438_x15u1lzas');
   assert.equal(parsed?.title, 'Yggdrasil Political Landscape');
+  assert.equal(parsed?.completionPresetId, '');
   assert.equal(parsed?.messages.length, 2);
   assert.equal(parsed?.messages[0].role, 'user');
   assert.equal(parsed?.messages[1].role, 'assistant');

@@ -864,6 +864,8 @@ Current behavior:
 - shows active conversation title with inline actions:
   - `Open Conversation` (interactive picker)
   - `New Chat`
+- exposes device-level Story Chat completion profile selection (`Chat Completion Profile`) independent from Story Writing panel profile selection
+- selected chat profile is shared across conversations on the same device and falls back to device/default completion when unset
 - stores per-chat context controls:
   - selected lorebook scopes (add/remove list)
   - author note refs (interactive picker + remove; stored as `note:*` refs)
@@ -876,8 +878,10 @@ Current behavior:
   - `Regenerate` on latest assistant turn (adds a new assistant version)
 - allows switching between multiple generated versions of a message; only selected version is used for future context
 - renders message content as markdown inside the chat transcript
+- assistant message metadata includes the effective completion profile/model used for that turn
 - persists each chat/fork as a markdown note under `LoreVault/chat`
 - conversation-note format is human-readable (`agent-session` frontmatter + `## User` / `## Model` transcript sections)
+- conversation frontmatter stores `completion_preset_id` as a snapshot of the active Story Chat profile when the conversation is saved
 - legacy JSON code-block conversation notes are not loaded; Story Chat expects `agent-session` notes
 - plugin settings persist active conversation path and chat folder
 - chat folder path is configurable in settings (`Story Chat Conversation Folder`)
@@ -904,6 +908,7 @@ Turn context assembly:
 - optional author-note context blocks resolved from selected author notes
 - recent chat history window
 - deterministic context inspector metadata attached to assistant turns:
+  - effective completion profile source/id/name and completion model
   - selected scopes
   - resolved steering source refs + resolved author-note paths
   - unresolved steering source refs

@@ -485,6 +485,27 @@
   gap: 6px;
 }
 
+.lorevault-chat-profile-row {
+  align-items: center;
+}
+
+.lorevault-chat-profile-select {
+  min-width: 220px;
+  flex: 0 1 340px;
+}
+
+.lorevault-chat-profile-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 1 1 320px;
+}
+
+.lorevault-chat-profile-warning {
+  font-size: 12px;
+  color: var(--text-error, var(--color-red));
+  flex: 1 1 100%;
+}
+
 .lorevault-chat-generation-monitor {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;

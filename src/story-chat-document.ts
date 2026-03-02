@@ -29,9 +29,6 @@ export interface ConversationDocument {
   useLorebookContext: boolean;
   manualContext: string;
   steeringScopeRefs: string[];
-  pinnedInstructions: string;
-  storyNotes: string;
-  sceneIntent: string;
   continuityPlotThreads: string[];
   continuityOpenLoops: string[];
   continuityCanonDeltas: string[];
@@ -323,9 +320,6 @@ export function normalizeConversationDocument(
     useLorebookContext: Boolean(payload.useLorebookContext ?? true),
     manualContext: typeof payload.manualContext === 'string' ? payload.manualContext : '',
     steeringScopeRefs,
-    pinnedInstructions: typeof payload.pinnedInstructions === 'string' ? payload.pinnedInstructions : '',
-    storyNotes: typeof payload.storyNotes === 'string' ? payload.storyNotes : '',
-    sceneIntent: typeof payload.sceneIntent === 'string' ? payload.sceneIntent : '',
     continuityPlotThreads,
     continuityOpenLoops,
     continuityCanonDeltas,
@@ -809,17 +803,7 @@ function parseMessageSections(body: string, createId: CreateIdFn): ConversationM
     const versionCreatedAt = parseTimestampValue(tableValues.time) ?? Date.now();
     const activeVersion = parseBooleanText(tableValues['active version']) === true;
 
-    let contextMeta = parseContextMetaFromMetadataCallout(sectionBody);
-    if (!contextMeta) {
-      const legacyContextMetaMatch = sectionBody.match(/<!--\s*LV_CHAT_CONTEXT_META:\s*([\s\S]*?)\s*-->/i);
-      if (legacyContextMetaMatch) {
-        try {
-          contextMeta = normalizeContextMeta(JSON.parse(legacyContextMetaMatch[1].trim()) as unknown);
-        } catch (error) {
-          console.error('Failed to parse Story Chat context metadata:', error);
-        }
-      }
-    }
+    const contextMeta = parseContextMetaFromMetadataCallout(sectionBody);
 
     const version: ChatMessageVersion = {
       id: versionId,
@@ -1052,9 +1036,6 @@ export function parseConversationMarkdown(
     useLorebookContext: parsed.frontmatter.use_lorebook_context,
     manualContext: extractFencedTextSection(parsed.body, 'Manual Context'),
     steeringScopeRefs: asStringArray(parsed.frontmatter.author_note_refs),
-    pinnedInstructions: extractFencedTextSection(parsed.body, 'Pinned Instructions'),
-    storyNotes: extractFencedTextSection(parsed.body, 'Story Notes'),
-    sceneIntent: extractFencedTextSection(parsed.body, 'Scene Intent'),
     continuityPlotThreads: asStringArray(parsed.frontmatter.continuity_plot_threads),
     continuityOpenLoops: asStringArray(parsed.frontmatter.continuity_open_loops),
     continuityCanonDeltas: asStringArray(parsed.frontmatter.continuity_canon_deltas),
@@ -1108,9 +1089,6 @@ export function serializeConversationMarkdown(document: ConversationDocument): s
   lines.push('## Conversation Context');
   lines.push('');
   renderTextSection(lines, 'Manual Context', document.manualContext);
-  renderTextSection(lines, 'Pinned Instructions', document.pinnedInstructions);
-  renderTextSection(lines, 'Story Notes', document.storyNotes);
-  renderTextSection(lines, 'Scene Intent', document.sceneIntent);
 
   for (const message of document.messages) {
     for (const version of message.versions) {

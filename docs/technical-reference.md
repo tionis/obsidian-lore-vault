@@ -457,7 +457,7 @@ Stored structure:
 
 - `agent-session` frontmatter (`session_id`, title/timestamps, selected lorebooks/refs, continuity flags)
 - `completion_preset_id` frontmatter value persisted as a snapshot of the active device Story Chat profile when saved
-- conversation context sections (`Manual Context`, `Pinned Instructions`, `Story Notes`, `Scene Intent`)
+- conversation context section (`Manual Context`)
 - per-conversation author-note refs (`note:*`)
 - per-conversation chapter/raw note refs
 - per-conversation lorebook scope selection

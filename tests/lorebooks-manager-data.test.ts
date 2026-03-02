@@ -121,9 +121,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       promptReserveTokens: 400,
       timeoutMs: 60000,
       layerPlacement: {
-        pinnedInstructions: 'system',
-        storyNotes: 'pre_history',
-        sceneIntent: 'pre_response'
+        storyNotes: 'pre_history'
       },
       presets: [],
       activePresetId: '',
@@ -136,9 +134,6 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       useLorebookContext: true,
       manualContext: '',
       steeringScopeRefs: [],
-      pinnedInstructions: '',
-      storyNotes: '',
-      sceneIntent: '',
       continuityPlotThreads: [],
       continuityOpenLoops: [],
       continuityCanonDeltas: [],

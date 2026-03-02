@@ -235,9 +235,6 @@ export interface StoryChatTurnRequest {
   useLorebookContext: boolean;
   manualContext: string;
   steeringScopeRefs: string[];
-  pinnedInstructions: string;
-  storyNotes: string;
-  sceneIntent: string;
   continuityPlotThreads: string[];
   continuityOpenLoops: string[];
   continuityCanonDeltas: string[];
@@ -1206,17 +1203,9 @@ export default class LoreBookConverterPlugin extends Plugin {
   private getCompletionLayerPlacementConfig(): ConverterSettings['completion']['layerPlacement'] {
     const configured = this.settings.completion.layerPlacement ?? DEFAULT_SETTINGS.completion.layerPlacement;
     return {
-      pinnedInstructions: this.resolvePromptLayerPlacement(
-        configured.pinnedInstructions,
-        DEFAULT_SETTINGS.completion.layerPlacement.pinnedInstructions
-      ),
       storyNotes: this.resolvePromptLayerPlacement(
         configured.storyNotes,
         DEFAULT_SETTINGS.completion.layerPlacement.storyNotes
-      ),
-      sceneIntent: this.resolvePromptLayerPlacement(
-        configured.sceneIntent,
-        DEFAULT_SETTINGS.completion.layerPlacement.sceneIntent
       )
     };
   }
@@ -4886,12 +4875,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       ? requestedScopes
       : (await this.resolveStoryScopeSelection(activeStoryFile)).scopes;
     const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
-    const mergedAuthorNote = this.mergeSteeringText(
-      mergedScopedSteering.authorNote,
-      request.pinnedInstructions,
-      request.storyNotes,
-      request.sceneIntent
-    );
+    const mergedAuthorNote = mergedScopedSteering.authorNote;
     const continuityPlotThreads = this.mergeSteeringList(
       this.normalizeContinuityItems(request.continuityPlotThreads ?? [])
     );
@@ -5019,14 +5003,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         const perScopeBudget = Math.max(64, Math.floor(contextBudget / selectedScopes.length));
         const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
         const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
-        for (const scope of selectedScopes) {
-          contexts.push(await this.liveContextIndex.query({
-            queryText: querySeed || request.userMessage,
-            tokenBudget: perScopeBudget,
-            maxWorldInfoEntries: perScopeWorldInfoLimit,
-            maxRagDocuments: perScopeRagLimit
-          }, scope));
-        }
+        contexts = await Promise.all(selectedScopes.map(scope => this.liveContextIndex.query({
+          queryText: querySeed || request.userMessage,
+          tokenBudget: perScopeBudget,
+          maxWorldInfoEntries: perScopeWorldInfoLimit,
+          maxRagDocuments: perScopeRagLimit
+        }, scope)));
 
         usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
         const remaining = availableForLorebookContext - usedContextTokens;
@@ -5995,17 +5977,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
     const completionLayerPlacement = merged.completion.layerPlacement ?? DEFAULT_SETTINGS.completion.layerPlacement;
     merged.completion.layerPlacement = {
-      pinnedInstructions: this.resolvePromptLayerPlacement(
-        completionLayerPlacement.pinnedInstructions,
-        DEFAULT_SETTINGS.completion.layerPlacement.pinnedInstructions
-      ),
       storyNotes: this.resolvePromptLayerPlacement(
         completionLayerPlacement.storyNotes,
         DEFAULT_SETTINGS.completion.layerPlacement.storyNotes
-      ),
-      sceneIntent: this.resolvePromptLayerPlacement(
-        completionLayerPlacement.sceneIntent,
-        DEFAULT_SETTINGS.completion.layerPlacement.sceneIntent
       )
     };
     const rawPresets = Array.isArray(merged.completion.presets) ? merged.completion.presets : [];
@@ -6071,9 +6045,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.storyChat.steeringScopeRefs = normalizeStoryChatSteeringRefs(
       steeringScopeRefs.map(ref => String(ref ?? ''))
     );
-    merged.storyChat.pinnedInstructions = (merged.storyChat.pinnedInstructions ?? '').toString();
-    merged.storyChat.storyNotes = (merged.storyChat.storyNotes ?? '').toString();
-    merged.storyChat.sceneIntent = (merged.storyChat.sceneIntent ?? '').toString();
     const continuityPlotThreads = Array.isArray(merged.storyChat.continuityPlotThreads)
       ? merged.storyChat.continuityPlotThreads
       : [];
@@ -6380,9 +6351,6 @@ export default class LoreBookConverterPlugin extends Plugin {
           useLorebookContext: Boolean(snapshot.useLorebookContext),
           manualContext: (snapshot.manualContext ?? '').toString(),
           steeringScopeRefs,
-          pinnedInstructions: (snapshot.pinnedInstructions ?? '').toString(),
-          storyNotes: (snapshot.storyNotes ?? '').toString(),
-          sceneIntent: (snapshot.sceneIntent ?? '').toString(),
           continuityPlotThreads: this.normalizeContinuityItems(
             Array.isArray(snapshot.continuityPlotThreads)
               ? snapshot.continuityPlotThreads.map((item: unknown) => String(item ?? ''))
@@ -7717,13 +7685,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     const budget = Math.max(128, Math.floor(this.settings.textCommands.maxContextTokens));
     const perScopeBudget = Math.max(96, Math.floor(budget / Math.max(1, targetScopes.length)));
 
-    const contexts: AssembledContext[] = [];
-    for (const scope of targetScopes) {
-      contexts.push(await this.liveContextIndex.query({
-        queryText: selectionText,
-        tokenBudget: perScopeBudget
-      }, scope));
-    }
+    const contexts: AssembledContext[] = await Promise.all(targetScopes.map(scope => this.liveContextIndex.query({
+      queryText: selectionText,
+      tokenBudget: perScopeBudget
+    }, scope)));
 
     const selectedScopeLabels = contexts.map(item => item.scope || '(all)');
     const markdown = contexts
@@ -8115,15 +8080,12 @@ export default class LoreBookConverterPlugin extends Plugin {
           const perScopeBudget = Math.max(64, Math.floor(contextBudget / Math.max(1, targetScopes.length)));
           const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
           const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
-          contexts = [];
-          for (const scope of targetScopes) {
-            contexts.push(await this.liveContextIndex.query({
-              queryText: scopedQuery,
-              tokenBudget: perScopeBudget,
-              maxWorldInfoEntries: perScopeWorldInfoLimit,
-              maxRagDocuments: perScopeRagLimit
-            }, scope));
-          }
+          contexts = await Promise.all(targetScopes.map(scope => this.liveContextIndex.query({
+            queryText: scopedQuery,
+            tokenBudget: perScopeBudget,
+            maxWorldInfoEntries: perScopeWorldInfoLimit,
+            maxRagDocuments: perScopeRagLimit
+          }, scope)));
 
           usedContextTokens = contexts.reduce((sum, item) => sum + item.usedTokens, 0);
           remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens - usedContextTokens;

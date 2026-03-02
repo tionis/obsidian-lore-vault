@@ -156,9 +156,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       promptReserveTokens: 400,
       timeoutMs: 60000,
       layerPlacement: {
-        pinnedInstructions: 'system',
-        storyNotes: 'pre_history',
-        sceneIntent: 'pre_response'
+        storyNotes: 'pre_history'
       },
       presets: [],
       activePresetId: ''
@@ -170,9 +168,6 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       useLorebookContext: true,
       manualContext: '',
       steeringScopeRefs: [],
-      pinnedInstructions: '',
-      storyNotes: '',
-      sceneIntent: '',
       continuityPlotThreads: [],
       continuityOpenLoops: [],
       continuityCanonDeltas: [],

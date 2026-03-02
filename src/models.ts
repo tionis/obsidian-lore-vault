@@ -239,9 +239,6 @@ export interface StoryChatForkSnapshot {
   useLorebookContext: boolean;
   manualContext: string;
   steeringScopeRefs: string[];
-  pinnedInstructions: string;
-  storyNotes: string;
-  sceneIntent: string;
   continuityPlotThreads: string[];
   continuityOpenLoops: string[];
   continuityCanonDeltas: string[];
@@ -425,9 +422,7 @@ export interface ConverterSettings {
     promptReserveTokens: number;
     timeoutMs: number;
     layerPlacement: {
-      pinnedInstructions: PromptLayerPlacement;
       storyNotes: PromptLayerPlacement;
-      sceneIntent: PromptLayerPlacement;
     };
     presets: CompletionPreset[];
     activePresetId: string;
@@ -439,9 +434,6 @@ export interface ConverterSettings {
     useLorebookContext: boolean;
     manualContext: string;
     steeringScopeRefs: string[];
-    pinnedInstructions: string;
-    storyNotes: string;
-    sceneIntent: string;
     continuityPlotThreads: string[];
     continuityOpenLoops: string[];
     continuityCanonDeltas: string[];
@@ -578,9 +570,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     promptReserveTokens: 400,
     timeoutMs: 60000,
     layerPlacement: {
-      pinnedInstructions: 'system',
-      storyNotes: 'pre_history',
-      sceneIntent: 'pre_response'
+      storyNotes: 'pre_history'
     },
     presets: [],
     activePresetId: ''
@@ -592,9 +582,6 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     useLorebookContext: true,
     manualContext: '',
     steeringScopeRefs: [],
-    pinnedInstructions: '',
-    storyNotes: '',
-    sceneIntent: '',
     continuityPlotThreads: [],
     continuityOpenLoops: [],
     continuityCanonDeltas: [],

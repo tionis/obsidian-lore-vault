@@ -2973,7 +2973,15 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.app,
       normalizedCurrent.authorNote,
       proposal.authorNote,
-      'Rewrite Author Note'
+      'Rewrite Author Note',
+      {
+        title: 'Review Author Note Rewrite',
+        promptLabel: null,
+        showOriginalText: false,
+        editedTextLabel: 'Edited Author Note (will be saved)',
+        applyButtonText: 'Save Author Note',
+        compactDiffStats: true
+      }
     );
     const reviewPromise = reviewModal.waitForResult();
     reviewModal.open();

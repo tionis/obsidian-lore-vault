@@ -1009,6 +1009,16 @@
   gap: 8px;
 }
 
+.lorevault-text-command-review-diff-stats {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lorevault-text-command-review-diff-stats.is-compact {
+  font-size: 10px;
+}
+
 @media (max-width: 900px) {
   .lorevault-steering-review-columns {
     grid-template-columns: 1fr;

@@ -105,7 +105,8 @@ If you prefer to build the plugin from source:
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - API keys are stored via Obsidian Secret Storage (not in plugin `data.json`)
    - Secret IDs are configurable; use `Pick Existing` to reuse one stored secret across multiple presets
-   - Optional: create model presets; active preset selection is device-local (not synced between devices)
+   - Each completion preset has its own `Completion API Secret Name` used for that preset's key
+   - Optional: create model presets (`New Preset`, `Clone Current`, `Delete Selected`); preset edits auto-save and active preset selection is device-local (not synced between devices)
    - Optional: set a device-local cost profile label for usage metadata tagging (if empty, LoreVault auto-derives one from API key hash)
    - Optional: configure Story Chat tool calling (`Enable Story Chat Tool Calls`, call/token/time limits, optional write-action gate)
    - LLM Operation Log is enabled by default (including embedding backend calls); default retention is `10000` entries per profile log file

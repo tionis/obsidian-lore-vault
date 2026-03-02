@@ -233,6 +233,7 @@ class ConfirmActionModal extends Modal {
 
 export class LoreBookConverterSettingTab extends PluginSettingTab {
   plugin: LoreBookConverterPlugin;
+  private selectedCompletionPresetEditorId = '';
 
   constructor(app: App, plugin: LoreBookConverterPlugin) {
     super(app, plugin);
@@ -442,6 +443,27 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     completion.timeoutMs = preset.timeoutMs;
   }
 
+  private syncSelectedCompletionPresetFromCurrent(): void {
+    const selectedPresetId = this.selectedCompletionPresetEditorId.trim();
+    if (!selectedPresetId) {
+      return;
+    }
+    const index = this.plugin.settings.completion.presets.findIndex(item => item.id === selectedPresetId);
+    if (index < 0) {
+      return;
+    }
+    const existing = this.plugin.settings.completion.presets[index];
+    const updated = this.snapshotCurrentCompletion(existing.name, existing.id);
+    // Preset secret ids are edited explicitly in the preset secret field.
+    updated.apiKeySecretName = existing.apiKeySecretName;
+    this.plugin.settings.completion.presets[index] = updated;
+  }
+
+  private async persistCompletionSettings(): Promise<void> {
+    this.syncSelectedCompletionPresetFromCurrent();
+    await this.persistSettings();
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
@@ -467,14 +489,21 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     });
 
     const activeDevicePresetId = this.plugin.getDeviceActiveCompletionPresetId();
+    const completionPresetsSorted = [...this.plugin.settings.completion.presets]
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    if (completionPresetsSorted.length === 0) {
+      this.selectedCompletionPresetEditorId = '';
+    } else if (!completionPresetsSorted.some(item => item.id === this.selectedCompletionPresetEditorId)) {
+      this.selectedCompletionPresetEditorId = completionPresetsSorted.some(item => item.id === activeDevicePresetId)
+        ? activeDevicePresetId
+        : completionPresetsSorted[0].id;
+    }
     new Setting(containerEl)
       .setName('Active Completion Preset (This Device)')
       .setDesc('Per-device selection. Selecting a preset immediately applies provider/model/token settings in this vault on this device.')
       .addDropdown(dropdown => {
         dropdown.addOption('', '(none)');
-        const sortedPresets = [...this.plugin.settings.completion.presets]
-          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-        for (const preset of sortedPresets) {
+        for (const preset of completionPresetsSorted) {
           dropdown.addOption(preset.id, preset.name);
         }
         dropdown.setValue(activeDevicePresetId || '');
@@ -1022,61 +1051,110 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       text: 'Configure LLM generation for "Continue Story with Context".'
     });
 
-    const activePreset = this.plugin.settings.completion.presets
-      .find(item => item.id === activeDevicePresetId) ?? null;
-    const defaultCompletionSecretName = this.plugin.settings.completion.apiKeySecretName;
+    const selectedPreset = completionPresetsSorted
+      .find(item => item.id === this.selectedCompletionPresetEditorId) ?? null;
+    if (selectedPreset) {
+      this.applyCompletionPreset(selectedPreset);
+    }
+
     new Setting(containerEl)
-      .setName('Active Preset API Secret Name')
-      .setDesc('Optional secret id for the active preset. Use the same id across presets to share one API key.')
+      .setName('Preset To Edit')
+      .setDesc('Choose which preset to edit. This is separate from the per-device active preset above.')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', '(none)');
+        for (const preset of completionPresetsSorted) {
+          dropdown.addOption(preset.id, preset.name);
+        }
+        dropdown.setValue(this.selectedCompletionPresetEditorId || '');
+        dropdown.onChange(async value => {
+          this.selectedCompletionPresetEditorId = value.trim();
+          const selectedId = this.selectedCompletionPresetEditorId;
+          if (selectedId) {
+            const preset = this.plugin.settings.completion.presets.find(item => item.id === selectedId);
+            if (preset) {
+              this.applyCompletionPreset(preset);
+            }
+          }
+          await this.persistSettings();
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Completion API Secret Name')
+      .setDesc('Secret id for the selected preset. Use the same id across presets to share one API key.')
       .addText(text => {
         text
-          .setPlaceholder(defaultCompletionSecretName || 'lorevault-completion-default')
-          .setValue(activePreset?.apiKeySecretName ?? '')
-          .setDisabled(!activePreset)
+          .setPlaceholder('lorevault-completion-main')
+          .setValue(selectedPreset?.apiKeySecretName ?? '')
+          .setDisabled(!selectedPreset)
           .onChange(async value => {
-            if (!activePreset) {
+            if (!selectedPreset) {
               return;
             }
-            activePreset.apiKeySecretName = value.trim();
-            await this.persistSettings();
+            selectedPreset.apiKeySecretName = value.trim();
+            await this.persistCompletionSettings();
           });
       })
       .addButton(button => button
-        .setButtonText('Use Default')
-        .setDisabled(!activePreset)
-        .onClick(async () => {
-          if (!activePreset) {
-            return;
-          }
-          activePreset.apiKeySecretName = defaultCompletionSecretName;
-          await this.persistSettings();
-          this.display();
-        }))
-      .addButton(button => button
         .setButtonText('Pick Existing')
-        .setDisabled(!activePreset)
+        .setDisabled(!selectedPreset)
         .onClick(async () => {
-          if (!activePreset) {
+          if (!selectedPreset) {
             return;
           }
-          const selected = await this.pickExistingSecretId(activePreset.apiKeySecretName || defaultCompletionSecretName);
+          const selected = await this.pickExistingSecretId(selectedPreset.apiKeySecretName);
           if (!selected) {
             return;
           }
-          activePreset.apiKeySecretName = selected;
-          await this.persistSettings();
+          selectedPreset.apiKeySecretName = selected;
+          await this.persistCompletionSettings();
           this.display();
         }));
 
     const presetActions = new Setting(containerEl)
       .setName('Preset Actions')
-      .setDesc('Save current completion settings as a new preset, update the active preset, or remove it.');
+      .setDesc('Create a new empty preset, clone current settings, or remove the selected preset.');
 
     presetActions.addButton(button => button
-      .setButtonText('Save As New')
+      .setButtonText('New Preset')
+      .onClick(async () => {
+        const name = await this.requestPresetName('Create Completion Preset', 'New preset', 'Create');
+        if (!name) {
+          return;
+        }
+
+        const preset: CompletionPreset = {
+          id: this.createPresetId(name),
+          name,
+          provider: DEFAULT_SETTINGS.completion.provider,
+          endpoint: DEFAULT_SETTINGS.completion.endpoint,
+          apiKey: '',
+          apiKeySecretName: '',
+          model: DEFAULT_SETTINGS.completion.model,
+          systemPrompt: DEFAULT_SETTINGS.completion.systemPrompt,
+          temperature: DEFAULT_SETTINGS.completion.temperature,
+          maxOutputTokens: DEFAULT_SETTINGS.completion.maxOutputTokens,
+          contextWindowTokens: DEFAULT_SETTINGS.completion.contextWindowTokens,
+          promptReserveTokens: DEFAULT_SETTINGS.completion.promptReserveTokens,
+          timeoutMs: DEFAULT_SETTINGS.completion.timeoutMs
+        };
+        this.plugin.settings.completion.presets = [
+          ...this.plugin.settings.completion.presets,
+          preset
+        ];
+        this.selectedCompletionPresetEditorId = preset.id;
+        this.applyCompletionPreset(preset);
+        await this.persistCompletionSettings();
+        new Notice(`Created preset: ${name}`);
+        this.display();
+      }));
+
+    presetActions.addButton(button => button
+      .setButtonText('Clone Current')
       .onClick(async () => {
         const defaultName = `${this.plugin.settings.completion.provider} · ${this.plugin.settings.completion.model}`;
-        const name = await this.requestPresetName('Save Completion Preset', defaultName, 'Save');
+        const name = await this.requestPresetName('Clone Completion Preset', defaultName, 'Clone');
         if (!name) {
           return;
         }
@@ -1086,52 +1164,24 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           ...this.plugin.settings.completion.presets,
           preset
         ];
-        await this.plugin.setDeviceActiveCompletionPresetId(preset.id);
-        await this.persistSettings();
-        new Notice(`Saved preset: ${name}`);
+        this.selectedCompletionPresetEditorId = preset.id;
+        await this.persistCompletionSettings();
+        new Notice(`Cloned preset: ${name}`);
         this.display();
       }));
 
     presetActions.addButton(button => button
-      .setButtonText('Update Active')
+      .setButtonText('Delete Selected')
       .onClick(async () => {
-        const activePresetId = this.plugin.getDeviceActiveCompletionPresetId();
-        if (!activePresetId) {
-          new Notice('No active preset selected.');
+        const selectedPresetId = this.selectedCompletionPresetEditorId.trim();
+        if (!selectedPresetId) {
+          new Notice('No preset selected to delete.');
           return;
         }
 
-        const index = this.plugin.settings.completion.presets.findIndex(item => item.id === activePresetId);
-        if (index < 0) {
-          new Notice('Active preset no longer exists.');
-          return;
-        }
-
-        const existing = this.plugin.settings.completion.presets[index];
-        const name = await this.requestPresetName('Update Completion Preset', existing.name, 'Update');
-        if (!name) {
-          return;
-        }
-
-        this.plugin.settings.completion.presets[index] = this.snapshotCurrentCompletion(name, existing.id);
-        await this.plugin.setDeviceActiveCompletionPresetId(existing.id);
-        await this.persistSettings();
-        new Notice(`Updated preset: ${name}`);
-        this.display();
-      }));
-
-    presetActions.addButton(button => button
-      .setButtonText('Delete Active')
-      .onClick(async () => {
-        const activePresetId = this.plugin.getDeviceActiveCompletionPresetId();
-        if (!activePresetId) {
-          new Notice('No active preset selected.');
-          return;
-        }
-
-        const existing = this.plugin.settings.completion.presets.find(item => item.id === activePresetId);
+        const existing = this.plugin.settings.completion.presets.find(item => item.id === selectedPresetId);
         if (!existing) {
-          new Notice('Active preset no longer exists.');
+          new Notice('Selected preset no longer exists.');
           return;
         }
 
@@ -1145,8 +1195,11 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }
 
         this.plugin.settings.completion.presets = this.plugin.settings.completion.presets
-          .filter(item => item.id !== activePresetId);
-        await this.plugin.setDeviceActiveCompletionPresetId('');
+          .filter(item => item.id !== selectedPresetId);
+        this.selectedCompletionPresetEditorId = '';
+        if (this.plugin.getDeviceActiveCompletionPresetId() === selectedPresetId) {
+          await this.plugin.setDeviceActiveCompletionPresetId('');
+        }
         await this.persistSettings();
         new Notice(`Deleted preset: ${existing.name}`);
         this.display();
@@ -1178,7 +1231,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           } else {
             this.plugin.settings.completion.provider = 'openrouter';
           }
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistCompletionSettings();
         }));
 
     new Setting(containerEl)
@@ -1189,55 +1242,22 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.completion.endpoint)
         .onChange(async (value) => {
           this.plugin.settings.completion.endpoint = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistCompletionSettings();
         }));
 
     new Setting(containerEl)
       .setName('Completion API Key')
-      .setDesc('API key for provider auth (not required for local Ollama). Stored in Obsidian Secret Storage, not in plugin data.json.')
+      .setDesc('API key for the selected preset (not required for local Ollama). Stored in Obsidian Secret Storage, not in plugin data.json.')
       .addText(text => {
         text
           .setPlaceholder('sk-...')
           .setValue(this.plugin.settings.completion.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.completion.apiKey = value.trim();
-            await this.plugin.saveData(this.plugin.settings);
+            await this.persistCompletionSettings();
           });
         text.inputEl.type = 'password';
       });
-
-    new Setting(containerEl)
-      .setName('Completion API Secret Name')
-      .setDesc('Secret id used for the default completion API key (lowercase letters, numbers, dashes; max 64). Multiple presets can share this name.')
-      .addText(text => text
-        .setPlaceholder('lorevault-completion-default')
-        .setValue(this.plugin.settings.completion.apiKeySecretName)
-        .onChange(async (value) => {
-          this.plugin.settings.completion.apiKeySecretName = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
-        }))
-      .addButton(button => button
-        .setButtonText('Pick Existing')
-        .onClick(async () => {
-          const selected = await this.pickExistingSecretId(this.plugin.settings.completion.apiKeySecretName);
-          if (!selected) {
-            return;
-          }
-          this.plugin.settings.completion.apiKeySecretName = selected;
-          await this.persistSettings();
-          this.display();
-        }));
-
-    new Setting(containerEl)
-      .setName('Preset API Secret Prefix')
-      .setDesc('Prefix for auto-generated preset secret ids when a preset does not define its own secret name.')
-      .addText(text => text
-        .setPlaceholder('lorevault-completion-preset')
-        .setValue(this.plugin.settings.completion.presetApiKeySecretPrefix)
-        .onChange(async (value) => {
-          this.plugin.settings.completion.presetApiKeySecretPrefix = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
-        }));
 
     new Setting(containerEl)
       .setName('Completion Model')
@@ -1247,7 +1267,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.completion.model)
         .onChange(async (value) => {
           this.plugin.settings.completion.model = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistCompletionSettings();
         }));
 
     new Setting(containerEl)
@@ -1257,7 +1277,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.completion.systemPrompt)
         .onChange(async (value) => {
           this.plugin.settings.completion.systemPrompt = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.persistCompletionSettings();
         }));
 
     new Setting(containerEl)
@@ -1269,7 +1289,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = Number(value);
           if (!isNaN(numValue) && numValue >= 0 && numValue <= 2) {
             this.plugin.settings.completion.temperature = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.persistCompletionSettings();
           }
         }));
 
@@ -1282,7 +1302,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 64) {
             this.plugin.settings.completion.maxOutputTokens = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.persistCompletionSettings();
           }
         }));
 
@@ -1295,7 +1315,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= this.plugin.settings.completion.maxOutputTokens + 512) {
             this.plugin.settings.completion.contextWindowTokens = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.persistCompletionSettings();
           }
         }));
 
@@ -1308,7 +1328,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.completion.promptReserveTokens = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.persistCompletionSettings();
           }
         }));
 
@@ -1364,7 +1384,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 1000) {
             this.plugin.settings.completion.timeoutMs = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.persistCompletionSettings();
           }
         }));
 
@@ -1909,7 +1929,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Embedding API Secret Name')
-      .setDesc('Secret id used for embeddings API key (lowercase letters, numbers, dashes; max 64).')
+      .setDesc('Secret id used for embeddings API key.')
       .addText(text => text
         .setPlaceholder('lorevault-embeddings-default')
         .setValue(this.plugin.settings.embeddings.apiKeySecretName)

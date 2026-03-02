@@ -399,6 +399,7 @@ class CompletionPresetSuggestModal extends FuzzySuggestModal<CompletionPresetSug
 
 const LOREVAULT_DEVICE_STATE_KEY = 'lorevault/device-state/v1';
 const AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY = 'completionProfile';
+const COMPLETION_PRESET_SECRET_PREFIX = 'lorevault-completion-';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
@@ -424,7 +425,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     activeCompletionPresetId: '',
     activeCostProfile: ''
   };
-  private lastSyncedCompletionSecret = '';
   private lastSyncedEmbeddingsSecret = '';
   private lastSyncedPresetSecrets = new Map<string, string>();
 
@@ -603,13 +603,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalize(value) || normalize(fallback);
   }
 
-  private resolveCompletionSecretKey(): string {
-    return this.normalizeSecretIdentifier(
-      this.settings.completion.apiKeySecretName,
-      DEFAULT_SETTINGS.completion.apiKeySecretName
-    );
-  }
-
   private resolveEmbeddingsSecretKey(): string {
     return this.normalizeSecretIdentifier(
       this.settings.embeddings.apiKeySecretName,
@@ -617,37 +610,26 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
   }
 
-  private resolvePresetSecretPrefix(): string {
-    const normalized = this.normalizeSecretIdentifier(
-      this.settings.completion.presetApiKeySecretPrefix,
-      DEFAULT_SETTINGS.completion.presetApiKeySecretPrefix
-    );
-    return normalized
-      .slice(0, 48)
-      .replace(/-+$/g, '') || DEFAULT_SETTINGS.completion.presetApiKeySecretPrefix;
-  }
-
-  private resolvePresetSecretName(preset: CompletionPreset): string {
-    return this.normalizeSecretIdentifier(
-      preset.apiKeySecretName,
-      this.resolveCompletionSecretKey()
-    );
-  }
-
-  private getCompletionPresetSecretKey(preset: CompletionPreset): string {
-    const explicitSecretName = this.normalizeSecretIdentifier(preset.apiKeySecretName, '');
-    if (explicitSecretName) {
-      return explicitSecretName;
-    }
-    const normalized = preset.id.trim().toLowerCase();
+  private buildDefaultCompletionPresetSecretName(presetId: string): string {
+    const normalized = presetId.trim().toLowerCase();
     const slug = normalized
       .replace(/[^a-z0-9-]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 18);
-    const hash = this.buildStableSecretHash(normalized);
-    const prefix = this.resolvePresetSecretPrefix();
-    const key = `${prefix}-${slug ? `${slug}-` : ''}${hash}`;
+    const hash = this.buildStableSecretHash(normalized || 'preset');
+    return `${COMPLETION_PRESET_SECRET_PREFIX}${slug ? `${slug}-` : ''}${hash}`;
+  }
+
+  private resolvePresetSecretName(preset: CompletionPreset): string {
+    return this.normalizeSecretIdentifier(
+      preset.apiKeySecretName,
+      this.buildDefaultCompletionPresetSecretName(preset.id)
+    );
+  }
+
+  private getCompletionPresetSecretKey(preset: CompletionPreset): string {
+    const key = this.resolvePresetSecretName(preset);
     return key
       .slice(0, 64)
       .replace(/-+$/g, '');
@@ -1044,13 +1026,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const completionSecretKey = this.resolveCompletionSecretKey();
-    const completionApiKey = this.settings.completion.apiKey.trim();
-    if (completionApiKey !== this.lastSyncedCompletionSecret) {
-      await storage.setSecret(completionSecretKey, completionApiKey);
-      this.lastSyncedCompletionSecret = completionApiKey;
-    }
-
     const embeddingsSecretKey = this.resolveEmbeddingsSecretKey();
     const embeddingsApiKey = this.settings.embeddings.apiKey.trim();
     if (embeddingsApiKey !== this.lastSyncedEmbeddingsSecret) {
@@ -1074,10 +1049,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (!storage) {
       return;
     }
-
-    const completionSecretKey = this.resolveCompletionSecretKey();
-    this.settings.completion.apiKey = (await storage.getSecret(completionSecretKey) ?? '').trim();
-    this.lastSyncedCompletionSecret = this.settings.completion.apiKey;
     const embeddingsSecretKey = this.resolveEmbeddingsSecretKey();
     this.settings.embeddings.apiKey = (await storage.getSecret(embeddingsSecretKey) ?? '').trim();
     this.lastSyncedEmbeddingsSecret = this.settings.embeddings.apiKey;
@@ -5947,11 +5918,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       merged.completion.apiKeySecretName,
       DEFAULT_SETTINGS.completion.apiKeySecretName
     );
-    merged.completion.presetApiKeySecretPrefix = normalizeSecretIdentifier(
-      merged.completion.presetApiKeySecretPrefix,
-      DEFAULT_SETTINGS.completion.presetApiKeySecretPrefix,
-      48
-    );
     merged.completion.model = merged.completion.model.trim() || DEFAULT_SETTINGS.completion.model;
     merged.completion.systemPrompt = merged.completion.systemPrompt.trim() || DEFAULT_SETTINGS.completion.systemPrompt;
     merged.completion.temperature = Math.max(0, Math.min(2, Number(merged.completion.temperature)));
@@ -6006,7 +5972,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         apiKey: (candidate.apiKey ?? '').toString().trim(),
         apiKeySecretName: normalizeSecretIdentifier(
           candidate.apiKeySecretName,
-          merged.completion.apiKeySecretName
+          this.buildDefaultCompletionPresetSecretName(id)
         ),
         model: (candidate.model ?? DEFAULT_SETTINGS.completion.model).toString().trim() || DEFAULT_SETTINGS.completion.model,
         systemPrompt: (candidate.systemPrompt ?? DEFAULT_SETTINGS.completion.systemPrompt).toString().trim() || DEFAULT_SETTINGS.completion.systemPrompt,

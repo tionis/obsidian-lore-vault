@@ -412,7 +412,6 @@ export interface ConverterSettings {
     endpoint: string;
     apiKey: string;
     apiKeySecretName: string;
-    presetApiKeySecretPrefix: string;
     model: string;
     systemPrompt: string;
     temperature: number;
@@ -567,7 +566,6 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     endpoint: 'https://openrouter.ai/api/v1',
     apiKey: '',
     apiKeySecretName: 'lorevault-completion-default',
-    presetApiKeySecretPrefix: 'lorevault-completion-preset',
     model: 'openai/gpt-4o-mini',
     systemPrompt: 'You are a story-writing assistant. Continue the story in the same tone, perspective, and tense. Use provided lore context as constraints. Output only the continuation text with no explanations or headings.',
     temperature: 0.7,

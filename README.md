@@ -205,6 +205,7 @@ Operations and reporting:
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
 - Secret IDs are user-configurable; you can pick existing IDs in settings to reuse one secret across multiple presets.
+- Each completion preset has its own `Completion API Secret Name` used to load that preset's API key.
 - Active completion preset and cost-profile label are device-local (Obsidian local storage), not shared vault settings.
 - Budget warnings are evaluated per selected cost profile.
 - Cost Analyzer view provides per-profile breakdowns (totals + by-operation/model/scope/source).

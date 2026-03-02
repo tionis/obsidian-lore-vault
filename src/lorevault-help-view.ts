@@ -138,7 +138,7 @@ export class LorevaultHelpView extends ItemView {
         'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`.',
         'Completion profile: use the panel dropdown (applies immediately). If an Author Note override exists the selector is disabled and shows `Overridden by Author Note`.',
         'Set author-note `completionProfile` via command `Set Author Note Completion Profile`.',
-        'API keys are in Obsidian Secret Storage; secret IDs are configurable and can be reused across presets.',
+        'API keys are in Obsidian Secret Storage; each completion preset has a `Completion API Secret Name` used as its secret key id.',
         'Cost profile label is configured in settings (device-local) and only affects usage metadata; when empty, LoreVault auto-derives one from API key hash.',
         'Panel shows effective model, context usage, selected context items, and cost breakdown under the profile selector.'
       ],

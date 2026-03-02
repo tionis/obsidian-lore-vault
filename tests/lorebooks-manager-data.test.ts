@@ -113,7 +113,6 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       endpoint: 'https://openrouter.ai/api/v1',
       apiKey: '',
       apiKeySecretName: 'lorevault-completion-default',
-      presetApiKeySecretPrefix: 'lorevault-completion-preset',
       model: 'openai/gpt-4o-mini',
       systemPrompt: 'Continue the story.',
       temperature: 0.7,

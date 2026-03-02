@@ -123,8 +123,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       layerPlacement: {
         pinnedInstructions: 'system',
         storyNotes: 'pre_history',
-        sceneIntent: 'pre_response',
-        inlineDirectives: 'pre_response'
+        sceneIntent: 'pre_response'
       },
       presets: [],
       activePresetId: '',

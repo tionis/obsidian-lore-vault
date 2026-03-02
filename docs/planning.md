@@ -327,9 +327,9 @@ LoreVault should add explicit context staging controls instead of relying on imp
 Current status:
 
 - inline shorthand directives are implemented for completion/chat (`[LV: ...]`, `<!-- LV: ... -->`)
-- implemented constraints: strict-prefix parsing, near-cursor scope, deterministic dedupe/order, per-turn caps, and export/import/update exclusion
-- explicit steering layers are implemented as a single note-level `Author Note` plus inline directives for both Story Chat and editor continuation
-- placement policy is implemented for author-note and inline-directive layers (`system`, `pre-history`, `pre-response`) via Writing Completion settings
+- implemented constraints: strict-prefix parsing, deterministic dedupe/order, and export/import/update exclusion
+- explicit steering is implemented as a single note-level `Author Note`; inline directives are rendered in-place as tags in prompt context
+- placement policy is implemented for author-note layer (`system`, `pre-history`, `pre-response`) via Writing Completion settings
 - deterministic staged reservations + overflow trimming are implemented with fixed trim order
 - inspector traces now include per-layer token usage/headroom and overflow rationale
 - continuity-state controls are implemented (plot threads, open loops, canon deltas, per-group inclusion toggles) in Story Chat and continuation frontmatter
@@ -353,18 +353,17 @@ Planned/active steering primitives:
 - optional inline shorthand directives with strict prefix:
   - accepted syntax: `[LV: ...]` and `<!-- LV: ... -->`
   - non-prefixed bracket notes are treated as normal prose and ignored by steering parser
-  - directives are parsed from active-story near-cursor context only
-  - directives are surfaced as an explicit inspector layer
-- configurable placement for each layer (`system`, pre-history, pre-response context)
+  - directives are converted to `<inline_story_directive>` tags in-place within staged prompt blocks
+  - directives are surfaced in inspector traces
+- configurable placement for author-note layer (`system`, pre-history, pre-response context)
 - deterministic token-budget partitioning per layer with clear reserves and headroom
 - deterministic overflow policy (fixed trim/compress order)
 - continuity-state layer (active threads, unresolved commitments, canon deltas)
 
 Directive safety constraints:
 
-- directive parsing must be deterministic (document order + stable dedupe)
+- directive parsing/rendering must be deterministic (document order + stable dedupe)
 - directives must not leak into lore exports or wiki import/update extraction pipelines
-- directive count/tokens should be capped per turn to avoid prompt abuse/bloat
 
 Hashing migration direction (implemented):
 

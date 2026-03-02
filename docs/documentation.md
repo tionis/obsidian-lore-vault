@@ -336,9 +336,8 @@ Settings:
 - max output tokens
 - context window tokens
 - prompt reserve tokens
-- steering layer placement for:
-  - author note
-  - inline directives
+- steering layer placement for author note
+- inline directives are converted in-place to `<inline_story_directive>` tags during prompt assembly
 - timeout
 
 Story lorebook scope selection order:
@@ -787,7 +786,7 @@ Runtime behavior:
 Query behavior:
 
 - query text source: active editor content up to cursor (last window)
-- inline directives source: strict-prefix directives in near-cursor editor window (`[LV: ...]`, `<!-- LV: ... -->`)
+- inline directives source: strict-prefix directives in context markdown (`[LV: ...]`, `<!-- LV: ... -->`)
 - scope resolution:
   - linked Author Note frontmatter (`lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`)
   - otherwise story note frontmatter (same keys)
@@ -807,8 +806,8 @@ Query behavior:
     - configurable fallback policy: `off|auto|always`
 - completion:
   - builds a prompt from scope context + recent near-cursor story context
-  - stages explicit steering layers (author note + inline directives)
-  - steering placement is configurable for author note + inline directives (`system`, `pre-history`, `pre-response`)
+  - stages explicit steering layer for author note (`system`, `pre-history`, `pre-response`)
+  - converts inline directives to `<inline_story_directive>` tags in-place so directives stay near related text
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
   - calls configured completion provider with streaming enabled
   - inserts streamed generated continuation text at cursor
@@ -836,7 +835,7 @@ Token budgeting:
 - excerpt lift is deterministic lexical paragraph scoring and gains semantic paragraph rerank when embeddings are enabled
 - skips entries/documents that would exceed section budget and reports cutoff diagnostics
 - context block is used for generation input and is not inserted into the note
-- inline directives are parsed for steering but excluded from lore exports/summary generation/import-update pipelines
+- inline directives are parsed and rendered in-place for prompt steering, but excluded from lore exports/summary generation/import-update pipelines
 
 Retrieval tuning settings (applies immediately to live query and generation):
 
@@ -917,7 +916,7 @@ Turn context assembly:
   - read/update the active note-level author note (scope is implicit)
   - optionally create lorebook notes when write actions are enabled and current turn includes explicit write intent
 - optional tool-retrieved context layer (when enabled and budget allows)
-- explicit steering layers (author note, inline directives)
+- explicit steering layer (author note) plus in-place inline-directive tags
 - optional continuity-state layer (plot threads, open loops, canon deltas; no per-chat checkbox UI)
 - optional manual context block
 - optional specific-note context blocks resolved from note references
@@ -954,13 +953,10 @@ Rules:
 
 - only strict-prefix `LV:` directives are parsed for steering
 - plain bracket text (for example `[Editor Note: ...]` or `[Make it bigger]`) is treated as normal prose
-- directives are parsed from active-story near-cursor context only
-- directives are injected into a dedicated steering layer (not mixed into lore retrieval layers)
-- system prompt explicitly tells the model to follow injected inline directives
-- directive placement is configurable with other steering layers (`system` / `pre-history` / `pre-response`)
+- directives are converted to `<inline_story_directive>` tags in-place within each prompt context block
+- system prompt explicitly tells the model to follow `<inline_story_directive>` tags
 - resolved directives are shown in inspector traces before/with generation output
 - directives are excluded from lorebook exports and wiki import/update extraction flows
-- per-turn caps are enforced for directive count and token usage
 
 ## Technical Deep-Dive
 

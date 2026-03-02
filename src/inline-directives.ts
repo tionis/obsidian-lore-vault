@@ -14,6 +14,42 @@ function normalizeDirectiveText(value: string): string {
     .trim();
 }
 
+function renderDirectiveTag(text: string): string {
+  return `<inline_story_directive>\n${text}\n</inline_story_directive>`;
+}
+
+export interface InlineDirectiveTagRenderResult {
+  text: string;
+  directives: string[];
+}
+
+export function renderInlineLoreDirectivesAsTags(source: string): InlineDirectiveTagRenderResult {
+  if (!source) {
+    return {
+      text: '',
+      directives: []
+    };
+  }
+
+  const directives: string[] = [];
+  const renderMatch = (raw: string): string => {
+    const normalized = normalizeDirectiveText(raw);
+    if (!normalized) {
+      return '';
+    }
+    directives.push(normalized);
+    return renderDirectiveTag(normalized);
+  };
+
+  const withCommentTags = source.replace(COMMENT_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
+  const withAllTags = withCommentTags.replace(BRACKET_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
+
+  return {
+    text: withAllTags,
+    directives
+  };
+}
+
 export function extractInlineLoreDirectives(source: string): string[] {
   if (!source) {
     return [];

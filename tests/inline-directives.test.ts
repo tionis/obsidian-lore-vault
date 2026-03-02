@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   extractInlineLoreDirectives,
+  renderInlineLoreDirectivesAsTags,
   stripInlineLoreDirectives
 } from '../src/inline-directives';
 
@@ -61,4 +62,26 @@ test('stripInlineLoreDirectives removes directive markers from markdown', () => 
   assert.equal(stripped.includes('<!-- LV:'), false);
   assert.equal(stripped.includes('The corridor narrows.'), true);
   assert.equal(stripped.includes('Shadows move.'), true);
+});
+
+test('renderInlineLoreDirectivesAsTags preserves placement and converts directives to inline tags', () => {
+  const source = [
+    'Before.',
+    '<!-- LV: Keep this scene claustrophobic -->',
+    '',
+    'Middle [LV: Raise tension] text.',
+    '',
+    'After.'
+  ].join('\n');
+
+  const rendered = renderInlineLoreDirectivesAsTags(source);
+  assert.deepEqual(rendered.directives, [
+    'Keep this scene claustrophobic',
+    'Raise tension'
+  ]);
+  assert.equal(rendered.text.includes('<inline_story_directive>'), true);
+  assert.equal(rendered.text.includes('Keep this scene claustrophobic'), true);
+  assert.equal(rendered.text.includes('Raise tension'), true);
+  assert.equal(rendered.text.includes('Before.'), true);
+  assert.equal(rendered.text.includes('After.'), true);
 });

@@ -146,7 +146,7 @@ import {
   extractAdaptiveQueryWindow,
   extractAdaptiveStoryWindow
 } from './context-window-strategy';
-import { extractInlineLoreDirectives, stripInlineLoreDirectives } from './inline-directives';
+import { renderInlineLoreDirectivesAsTags, stripInlineLoreDirectives } from './inline-directives';
 import {
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
@@ -180,12 +180,9 @@ import {
   upsertStoryChapterFrontmatter
 } from './story-chapter-management';
 
-const INLINE_DIRECTIVE_SCAN_TOKENS = 1800;
-const INLINE_DIRECTIVE_MAX_COUNT = 6;
-const INLINE_DIRECTIVE_MAX_TOKENS = 220;
 const STEERING_RESERVE_FRACTION = 0.14;
 
-type SteeringLayerKey = 'author_note' | 'inline_directives';
+type SteeringLayerKey = 'author_note';
 
 interface SteeringLayerSection {
   key: SteeringLayerKey;
@@ -1199,69 +1196,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     return null;
   }
 
-  private getActiveEditorTextBeforeCursor(): string {
-    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!markdownView) {
-      return '';
-    }
-    const editor = markdownView.editor;
-    if (!editor) {
-      return '';
-    }
-    const cursor = editor.getCursor();
-    return editor.getRange({ line: 0, ch: 0 }, cursor);
-  }
-
-  private resolveInlineDirectivesFromText(sourceText: string): {
-    directives: string[];
-    usedTokens: number;
-    foundCount: number;
-    droppedByCount: number;
-    droppedByBudget: number;
-  } {
-    const scanWindow = this.extractQueryWindow(sourceText, INLINE_DIRECTIVE_SCAN_TOKENS);
-    const foundDirectives = extractInlineLoreDirectives(scanWindow);
-    if (foundDirectives.length === 0) {
-      return {
-        directives: [],
-        usedTokens: 0,
-        foundCount: 0,
-        droppedByCount: 0,
-        droppedByBudget: 0
-      };
-    }
-
-    const directives: string[] = [];
-    let usedTokens = 0;
-    let droppedByCount = 0;
-    let droppedByBudget = 0;
-
-    for (let index = 0; index < foundDirectives.length; index += 1) {
-      const directive = foundDirectives[index];
-      if (directives.length >= INLINE_DIRECTIVE_MAX_COUNT) {
-        droppedByCount = foundDirectives.length - index;
-        break;
-      }
-
-      const directiveTokens = this.estimateTokens(directive);
-      if (usedTokens + directiveTokens > INLINE_DIRECTIVE_MAX_TOKENS) {
-        droppedByBudget += 1;
-        continue;
-      }
-
-      directives.push(directive);
-      usedTokens += directiveTokens;
-    }
-
-    return {
-      directives,
-      usedTokens,
-      foundCount: foundDirectives.length,
-      droppedByCount,
-      droppedByBudget
-    };
-  }
-
   private resolvePromptLayerPlacement(value: unknown, fallback: PromptLayerPlacement): PromptLayerPlacement {
     if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
       return value;
@@ -1283,10 +1217,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       sceneIntent: this.resolvePromptLayerPlacement(
         configured.sceneIntent,
         DEFAULT_SETTINGS.completion.layerPlacement.sceneIntent
-      ),
-      inlineDirectives: this.resolvePromptLayerPlacement(
-        configured.inlineDirectives,
-        DEFAULT_SETTINGS.completion.layerPlacement.inlineDirectives
       )
     };
   }
@@ -1294,16 +1224,12 @@ export default class LoreBookConverterPlugin extends Plugin {
   private createSteeringSections(args: {
     maxInputTokens: number;
     authorNote: string;
-    inlineDirectives: string[];
   }): SteeringLayerSection[] {
     const placements = this.getCompletionLayerPlacementConfig();
     const steeringReserve = Math.max(
       160,
       Math.min(24000, Math.floor(args.maxInputTokens * STEERING_RESERVE_FRACTION))
     );
-    const inlineText = args.inlineDirectives
-      .map((directive, index) => `${index + 1}. ${directive}`)
-      .join('\n');
 
     const layerSpecs: Array<{
       key: SteeringLayerKey;
@@ -1320,16 +1246,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         tag: 'story_author_note',
         placement: placements.storyNotes,
         text: args.authorNote,
-        reserveFraction: 0.82,
-        locked: false
-      },
-      {
-        key: 'inline_directives',
-        label: 'Inline Directives',
-        tag: 'inline_story_directives',
-        placement: placements.inlineDirectives,
-        text: inlineText,
-        reserveFraction: 0.18,
+        reserveFraction: 1,
         locked: false
       }
     ];
@@ -4995,30 +4912,30 @@ export default class LoreBookConverterPlugin extends Plugin {
       canonDeltas: continuityCanonDeltas,
       selection: continuitySelection
     });
-    const activeEditorTextBeforeCursor = this.getActiveEditorTextBeforeCursor();
-    const inlineDirectiveResolution = this.resolveInlineDirectivesFromText(activeEditorTextBeforeCursor);
-    const inlineDirectives = inlineDirectiveResolution.directives;
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const steeringSections = this.createSteeringSections({
       maxInputTokens,
-      authorNote: mergedAuthorNote,
-      inlineDirectives
+      authorNote: mergedAuthorNote
     });
     const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
     const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
     const preResponseSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_response');
+    const steeringGuidanceSystemPrompt = [
+      'Follow guidance in `<story_author_note>` when present.',
+      'Follow any `<inline_story_directive>` tags in context blocks as instructions tied to nearby text.',
+      'Do not copy directive tags or directive contents into the final response.'
+    ].join('\n');
     const effectiveSystemPrompt = systemSteeringMarkdown
       ? [
         completion.systemPrompt,
         '',
-        'Follow guidance in `<story_author_note>` and `<inline_story_directives>` when present.',
-        'Treat `<inline_story_directives>` as extracted instruction comments (`[LV: ...]` / `<!-- LV: ... -->`).',
+        steeringGuidanceSystemPrompt,
         '',
         '<lorevault_steering_system>',
         systemSteeringMarkdown,
         '</lorevault_steering_system>'
       ].join('\n')
-      : completion.systemPrompt;
+      : [completion.systemPrompt, '', steeringGuidanceSystemPrompt].join('\n');
     const instructionOverhead = this.estimateTokens(effectiveSystemPrompt) + 180;
     const steeringSystemTokens = steeringSections
       .filter(section => section.placement === 'system')
@@ -5186,14 +5103,25 @@ export default class LoreBookConverterPlugin extends Plugin {
     const totalRagCount = contexts.reduce((sum, context) => sum + context.rag.length, 0);
     const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
     const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
-    const inlineDirectiveSection = steeringSections.find(section => section.key === 'inline_directives');
-    const inlineDirectiveTokens = inlineDirectiveSection?.usedTokens ?? 0;
-    const resolvedInlineDirectiveItems = inlineDirectiveSection?.text
-      ? inlineDirectiveSection.text
-        .split('\n')
-        .map(line => line.replace(/^\d+\.\s*/, '').trim())
-        .filter(Boolean)
-      : [];
+    const renderedChatHistory = renderInlineLoreDirectivesAsTags(chatHistory);
+    const renderedManualContext = renderInlineLoreDirectivesAsTags(manualContext);
+    const renderedSpecificNotes = renderInlineLoreDirectivesAsTags(specificNotesContextMarkdown);
+    const renderedChapterMemory = renderInlineLoreDirectivesAsTags(chapterMemoryMarkdown);
+    const renderedAgentToolContext = renderInlineLoreDirectivesAsTags(chatAgentToolContextMarkdown);
+    const renderedToolContext = renderInlineLoreDirectivesAsTags(toolContextMarkdown);
+    const renderedLoreContext = renderInlineLoreDirectivesAsTags(contextMarkdown);
+    const resolvedInlineDirectiveItems = uniqueStrings([
+      ...renderedChatHistory.directives,
+      ...renderedManualContext.directives,
+      ...renderedSpecificNotes.directives,
+      ...renderedChapterMemory.directives,
+      ...renderedAgentToolContext.directives,
+      ...renderedToolContext.directives,
+      ...renderedLoreContext.directives
+    ]).slice(0, 40);
+    const inlineDirectiveTokens = resolvedInlineDirectiveItems.reduce((sum, directive) => (
+      sum + this.estimateTokens(directive)
+    ), 0);
     const reservedByPlacement = (placement: PromptLayerPlacement): number => steeringSections
       .filter(section => section.placement === placement)
       .reduce((sum, section) => sum + section.reservedTokens, 0);
@@ -5201,19 +5129,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       .some(section => section.placement === placement && section.trimmed);
     const preHistorySteeringReserved = reservedByPlacement('pre_history');
     const preResponseSteeringReserved = reservedByPlacement('pre_response');
-    const inlineDirectiveDiagnostics = [
-      `${resolvedInlineDirectiveItems.length}/${inlineDirectiveResolution.foundCount} active`,
-      `~${inlineDirectiveTokens} tokens`
-    ];
-    if (inlineDirectiveResolution.droppedByCount > 0) {
-      inlineDirectiveDiagnostics.push(`dropped_by_count=${inlineDirectiveResolution.droppedByCount}`);
-    }
-    if (inlineDirectiveResolution.droppedByBudget > 0) {
-      inlineDirectiveDiagnostics.push(`dropped_by_budget=${inlineDirectiveResolution.droppedByBudget}`);
-    }
-    if (inlineDirectiveSection?.trimmed) {
-      inlineDirectiveDiagnostics.push('trimmed_to_reservation');
-    }
+    const inlineDirectiveDiagnostics = resolvedInlineDirectiveItems.length > 0
+      ? [`${resolvedInlineDirectiveItems.length} inlined`, `~${inlineDirectiveTokens} tokens`]
+      : ['none'];
     const continuityBudget = Math.max(96, Math.min(12000, Math.floor(maxInputTokens * 0.12)));
 
     const promptSegments: PromptSegment[] = [
@@ -5229,7 +5147,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'chat_history',
         label: 'Chat History',
-        content: chatHistory,
+        content: renderedChatHistory.text,
         reservedTokens: historyTokenBudget,
         placement: 'pre_history',
         trimMode: 'tail',
@@ -5238,7 +5156,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'manual_context',
         label: 'Manual Context',
-        content: manualContext,
+        content: renderedManualContext.text,
         reservedTokens: manualContextBudget,
         placement: 'pre_response',
         trimMode: 'tail',
@@ -5256,7 +5174,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'specific_notes_context',
         label: 'Specific Notes',
-        content: specificNotesContextMarkdown,
+        content: renderedSpecificNotes.text,
         reservedTokens: Math.max(0, noteContextBudget),
         placement: 'pre_response',
         trimMode: 'head',
@@ -5265,7 +5183,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'chapter_memory_context',
         label: 'Chapter Memory',
-        content: chapterMemoryMarkdown,
+        content: renderedChapterMemory.text,
         reservedTokens: Math.max(0, chapterMemoryBudget),
         placement: 'pre_response',
         trimMode: 'head',
@@ -5274,7 +5192,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'agent_tool_context',
         label: 'Agent Tool Context',
-        content: chatAgentToolContextMarkdown,
+        content: renderedAgentToolContext.text,
         reservedTokens: Math.max(0, chatAgentToolContextBudget),
         placement: 'pre_response',
         trimMode: 'head',
@@ -5283,7 +5201,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'tool_retrieval_context',
         label: 'Tool Retrieval',
-        content: toolContextMarkdown,
+        content: renderedToolContext.text,
         reservedTokens: Math.max(0, toolContextBudget),
         placement: 'pre_response',
         trimMode: 'head',
@@ -5292,7 +5210,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       {
         key: 'lorebook_context',
         label: 'Lorebook Context',
-        content: contextMarkdown,
+        content: renderedLoreContext.text,
         reservedTokens: Math.max(0, lorebookContextBudget),
         placement: 'pre_response',
         trimMode: 'head',
@@ -6088,10 +6006,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       sceneIntent: this.resolvePromptLayerPlacement(
         completionLayerPlacement.sceneIntent,
         DEFAULT_SETTINGS.completion.layerPlacement.sceneIntent
-      ),
-      inlineDirectives: this.resolvePromptLayerPlacement(
-        completionLayerPlacement.inlineDirectives,
-        DEFAULT_SETTINGS.completion.layerPlacement.inlineDirectives
       )
     };
     const rawPresets = Array.isArray(merged.completion.presets) ? merged.completion.presets : [];
@@ -8021,9 +7935,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const resolvedActiveFile = markdownView.file ?? activeFile;
     const cursor = editor.getCursor();
     const rawTextBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
-    const inlineDirectiveResolution = this.resolveInlineDirectivesFromText(rawTextBeforeCursor);
-    const inlineDirectives = inlineDirectiveResolution.directives;
-    const textBeforeCursor = stripInlineLoreDirectives(rawTextBeforeCursor);
+    const textBeforeCursorForQuery = stripInlineLoreDirectives(rawTextBeforeCursor);
     const fallbackQuery = resolvedActiveFile?.basename ?? 'story continuation';
     let targetScopes: string[] = [];
     let targetScopeLabels: string[] = ['(none)'];
@@ -8091,24 +8003,27 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
       const steeringSections = this.createSteeringSections({
         maxInputTokens,
-        authorNote: mergedAuthorNote,
-        inlineDirectives
+        authorNote: mergedAuthorNote
       });
       const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
       const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
       const preResponseSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_response');
+      const steeringGuidanceSystemPrompt = [
+        'Follow guidance in `<story_author_note>` when present.',
+        'Follow any `<inline_story_directive>` tags in context blocks as instructions tied to nearby text.',
+        'Do not copy directive tags or directive contents into the final response.'
+      ].join('\n');
       const effectiveSystemPrompt = systemSteeringMarkdown
         ? [
           completion.systemPrompt,
           '',
-          'Follow guidance in `<story_author_note>` and `<inline_story_directives>` when present.',
-          'Treat `<inline_story_directives>` as extracted instruction comments (`[LV: ...]` / `<!-- LV: ... -->`).',
+          steeringGuidanceSystemPrompt,
           '',
           '<lorevault_steering_system>',
           systemSteeringMarkdown,
           '</lorevault_steering_system>'
         ].join('\n')
-        : completion.systemPrompt;
+        : [completion.systemPrompt, '', steeringGuidanceSystemPrompt].join('\n');
       const instructionOverhead = this.estimateTokens(effectiveSystemPrompt) + 180;
       const steeringSystemTokens = steeringSections
         .filter(section => section.placement === 'system')
@@ -8125,14 +8040,6 @@ export default class LoreBookConverterPlugin extends Plugin {
         .reduce((sum, section) => sum + section.reservedTokens, 0);
       const trimmedByPlacement = (placement: PromptLayerPlacement): boolean => steeringSections
         .some(section => section.placement === placement && section.trimmed);
-      const inlineDirectiveSection = steeringSections.find(section => section.key === 'inline_directives');
-      const inlineDirectiveTokens = inlineDirectiveSection?.usedTokens ?? 0;
-      const resolvedInlineDirectiveItems = inlineDirectiveSection?.text
-        ? inlineDirectiveSection.text
-          .split('\n')
-          .map(line => line.replace(/^\d+\.\s*/, '').trim())
-          .filter(Boolean)
-        : [];
       const availablePromptBudget = Math.max(
         256,
         maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens
@@ -8142,9 +8049,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       const maxStoryTokensForContext = Math.max(64, availablePromptBudget - desiredContextReserve);
       const storyTokenTarget = Math.max(64, Math.min(baselineStoryTarget, maxStoryTokensForContext));
       const queryTokenTarget = Math.max(900, Math.min(40000, Math.floor(maxInputTokens * 0.22)));
-      const queryText = this.extractQueryWindow(textBeforeCursor, queryTokenTarget);
+      const queryText = this.extractQueryWindow(textBeforeCursorForQuery, queryTokenTarget);
       const scopedQuery = queryText || fallbackQuery;
-      const initialStoryWindow = textBeforeCursor;
+      const initialStoryWindow = rawTextBeforeCursor;
       let storyWindow = this.extractStoryWindow(initialStoryWindow, storyTokenTarget);
       let storyTokens = this.estimateTokens(storyWindow);
       let availableForContext = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens;
@@ -8267,21 +8174,24 @@ export default class LoreBookConverterPlugin extends Plugin {
         .slice(0, 8);
       const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
       const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
+      const renderedStoryWindow = renderInlineLoreDirectivesAsTags(storyWindow);
+      const renderedChapterMemory = renderInlineLoreDirectivesAsTags(chapterMemoryMarkdown);
+      const renderedToolContext = renderInlineLoreDirectivesAsTags(toolContextMarkdown);
+      const renderedGraphContext = renderInlineLoreDirectivesAsTags(graphContextMarkdown);
+      const resolvedInlineDirectiveItems = uniqueStrings([
+        ...renderedStoryWindow.directives,
+        ...renderedChapterMemory.directives,
+        ...renderedToolContext.directives,
+        ...renderedGraphContext.directives
+      ]).slice(0, 40);
+      const inlineDirectiveTokens = resolvedInlineDirectiveItems.reduce((sum, directive) => (
+        sum + this.estimateTokens(directive)
+      ), 0);
       const preHistorySteeringReserved = reservedByPlacement('pre_history');
       const preResponseSteeringReserved = reservedByPlacement('pre_response');
-      const inlineDirectiveDiagnostics = [
-        `${resolvedInlineDirectiveItems.length}/${inlineDirectiveResolution.foundCount} active`,
-        `~${inlineDirectiveTokens} tokens`
-      ];
-      if (inlineDirectiveResolution.droppedByCount > 0) {
-        inlineDirectiveDiagnostics.push(`dropped_by_count=${inlineDirectiveResolution.droppedByCount}`);
-      }
-      if (inlineDirectiveResolution.droppedByBudget > 0) {
-        inlineDirectiveDiagnostics.push(`dropped_by_budget=${inlineDirectiveResolution.droppedByBudget}`);
-      }
-      if (inlineDirectiveSection?.trimmed) {
-        inlineDirectiveDiagnostics.push('trimmed_to_reservation');
-      }
+      const inlineDirectiveDiagnostics = resolvedInlineDirectiveItems.length > 0
+        ? [`${resolvedInlineDirectiveItems.length} inlined`, `~${inlineDirectiveTokens} tokens`]
+        : ['none'];
       const continuityBudget = Math.max(96, Math.min(12000, Math.floor(maxInputTokens * 0.12)));
 
       const promptSegments: PromptSegment[] = [
@@ -8297,7 +8207,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         {
           key: 'chapter_memory_context',
           label: 'Chapter Memory',
-          content: chapterMemoryMarkdown,
+          content: renderedChapterMemory.text,
           reservedTokens: Math.max(0, Math.floor(Math.max(0, availableForContext) * 0.3)),
           placement: 'pre_response',
           trimMode: 'head',
@@ -8315,7 +8225,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         {
           key: 'tool_retrieval_context',
           label: 'Tool Retrieval',
-          content: toolContextMarkdown,
+          content: renderedToolContext.text,
           reservedTokens: Math.max(0, Math.floor(Math.max(0, remainingInputTokens) * 0.55)),
           placement: 'pre_response',
           trimMode: 'head',
@@ -8324,7 +8234,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         {
           key: 'lorebook_context',
           label: 'Lorebook Context',
-          content: graphContextMarkdown,
+          content: renderedGraphContext.text,
           reservedTokens: contextBudget,
           placement: 'pre_response',
           trimMode: 'head',
@@ -8342,7 +8252,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         {
           key: 'story_window',
           label: 'Near-Cursor Context',
-          content: storyWindow,
+          content: renderedStoryWindow.text,
           reservedTokens: storyTokenTarget,
           placement: 'pre_response',
           trimMode: 'tail',

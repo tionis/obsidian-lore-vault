@@ -428,7 +428,6 @@ export interface ConverterSettings {
       pinnedInstructions: PromptLayerPlacement;
       storyNotes: PromptLayerPlacement;
       sceneIntent: PromptLayerPlacement;
-      inlineDirectives: PromptLayerPlacement;
     };
     presets: CompletionPreset[];
     activePresetId: string;
@@ -581,8 +580,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     layerPlacement: {
       pinnedInstructions: 'system',
       storyNotes: 'pre_history',
-      sceneIntent: 'pre_response',
-      inlineDirectives: 'pre_response'
+      sceneIntent: 'pre_response'
     },
     presets: [],
     activePresetId: ''

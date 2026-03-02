@@ -134,6 +134,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Story Writing Panel', {
       bullets: [
         'Generation actions: `Continue Story` (switches to `Stop` while running) and `Insert Directive`.',
+        'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are rendered in-place as `<inline_story_directive>` tags during generation.',
         'Author note actions: `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`.',
         'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`.',
         'Completion profile: use the panel dropdown (applies immediately). If an Author Note override exists the selector is disabled and shows `Overridden by Author Note`.',

@@ -84,7 +84,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/summary-utils.ts`
   - summary normalization and world_info content resolution
 - `src/inline-directives.ts`
-  - strict-prefix inline directive parse/strip helpers (`[LV: ...]`, `<!-- LV: ... -->`)
+  - strict-prefix inline directive parse/strip helpers plus in-place tag rendering (`[LV: ...]`, `<!-- LV: ... -->` -> `<inline_story_directive>`)
 - `src/prompt-staging.ts`
   - deterministic prompt-segment budgeting
   - fixed-order overflow trimming with locked-layer protection
@@ -478,7 +478,7 @@ Legacy single-code-block (` ```lorevault-chat `) chat payload parsing is removed
 
 ## Inline Directive Contract
 
-Inline steering directives are implemented as an optional shorthand layer for generation/chat.
+Inline steering directives are implemented as optional in-text shorthand for generation/chat.
 
 Accepted directive forms:
 
@@ -488,13 +488,10 @@ Accepted directive forms:
 Parser and staging constraints (implemented):
 
 - only strict-prefix `LV:` directives are parsed
-- extraction scope is active story note near-cursor window (not whole-vault scans)
-- deterministic parse order follows source document order
-- stable dedupe normalization is applied before prompt staging
-- parsed directives are injected as a dedicated steering layer with inspector trace visibility
-- system prompt explicitly instructs model to follow injected `<inline_story_directives>`
-- per-turn caps are enforced for directive count and token budget
-- directive layer placement follows configured completion placement policy (`system`, `pre_history`, `pre_response`)
+- directives are converted in-place where they appear in staged context blocks (story window, chat history/manual context, etc.)
+- deterministic parse order follows source document order within each rendered block
+- system prompt explicitly instructs model to follow `<inline_story_directive>` tags
+- inspector traces include resolved directive summaries
 
 Exclusion constraints:
 

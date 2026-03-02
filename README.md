@@ -39,7 +39,7 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 | Author-note completion profile | Author note frontmatter `completionProfile` | Optional per-story model profile override |
 | Story lorebook selection | Story frontmatter `lorebooks` | Selects scopes for continuation/chat |
 | Chapter ordering | `chapter`, `previousChapter`, `nextChapter` | Determines chapter threading/memory |
-| Inline directives | Story body (`<!-- LV: ... -->` or `[LV: ...]`) | Turn-level writing guidance |
+| Inline directives | Story body (`<!-- LV: ... -->` or `[LV: ...]`) | Turn-level guidance kept next to the related text |
 
 ## Frontmatter Examples
 
@@ -133,13 +133,13 @@ Additional behavior:
 1. Reads near-cursor story text.
 2. Resolves story lorebooks from story frontmatter (`lorebooks`, aliases) or linked author note frontmatter fallback.
 3. Resolves linked author note content.
-4. Parses inline directives from strict forms (`[LV: ...]`, `<!-- LV: ... -->`).
+4. Converts strict inline directives (`[LV: ...]`, `<!-- LV: ... -->`) into in-place `<inline_story_directive>` tags for prompt context.
 5. Builds layered context (chapter memory, graph-selected `world_info`, optional fallback entries).
 6. Streams continuation text into the editor at the cursor.
 
 Notes:
 
-- Inline directives are treated as instruction comments in prompt staging.
+- Inline directives remain in-place near their source text in prompt staging.
 - Long query windows for embeddings are chunked and averaged deterministically.
 - If embedding calls fail, LoreVault falls back to lexical retrieval instead of aborting generation.
 

@@ -155,7 +155,7 @@ If you prefer to build the plugin from source:
    - Lorebook scope selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-scope fallback)
    - In Story Writing panel, the device completion profile is selected from a dropdown and applies immediately
    - Cost profile label is configured in settings (not in Story Writing panel)
-   - Inline instruction comments are supported as `[LV: ...]` and `<!-- LV: ... -->` and are injected as an explicit steering layer
+   - Inline instruction comments are supported as `[LV: ...]` and `<!-- LV: ... -->`; LoreVault renders them in-place as `<inline_story_directive>` tags during prompt assembly
    - Long-form chapter QoL commands:
      - `Split Active Story Note into Chapter Notes`
      - `Split Active Story Note into Chapter Notes (Pick Folder)`

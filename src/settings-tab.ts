@@ -1333,10 +1333,10 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     containerEl.createEl('p', {
-      text: 'Steering layer placement controls where Author Note markdown and parsed inline directives are staged in prompts.'
+      text: 'Steering placement controls where Author Note markdown is staged in prompts.'
     });
     containerEl.createEl('p', {
-      text: 'Inline directive syntax: [LV: ...] or <!-- LV: ... --> (parsed from near-cursor story text only).'
+      text: 'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are kept in-place and rendered as `<inline_story_directive>` tags.'
     });
 
     const placementOptions = {
@@ -1358,19 +1358,6 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .onChange(async value => {
           if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
             this.plugin.settings.completion.layerPlacement.storyNotes = value;
-            await this.persistSettings();
-          }
-        }));
-
-    new Setting(containerEl)
-      .setName('Inline Directive Placement')
-      .setDesc('Where parsed `[LV: ...]` / `<!-- LV: ... -->` directives are injected.')
-      .addDropdown(dropdown => dropdown
-        .addOptions(placementOptions)
-        .setValue(this.plugin.settings.completion.layerPlacement.inlineDirectives)
-        .onChange(async value => {
-          if (value === 'system' || value === 'pre_history' || value === 'pre_response') {
-            this.plugin.settings.completion.layerPlacement.inlineDirectives = value;
             await this.persistSettings();
           }
         }));

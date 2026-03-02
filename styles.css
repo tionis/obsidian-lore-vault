@@ -582,6 +582,31 @@
   margin: 0;
 }
 
+.lorevault-linked-story-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lorevault-linked-story-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lorevault-linked-story-link {
+  width: fit-content;
+  font-weight: 600;
+}
+
+.lorevault-linked-story-path code {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 .lorevault-chat-note-row {
   display: flex;
   align-items: center;

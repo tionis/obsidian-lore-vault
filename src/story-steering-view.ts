@@ -384,6 +384,16 @@ export class StorySteeringView extends ItemView {
         text: workspaceContext.authorNotePath ? 'Open Author Note' : 'Create Author Note'
       });
       openAuthorNoteButton.disabled = !workspaceContext.activeFilePath;
+      const authorNoteTooltip = workspaceContext.authorNotePath
+        ? `Author note: ${workspaceContext.authorNotePath}`
+        : (workspaceContext.missingAuthorNoteRef
+          ? `Author note ref unresolved: ${workspaceContext.missingAuthorNoteRef}`
+          : 'Author note: (not linked yet)');
+      openAuthorNoteButton.setAttribute('title', authorNoteTooltip);
+      openAuthorNoteButton.setAttribute(
+        'aria-label',
+        `${workspaceContext.authorNotePath ? 'Open Author Note' : 'Create Author Note'} | ${authorNoteTooltip}`
+      );
       openAuthorNoteButton.addEventListener('click', () => {
         void this.openOrCreateAuthorNote();
       });
@@ -420,56 +430,6 @@ export class StorySteeringView extends ItemView {
         cls: `lorevault-manager-state lorevault-manager-state-${telemetry.state}`
       });
       stateBadge.setText(telemetry.state);
-
-      activeNoteCard.createEl('p', {
-        cls: 'lorevault-manager-generation-stats',
-        text: workspaceContext.activeFilePath || 'No active markdown note selected.'
-      });
-      activeNoteCard.createEl('p', {
-        cls: 'lorevault-manager-generation-stats',
-        text: workspaceContext.authorNotePath
-          ? `Author note: ${workspaceContext.authorNotePath}`
-          : (workspaceContext.missingAuthorNoteRef
-            ? `Author note ref unresolved: ${workspaceContext.missingAuthorNoteRef}`
-            : 'Author note: (not linked yet)')
-      });
-
-      if (workspaceContext.mode === 'author_note') {
-        activeNoteCard.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: 'Linked Chapters/Stories:'
-        });
-        if (linkedStoryItems.length === 0) {
-          activeNoteCard.createEl('p', {
-            cls: 'lorevault-manager-generation-stats',
-            text: '(none)'
-          });
-        } else {
-          const linkedList = activeNoteCard.createEl('ul');
-          for (const linkedStory of linkedStoryItems) {
-            const item = linkedList.createEl('li');
-            const chapterLabel = typeof linkedStory.chapter === 'number'
-              ? `Chapter ${linkedStory.chapter}`
-              : 'Unnumbered';
-            const titleSuffix = linkedStory.chapterTitle ? ` - ${linkedStory.chapterTitle}` : '';
-            item.createSpan({ text: `${chapterLabel}${titleSuffix}: ${linkedStory.path} ` });
-            const openButton = item.createEl('button', { text: 'Open' });
-            openButton.addEventListener('click', () => {
-              const file = this.getMarkdownFileByPath(linkedStory.path);
-              if (!file) {
-                new Notice(`Unable to open linked story: ${linkedStory.path}`);
-                return;
-              }
-              void this.app.workspace.getLeaf(true).openFile(file);
-            });
-          }
-        }
-      } else if (workspaceContext.linkedStoryPaths.length > 0) {
-        activeNoteCard.createEl('p', {
-          cls: 'lorevault-manager-generation-stats',
-          text: `Linked stories: ${workspaceContext.linkedStoryPaths.join(', ')}`
-        });
-      }
 
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
@@ -514,6 +474,39 @@ export class StorySteeringView extends ItemView {
         const ragList = generationDetails.createEl('ul');
         for (const item of telemetry.ragItems) {
           ragList.createEl('li', { text: item });
+        }
+      }
+
+      if (workspaceContext.mode === 'author_note') {
+        const linkedStoriesCard = contentEl.createDiv({ cls: 'lorevault-chat-controls' });
+        linkedStoriesCard.createEl('h3', { text: 'Linked Chapters/Stories' });
+        if (linkedStoryItems.length === 0) {
+          linkedStoriesCard.createEl('p', { text: '(none)' });
+        } else {
+          const linkedList = linkedStoriesCard.createEl('ul', { cls: 'lorevault-linked-story-list' });
+          for (const linkedStory of linkedStoryItems) {
+            const item = linkedList.createEl('li', { cls: 'lorevault-linked-story-item' });
+            const chapterLabel = typeof linkedStory.chapter === 'number'
+              ? `Chapter ${linkedStory.chapter}`
+              : 'Unnumbered';
+            const titleSuffix = linkedStory.chapterTitle ? ` - ${linkedStory.chapterTitle}` : '';
+            const link = item.createEl('a', {
+              cls: 'internal-link lorevault-linked-story-link',
+              text: `${chapterLabel}${titleSuffix}`,
+              href: '#'
+            });
+            link.addEventListener('click', (event) => {
+              event.preventDefault();
+              const file = this.getMarkdownFileByPath(linkedStory.path);
+              if (!file) {
+                new Notice(`Unable to open linked story: ${linkedStory.path}`);
+                return;
+              }
+              void this.app.workspace.getLeaf(true).openFile(file);
+            });
+            const pathEl = item.createDiv({ cls: 'lorevault-linked-story-path' });
+            pathEl.createEl('code', { text: linkedStory.path });
+          }
         }
       }
 

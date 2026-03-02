@@ -263,6 +263,14 @@ export interface CompletionPreset {
   timeoutMs: number;
 }
 
+export interface CostProfileBudgetSettings {
+  dailyBudgetUsd: number;
+  sessionBudgetUsd: number;
+  budgetByOperationUsd: {[operation: string]: number};
+  budgetByModelUsd: {[providerModel: string]: number};
+  budgetByScopeUsd: {[scope: string]: number};
+}
+
 export interface TextCommandPromptTemplate {
   id: string;
   name: string;
@@ -402,6 +410,7 @@ export interface ConverterSettings {
     budgetByOperationUsd: {[operation: string]: number};
     budgetByModelUsd: {[providerModel: string]: number};
     budgetByScopeUsd: {[scope: string]: number};
+    budgetByCostProfileUsd?: {[costProfile: string]: CostProfileBudgetSettings};
   };
   operationLog: {
     enabled: boolean;
@@ -550,7 +559,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     modelPricingOverrides: [],
     budgetByOperationUsd: {},
     budgetByModelUsd: {},
-    budgetByScopeUsd: {}
+    budgetByScopeUsd: {},
+    budgetByCostProfileUsd: {}
   },
   operationLog: {
     enabled: true,

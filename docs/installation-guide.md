@@ -118,7 +118,7 @@ If you prefer to build the plugin from source:
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: set `Story Continuity Aggressiveness` (`Balanced` or `Aggressive`) to control how much prior chapter memory/style carryover is injected
    - Optional: configure Auto Summaries (summary input cap + world_info output cap)
-   - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/scope)
+   - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/scope) per selected `Budget Cost Profile`
    - Optional: configure embeddings backend/cache/chunking for semantic fallback retrieval
    - Adjust priority weights if needed
 

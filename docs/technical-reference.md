@@ -556,8 +556,8 @@ Core contracts:
   - `inputCostPerMillionUsd`
   - `outputCostPerMillionUsd`
 - day rollups use UTC day boundaries
-- report warnings support budgets at:
-  - global day/session
+- report warnings support per-cost-profile budgets at:
+  - day/session
   - operation
   - provider:model
   - lorebook scope

@@ -10,6 +10,7 @@ import {
 } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import {
+  CostProfileBudgetSettings,
   CompletionPreset,
   ConverterSettings,
   DEFAULT_SETTINGS
@@ -234,6 +235,7 @@ class ConfirmActionModal extends Modal {
 export class LoreBookConverterSettingTab extends PluginSettingTab {
   plugin: LoreBookConverterPlugin;
   private selectedCompletionPresetEditorId = '';
+  private selectedCostBudgetProfileId = '';
 
   constructor(app: App, plugin: LoreBookConverterPlugin) {
     super(app, plugin);
@@ -281,6 +283,120 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, amount]) => `${key} = ${amount}`)
       .join('\n');
+  }
+
+  private normalizeCostBudgetProfileId(value: string): string {
+    return value.trim();
+  }
+
+  private getCostProfileBudgetMap(): {[costProfile: string]: CostProfileBudgetSettings} {
+    const raw = this.plugin.settings.costTracking.budgetByCostProfileUsd;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      this.plugin.settings.costTracking.budgetByCostProfileUsd = {};
+    }
+    return this.plugin.settings.costTracking.budgetByCostProfileUsd ?? {};
+  }
+
+  private resolveCostBudgetProfileOptions(): string[] {
+    const options = new Set<string>();
+    const configured = this.getCostProfileBudgetMap();
+    for (const key of Object.keys(configured)) {
+      const normalized = this.normalizeCostBudgetProfileId(key);
+      if (normalized) {
+        options.add(normalized);
+      }
+    }
+    const deviceEffective = this.normalizeCostBudgetProfileId(this.plugin.getDeviceEffectiveCostProfileLabel());
+    if (deviceEffective) {
+      options.add(deviceEffective);
+    }
+    const deviceExplicit = this.normalizeCostBudgetProfileId(this.plugin.getDeviceActiveCostProfile());
+    if (deviceExplicit) {
+      options.add(deviceExplicit);
+    }
+    const selected = this.normalizeCostBudgetProfileId(this.selectedCostBudgetProfileId);
+    if (selected) {
+      options.add(selected);
+    }
+    if (options.size === 0) {
+      options.add('__default__');
+    }
+    return [...options].sort((left, right) => left.localeCompare(right));
+  }
+
+  private resolveSelectedCostBudgetProfileId(profileOptions: string[]): string {
+    const selected = this.normalizeCostBudgetProfileId(this.selectedCostBudgetProfileId);
+    if (selected && profileOptions.includes(selected)) {
+      return selected;
+    }
+    const deviceEffective = this.normalizeCostBudgetProfileId(this.plugin.getDeviceEffectiveCostProfileLabel());
+    if (deviceEffective && profileOptions.includes(deviceEffective)) {
+      return deviceEffective;
+    }
+    return profileOptions[0] ?? '__default__';
+  }
+
+  private cloneCostProfileBudgetSettings(
+    value: Partial<CostProfileBudgetSettings> | null | undefined
+  ): CostProfileBudgetSettings {
+    const source = value ?? {};
+    const dailyBudgetCandidate = Number(source.dailyBudgetUsd);
+    const sessionBudgetCandidate = Number(source.sessionBudgetUsd);
+    const normalizeMap = (raw: {[key: string]: number} | undefined): {[key: string]: number} => {
+      const normalized: {[key: string]: number} = {};
+      if (!raw || typeof raw !== 'object') {
+        return normalized;
+      }
+      for (const [key, amount] of Object.entries(raw)) {
+        const normalizedKey = key.trim();
+        const normalizedAmount = Number(amount);
+        if (!normalizedKey || !Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+          continue;
+        }
+        normalized[normalizedKey] = normalizedAmount;
+      }
+      return normalized;
+    };
+    return {
+      dailyBudgetUsd: Number.isFinite(dailyBudgetCandidate) && dailyBudgetCandidate >= 0
+        ? dailyBudgetCandidate
+        : 0,
+      sessionBudgetUsd: Number.isFinite(sessionBudgetCandidate) && sessionBudgetCandidate >= 0
+        ? sessionBudgetCandidate
+        : 0,
+      budgetByOperationUsd: normalizeMap(source.budgetByOperationUsd),
+      budgetByModelUsd: normalizeMap(source.budgetByModelUsd),
+      budgetByScopeUsd: normalizeMap(source.budgetByScopeUsd)
+    };
+  }
+
+  private getCostProfileBudgetSettings(profileId: string): CostProfileBudgetSettings {
+    const normalizedProfileId = this.normalizeCostBudgetProfileId(profileId);
+    const configured = this.getCostProfileBudgetMap();
+    return this.cloneCostProfileBudgetSettings(configured[normalizedProfileId]);
+  }
+
+  private isCostProfileBudgetSettingsEmpty(value: CostProfileBudgetSettings): boolean {
+    return (
+      value.dailyBudgetUsd <= 0 &&
+      value.sessionBudgetUsd <= 0 &&
+      Object.keys(value.budgetByOperationUsd).length === 0 &&
+      Object.keys(value.budgetByModelUsd).length === 0 &&
+      Object.keys(value.budgetByScopeUsd).length === 0
+    );
+  }
+
+  private setCostProfileBudgetSettings(profileId: string, value: CostProfileBudgetSettings): void {
+    const normalizedProfileId = this.normalizeCostBudgetProfileId(profileId);
+    if (!normalizedProfileId) {
+      return;
+    }
+    const configured = this.getCostProfileBudgetMap();
+    if (this.isCostProfileBudgetSettingsEmpty(value)) {
+      delete configured[normalizedProfileId];
+      return;
+    }
+    configured[normalizedProfileId] = this.cloneCostProfileBudgetSettings(value);
   }
 
   private parseModelPricingOverridesInput(raw: string): ConverterSettings['costTracking']['modelPricingOverrides'] {
@@ -360,6 +476,22 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       'My preset',
       initialValue,
       submitLabel
+    );
+    const result = modal.waitForResult();
+    modal.open();
+    return result;
+  }
+
+  private async requestCostBudgetProfileName(
+    initialValue: string
+  ): Promise<string | null> {
+    const modal = new TextValueModal(
+      this.app,
+      'Set Budget Cost Profile',
+      'Cost Profile',
+      'profile-name',
+      initialValue,
+      'Apply'
     );
     const result = modal.waitForResult();
     modal.open();
@@ -1679,29 +1811,88 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.plugin.saveData(this.plugin.settings);
         }));
 
+    const budgetProfileOptions = this.resolveCostBudgetProfileOptions();
+    this.selectedCostBudgetProfileId = this.resolveSelectedCostBudgetProfileId(budgetProfileOptions);
+    const selectedBudgetProfileId = this.selectedCostBudgetProfileId;
+    const selectedBudgetProfileLabel = selectedBudgetProfileId === '__default__'
+      ? '__default__ (fallback)'
+      : selectedBudgetProfileId;
+    let selectedBudgetSettings = this.getCostProfileBudgetSettings(selectedBudgetProfileId);
+    const persistSelectedBudgetSettings = async (): Promise<void> => {
+      this.setCostProfileBudgetSettings(selectedBudgetProfileId, selectedBudgetSettings);
+      await this.plugin.saveData(this.plugin.settings);
+    };
+
+    new Setting(containerEl)
+      .setName('Budget Cost Profile')
+      .setDesc('Budget settings below are saved for this cost profile.')
+      .addDropdown(dropdown => {
+        for (const profileId of budgetProfileOptions) {
+          const label = profileId === '__default__' ? '__default__ (fallback)' : profileId;
+          dropdown.addOption(profileId, label);
+        }
+        dropdown.setValue(selectedBudgetProfileId);
+        dropdown.onChange(value => {
+          this.selectedCostBudgetProfileId = this.normalizeCostBudgetProfileId(value);
+          this.display();
+        });
+      })
+      .addButton(button => button
+        .setButtonText('Use Device Effective')
+        .onClick(() => {
+          const effective = this.normalizeCostBudgetProfileId(this.plugin.getDeviceEffectiveCostProfileLabel());
+          if (effective) {
+            this.selectedCostBudgetProfileId = effective;
+            this.display();
+          }
+        }))
+      .addButton(button => button
+        .setButtonText('Set Profile...')
+        .onClick(async () => {
+          const picked = await this.requestCostBudgetProfileName(selectedBudgetProfileId);
+          if (picked === null) {
+            return;
+          }
+          const normalized = this.normalizeCostBudgetProfileId(picked);
+          if (!normalized) {
+            new Notice('Cost profile cannot be empty.');
+            return;
+          }
+          this.selectedCostBudgetProfileId = normalized;
+          this.display();
+        }))
+      .addButton(button => button
+        .setButtonText('Clear Profile Budgets')
+        .onClick(async () => {
+          const configured = this.getCostProfileBudgetMap();
+          delete configured[selectedBudgetProfileId];
+          await this.plugin.saveData(this.plugin.settings);
+          this.display();
+        }));
+
     new Setting(containerEl)
       .setName('Daily Budget Warning (USD)')
-      .setDesc('Warn in Story Writing / Cost Analyzer when known daily (UTC) cost exceeds this amount. Set 0 to disable.')
+      .setDesc(`Warn when known daily (UTC) cost exceeds this amount for profile "${selectedBudgetProfileLabel}". Set 0 to disable.`)
       .addText(text => text
-        .setValue(this.plugin.settings.costTracking.dailyBudgetUsd.toString())
+        .setValue(selectedBudgetSettings.dailyBudgetUsd.toString())
         .onChange(async (value) => {
           const numValue = Number(value);
           if (!Number.isNaN(numValue) && numValue >= 0) {
-            this.plugin.settings.costTracking.dailyBudgetUsd = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            selectedBudgetSettings.dailyBudgetUsd = numValue;
+            await persistSelectedBudgetSettings();
           }
         }));
 
     new Setting(containerEl)
       .setName('Session Budget Warning (USD)')
-      .setDesc('Warn in Story Writing / Cost Analyzer when known session cost exceeds this amount. Set 0 to disable.')
+      .setDesc(`Warn when known session cost exceeds this amount for profile "${selectedBudgetProfileLabel}". Set 0 to disable.`)
       .addText(text => text
-        .setValue(this.plugin.settings.costTracking.sessionBudgetUsd.toString())
+        .setValue(selectedBudgetSettings.sessionBudgetUsd.toString())
         .onChange(async (value) => {
           const numValue = Number(value);
           if (!Number.isNaN(numValue) && numValue >= 0) {
-            this.plugin.settings.costTracking.sessionBudgetUsd = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            selectedBudgetSettings.sessionBudgetUsd = numValue;
+            await persistSelectedBudgetSettings();
           }
         }));
 
@@ -1733,10 +1924,10 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
-    let operationBudgetDraft = this.formatBudgetMapInput(this.plugin.settings.costTracking.budgetByOperationUsd);
+    let operationBudgetDraft = this.formatBudgetMapInput(selectedBudgetSettings.budgetByOperationUsd);
     new Setting(containerEl)
       .setName('Budget by Operation (USD)')
-      .setDesc('Optional operation-level budgets. One per line: operation=value (for example story_chat_turn=2.5).')
+      .setDesc(`Optional operation-level budgets for "${selectedBudgetProfileLabel}". One per line: operation=value (for example story_chat_turn=2.5).`)
       .addTextArea(text => {
         text.inputEl.rows = 3;
         text
@@ -1750,8 +1941,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setButtonText('Apply')
         .onClick(async () => {
           try {
-            this.plugin.settings.costTracking.budgetByOperationUsd = this.parseBudgetMapInput(operationBudgetDraft);
-            await this.plugin.saveData(this.plugin.settings);
+            selectedBudgetSettings.budgetByOperationUsd = this.parseBudgetMapInput(operationBudgetDraft);
+            await persistSelectedBudgetSettings();
             new Notice('Applied operation budgets.');
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -1759,10 +1950,10 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
-    let modelBudgetDraft = this.formatBudgetMapInput(this.plugin.settings.costTracking.budgetByModelUsd);
+    let modelBudgetDraft = this.formatBudgetMapInput(selectedBudgetSettings.budgetByModelUsd);
     new Setting(containerEl)
       .setName('Budget by Model (USD)')
-      .setDesc('Optional model-level budgets. One per line: provider:model=value (for example openrouter:z-ai/glm-5=4).')
+      .setDesc(`Optional model-level budgets for "${selectedBudgetProfileLabel}". One per line: provider:model=value (for example openrouter:z-ai/glm-5=4).`)
       .addTextArea(text => {
         text.inputEl.rows = 3;
         text
@@ -1781,8 +1972,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
             for (const [key, value] of Object.entries(parsed)) {
               normalized[key.toLowerCase()] = value;
             }
-            this.plugin.settings.costTracking.budgetByModelUsd = normalized;
-            await this.plugin.saveData(this.plugin.settings);
+            selectedBudgetSettings.budgetByModelUsd = normalized;
+            await persistSelectedBudgetSettings();
             new Notice('Applied model budgets.');
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -1790,10 +1981,10 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
-    let scopeBudgetDraft = this.formatBudgetMapInput(this.plugin.settings.costTracking.budgetByScopeUsd);
+    let scopeBudgetDraft = this.formatBudgetMapInput(selectedBudgetSettings.budgetByScopeUsd);
     new Setting(containerEl)
       .setName('Budget by Scope (USD)')
-      .setDesc('Optional lorebook-scope budgets. One per line: scope=value (for example universe/main=3.5).')
+      .setDesc(`Optional lorebook-scope budgets for "${selectedBudgetProfileLabel}". One per line: scope=value (for example universe/main=3.5).`)
       .addTextArea(text => {
         text.inputEl.rows = 3;
         text
@@ -1807,8 +1998,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setButtonText('Apply')
         .onClick(async () => {
           try {
-            this.plugin.settings.costTracking.budgetByScopeUsd = this.parseBudgetMapInput(scopeBudgetDraft);
-            await this.plugin.saveData(this.plugin.settings);
+            selectedBudgetSettings.budgetByScopeUsd = this.parseBudgetMapInput(scopeBudgetDraft);
+            await persistSelectedBudgetSettings();
             new Notice('Applied scope budgets.');
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

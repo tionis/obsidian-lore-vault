@@ -534,11 +534,15 @@ Settings:
 - `Default Output Cost / 1M Tokens (USD)`
 - `Model Pricing Overrides` (`provider | model-pattern | input | output`)
 - `Usage Report Output Directory`
+- `Budget Cost Profile` (select which cost profile budget settings you are editing)
 - `Daily Budget Warning (USD)`
 - `Session Budget Warning (USD)`
 - `Budget by Operation (USD)`
 - `Budget by Model (USD)`
 - `Budget by Scope (USD)`
+
+Budget settings are saved per selected cost profile.
+Use `Budget Cost Profile` in settings to switch which profile's budget set you edit.
 
 Ledger default path:
 
@@ -617,7 +621,7 @@ Capabilities:
   - collapsible selected context items (`world_info`, fallback items)
 - compact collapsible usage/cost summary:
   - session/day/week/month/project totals
-  - warnings when configured budgets are exceeded
+  - warnings when selected-profile budgets are exceeded
 
 ## Cost Analyzer
 

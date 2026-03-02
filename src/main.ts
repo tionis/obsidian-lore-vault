@@ -13,6 +13,7 @@ import {
   MarkdownFileInfo
 } from 'obsidian';
 import {
+  CostProfileBudgetSettings,
   ContinuitySelection,
   cloneDefaultTextCommandPromptTemplates,
   CompletionPreset,
@@ -767,6 +768,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     const deviceEffective = this.getDeviceEffectiveCostProfileLabel().trim();
     if (deviceEffective) {
       profiles.add(deviceEffective);
+    }
+    const configuredBudgetProfiles = this.settings.costTracking.budgetByCostProfileUsd ?? {};
+    for (const key of Object.keys(configuredBudgetProfiles)) {
+      const normalized = key.trim();
+      if (!normalized || normalized === '__default__') {
+        continue;
+      }
+      profiles.add(normalized);
     }
     const entries = await this.usageLedgerStore.listEntries();
     for (const entry of entries) {
@@ -1594,6 +1603,66 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalized;
   }
 
+  private createEmptyCostProfileBudgetSettings(): CostProfileBudgetSettings {
+    return {
+      dailyBudgetUsd: 0,
+      sessionBudgetUsd: 0,
+      budgetByOperationUsd: {},
+      budgetByModelUsd: {},
+      budgetByScopeUsd: {}
+    };
+  }
+
+  private normalizeCostProfileBudgetSettings(
+    raw: Partial<CostProfileBudgetSettings> | null | undefined
+  ): CostProfileBudgetSettings {
+    const source = raw ?? {};
+    const dailyBudgetCandidate = Number(source.dailyBudgetUsd);
+    const sessionBudgetCandidate = Number(source.sessionBudgetUsd);
+    return {
+      dailyBudgetUsd: Number.isFinite(dailyBudgetCandidate) && dailyBudgetCandidate >= 0
+        ? dailyBudgetCandidate
+        : 0,
+      sessionBudgetUsd: Number.isFinite(sessionBudgetCandidate) && sessionBudgetCandidate >= 0
+        ? sessionBudgetCandidate
+        : 0,
+      budgetByOperationUsd: this.normalizeBudgetMap(source.budgetByOperationUsd),
+      budgetByModelUsd: this.normalizeBudgetMap(source.budgetByModelUsd),
+      budgetByScopeUsd: this.normalizeBudgetMap(source.budgetByScopeUsd)
+    };
+  }
+
+  private resolveCostProfileBudgetSettings(costProfile: string): CostProfileBudgetSettings {
+    const normalizedProfile = costProfile.trim();
+    const perProfileMap = this.settings.costTracking.budgetByCostProfileUsd ?? {};
+    const normalizedEntries = Object.entries(perProfileMap)
+      .map(([rawKey, value]) => [rawKey.trim(), value] as const)
+      .filter(([key]) => key.length > 0);
+    const hasPerProfileBudgets = normalizedEntries.length > 0;
+    if (hasPerProfileBudgets) {
+      const byProfile = new Map<string, CostProfileBudgetSettings>();
+      for (const [key, value] of normalizedEntries) {
+        byProfile.set(key, this.normalizeCostProfileBudgetSettings(value));
+      }
+      if (normalizedProfile && byProfile.has(normalizedProfile)) {
+        return this.normalizeCostProfileBudgetSettings(byProfile.get(normalizedProfile));
+      }
+      if (byProfile.has('__default__')) {
+        return this.normalizeCostProfileBudgetSettings(byProfile.get('__default__'));
+      }
+      return this.createEmptyCostProfileBudgetSettings();
+    }
+
+    // Legacy fallback for older settings without per-cost-profile budget mappings.
+    return this.normalizeCostProfileBudgetSettings({
+      dailyBudgetUsd: this.settings.costTracking.dailyBudgetUsd,
+      sessionBudgetUsd: this.settings.costTracking.sessionBudgetUsd,
+      budgetByOperationUsd: this.settings.costTracking.budgetByOperationUsd,
+      budgetByModelUsd: this.settings.costTracking.budgetByModelUsd,
+      budgetByScopeUsd: this.settings.costTracking.budgetByScopeUsd
+    });
+  }
+
   private async recordCompletionUsage(
     operation: string,
     usage: CompletionUsageReport,
@@ -1704,14 +1773,17 @@ export default class LoreBookConverterPlugin extends Plugin {
         return profile === selectedProfile;
       });
     const nowMs = Date.now();
+    const budgetSettings = includeAllProfiles
+      ? this.createEmptyCostProfileBudgetSettings()
+      : this.resolveCostProfileBudgetSettings(selectedProfile);
     return buildUsageLedgerReportSnapshot(entries, {
       nowMs,
       sessionStartAt: this.sessionStartedAt,
-      dailyBudgetUsd: this.settings.costTracking.dailyBudgetUsd,
-      sessionBudgetUsd: this.settings.costTracking.sessionBudgetUsd,
-      budgetByOperationUsd: this.normalizeBudgetMap(this.settings.costTracking.budgetByOperationUsd),
-      budgetByModelUsd: this.normalizeBudgetMap(this.settings.costTracking.budgetByModelUsd),
-      budgetByScopeUsd: this.normalizeBudgetMap(this.settings.costTracking.budgetByScopeUsd)
+      dailyBudgetUsd: budgetSettings.dailyBudgetUsd,
+      sessionBudgetUsd: budgetSettings.sessionBudgetUsd,
+      budgetByOperationUsd: budgetSettings.budgetByOperationUsd,
+      budgetByModelUsd: budgetSettings.budgetByModelUsd,
+      budgetByScopeUsd: budgetSettings.budgetByScopeUsd
     });
   }
 
@@ -5961,6 +6033,55 @@ export default class LoreBookConverterPlugin extends Plugin {
         return normalizeScope(trimmed) || '';
       }
     );
+    const normalizedBudgetByCostProfile: {[costProfile: string]: CostProfileBudgetSettings} = {};
+    const rawBudgetByCostProfile = merged.costTracking.budgetByCostProfileUsd;
+    if (rawBudgetByCostProfile && typeof rawBudgetByCostProfile === 'object' && !Array.isArray(rawBudgetByCostProfile)) {
+      for (const [rawProfileKey, rawProfileBudget] of Object.entries(rawBudgetByCostProfile as {[key: string]: unknown})) {
+        const profileKey = rawProfileKey.trim();
+        if (!profileKey || !rawProfileBudget || typeof rawProfileBudget !== 'object' || Array.isArray(rawProfileBudget)) {
+          continue;
+        }
+        const budgetSource = rawProfileBudget as Partial<CostProfileBudgetSettings>;
+        const dailyCandidate = Number(budgetSource.dailyBudgetUsd);
+        const sessionCandidate = Number(budgetSource.sessionBudgetUsd);
+        normalizedBudgetByCostProfile[profileKey] = {
+          dailyBudgetUsd: Number.isFinite(dailyCandidate) && dailyCandidate >= 0 ? dailyCandidate : 0,
+          sessionBudgetUsd: Number.isFinite(sessionCandidate) && sessionCandidate >= 0 ? sessionCandidate : 0,
+          budgetByOperationUsd: normalizeBudgetObject(budgetSource.budgetByOperationUsd),
+          budgetByModelUsd: normalizeBudgetObject(
+            budgetSource.budgetByModelUsd,
+            key => key.trim().toLowerCase()
+          ),
+          budgetByScopeUsd: normalizeBudgetObject(
+            budgetSource.budgetByScopeUsd,
+            key => {
+              const trimmed = key.trim();
+              if (trimmed === '(none)') {
+                return '(none)';
+              }
+              return normalizeScope(trimmed) || '';
+            }
+          )
+        };
+      }
+    }
+    const hasLegacyBudgetConfig = (
+      merged.costTracking.dailyBudgetUsd > 0 ||
+      merged.costTracking.sessionBudgetUsd > 0 ||
+      Object.keys(merged.costTracking.budgetByOperationUsd).length > 0 ||
+      Object.keys(merged.costTracking.budgetByModelUsd).length > 0 ||
+      Object.keys(merged.costTracking.budgetByScopeUsd).length > 0
+    );
+    if (Object.keys(normalizedBudgetByCostProfile).length === 0 && hasLegacyBudgetConfig) {
+      normalizedBudgetByCostProfile.__default__ = {
+        dailyBudgetUsd: merged.costTracking.dailyBudgetUsd,
+        sessionBudgetUsd: merged.costTracking.sessionBudgetUsd,
+        budgetByOperationUsd: { ...merged.costTracking.budgetByOperationUsd },
+        budgetByModelUsd: { ...merged.costTracking.budgetByModelUsd },
+        budgetByScopeUsd: { ...merged.costTracking.budgetByScopeUsd }
+      };
+    }
+    merged.costTracking.budgetByCostProfileUsd = normalizedBudgetByCostProfile;
 
     merged.operationLog.enabled = Boolean(merged.operationLog.enabled);
     const operationLogPath = (merged.operationLog.path ?? '')

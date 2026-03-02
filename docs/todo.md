@@ -19,6 +19,7 @@ Reference design: `docs/planning.md`.
 - Story Steering LLM update prompt support is complete (optional per-run change request + baseline-preserving update behavior).
 - Story Chat agentic tool layer is complete (bounded lorebook/story/steering tool calls with scoped access and optional write gating).
 - LLM operation log is complete (full request/response/tool-planner/embedding payload persistence, per-cost-profile files, retention controls, and in-plugin explorer view).
+- Cost-budget configuration is now profile-scoped (budget settings are saved/applied per selected cost profile).
 - Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
 - Cross-panel diff UX is now standardized on side-by-side source diffs (text-command review + story-delta review).
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).

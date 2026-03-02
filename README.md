@@ -100,6 +100,7 @@ The panel also shows:
 - selected context items (`world_info` + fallback)
 - selected lorebooks from linked Author Note (interactive add + per-item remove)
 - device-local cost profile label configured in settings (usage metadata tagging; auto-derived from API key hash when empty)
+- budget settings are configured per cost profile in settings (daily/session + operation/model/scope maps)
 - collapsible cost breakdown (session/day/week/month/project) in the same panel section as the profile selector
 - rewrite/edit review modals use side-by-side source diffs (with omitted-line markers for large unchanged ranges)
 
@@ -218,6 +219,7 @@ Operations and reporting:
 - Default retention is `10000` entries per profile log file.
 - Operation Log Explorer includes a cost-profile selector and defaults to the active device profile.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
+- Budget settings are stored per cost profile (`Budget Cost Profile` selector in settings).
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
 - LoreVault only creates missing secrets; it never overwrites an existing secret value.
 - Secret IDs are user-configurable; you can pick existing IDs in settings to reuse one secret across multiple presets.

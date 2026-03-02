@@ -2712,6 +2712,36 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private resolveMarkdownEditorScroller(markdownView: MarkdownView): HTMLElement | null {
+    const containerScroller = markdownView.containerEl.querySelector('.cm-scroller');
+    if (containerScroller instanceof HTMLElement) {
+      return containerScroller;
+    }
+    const contentScroller = markdownView.contentEl.querySelector('.cm-scroller');
+    if (contentScroller instanceof HTMLElement) {
+      return contentScroller;
+    }
+    return null;
+  }
+
+  private replaceRangePreservingViewport(
+    editor: Editor,
+    markdownView: MarkdownView,
+    text: string,
+    pos: { line: number; ch: number }
+  ): void {
+    const scroller = this.resolveMarkdownEditorScroller(markdownView);
+    if (!scroller) {
+      editor.replaceRange(text, pos);
+      return;
+    }
+    const top = scroller.scrollTop;
+    const left = scroller.scrollLeft;
+    editor.replaceRange(text, pos);
+    scroller.scrollTop = top;
+    scroller.scrollLeft = left;
+  }
+
   private async resolveAuthorNoteRewriteTarget(file: TFile | null): Promise<{
     authorNoteFile: TFile;
     linkedStoryFiles: TFile[];
@@ -8467,7 +8497,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       let insertPos = cursor;
       if (cursor.ch !== 0) {
-        editor.replaceRange('\n', insertPos);
+        this.replaceRangePreservingViewport(editor, markdownView, '\n', insertPos);
         const offset = editor.posToOffset(insertPos) + 1;
         insertPos = editor.offsetToPos(offset);
       }
@@ -8475,6 +8505,42 @@ export default class LoreBookConverterPlugin extends Plugin {
       let generatedText = '';
       let lastStatusUpdate = 0;
       let completionUsage: CompletionUsageReport | null = null;
+      let pendingDelta = '';
+      let flushTimer: number | null = null;
+      const flushPendingDelta = (): void => {
+        if (!pendingDelta) {
+          return;
+        }
+        const nextChunk = pendingDelta;
+        pendingDelta = '';
+        this.replaceRangePreservingViewport(editor, markdownView, nextChunk, insertPos);
+        const nextOffset = editor.posToOffset(insertPos) + nextChunk.length;
+        insertPos = editor.offsetToPos(nextOffset);
+        generatedText += nextChunk;
+
+        const now = Date.now();
+        if (now - lastStatusUpdate >= 250) {
+          lastStatusUpdate = now;
+          const outTokens = this.estimateTokens(generatedText);
+          this.updateGenerationTelemetry({
+            generatedTokens: outTokens,
+            statusText: 'generating'
+          });
+          this.setGenerationStatus(
+            `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
+            'busy'
+          );
+        }
+      };
+      const scheduleDeltaFlush = (): void => {
+        if (flushTimer !== null) {
+          return;
+        }
+        flushTimer = window.setTimeout(() => {
+          flushTimer = null;
+          flushPendingDelta();
+        }, 50);
+      };
 
       await requestStoryContinuationStream(completion, {
         systemPrompt: effectiveSystemPrompt,
@@ -8487,31 +8553,19 @@ export default class LoreBookConverterPlugin extends Plugin {
           if (!delta) {
             return;
           }
-
-          editor.replaceRange(delta, insertPos);
-          const nextOffset = editor.posToOffset(insertPos) + delta.length;
-          insertPos = editor.offsetToPos(nextOffset);
-          generatedText += delta;
-
-          const now = Date.now();
-          if (now - lastStatusUpdate >= 250) {
-            lastStatusUpdate = now;
-            const outTokens = this.estimateTokens(generatedText);
-            this.updateGenerationTelemetry({
-              generatedTokens: outTokens,
-              statusText: 'generating'
-            });
-            this.setGenerationStatus(
-              `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
-              'busy'
-            );
-          }
+          pendingDelta += delta;
+          scheduleDeltaFlush();
         },
         onUsage: usage => {
           completionUsage = usage;
         },
         abortSignal: this.generationAbortController.signal
       });
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      flushPendingDelta();
 
       if (completionUsage) {
         await this.recordCompletionUsage('editor_continuation', completionUsage, {
@@ -8536,7 +8590,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (!generatedText.trim()) {
         throw new Error('Completion provider returned empty output.');
       }
-      editor.replaceRange('\n', insertPos);
+      this.replaceRangePreservingViewport(editor, markdownView, '\n', insertPos);
       const generatedTokens = this.estimateTokens(generatedText);
       this.updateGenerationTelemetry({
         state: 'idle',

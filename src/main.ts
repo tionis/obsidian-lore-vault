@@ -2728,10 +2728,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     editor: Editor,
     markdownView: MarkdownView,
     text: string,
-    pos: { line: number; ch: number }
+    pos: { line: number; ch: number },
+    options?: {
+      preserveViewport?: boolean;
+    }
   ): boolean {
-    const scroller = this.resolveMarkdownEditorScroller(markdownView);
-    const scrollInfo = editor.getScrollInfo();
+    const preserveViewport = options?.preserveViewport !== false;
+    const scroller = preserveViewport ? this.resolveMarkdownEditorScroller(markdownView) : null;
+    const scrollInfo = preserveViewport ? editor.getScrollInfo() : null;
     const selections = editor.listSelections().map(selection => ({
       from: selection.anchor,
       to: selection.head
@@ -2753,10 +2757,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         return false;
       }
     }
-    editor.scrollTo(scrollInfo.left, scrollInfo.top);
-    if (scroller) {
-      scroller.scrollTop = scrollInfo.top;
-      scroller.scrollLeft = scrollInfo.left;
+    if (preserveViewport && scrollInfo) {
+      editor.scrollTo(scrollInfo.left, scrollInfo.top);
+      if (scroller) {
+        scroller.scrollTop = scrollInfo.top;
+        scroller.scrollLeft = scrollInfo.left;
+      }
     }
     return true;
   }
@@ -8541,6 +8547,19 @@ export default class LoreBookConverterPlugin extends Plugin {
       let knownDocLength = editor.getValue().length;
       let applyingInsert = false;
       let lastUserEditAt = 0;
+      let lastUserViewportInteractionAt = 0;
+
+      const noteViewportInteraction = (): void => {
+        lastUserViewportInteractionAt = Date.now();
+      };
+
+      const streamScroller = this.resolveMarkdownEditorScroller(markdownView);
+      if (streamScroller) {
+        streamScroller.addEventListener('pointerdown', noteViewportInteraction, { passive: true });
+        streamScroller.addEventListener('wheel', noteViewportInteraction, { passive: true });
+        streamScroller.addEventListener('touchstart', noteViewportInteraction, { passive: true });
+        streamScroller.addEventListener('touchmove', noteViewportInteraction, { passive: true });
+      }
 
       const updateOutputTelemetry = (force = false): void => {
         const now = Date.now();
@@ -8591,7 +8610,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (!pendingDelta) {
           return;
         }
-        if (!force && Date.now() - lastUserEditAt < 180) {
+        const mostRecentInteraction = Math.max(lastUserEditAt, lastUserViewportInteractionAt);
+        if (!force && Date.now() - mostRecentInteraction < 260) {
           scheduleDeltaFlush();
           return;
         }
@@ -8605,7 +8625,10 @@ export default class LoreBookConverterPlugin extends Plugin {
 
         const insertPos = editor.offsetToPos(clampOffset(insertOffset));
         applyingInsert = true;
-        const ok = this.replaceRangePreservingViewport(editor, markdownView, nextChunk, insertPos);
+        const shouldPreserveViewport = Date.now() - lastUserViewportInteractionAt > 260;
+        const ok = this.replaceRangePreservingViewport(editor, markdownView, nextChunk, insertPos, {
+          preserveViewport: shouldPreserveViewport
+        });
         applyingInsert = false;
         if (!ok) {
           detachedDeltaBuffer += nextChunk;
@@ -8657,6 +8680,12 @@ export default class LoreBookConverterPlugin extends Plugin {
         clearFlushTimer();
         flushPendingDelta(true);
         this.app.workspace.offref(editorChangeRef);
+        if (streamScroller) {
+          streamScroller.removeEventListener('pointerdown', noteViewportInteraction);
+          streamScroller.removeEventListener('wheel', noteViewportInteraction);
+          streamScroller.removeEventListener('touchstart', noteViewportInteraction);
+          streamScroller.removeEventListener('touchmove', noteViewportInteraction);
+        }
       }
       updateOutputTelemetry(true);
 

@@ -141,6 +141,7 @@ export class LorevaultHelpView extends ItemView {
         'Set author-note `completionProfile` via command `Set Author Note Completion Profile`.',
         'API keys are in Obsidian Secret Storage; each completion preset has a `Completion API Secret Name` used as its secret key id. LoreVault only creates missing secrets and never overwrites existing ones.',
         'Cost profile label is configured in settings (device-local) and only affects usage metadata; when empty, LoreVault auto-derives one from API key hash.',
+        'Story continuity aggressiveness (`Balanced` / `Aggressive`) is configured in settings and controls how much prior chapter memory + style carryover is injected.',
         'Panel shows effective model, context usage, selected context items, and cost breakdown under the profile selector.'
       ],
       actions: [

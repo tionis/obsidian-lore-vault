@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  estimateChapterMemoryExcerptChapterWindow,
+  estimateChapterMemoryExcerptReserveTokens,
   estimateChapterMemoryPriorChapterWindow,
   estimateChapterMemorySummaryTokenBudget,
   extractAdaptiveQueryWindow,
-  extractAdaptiveStoryWindow
+  extractAdaptiveStoryWindow,
+  resolveChapterMemoryExcerptSectionTokenRange
 } from '../src/context-window-strategy';
 
 function makeText(length: number, char: string): string {
@@ -85,19 +88,60 @@ test('chapter-memory prior chapter window scales with larger token budgets', () 
   const lowBudgetWindow = estimateChapterMemoryPriorChapterWindow(120);
   const mediumBudgetWindow = estimateChapterMemoryPriorChapterWindow(900);
   const highBudgetWindow = estimateChapterMemoryPriorChapterWindow(3200);
+  const ultraHighBudgetWindow = estimateChapterMemoryPriorChapterWindow(12000);
+  const balancedUltraHighBudgetWindow = estimateChapterMemoryPriorChapterWindow(12000, 'balanced');
 
   assert.equal(lowBudgetWindow, 4);
   assert.equal(mediumBudgetWindow, 6);
-  assert.equal(highBudgetWindow, 18);
+  assert.equal(highBudgetWindow, 22);
+  assert.equal(ultraHighBudgetWindow, 40);
+  assert.equal(balancedUltraHighBudgetWindow, 24);
 });
 
 test('chapter-memory per-summary token budget adapts by budget and chapter count', () => {
   const compact = estimateChapterMemorySummaryTokenBudget(900, 10);
   const expanded = estimateChapterMemorySummaryTokenBudget(900, 4);
   const capped = estimateChapterMemorySummaryTokenBudget(12000, 2);
+  const balancedCapped = estimateChapterMemorySummaryTokenBudget(12000, 2, 'balanced');
 
   assert.ok(expanded > compact);
   assert.equal(compact, 120);
   assert.equal(expanded, 270);
-  assert.equal(capped, 320);
+  assert.equal(capped, 720);
+  assert.equal(balancedCapped, 420);
+});
+
+test('chapter-memory excerpt reserve only activates for large budgets', () => {
+  const small = estimateChapterMemoryExcerptReserveTokens(600);
+  const medium = estimateChapterMemoryExcerptReserveTokens(900);
+  const large = estimateChapterMemoryExcerptReserveTokens(2400);
+  const balancedLarge = estimateChapterMemoryExcerptReserveTokens(2400, 'balanced');
+
+  assert.equal(small, 0);
+  assert.ok(medium > 0);
+  assert.ok(large >= medium);
+  assert.ok(balancedLarge < large);
+});
+
+test('chapter-memory excerpt chapter window scales with reserve budget', () => {
+  const none = estimateChapterMemoryExcerptChapterWindow(600);
+  const medium = estimateChapterMemoryExcerptChapterWindow(900);
+  const large = estimateChapterMemoryExcerptChapterWindow(2400);
+  const veryLarge = estimateChapterMemoryExcerptChapterWindow(6000);
+  const balancedVeryLarge = estimateChapterMemoryExcerptChapterWindow(6000, 'balanced');
+
+  assert.equal(none, 0);
+  assert.ok(medium >= 2);
+  assert.ok(large >= medium);
+  assert.ok(veryLarge >= large);
+  assert.ok(balancedVeryLarge < veryLarge);
+});
+
+test('chapter-memory excerpt section token range changes by aggressiveness', () => {
+  const aggressiveRange = resolveChapterMemoryExcerptSectionTokenRange('aggressive');
+  const balancedRange = resolveChapterMemoryExcerptSectionTokenRange('balanced');
+
+  assert.ok(aggressiveRange.activationTokens > balancedRange.activationTokens);
+  assert.ok(aggressiveRange.maxTokens > balancedRange.maxTokens);
+  assert.ok(aggressiveRange.minTokens > balancedRange.minTokens);
 });

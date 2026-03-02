@@ -155,6 +155,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
       timeoutMs: 60000,
+      continuityAggressiveness: 'aggressive',
       layerPlacement: {
         storyNotes: 'pre_history'
       },

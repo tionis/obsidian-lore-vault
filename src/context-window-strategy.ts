@@ -3,11 +3,78 @@ const MIN_QUERY_CHARS = 5000;
 const MAX_QUERY_CHARS = 180000;
 const MIN_STORY_CHARS = 12000;
 const MAX_STORY_CHARS = 900000;
-const CHAPTER_MEMORY_MIN_PRIOR_CHAPTERS = 4;
-const CHAPTER_MEMORY_MAX_PRIOR_CHAPTERS = 18;
-const CHAPTER_MEMORY_TARGET_TOKENS_PER_CHAPTER = 140;
-const CHAPTER_MEMORY_MIN_SUMMARY_TOKENS = 120;
-const CHAPTER_MEMORY_MAX_SUMMARY_TOKENS = 320;
+
+export type ChapterMemoryAggressiveness = 'balanced' | 'aggressive';
+
+interface ChapterMemoryAggressivenessConfig {
+  minPriorChapters: number;
+  maxPriorChapters: number;
+  targetTokensPerChapter: number;
+  minSummaryTokens: number;
+  maxSummaryTokens: number;
+  excerptReserveThreshold: number;
+  excerptReserveFraction: number;
+  excerptMinReserveTokens: number;
+  excerptMaxReserveTokens: number;
+  excerptTargetTokensPerChapter: number;
+  excerptMinChapters: number;
+  excerptMaxChapters: number;
+  excerptActivationTokens: number;
+  excerptPerChapterMinTokens: number;
+  excerptPerChapterMaxTokens: number;
+}
+
+const CHAPTER_MEMORY_BALANCED_CONFIG: ChapterMemoryAggressivenessConfig = {
+  minPriorChapters: 4,
+  maxPriorChapters: 24,
+  targetTokensPerChapter: 140,
+  minSummaryTokens: 120,
+  maxSummaryTokens: 420,
+  excerptReserveThreshold: 900,
+  excerptReserveFraction: 0.35,
+  excerptMinReserveTokens: 120,
+  excerptMaxReserveTokens: 600,
+  excerptTargetTokensPerChapter: 220,
+  excerptMinChapters: 1,
+  excerptMaxChapters: 3,
+  excerptActivationTokens: 96,
+  excerptPerChapterMinTokens: 96,
+  excerptPerChapterMaxTokens: 300
+};
+
+const CHAPTER_MEMORY_AGGRESSIVE_CONFIG: ChapterMemoryAggressivenessConfig = {
+  minPriorChapters: 4,
+  maxPriorChapters: 40,
+  targetTokensPerChapter: 140,
+  minSummaryTokens: 120,
+  maxSummaryTokens: 720,
+  excerptReserveThreshold: 700,
+  excerptReserveFraction: 0.45,
+  excerptMinReserveTokens: 180,
+  excerptMaxReserveTokens: 4800,
+  excerptTargetTokensPerChapter: 420,
+  excerptMinChapters: 2,
+  excerptMaxChapters: 8,
+  excerptActivationTokens: 128,
+  excerptPerChapterMinTokens: 128,
+  excerptPerChapterMaxTokens: 960
+};
+
+export function normalizeChapterMemoryAggressiveness(
+  value: unknown
+): ChapterMemoryAggressiveness {
+  return String(value ?? '').trim().toLowerCase() === 'balanced'
+    ? 'balanced'
+    : 'aggressive';
+}
+
+function resolveChapterMemoryAggressivenessConfig(
+  aggressiveness: ChapterMemoryAggressiveness
+): ChapterMemoryAggressivenessConfig {
+  return aggressiveness === 'balanced'
+    ? CHAPTER_MEMORY_BALANCED_CONFIG
+    : CHAPTER_MEMORY_AGGRESSIVE_CONFIG;
+}
 
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
@@ -233,27 +300,82 @@ export function extractAdaptiveStoryWindow(text: string, tokenBudget: number): s
   return composed.slice(composed.length - maxChars).trimStart();
 }
 
-export function estimateChapterMemoryPriorChapterWindow(tokenBudget: number): number {
+export function estimateChapterMemoryPriorChapterWindow(
+  tokenBudget: number,
+  aggressiveness: ChapterMemoryAggressiveness = 'aggressive'
+): number {
+  const config = resolveChapterMemoryAggressivenessConfig(aggressiveness);
   const normalizedBudget = Math.max(96, Math.floor(Number(tokenBudget) || 0));
-  const estimated = Math.floor(normalizedBudget / CHAPTER_MEMORY_TARGET_TOKENS_PER_CHAPTER);
+  const estimated = Math.floor(normalizedBudget / config.targetTokensPerChapter);
   return clamp(
     estimated,
-    CHAPTER_MEMORY_MIN_PRIOR_CHAPTERS,
-    CHAPTER_MEMORY_MAX_PRIOR_CHAPTERS
+    config.minPriorChapters,
+    config.maxPriorChapters
   );
 }
 
 export function estimateChapterMemorySummaryTokenBudget(
   tokenBudget: number,
-  priorChapterCount: number
+  priorChapterCount: number,
+  aggressiveness: ChapterMemoryAggressiveness = 'aggressive'
 ): number {
+  const config = resolveChapterMemoryAggressivenessConfig(aggressiveness);
   const normalizedBudget = Math.max(96, Math.floor(Number(tokenBudget) || 0));
   const normalizedCount = Math.max(1, Math.floor(Number(priorChapterCount) || 0));
   const perChapterBudget = Math.max(80, Math.floor(normalizedBudget / normalizedCount));
   const estimated = Math.floor(perChapterBudget * 1.2);
   return clamp(
     estimated,
-    CHAPTER_MEMORY_MIN_SUMMARY_TOKENS,
-    CHAPTER_MEMORY_MAX_SUMMARY_TOKENS
+    config.minSummaryTokens,
+    config.maxSummaryTokens
   );
+}
+
+export function estimateChapterMemoryExcerptReserveTokens(
+  tokenBudget: number,
+  aggressiveness: ChapterMemoryAggressiveness = 'aggressive'
+): number {
+  const config = resolveChapterMemoryAggressivenessConfig(aggressiveness);
+  const normalizedBudget = Math.max(96, Math.floor(Number(tokenBudget) || 0));
+  if (normalizedBudget < config.excerptReserveThreshold) {
+    return 0;
+  }
+  const estimated = Math.floor(normalizedBudget * config.excerptReserveFraction);
+  return clamp(
+    estimated,
+    config.excerptMinReserveTokens,
+    config.excerptMaxReserveTokens
+  );
+}
+
+export function estimateChapterMemoryExcerptChapterWindow(
+  tokenBudget: number,
+  aggressiveness: ChapterMemoryAggressiveness = 'aggressive'
+): number {
+  const config = resolveChapterMemoryAggressivenessConfig(aggressiveness);
+  const reserve = estimateChapterMemoryExcerptReserveTokens(tokenBudget, aggressiveness);
+  if (reserve <= 0) {
+    return 0;
+  }
+  const estimated = Math.round(reserve / config.excerptTargetTokensPerChapter);
+  return clamp(
+    estimated,
+    config.excerptMinChapters,
+    config.excerptMaxChapters
+  );
+}
+
+export function resolveChapterMemoryExcerptSectionTokenRange(
+  aggressiveness: ChapterMemoryAggressiveness = 'aggressive'
+): {
+  activationTokens: number;
+  minTokens: number;
+  maxTokens: number;
+} {
+  const config = resolveChapterMemoryAggressivenessConfig(aggressiveness);
+  return {
+    activationTokens: config.excerptActivationTokens,
+    minTokens: config.excerptPerChapterMinTokens,
+    maxTokens: config.excerptPerChapterMaxTokens
+  };
 }

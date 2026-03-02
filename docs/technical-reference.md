@@ -360,10 +360,13 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 
 - resolves current note thread
 - selects bounded prior chapters with deterministic budget-adaptive depth
-- resolves snippets through rolling chapter summary cache/store
+- resolves summary snippets through rolling chapter summary cache/store
   - prefers `## Summary` section
   - then frontmatter `summary`
   - then deterministic body-head excerpt
+- when chapter-memory budget is large enough, injects additional bounded style excerpts from the most recent prior chapters
+- high-context models receive larger chapter-memory budgets, deeper prior-chapter windows, and more/larger recent style excerpts
+- `completion.continuityAggressiveness` (`balanced` | `aggressive`) selects the chapter-memory budget profile used by both continue-story and chat flows
 - injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 
 This provides a dedicated chapter-memory layer before graph retrieval.
@@ -415,7 +418,7 @@ Flow:
 Precedence contract:
 
 - world_info entry content: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` fallback -> note body
-- chapter memory summary: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` fallback -> deterministic excerpt
+- chapter memory summary: summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph) -> `frontmatter summary` fallback -> deterministic excerpt; optional recent-chapter style excerpts are appended when budget allows (expanded on high-context models)
 
 ## Text Command Internals
 

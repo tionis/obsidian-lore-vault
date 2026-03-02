@@ -168,6 +168,7 @@ export interface LoreBook {
 
 export type PromptLayerPlacement = 'system' | 'pre_history' | 'pre_response';
 export type StorySteeringExtractionSanitization = 'strict' | 'off';
+export type CompletionContinuityAggressiveness = 'balanced' | 'aggressive';
 
 export interface PromptLayerUsage {
   layer: string;
@@ -421,6 +422,7 @@ export interface ConverterSettings {
     contextWindowTokens: number;
     promptReserveTokens: number;
     timeoutMs: number;
+    continuityAggressiveness: CompletionContinuityAggressiveness;
     layerPlacement: {
       storyNotes: PromptLayerPlacement;
     };
@@ -569,6 +571,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     contextWindowTokens: 8192,
     promptReserveTokens: 400,
     timeoutMs: 60000,
+    continuityAggressiveness: 'aggressive',
     layerPlacement: {
       storyNotes: 'pre_history'
     },

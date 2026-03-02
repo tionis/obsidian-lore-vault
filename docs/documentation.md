@@ -402,6 +402,11 @@ Author Note rewrite behavior:
 When running `Continue Story with Context`, LoreVault resolves a deterministic story sequence for the active note and injects a bounded chapter-memory block from recent prior chapters before lorebook context.
 The chapter-memory window scales deterministically with available chapter-memory budget, so larger context windows include more prior chapters.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
+When chapter-memory budget is sufficiently large, LoreVault additionally injects bounded style excerpts from the most recent prior chapters to better preserve narrative voice and pacing continuity.
+On very large context windows, LoreVault allocates substantially more chapter-memory budget, so long-form threads can carry a deeper summary trail and richer recent-chapter style context.
+`Story Continuity Aggressiveness` (Settings -> Writing Completion) controls this behavior:
+- `Balanced`: moderate chapter-memory depth and style carryover.
+- `Aggressive`: larger chapter-memory budgets, deeper prior-chapter windows, and stronger style carryover.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 
 ## Text Commands (Selection Rewrite/Reformat)
@@ -475,6 +480,7 @@ Precedence:
   - summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph)
   - frontmatter `summary` (fallback)
   - deterministic excerpt fallback
+  - when budget allows: additional bounded style excerpts from recent prior chapter bodies (more recent chapters and larger excerpt slices on high-context models)
 - chapter summaries are not hard-length capped.
 - when a chapter summary contains multiple paragraphs, LoreVault writes it inside:
   - `<!-- LV_BEGIN_SUMMARY -->`
@@ -929,7 +935,7 @@ Turn context assembly:
   - unresolved steering source refs
   - resolved specific note paths
   - unresolved note references
-  - chapter memory summaries used for the turn
+  - chapter memory chapters used for the turn
   - continuity state items included for the turn
   - per-layer context trace (`steering(system/pre_history/pre_response)`, `local_window`, `inline_directives`, `manual_context`, `specific_notes`, `chapter_memory`, `agent_tools`, `graph_memory`, `fallback_entries`, `tool_hooks`)
   - Story Chat agent tool traces (calls, write actions, stop reason)

@@ -125,7 +125,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       },
       presets: [],
       activePresetId: '',
-      ...(overrides.completion ?? {})
+      ...(overrides.completion ?? {}),
+      continuityAggressiveness: overrides.completion?.continuityAggressiveness ?? 'aggressive'
     },
     storyChat: {
       chatFolder: 'LoreVault/chat',

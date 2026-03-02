@@ -116,6 +116,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
+   - Optional: set `Story Continuity Aggressiveness` (`Balanced` or `Aggressive`) to control how much prior chapter memory/style carryover is injected
    - Optional: configure Auto Summaries (summary input cap + world_info output cap)
    - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/scope)
    - Optional: configure embeddings backend/cache/chunking for semantic fallback retrieval
@@ -147,6 +148,7 @@ If you prefer to build the plugin from source:
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
    - If the active note defines long-form story metadata (`authorNote` link, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context, scaling prior-chapter depth when context budget is larger
+   - `Story Continuity Aggressiveness` in settings controls how strongly chapter memory expands (depth + style excerpts) in both Continue Story and Story Chat
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Author Note content is edited directly in the linked note (native Obsidian editor)

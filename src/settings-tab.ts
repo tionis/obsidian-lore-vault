@@ -1332,6 +1332,20 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
+    new Setting(containerEl)
+      .setName('Story Continuity Aggressiveness')
+      .setDesc('Controls how aggressively chapter memory includes prior chapters and style excerpts in Continue Story and Story Chat.')
+      .addDropdown(dropdown => dropdown
+        .addOption('balanced', 'Balanced')
+        .addOption('aggressive', 'Aggressive')
+        .setValue(this.plugin.settings.completion.continuityAggressiveness)
+        .onChange(async value => {
+          this.plugin.settings.completion.continuityAggressiveness = value === 'balanced'
+            ? 'balanced'
+            : 'aggressive';
+          await this.persistSettings();
+        }));
+
     containerEl.createEl('p', {
       text: 'Steering placement controls where Author Note markdown is staged in prompts.'
     });

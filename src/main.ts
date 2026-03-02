@@ -141,10 +141,15 @@ import {
   normalizeVaultRelativePath
 } from './vault-path-utils';
 import {
+  ChapterMemoryAggressiveness,
+  estimateChapterMemoryExcerptChapterWindow,
+  estimateChapterMemoryExcerptReserveTokens,
   estimateChapterMemoryPriorChapterWindow,
   estimateChapterMemorySummaryTokenBudget,
   extractAdaptiveQueryWindow,
-  extractAdaptiveStoryWindow
+  extractAdaptiveStoryWindow,
+  normalizeChapterMemoryAggressiveness,
+  resolveChapterMemoryExcerptSectionTokenRange
 } from './context-window-strategy';
 import { renderInlineLoreDirectivesAsTags, stripInlineLoreDirectives } from './inline-directives';
 import {
@@ -181,6 +186,11 @@ import {
 } from './story-chapter-management';
 
 const STEERING_RESERVE_FRACTION = 0.14;
+const STEERING_GUIDANCE_SYSTEM_PROMPT = [
+  'Follow guidance in `<story_author_note>` when present.',
+  'Follow any `<inline_story_directive>` tags in context blocks as instructions tied to nearby text.',
+  'Do not copy directive tags or directive contents into the final response.'
+].join('\n');
 
 type SteeringLayerKey = 'author_note';
 
@@ -4897,6 +4907,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       selection: continuitySelection
     });
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+    const continuityAggressiveness = this.resolveContinuityAggressiveness();
     const steeringSections = this.createSteeringSections({
       maxInputTokens,
       authorNote: mergedAuthorNote
@@ -4904,22 +4915,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
     const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
     const preResponseSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_response');
-    const steeringGuidanceSystemPrompt = [
-      'Follow guidance in `<story_author_note>` when present.',
-      'Follow any `<inline_story_directive>` tags in context blocks as instructions tied to nearby text.',
-      'Do not copy directive tags or directive contents into the final response.'
-    ].join('\n');
     const effectiveSystemPrompt = systemSteeringMarkdown
       ? [
         completion.systemPrompt,
         '',
-        steeringGuidanceSystemPrompt,
+        STEERING_GUIDANCE_SYSTEM_PROMPT,
         '',
         '<lorevault_steering_system>',
         systemSteeringMarkdown,
         '</lorevault_steering_system>'
       ].join('\n')
-      : [completion.systemPrompt, '', steeringGuidanceSystemPrompt].join('\n');
+      : [completion.systemPrompt, '', STEERING_GUIDANCE_SYSTEM_PROMPT].join('\n');
     const instructionOverhead = this.estimateTokens(effectiveSystemPrompt) + 180;
     const steeringSystemTokens = steeringSections
       .filter(section => section.placement === 'system')
@@ -4969,10 +4975,32 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (activeStoryFile) {
       const remainingAfterSpecificNotes = Math.max(0, remainingAfterPrompt - specificNotesTokens);
       if (remainingAfterSpecificNotes > 96) {
-        chapterMemoryBudget = useLorebookContext
-          ? Math.min(700, Math.max(96, Math.floor(remainingAfterSpecificNotes * 0.25)))
-          : Math.min(900, Math.max(96, Math.floor(remainingAfterSpecificNotes * 0.45)));
-        const chapterMemory = await this.buildChapterMemoryContext(activeStoryFile, chapterMemoryBudget);
+        const chapterMemoryCapTokens = continuityAggressiveness === 'aggressive'
+          ? Math.max(
+            1200,
+            Math.min(18000, Math.floor(maxInputTokens * 0.24))
+          )
+          : Math.max(
+            900,
+            Math.min(7000, Math.floor(maxInputTokens * 0.20))
+          );
+        const chapterMemoryShare = continuityAggressiveness === 'aggressive'
+          ? (useLorebookContext
+            ? (maxInputTokens >= 120000 ? 0.45 : 0.38)
+            : (maxInputTokens >= 120000 ? 0.72 : 0.62))
+          : (useLorebookContext
+            ? (maxInputTokens >= 120000 ? 0.30 : 0.25)
+            : (maxInputTokens >= 120000 ? 0.55 : 0.45));
+        const minChapterMemoryBudget = continuityAggressiveness === 'aggressive' ? 128 : 96;
+        chapterMemoryBudget = Math.min(
+          chapterMemoryCapTokens,
+          Math.max(minChapterMemoryBudget, Math.floor(remainingAfterSpecificNotes * chapterMemoryShare))
+        );
+        const chapterMemory = await this.buildChapterMemoryContext(
+          activeStoryFile,
+          chapterMemoryBudget,
+          continuityAggressiveness
+        );
         chapterMemoryMarkdown = chapterMemory.markdown;
         chapterMemoryTokens = chapterMemory.usedTokens;
         chapterMemoryItems = chapterMemory.items;
@@ -5294,7 +5322,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       layerTrace.push(`specific_notes: ${specificNotePaths.length} notes, ~${specificNotesPromptTokens} tokens`);
     }
     if (chapterMemoryPromptTokens > 0) {
-      layerTrace.push(`chapter_memory: ${chapterMemoryItems.length} chapter summaries, ~${chapterMemoryPromptTokens} tokens`);
+      layerTrace.push(`chapter_memory: ${chapterMemoryItems.length} chapter memory sections, ~${chapterMemoryPromptTokens} tokens`);
       layerTrace.push(...chapterMemoryLayerTrace);
     }
     if (chatAgentToolContextPromptTokens > 0 || chatAgentToolContextTrace.length > 0 || chatAgentToolCallSummaries.length > 0) {
@@ -5975,6 +6003,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     merged.completion.promptReserveTokens = Math.max(0, Math.floor(merged.completion.promptReserveTokens));
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
+    merged.completion.continuityAggressiveness = normalizeChapterMemoryAggressiveness(
+      merged.completion.continuityAggressiveness
+    );
     const completionLayerPlacement = merged.completion.layerPlacement ?? DEFAULT_SETTINGS.completion.layerPlacement;
     merged.completion.layerPlacement = {
       storyNotes: this.resolvePromptLayerPlacement(
@@ -7371,7 +7402,8 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private async buildChapterMemoryContext(
     activeFile: TFile | null,
-    tokenBudget: number
+    tokenBudget: number,
+    aggressiveness: ChapterMemoryAggressiveness
   ): Promise<{
     markdown: string;
     usedTokens: number;
@@ -7389,8 +7421,23 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const normalizedBudget = Math.max(96, Math.floor(tokenBudget));
+    const excerptReserveBudget = estimateChapterMemoryExcerptReserveTokens(
+      normalizedBudget,
+      aggressiveness
+    );
+    const summaryBudgetCap = excerptReserveBudget > 0
+      ? Math.max(160, normalizedBudget - excerptReserveBudget)
+      : normalizedBudget;
+    const maxExcerptChapters = estimateChapterMemoryExcerptChapterWindow(
+      normalizedBudget,
+      aggressiveness
+    );
+    const excerptRange = resolveChapterMemoryExcerptSectionTokenRange(aggressiveness);
     const nodeByPath = new Map(nodes.map(node => [node.path, node]));
-    const maxPriorChapters = estimateChapterMemoryPriorChapterWindow(normalizedBudget);
+    const maxPriorChapters = estimateChapterMemoryPriorChapterWindow(
+      normalizedBudget,
+      aggressiveness
+    );
     const priorPaths = resolution.orderedPaths
       .slice(0, resolution.currentIndex)
       .slice(-maxPriorChapters);
@@ -7399,22 +7446,27 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const perSummaryTokenBudget = estimateChapterMemorySummaryTokenBudget(
-      normalizedBudget,
-      priorPaths.length
+      summaryBudgetCap,
+      priorPaths.length,
+      aggressiveness
     );
     const priorOrderByPath = new Map(priorPaths.map((path, index) => [path, index]));
     const includedSections: Array<{
+      path: string;
       order: number;
-      section: string;
       chapterTitle: string;
-      sectionTokens: number;
-      source: string;
+      heading: string;
+      summaryText: string;
+      summarySource: string;
+      summaryTokens: number;
+      excerptText?: string;
+      excerptTokens?: number;
     }> = [];
     let usedTokens = 0;
 
     // Prioritize recent chapters when budget is constrained, then render chronologically.
     for (const priorPath of [...priorPaths].reverse()) {
-      const remainingBudget = normalizedBudget - usedTokens;
+      const remainingBudget = summaryBudgetCap - usedTokens;
       if (remainingBudget < 48) {
         break;
       }
@@ -7442,8 +7494,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         ? `Chapter ${node.chapter}`
         : 'Chapter';
       const chapterTitle = node?.chapterTitle || node?.title || file.basename;
-      const buildSection = (summaryText: string): string => [
-        `### ${chapterPrefix}: ${chapterTitle}`,
+      const heading = `${chapterPrefix}: ${chapterTitle}`;
+      const buildSummarySection = (summaryText: string): string => [
+        `### ${heading}`,
         `Source: \`${priorPath}\``,
         '',
         summaryText
@@ -7457,14 +7510,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         continue;
       }
 
-      let section = buildSection(summaryText);
+      let section = buildSummarySection(summaryText);
       let sectionTokens = this.estimateTokens(section);
       if (sectionTokens > remainingBudget) {
         summaryText = this.trimTextHeadToTokenBudget(rawSummaryText, Math.max(48, remainingBudget - 24)).trim();
         if (!summaryText) {
           continue;
         }
-        section = buildSection(summaryText);
+        section = buildSummarySection(summaryText);
         sectionTokens = this.estimateTokens(section);
         if (sectionTokens > remainingBudget) {
           continue;
@@ -7473,11 +7526,13 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       usedTokens += sectionTokens;
       includedSections.push({
+        path: priorPath,
         order: priorOrderByPath.get(priorPath) ?? Number.MAX_SAFE_INTEGER,
-        section,
         chapterTitle,
-        sectionTokens,
-        source: summarySource
+        heading,
+        summaryText,
+        summarySource,
+        summaryTokens: sectionTokens
       });
     }
 
@@ -7485,12 +7540,92 @@ export default class LoreBookConverterPlugin extends Plugin {
       return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
     }
 
+    let remainingExcerptBudget = normalizedBudget - usedTokens;
+    if (maxExcerptChapters > 0 && remainingExcerptBudget >= excerptRange.activationTokens) {
+      const excerptCandidates = [...includedSections]
+        .sort((left, right) => right.order - left.order)
+        .slice(0, maxExcerptChapters);
+
+      for (let index = 0; index < excerptCandidates.length; index += 1) {
+        if (remainingExcerptBudget < excerptRange.activationTokens) {
+          break;
+        }
+        const entry = excerptCandidates[index];
+        const remainingCandidates = Math.max(1, excerptCandidates.length - index);
+        const excerptBudget = Math.max(
+          excerptRange.minTokens,
+          Math.min(excerptRange.maxTokens, Math.floor(remainingExcerptBudget / remainingCandidates))
+        );
+
+        const file = this.app.vault.getAbstractFileByPath(entry.path);
+        if (!(file instanceof TFile)) {
+          continue;
+        }
+
+        const raw = await this.app.vault.cachedRead(file);
+        const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+        const bodyWithoutSummary = stripSummarySectionFromBody(bodyWithSummary).trim();
+        if (!bodyWithoutSummary) {
+          continue;
+        }
+
+        const buildExcerptSection = (text: string): string => [
+          '#### Style Excerpt',
+          '',
+          text
+        ].join('\n');
+
+        let excerptText = this.extractStoryWindow(bodyWithoutSummary, excerptBudget).trim();
+        if (!excerptText) {
+          continue;
+        }
+        let excerptSection = buildExcerptSection(excerptText);
+        let excerptTokens = this.estimateTokens(excerptSection);
+        if (excerptTokens > remainingExcerptBudget) {
+          excerptText = this.extractStoryWindow(
+            bodyWithoutSummary,
+            Math.max(Math.floor(excerptRange.minTokens * 0.5), remainingExcerptBudget - 16)
+          ).trim();
+          if (!excerptText) {
+            continue;
+          }
+          excerptSection = buildExcerptSection(excerptText);
+          excerptTokens = this.estimateTokens(excerptSection);
+          if (excerptTokens > remainingExcerptBudget) {
+            continue;
+          }
+        }
+
+        entry.excerptText = excerptText;
+        entry.excerptTokens = excerptTokens;
+        usedTokens += excerptTokens;
+        remainingExcerptBudget -= excerptTokens;
+      }
+    }
+
     includedSections.sort((left, right) => left.order - right.order);
-    const sections = includedSections.map(item => item.section);
+    const sections = includedSections.map(item => {
+      const lines = [
+        `### ${item.heading}`,
+        `Source: \`${item.path}\``,
+        '',
+        item.summaryText
+      ];
+      if (item.excerptText) {
+        lines.push('', '#### Style Excerpt', '', item.excerptText);
+      }
+      return lines.join('\n');
+    });
     const items = includedSections.map(item => item.chapterTitle);
+    const excerptCount = includedSections.filter(item => Boolean(item.excerptText)).length;
     const layerTrace = [
-      `chapter_memory_window: ${includedSections.length}/${priorPaths.length} summaries (budget ~${normalizedBudget} tokens)`,
-      ...includedSections.map(item => `chapter_memory:${item.chapterTitle} (${item.source}, ~${item.sectionTokens} tokens)`)
+      `chapter_memory_window: ${includedSections.length}/${priorPaths.length} chapters (mode ${aggressiveness}, excerpts ${excerptCount}, budget ~${normalizedBudget} tokens, summary_budget ~${summaryBudgetCap} tokens)`,
+      ...includedSections.map(item => [
+        `chapter_memory:${item.chapterTitle}`,
+        `(${item.summarySource}, summary ~${item.summaryTokens} tokens`,
+        item.excerptTokens ? `, excerpt ~${item.excerptTokens} tokens` : '',
+        ')'
+      ].join(''))
     ];
 
     return {
@@ -7526,6 +7661,12 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private extractStoryWindow(text: string, tokenBudget: number): string {
     return extractAdaptiveStoryWindow(text, tokenBudget);
+  }
+
+  private resolveContinuityAggressiveness(): ChapterMemoryAggressiveness {
+    return normalizeChapterMemoryAggressiveness(
+      this.settings.completion.continuityAggressiveness
+    );
   }
 
   private sanitizeTextCommandPromptId(value: string, fallbackIndex: number): string {
@@ -7946,6 +8087,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
+      const continuityAggressiveness = this.resolveContinuityAggressiveness();
       const mergedAuthorNote = scopedSteering.merged.authorNote;
       const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(resolvedActiveFile);
       const mergedContinuity = {
@@ -7973,22 +8115,17 @@ export default class LoreBookConverterPlugin extends Plugin {
       const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
       const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
       const preResponseSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_response');
-      const steeringGuidanceSystemPrompt = [
-        'Follow guidance in `<story_author_note>` when present.',
-        'Follow any `<inline_story_directive>` tags in context blocks as instructions tied to nearby text.',
-        'Do not copy directive tags or directive contents into the final response.'
-      ].join('\n');
       const effectiveSystemPrompt = systemSteeringMarkdown
         ? [
           completion.systemPrompt,
           '',
-          steeringGuidanceSystemPrompt,
+          STEERING_GUIDANCE_SYSTEM_PROMPT,
           '',
           '<lorevault_steering_system>',
           systemSteeringMarkdown,
           '</lorevault_steering_system>'
         ].join('\n')
-        : [completion.systemPrompt, '', steeringGuidanceSystemPrompt].join('\n');
+        : [completion.systemPrompt, '', STEERING_GUIDANCE_SYSTEM_PROMPT].join('\n');
       const instructionOverhead = this.estimateTokens(effectiveSystemPrompt) + 180;
       const steeringSystemTokens = steeringSections
         .filter(section => section.placement === 'system')
@@ -8033,14 +8170,32 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       let chapterMemoryMarkdown = '';
       let chapterMemoryTokens = 0;
+      let chapterMemoryBudget = 0;
       let chapterMemoryItems: string[] = [];
       let chapterMemoryLayerTrace: string[] = [];
       if (availableForContext > 96 && resolvedActiveFile) {
-        const chapterMemoryBudget = Math.min(
-          900,
-          Math.max(96, Math.floor(Math.max(0, availableForContext) * 0.3))
+        const chapterMemoryCapTokens = continuityAggressiveness === 'aggressive'
+          ? Math.max(
+            1400,
+            Math.min(24000, Math.floor(maxInputTokens * 0.30))
+          )
+          : Math.max(
+            900,
+            Math.min(9000, Math.floor(maxInputTokens * 0.22))
+          );
+        const chapterMemoryShare = continuityAggressiveness === 'aggressive'
+          ? (maxInputTokens >= 120000 ? 0.5 : 0.42)
+          : (maxInputTokens >= 120000 ? 0.36 : 0.30);
+        const minChapterMemoryBudget = continuityAggressiveness === 'aggressive' ? 128 : 96;
+        chapterMemoryBudget = Math.min(
+          chapterMemoryCapTokens,
+          Math.max(minChapterMemoryBudget, Math.floor(Math.max(0, availableForContext) * chapterMemoryShare))
         );
-        const chapterMemory = await this.buildChapterMemoryContext(resolvedActiveFile, chapterMemoryBudget);
+        const chapterMemory = await this.buildChapterMemoryContext(
+          resolvedActiveFile,
+          chapterMemoryBudget,
+          continuityAggressiveness
+        );
         chapterMemoryMarkdown = chapterMemory.markdown;
         chapterMemoryTokens = chapterMemory.usedTokens;
         chapterMemoryItems = chapterMemory.items;
@@ -8170,7 +8325,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           key: 'chapter_memory_context',
           label: 'Chapter Memory',
           content: renderedChapterMemory.text,
-          reservedTokens: Math.max(0, Math.floor(Math.max(0, availableForContext) * 0.3)),
+          reservedTokens: Math.max(0, chapterMemoryBudget),
           placement: 'pre_response',
           trimMode: 'head',
           minTokens: 0
@@ -8273,7 +8428,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         `scope_selection_source: ${scopeSelectionSource}`,
         `local_window: ~${storyPromptTokens} tokens`,
         `inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`,
-        `chapter_memory: ${chapterMemoryItems.length} summaries, ~${chapterMemoryPromptTokens} tokens`,
+        `chapter_memory: ${chapterMemoryItems.length} sections, ~${chapterMemoryPromptTokens} tokens`,
         `continuity_state: threads ${mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads.length : 0}, open_loops ${mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops.length : 0}, canon_deltas ${mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas.length : 0}, ~${continuityPromptTokens} tokens`,
         ...chapterMemoryLayerTrace,
         `graph_memory(world_info): ${totalWorldInfo} entries, ~${loreContextPromptTokens} tokens`,

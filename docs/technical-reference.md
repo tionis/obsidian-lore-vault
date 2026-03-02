@@ -116,15 +116,20 @@ This document is the implementation-level reference for core architecture and ru
   - deterministic ST lorebook parse + wiki note materialization + apply writes
 - `src/lorevault-import-view.ts`
   - import panel UI (`Import SillyTavern Lorebook`)
+  - lorebook list add/remove UX (interactive picker + Enter-to-add)
+  - staged progress reporting for parse/build/apply
 - `src/lorevault-story-extract-view.ts`
   - extraction panel (`Extract Wiki Pages from Story`) with preview/apply flow
+  - explicit completion profile selection + chunk/apply progress status
 - `src/story-extraction.ts`
   - deterministic chunking
   - per-chunk extraction prompt/validation
   - iterative merge pipeline and final page rendering
+  - progress callbacks for chunk and render stages
 - `src/lorevault-story-delta-view.ts`
   - story delta update panel (`Apply Story Delta to Existing Wiki`) with preview/apply flow
   - conflict review rows + decision persistence (`accept`/`reject`/`keep_both`)
+  - explicit completion profile selection + chunk/apply progress status
 - `src/lorevault-operation-log-view.ts` + `src/operation-log.ts`
   - operation-log explorer UI (`Open LLM Operation Log Explorer`)
   - JSONL parsing/coercion with malformed-line diagnostics
@@ -134,6 +139,9 @@ This document is the implementation-level reference for core architecture and ru
   - low-confidence gating
   - existing page matching and idempotent merge planning
   - deterministic conflict extraction from update diff churn
+  - progress callbacks for chunk and render stages
+- `src/lorebook-scope-suggest-modal.ts`
+  - shared interactive lorebook scope picker modal
 
 ## Export Pipeline Contract
 
@@ -596,17 +604,20 @@ Implemented:
 - deterministic file naming/path allocation
 - deterministic frontmatter/body mapping for generated wiki pages (summary persisted in `## Summary` section)
 - preview and apply import flows
+- staged import progress reporting (parse/build/apply with per-file write updates)
 - story extraction command/view with preview/apply workflow
 - deterministic chunking and per-chunk schema-constrained extraction
 - iterative existing-page state injection between chunks
 - deterministic merge behavior (summary merge, set unions, unique content append)
 - merged story summaries are written to note `## Summary` sections (legacy frontmatter summary treated as fallback input)
+- extraction chunk/render progress callbacks surfaced in panel UI
 
 ## Phase 15 Story Delta Updates (Current Progress)
 
 Implemented:
 
 - story-delta command/view (`Apply Story Delta to Existing Wiki`)
+- alias command `Open Lorebook Update` (same view target)
 - source story input from inline markdown or source-note mode (`note` | `chapter` | `story`) with picker
 - chapter/story source modes expand deterministically from selected note using story-thread resolution
 - deterministic target-page loading from folder with optional scope-tag filter
@@ -622,6 +633,7 @@ Implemented:
 - idempotence guard: duplicate content blocks are not appended on rerun
 - safe-append guard: existing notes without frontmatter stay frontmatter-free
 - fixture-backed tests for parsing, gating, deterministic paths, and idempotence behavior
+- story-delta chunk/render progress callbacks surfaced in panel UI
 
 Still pending in this phase:
 

@@ -635,16 +635,23 @@ Commands:
 
 Shared panel inputs:
 
-- `Import SillyTavern Lorebook` and `Extract Wiki Pages from Story`:
+- `Import SillyTavern Lorebook`:
+  - target folder (manual path or Browse picker)
+  - default tags
+  - lorebook selection list with per-item delete, interactive add picker, and Enter-to-add custom input
+  - completion profile selector (for import workflow profile consistency)
+- `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)
   - default tags
   - lorebook name converted into a lorebook tag using configured `tagPrefix`
+  - completion profile selector used for extraction model calls
 - `Apply Story Delta to Existing Wiki`:
   - source story input: inline markdown or `Source Story Note Path` (`Pick Note` / `Use Active Note`)
   - source scope mode: `note` | `chapter` | `story` (deterministic expansion from selected source note)
   - lorebook scope selection list (add/remove scopes to consider for existing-page updates)
   - `New Note Target Folder` (used only for new-note creation)
   - default tags
+  - completion profile selector used for lorebook-update model calls
 
 Implemented now:
 
@@ -664,6 +671,13 @@ Implemented now:
     - `## Summary` section insertion
     - sectioned body (`## Backstory`/`## Overview`/`## Details` inferred from page key)
   - title sanitization removes type-label prefixes from display title (for example `Character:` / `Location:` / `Faction:`)
+- runtime progress reporting:
+  - import panel reports parse/build/apply stages and per-file write progress
+  - extraction panel reports chunk-by-chunk progress and apply-write progress
+  - story-delta panel reports chunk-by-chunk progress and apply-write progress
+- lorebook update is exposed via both commands:
+  - `Apply Story Delta to Existing Wiki`
+  - `Open Lorebook Update` (alias command)
 
 Current mapping for imported notes:
 

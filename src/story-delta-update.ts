@@ -81,6 +81,22 @@ export interface StoryDeltaResult {
   skippedLowConfidence: number;
 }
 
+export interface StoryDeltaProgressEvent {
+  stage:
+    | 'starting'
+    | 'chunk_start'
+    | 'chunk_success'
+    | 'chunk_error'
+    | 'rendering_pages'
+    | 'completed';
+  chunkIndex?: number;
+  chunkTotal?: number;
+  operationCount?: number;
+  warning?: string;
+  pageCount?: number;
+  conflictCount?: number;
+}
+
 export interface StoryDeltaUpdateOptions {
   storyMarkdown: string;
   newNoteFolder: string;
@@ -95,6 +111,7 @@ export interface StoryDeltaUpdateOptions {
   lowConfidenceThreshold: number;
   existingPages: StoryDeltaExistingPageInput[];
   callModel: (systemPrompt: string, userPrompt: string) => Promise<string>;
+  onProgress?: (event: StoryDeltaProgressEvent) => void;
 }
 
 export interface StoryDeltaDiffPreview {
@@ -967,6 +984,10 @@ export async function buildStoryDeltaPlan(
   if (chunks.length === 0) {
     throw new Error('No extractable story chunks were produced.');
   }
+  options.onProgress?.({
+    stage: 'starting',
+    chunkTotal: chunks.length
+  });
 
   const warnings: string[] = [];
   const chunkResults: StoryExtractionChunkResult[] = [];
@@ -998,6 +1019,11 @@ export async function buildStoryDeltaPlan(
   let skippedLowConfidence = 0;
 
   for (const chunk of chunks) {
+    options.onProgress?.({
+      stage: 'chunk_start',
+      chunkIndex: chunk.index,
+      chunkTotal: chunks.length
+    });
     const existingPagesSorted = [...pageByPath.values()].sort((a, b) => (
       a.pageKey.localeCompare(b.pageKey) || a.path.localeCompare(b.path)
     ));
@@ -1046,6 +1072,12 @@ export async function buildStoryDeltaPlan(
         operationCount: operations.length,
         warnings: []
       });
+      options.onProgress?.({
+        stage: 'chunk_success',
+        chunkIndex: chunk.index,
+        chunkTotal: chunks.length,
+        operationCount: operations.length
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       warnings.push(`Chunk ${chunk.index}: ${message}`);
@@ -1054,8 +1086,19 @@ export async function buildStoryDeltaPlan(
         operationCount: 0,
         warnings: [message]
       });
+      options.onProgress?.({
+        stage: 'chunk_error',
+        chunkIndex: chunk.index,
+        chunkTotal: chunks.length,
+        warning: message
+      });
     }
   }
+
+  options.onProgress?.({
+    stage: 'rendering_pages',
+    chunkTotal: chunks.length
+  });
 
   const pages: StoryDeltaPlannedPage[] = [];
   const changes: StoryDeltaPlannedChange[] = [];
@@ -1100,6 +1143,13 @@ export async function buildStoryDeltaPlan(
   pages.sort((left, right) => left.path.localeCompare(right.path));
   changes.sort((left, right) => left.path.localeCompare(right.path));
   const conflicts = buildPlannedConflicts(changes);
+
+  options.onProgress?.({
+    stage: 'completed',
+    chunkTotal: chunks.length,
+    pageCount: pages.length,
+    conflictCount: conflicts.length
+  });
 
   return {
     pages,

@@ -132,6 +132,9 @@ Reference design: `docs/planning.md`.
 - [x] Define deterministic merge/conflict policy (append vs merge vs overwrite).
 - [x] Add import/extraction dry-run preview and error reporting before writes.
 - [x] Add fixtures/tests for deterministic import output and multi-chunk merge behavior.
+- [x] Add staged progress telemetry in import/extraction panels (chunk/apply status updates).
+- [x] Upgrade import lorebook selection to list-based add/remove UX (interactive picker + Enter-to-add).
+- [x] Add per-panel completion profile selector wiring for import/extraction/update workflows.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 
@@ -150,6 +153,8 @@ Reference design: `docs/planning.md`.
 - [x] Add dry-run diff preview and per-change approval before writes.
 - [x] Add idempotence checks so rerunning the same story update does not duplicate content.
 - [x] Add fixtures/tests for deterministic merge/update behavior on existing pages.
+- [x] Add lorebook-update command alias: `Open Lorebook Update`.
+- [x] Add staged progress telemetry in story-delta preview/apply UI.
 
 ## Phase 16: Selection Text Commands
 

@@ -7,6 +7,7 @@ import {
   buildStoryDeltaPlan,
   StoryDeltaConflict,
   StoryDeltaExistingPageInput,
+  StoryDeltaProgressEvent,
   StoryDeltaPlannedChange,
   StoryDeltaPlannedPage,
   StoryDeltaResult,
@@ -18,6 +19,7 @@ import { FrontmatterData, stripFrontmatter } from './frontmatter-utils';
 import { parseStoryThreadNodeFromFrontmatter, resolveStoryThread, StoryThreadNode } from './story-thread-resolver';
 import { resolveStoryDeltaSourcePaths, StoryDeltaSourceMode } from './story-delta-source';
 import { ConverterSettings } from './models';
+import { LorebookScopeSuggestModal } from './lorebook-scope-suggest-modal';
 
 export const LOREVAULT_STORY_DELTA_VIEW_TYPE = 'lorevault-story-delta-view';
 
@@ -105,8 +107,13 @@ export class LorevaultStoryDeltaView extends ItemView {
   private maxOperationsPerChunk = 12;
   private maxExistingPagesInPrompt = 80;
   private lowConfidenceThreshold = 0.55;
+  private selectedCompletionPresetId = '';
 
   private running = false;
+  private runningMode: 'preview' | 'apply' | null = null;
+  private progressStage = '';
+  private progressDetails = '';
+  private progressLastUpdated = 0;
   private previewError = '';
   private applyStatus = '';
   private lastPreview: StoryDeltaResult | null = null;
@@ -150,7 +157,93 @@ export class LorevaultStoryDeltaView extends ItemView {
     this.render();
   }
 
-  private async resolveCompletionConfig(): Promise<ConverterSettings['completion']> {
+  private getCompletionProfileOptions(): Array<{ value: string; label: string }> {
+    const options: Array<{ value: string; label: string }> = [{
+      value: '',
+      label: '(Workspace effective profile)'
+    }];
+    for (const preset of this.plugin.getCompletionPresetItems()) {
+      options.push({
+        value: preset.id,
+        label: preset.name
+      });
+    }
+    return options;
+  }
+
+  private setProgress(stage: string, details = ''): void {
+    this.progressStage = stage;
+    this.progressDetails = details;
+    this.progressLastUpdated = Date.now();
+    this.render();
+  }
+
+  private onDeltaProgress(event: StoryDeltaProgressEvent): void {
+    const chunkLabel = event.chunkTotal
+      ? `chunk ${event.chunkIndex ?? 0}/${event.chunkTotal}`
+      : (event.chunkIndex ? `chunk ${event.chunkIndex}` : '');
+    if (event.stage === 'starting') {
+      this.setProgress('Preparing lorebook update preview...', event.chunkTotal ? `${event.chunkTotal} chunk(s)` : '');
+      return;
+    }
+    if (event.stage === 'chunk_start') {
+      this.setProgress('Processing lorebook update chunk...', chunkLabel);
+      return;
+    }
+    if (event.stage === 'chunk_success') {
+      const opLabel = typeof event.operationCount === 'number'
+        ? `${event.operationCount} operation(s)`
+        : '';
+      this.setProgress('Chunk processed', [chunkLabel, opLabel].filter(Boolean).join(' | '));
+      return;
+    }
+    if (event.stage === 'chunk_error') {
+      this.setProgress('Chunk failed', [chunkLabel, event.warning ?? 'unknown error'].filter(Boolean).join(' | '));
+      return;
+    }
+    if (event.stage === 'rendering_pages') {
+      this.setProgress('Rendering planned changes...');
+      return;
+    }
+    if (event.stage === 'completed') {
+      const detailParts: string[] = [];
+      if (typeof event.pageCount === 'number') {
+        detailParts.push(`${event.pageCount} write(s)`);
+      }
+      if (typeof event.conflictCount === 'number') {
+        detailParts.push(`${event.conflictCount} conflict(s)`);
+      }
+      this.setProgress('Lorebook update preview complete', detailParts.join(' | '));
+    }
+  }
+
+  private async resolveCompletionConfig(): Promise<{
+    completion: ConverterSettings['completion'];
+    profileLabel: string;
+  }> {
+    const selectedPresetId = this.selectedCompletionPresetId.trim();
+    if (selectedPresetId) {
+      const selectedPreset = this.plugin.getCompletionPresetById(selectedPresetId);
+      if (!selectedPreset) {
+        new Notice(`Selected completion profile is missing: ${selectedPresetId}`);
+        throw new Error(`Missing completion profile: ${selectedPresetId}`);
+      }
+      const resolved = this.plugin.resolveEffectiveCompletionForStoryChat(selectedPresetId);
+      const completion = resolved.completion;
+      if (!completion.enabled) {
+        new Notice('Writing completion is disabled. Enable it in settings first.');
+        throw new Error('Writing completion is disabled.');
+      }
+      if (completion.provider !== 'ollama' && !completion.apiKey) {
+        new Notice('Missing completion API key. Configure it in settings first.');
+        throw new Error('Missing completion API key.');
+      }
+      return {
+        completion,
+        profileLabel: selectedPreset.name
+      };
+    }
+
     const resolution = await this.plugin.resolveEffectiveCompletionForFile();
     const completion = resolution.completion;
     if (!completion.enabled) {
@@ -161,7 +254,10 @@ export class LorevaultStoryDeltaView extends ItemView {
       new Notice('Missing completion API key. Configure it in settings first.');
       throw new Error('Missing completion API key.');
     }
-    return completion;
+    return {
+      completion,
+      profileLabel: resolution.presetName || 'workspace effective profile'
+    };
   }
 
   private async resolveStoryMarkdown(): Promise<string> {
@@ -347,6 +443,19 @@ export class LorevaultStoryDeltaView extends ItemView {
     return this.plugin.getCachedLorebookScopes();
   }
 
+  private async pickLorebookScope(scopes: string[]): Promise<string | null> {
+    const uniqueScopes = [...new Set(scopes.map(scope => scope.trim()).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right));
+    if (uniqueScopes.length === 0) {
+      new Notice('No additional lorebooks available.');
+      return null;
+    }
+    const modal = new LorebookScopeSuggestModal(this.app, uniqueScopes, 'Pick a lorebook scope to add...');
+    const selectionPromise = modal.waitForSelection();
+    modal.open();
+    return selectionPromise;
+  }
+
   private getSelectedPages(): StoryDeltaPlannedPage[] {
     if (!this.lastPreview) {
       return [];
@@ -460,14 +569,21 @@ export class LorevaultStoryDeltaView extends ItemView {
     if (this.running) {
       return;
     }
-    let completion: ConverterSettings['completion'];
+    let completionResolution: {
+      completion: ConverterSettings['completion'];
+      profileLabel: string;
+    };
     try {
-      completion = await this.resolveCompletionConfig();
+      completionResolution = await this.resolveCompletionConfig();
     } catch {
       return;
     }
 
     this.running = true;
+    this.runningMode = 'preview';
+    this.progressStage = 'Starting lorebook update preview...';
+    this.progressDetails = `Profile: ${completionResolution.profileLabel}`;
+    this.progressLastUpdated = Date.now();
     this.previewError = '';
     this.applyStatus = '';
     this.render();
@@ -491,12 +607,13 @@ export class LorevaultStoryDeltaView extends ItemView {
         maxExistingPagesInPrompt: this.maxExistingPagesInPrompt,
         lowConfidenceThreshold: this.lowConfidenceThreshold,
         existingPages,
-        callModel: (systemPrompt, userPrompt) => requestStoryContinuation(completion, {
+        callModel: (systemPrompt, userPrompt) => requestStoryContinuation(completionResolution.completion, {
           systemPrompt,
           userPrompt,
           operationName: 'story_delta_preview',
           onOperationLog: record => this.plugin.appendCompletionOperationLog(record)
-        })
+        }),
+        onProgress: event => this.onDeltaProgress(event)
       });
 
       this.lastPreview = result;
@@ -513,14 +630,19 @@ export class LorevaultStoryDeltaView extends ItemView {
       this.lastPreview = null;
       this.conflictDecisions = new Map<string, StoryDeltaConflictDecision>();
       this.previewError = message;
+      this.setProgress('Lorebook update preview failed', message);
       new Notice(`Story delta preview failed: ${message}`);
     } finally {
       this.running = false;
+      this.runningMode = null;
       this.render();
     }
   }
 
   private async applySelectedPreview(): Promise<void> {
+    if (this.running) {
+      return;
+    }
     if (!this.lastPreview) {
       new Notice('Run preview before applying story delta updates.');
       return;
@@ -532,23 +654,43 @@ export class LorevaultStoryDeltaView extends ItemView {
       return;
     }
 
+    this.running = true;
+    this.runningMode = 'apply';
+    this.setProgress('Applying selected lorebook updates...');
+
     try {
       const pages = this.resolveSelectedApplyPages(selected);
       if (pages.length === 0) {
         new Notice('No writes selected after conflict decisions (all selected conflicts were rejected).');
+        this.running = false;
+        this.runningMode = null;
         return;
       }
-      const applied = await applyImportedWikiPages(this.app, pages);
+      const applied = await applyImportedWikiPages(this.app, pages, {
+        onProgress: event => {
+          this.setProgress(
+            'Applying selected lorebook updates...',
+            `${event.index}/${event.total} | ${event.action} ${event.path}`
+          );
+        }
+      });
       const conflicts = this.getConflicts();
       const counts = this.getConflictCounts(conflicts);
       this.applyStatus = `Applied ${pages.length} write(s): ${applied.created} created, ${applied.updated} updated. Conflicts -> accept ${counts.accept}, reject ${counts.reject}, keep_both ${counts.keep_both}, pending ${counts.pending}.`;
+      this.setProgress(
+        'Lorebook updates applied',
+        `${applied.created} created, ${applied.updated} updated`
+      );
       new Notice(`Story delta applied: ${applied.created} created, ${applied.updated} updated.`);
-      this.render();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('Story delta apply failed:', error);
       this.applyStatus = `Apply failed: ${message}`;
+      this.setProgress('Apply failed', message);
       new Notice(`Story delta apply failed: ${message}`);
+    } finally {
+      this.running = false;
+      this.runningMode = null;
       this.render();
     }
   }
@@ -672,8 +814,23 @@ export class LorevaultStoryDeltaView extends ItemView {
   }
 
   private renderPreviewOutput(container: HTMLElement): void {
+    if (this.progressStage) {
+      const suffix = this.progressLastUpdated > 0
+        ? ` | updated ${new Date(this.progressLastUpdated).toLocaleTimeString()}`
+        : '';
+      container.createEl('p', {
+        text: this.progressDetails
+          ? `${this.progressStage} ${this.progressDetails}${suffix}`
+          : `${this.progressStage}${suffix}`
+      });
+    }
+
     if (this.running) {
-      container.createEl('p', { text: 'Running story delta preview...' });
+      container.createEl('p', {
+        text: this.runningMode === 'apply'
+          ? 'Applying selected story delta writes...'
+          : 'Running story delta preview...'
+      });
       return;
     }
 
@@ -812,6 +969,25 @@ export class LorevaultStoryDeltaView extends ItemView {
           });
       });
 
+    new Setting(contentEl)
+      .setName('Completion Profile')
+      .setDesc('Profile used for model calls in lorebook update preview.')
+      .addDropdown(dropdown => {
+        const options = this.getCompletionProfileOptions();
+        for (const option of options) {
+          dropdown.addOption(option.value, option.label);
+        }
+        const selected = this.selectedCompletionPresetId.trim();
+        if (selected && !options.some(option => option.value === selected)) {
+          dropdown.addOption(selected, `[Missing] ${selected}`);
+        }
+        dropdown
+          .setValue(selected)
+          .onChange(value => {
+            this.selectedCompletionPresetId = value.trim();
+          });
+      });
+
     const availableScopes = this.getAvailableLorebookScopes();
     const selectedScopes = this.getNormalizedSelectedScopes();
     const unselectedScopes = availableScopes.filter(scope => !selectedScopes.includes(scope));
@@ -826,7 +1002,7 @@ export class LorevaultStoryDeltaView extends ItemView {
       for (const scope of selectedScopes) {
         const row = selectedList.createDiv({ cls: 'lorevault-import-review-item' });
         row.createEl('code', { text: scope });
-        const removeButton = row.createEl('button', { text: 'Remove' });
+        const removeButton = row.createEl('button', { text: 'Delete' });
         removeButton.addEventListener('click', () => {
           this.removeLorebookScope(scope);
         });
@@ -834,37 +1010,34 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
 
     const scopeActions = scopesSetting.controlEl.createDiv({ cls: 'lorevault-import-actions' });
-    const scopeSelect = scopeActions.createEl('select');
-    if (unselectedScopes.length === 0) {
-      const option = scopeSelect.createEl('option');
-      option.value = '';
-      option.text = availableScopes.length === 0
-        ? 'No lorebooks found'
-        : 'All lorebooks already selected';
-      scopeSelect.disabled = true;
-    } else {
-      for (const scope of unselectedScopes) {
-        const option = scopeSelect.createEl('option');
-        option.value = scope;
-        option.text = scope;
-      }
-    }
     const addScopeButton = scopeActions.createEl('button', { text: 'Add Lorebook' });
     addScopeButton.disabled = unselectedScopes.length === 0;
     addScopeButton.addEventListener('click', () => {
-      const value = scopeSelect.value.trim();
+      void (async () => {
+        const value = await this.pickLorebookScope(unselectedScopes);
+        if (!value) {
+          return;
+        }
+        this.addLorebookScope(value);
+      })();
+    });
+
+    const addScopeInput = scopeActions.createEl('input', {
+      type: 'text',
+      cls: 'lorevault-story-delta-scope-input'
+    });
+    addScopeInput.placeholder = 'Add custom lorebook and press Enter';
+    addScopeInput.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') {
+        return;
+      }
+      event.preventDefault();
+      const value = addScopeInput.value.trim();
       if (!value) {
         return;
       }
       this.addLorebookScope(value);
-    });
-    const activeScope = normalizeScope(this.plugin.settings.tagScoping.activeScope);
-    const addActiveScopeButton = scopeActions.createEl('button', { text: 'Add Active Scope' });
-    addActiveScopeButton.disabled = !activeScope || selectedScopes.includes(activeScope);
-    addActiveScopeButton.addEventListener('click', () => {
-      if (activeScope) {
-        this.addLorebookScope(activeScope);
-      }
+      addScopeInput.value = '';
     });
 
     let newNoteTargetFolderInput: { setValue: (value: string) => void } | null = null;
@@ -968,14 +1141,18 @@ export class LorevaultStoryDeltaView extends ItemView {
     const actions = contentEl.createDiv({ cls: 'lorevault-import-actions' });
     const output = contentEl.createDiv({ cls: 'lorevault-import-output' });
 
-    const previewButton = actions.createEl('button', { text: this.running ? 'Preview Running...' : 'Preview Story Delta' });
+    const previewButtonLabel = this.running
+      ? (this.runningMode === 'apply' ? 'Apply Running...' : 'Preview Running...')
+      : 'Preview Story Delta';
+    const previewButton = actions.createEl('button', { text: previewButtonLabel });
     previewButton.addClass('mod-cta');
     previewButton.disabled = this.running;
     previewButton.addEventListener('click', () => {
       void this.runPreview();
     });
 
-    const applyButton = actions.createEl('button', { text: 'Apply Selected' });
+    const applyButtonLabel = this.runningMode === 'apply' ? 'Applying Selected...' : 'Apply Selected';
+    const applyButton = actions.createEl('button', { text: applyButtonLabel });
     applyButton.disabled = this.running || !this.lastPreview || selectedCount === 0;
     applyButton.addEventListener('click', () => {
       void this.applySelectedPreview();

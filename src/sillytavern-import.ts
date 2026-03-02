@@ -20,6 +20,7 @@ export interface BuildImportedWikiPagesOptions {
   targetFolder: string;
   defaultTagsRaw: string;
   lorebookName: string;
+  lorebookNames?: string[];
   tagPrefix: string;
   maxSummaryChars?: number;
 }
@@ -33,6 +34,15 @@ export interface ImportedWikiPage {
 export interface ApplyImportedWikiPagesResult {
   created: number;
   updated: number;
+}
+
+export interface ApplyImportedWikiPagesOptions {
+  onProgress?: (event: {
+    index: number;
+    total: number;
+    path: string;
+    action: 'create' | 'update';
+  }) => void;
 }
 
 interface VaultLike {
@@ -169,6 +179,13 @@ function normalizeLorebookNameToScope(name: string): string {
     .replace(/^[-/]+|[-/]+$/g, '');
 }
 
+function normalizeLorebookNamesToScopes(names: string[]): string[] {
+  const scopes = names
+    .map(normalizeLorebookNameToScope)
+    .filter(Boolean);
+  return uniqueStrings(scopes);
+}
+
 function normalizeTagValue(value: string): string {
   return value
     .trim()
@@ -190,6 +207,24 @@ function parseDefaultTags(raw: string): string[] {
     }
     seen.add(key);
     deduped.push(tag);
+  }
+  return deduped;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized) {
+      continue;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(normalized);
   }
   return deduped;
 }
@@ -298,9 +333,11 @@ export function buildImportedWikiPages(
 
   const tagPrefix = normalizeTagPrefix(options.tagPrefix);
   const defaultTags = parseDefaultTags(options.defaultTagsRaw);
-  const lorebookScope = normalizeLorebookNameToScope(options.lorebookName);
-  const lorebookTag = lorebookScope ? `${tagPrefix}/${lorebookScope}` : '';
-  const tags = lorebookTag ? [...defaultTags, lorebookTag] : [...defaultTags];
+  const lorebookScopes = options.lorebookNames && options.lorebookNames.length > 0
+    ? normalizeLorebookNamesToScopes(options.lorebookNames)
+    : normalizeLorebookNamesToScopes([options.lorebookName]);
+  const lorebookTags = lorebookScopes.map(scope => `${tagPrefix}/${scope}`);
+  const tags = uniqueStrings([...defaultTags, ...lorebookTags]);
 
   const maxSummaryChars = options.maxSummaryChars ?? 320;
   const usedPaths = new Set<string>();
@@ -330,12 +367,15 @@ export function buildImportedWikiPages(
 
 export async function applyImportedWikiPages(
   app: App,
-  pages: ImportedWikiPage[]
+  pages: ImportedWikiPage[],
+  options: ApplyImportedWikiPagesOptions = {}
 ): Promise<ApplyImportedWikiPagesResult> {
   const vault = app.vault as unknown as VaultLike;
   let created = 0;
   let updated = 0;
-  for (const page of pages) {
+  const total = pages.length;
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = pages[index];
     await ensureParentVaultFolderForFile(
       app as unknown as {
         vault: {
@@ -349,10 +389,22 @@ export async function applyImportedWikiPages(
     if (!existing) {
       await vault.create(page.path, page.content);
       created += 1;
+      options.onProgress?.({
+        index: index + 1,
+        total,
+        path: page.path,
+        action: 'create'
+      });
       continue;
     }
     await vault.modify(existing, page.content);
     updated += 1;
+    options.onProgress?.({
+      index: index + 1,
+      total,
+      path: page.path,
+      action: 'update'
+    });
   }
   return { created, updated };
 }

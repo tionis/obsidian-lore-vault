@@ -62,6 +62,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Import SillyTavern Lorebook"
      - "Extract Wiki Pages from Story"
      - "Apply Story Delta to Existing Wiki"
+     - "Open Lorebook Update"
      - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
@@ -216,34 +217,40 @@ If you prefer to build the plugin from source:
 
 9. **Import Existing Lorebook JSON (Phase 14)**
   - Run command `Import SillyTavern Lorebook`
-  - Set target folder (manual path or `Browse`), default tags, and lorebook name
+  - Set target folder (manual path or `Browse`) and default tags
+  - Select lorebooks in the list UI (delete per item, add interactively, or add custom scope with Enter in the inline text field)
+  - Optional: pick a completion profile in the panel
   - Paste lorebook JSON in the panel text field
   - Click `Preview` to inspect planned file paths
+  - Watch staged progress updates (parse/build/apply) and per-file write progress during import
   - Imported summaries are written to note `## Summary` sections
   - Click `Import` to create/update generated wiki notes deterministically
 
 10. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`
-   - Set target folder (manual path or `Browse`), default tags, lorebook name, and chunk/extraction limits
+   - Set target folder (manual path or `Browse`), default tags, lorebook name, chunk/extraction limits, and completion profile
    - Paste story markdown
    - Click `Preview Extraction` to run chunked LLM extraction with deterministic merge preview
+   - Monitor live chunk-stage progress while preview runs
    - Inspect planned pages and chunk diagnostics
    - Extracted summaries are written to note `## Summary` sections
-   - Click `Apply Preview` to write generated/updated wiki pages
+   - Click `Apply Preview` to write generated/updated wiki pages with live per-file progress
 
 11. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
-   - Run command `Apply Story Delta to Existing Wiki`
+   - Run command `Apply Story Delta to Existing Wiki` (or alias `Open Lorebook Update`)
    - Provide story markdown directly or set `Source Story Note Path` (via `Pick Note` or `Use Active Note`)
    - Choose `Source Scope`: `note` (single note), `chapter` (selected chapter note), or `story` (full story thread from selected note)
-   - Select one or more lorebook scopes in `Lorebooks to Consider`
+   - Select one or more lorebook scopes in `Lorebooks to Consider` (interactive add + custom Enter-to-add)
+   - Pick completion profile for lorebook-update preview calls
    - Set `New Note Target Folder` (manual path or `Browse`) for create operations
    - Choose update policy:
      - `safe_append` (default): preserve existing metadata on existing pages
      - `structured_merge`: merge summary-section/keywords/aliases where confidence is high
    - Set low-confidence threshold (operations below threshold are skipped in preview)
    - Click `Preview Story Delta` to inspect planned create/update writes
+   - Monitor live chunk-stage progress while preview runs
    - Review per-change dry-run diff previews
-   - Select approved changes and click `Apply Selected`
+   - Select approved changes and click `Apply Selected` (live per-file apply progress)
 
 ## Troubleshooting
 

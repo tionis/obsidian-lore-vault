@@ -40,17 +40,34 @@ export interface StoryExtractionResult {
   warnings: string[];
 }
 
+export interface StoryExtractionProgressEvent {
+  stage:
+    | 'starting'
+    | 'chunk_start'
+    | 'chunk_success'
+    | 'chunk_error'
+    | 'rendering_pages'
+    | 'completed';
+  chunkIndex?: number;
+  chunkTotal?: number;
+  operationCount?: number;
+  warning?: string;
+  pageCount?: number;
+}
+
 export interface StoryExtractionOptions {
   storyMarkdown: string;
   targetFolder: string;
   defaultTagsRaw: string;
   lorebookName: string;
+  lorebookNames?: string[];
   tagPrefix: string;
   maxChunkChars: number;
   maxSummaryChars: number;
   maxOperationsPerChunk: number;
   maxExistingPagesInPrompt: number;
   callModel: (systemPrompt: string, userPrompt: string) => Promise<string>;
+  onProgress?: (event: StoryExtractionProgressEvent) => void;
 }
 
 interface PageState {
@@ -77,6 +94,13 @@ function normalizeLorebookNameToScope(name: string): string {
     .replace(/\/+/g, '/')
     .replace(/-+/g, '-')
     .replace(/^[-/]+|[-/]+$/g, '');
+}
+
+function normalizeLorebookNamesToScopes(names: string[]): string[] {
+  const scopes = names
+    .map(normalizeLorebookNameToScope)
+    .filter(Boolean);
+  return uniqueStrings(scopes);
 }
 
 function normalizeTagValue(value: string): string {
@@ -529,12 +553,21 @@ export async function extractWikiPagesFromStory(
   if (chunks.length === 0) {
     throw new Error('No extractable story chunks were produced.');
   }
+  options.onProgress?.({
+    stage: 'starting',
+    chunkTotal: chunks.length
+  });
 
   const pagesByKey = new Map<string, PageState>();
   const chunkResults: StoryExtractionChunkResult[] = [];
   const warnings: string[] = [];
 
   for (const chunk of chunks) {
+    options.onProgress?.({
+      stage: 'chunk_start',
+      chunkIndex: chunk.index,
+      chunkTotal: chunks.length
+    });
     const prompts = buildExtractionPrompts(
       chunk,
       chunks.length,
@@ -574,6 +607,12 @@ export async function extractWikiPagesFromStory(
         operationCount: operations.length,
         warnings: []
       });
+      options.onProgress?.({
+        stage: 'chunk_success',
+        chunkIndex: chunk.index,
+        chunkTotal: chunks.length,
+        operationCount: operations.length
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       warnings.push(`Chunk ${chunk.index}: ${message}`);
@@ -582,14 +621,26 @@ export async function extractWikiPagesFromStory(
         operationCount: 0,
         warnings: [message]
       });
+      options.onProgress?.({
+        stage: 'chunk_error',
+        chunkIndex: chunk.index,
+        chunkTotal: chunks.length,
+        warning: message
+      });
     }
   }
 
   const tagPrefix = normalizeTagPrefix(options.tagPrefix);
   const defaultTags = parseDefaultTags(options.defaultTagsRaw);
-  const lorebookScope = normalizeLorebookNameToScope(options.lorebookName);
-  const lorebookTag = lorebookScope ? `${tagPrefix}/${lorebookScope}` : '';
-  const tags = lorebookTag ? uniqueStrings([...defaultTags, lorebookTag]) : defaultTags;
+  const resolvedScopes = options.lorebookNames && options.lorebookNames.length > 0
+    ? normalizeLorebookNamesToScopes(options.lorebookNames)
+    : normalizeLorebookNamesToScopes([options.lorebookName]);
+  const lorebookTags = resolvedScopes.map(scope => `${tagPrefix}/${scope}`);
+  const tags = uniqueStrings([...defaultTags, ...lorebookTags]);
+  options.onProgress?.({
+    stage: 'rendering_pages',
+    chunkTotal: chunks.length
+  });
 
   const pages = [...pagesByKey.values()]
     .sort((left, right) => left.pageKey.localeCompare(right.pageKey))
@@ -606,6 +657,12 @@ export async function extractWikiPagesFromStory(
     content: buildPageContent(page, tags, options.maxSummaryChars),
     pageKey: page.pageKey
   }));
+
+  options.onProgress?.({
+    stage: 'completed',
+    chunkTotal: chunks.length,
+    pageCount: renderedPages.length
+  });
 
   return {
     pages: renderedPages,

@@ -190,6 +190,14 @@ Import and updates:
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
 - `Apply Story Delta to Existing Wiki`
+- `Open Lorebook Update`
+
+Import/extraction/update panel behavior:
+
+- each panel has a completion-profile selector
+- extraction and lorebook-update previews report chunk-stage progress while running
+- import and apply flows report live write progress while files are being created/updated
+- lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
 
 Operations and reporting:
 

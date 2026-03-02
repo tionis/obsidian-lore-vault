@@ -6688,6 +6688,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'open-lorebook-update',
+      name: 'Open Lorebook Update',
+      callback: () => {
+        void this.openStoryDeltaView();
+      }
+    });
+
+    this.addCommand({
       id: 'continue-story-with-context',
       name: 'Continue Story with Context',
       callback: async () => {

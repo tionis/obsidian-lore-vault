@@ -42,6 +42,7 @@ export interface CompletionOperationLogAttempt {
 
 export interface CompletionOperationLogRecord {
   id: string;
+  costProfile?: string;
   kind: CompletionOperationKind;
   operationName: string;
   provider: ConverterSettings['completion']['provider'];

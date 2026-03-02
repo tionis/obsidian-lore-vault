@@ -13,7 +13,7 @@ This document is the implementation-level reference for core architecture and ru
   - API key migration/hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs and optional existing-secret selection
   - device-local profile state via Obsidian local storage (active completion preset + optional cost profile label; auto API-key hash fallback when blank)
   - story-chat turn orchestration
-  - vault-backed LLM operation log persistence (`operationLog` settings) + explorer-view refresh hooks
+  - vault-backed LLM operation log persistence (`operationLog` settings) with per-cost-profile JSONL namespace + explorer-view refresh hooks
 - `src/live-context-index.ts`
   - near-live scope indexing
   - scope pack rebuild strategy
@@ -55,6 +55,8 @@ This document is the implementation-level reference for core architecture and ru
   - effective author-note merge for chat/continuation prompt assembly
   - author-note completion profile override is managed by command (`Set Author Note Completion Profile`) and persisted as frontmatter `completionProfile`
   - device completion profile selection is a direct dropdown (no apply button) and shares a combined profile+cost section with cost breakdown
+- `src/lorevault-cost-analyzer-view.ts`
+  - profile-scoped cost analysis panel (totals + by-operation/model/scope/source breakdowns)
 - `src/lorebook-scope-cache.ts`
   - shared metadata/scope cache reused by manager/steering/auditor UI
   - explicit invalidation on vault and settings mutations
@@ -515,7 +517,8 @@ Implemented scope:
 - optional ledger persistence (`settings.costTracking.enabled`)
 - fallback USD estimation via configured per-million token rates
 - optional per-model pricing overrides (`provider + wildcard model pattern`)
-- manager panel usage/cost monitor (session/day/week/month/project totals + warnings + top breakdowns)
+- Story Writing panel compact usage/cost monitor (session/day/week/month/project totals + warnings)
+- Cost Analyzer panel for full per-profile breakdowns
 - usage report export commands:
   - `Export Usage Report (JSON)`
   - `Export Usage Report (CSV)`
@@ -542,6 +545,7 @@ Core contracts:
   - operation
   - provider:model
   - lorebook scope
+- usage snapshots and warnings are profile-scoped (selected cost profile); full exports remain all-profiles
 - report CSV row ordering is deterministic (`timestamp ASC`, `id ASC`)
 
 Current non-goals in this phase:

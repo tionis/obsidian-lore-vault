@@ -484,7 +484,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     total_degree: 250,
     file_depth: 850
   },
-  outputPath: 'sillytavern/lorevault.json',
+  outputPath: 'sillytavern/{scope}.json',
   defaultLoreBook: {
     orderByTitle: false,
     useDroste: true,
@@ -556,10 +556,10 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     budgetByScopeUsd: {}
   },
   operationLog: {
-    enabled: false,
+    enabled: true,
     path: '.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl',
-    maxEntries: 400,
-    includeEmbeddings: false
+    maxEntries: 10000,
+    includeEmbeddings: true
   },
   completion: {
     enabled: false,

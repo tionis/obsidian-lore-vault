@@ -143,7 +143,8 @@ export class LorevaultHelpView extends ItemView {
         'Panel shows effective model, context usage, selected context items, and cost breakdown under the profile selector.'
       ],
       actions: [
-        { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() }
+        { label: 'Open Story Writing Panel', onClick: () => void this.plugin.openStorySteeringView() },
+        { label: 'Open Cost Analyzer', onClick: () => void this.plugin.openCostAnalyzerView() }
       ]
     });
 

@@ -461,11 +461,63 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           void this.plugin.openHelpView();
         }));
 
+    containerEl.createEl('h3', { text: 'Device Local Settings' });
+    containerEl.createEl('p', {
+      text: 'These settings are stored per device and do not sync through shared vault settings.'
+    });
+
+    const activeDevicePresetId = this.plugin.getDeviceActiveCompletionPresetId();
+    new Setting(containerEl)
+      .setName('Active Completion Preset (This Device)')
+      .setDesc('Per-device selection. Selecting a preset immediately applies provider/model/token settings in this vault on this device.')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', '(none)');
+        const sortedPresets = [...this.plugin.settings.completion.presets]
+          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+        for (const preset of sortedPresets) {
+          dropdown.addOption(preset.id, preset.name);
+        }
+        dropdown.setValue(activeDevicePresetId || '');
+        dropdown.onChange(async (value) => {
+          const activeId = value.trim();
+          if (!activeId) {
+            await this.plugin.setDeviceActiveCompletionPresetId('');
+            return;
+          }
+
+          const preset = this.plugin.settings.completion.presets.find(item => item.id === activeId);
+          if (!preset) {
+            new Notice('Preset not found.');
+            return;
+          }
+
+          this.applyCompletionPreset(preset);
+          await this.plugin.setDeviceActiveCompletionPresetId(preset.id);
+          await this.persistSettings();
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Device Cost Profile Label')
+      .setDesc('Optional per-device label attached to usage metadata (for shared vaults across users/devices).')
+      .addText(text => text
+        .setPlaceholder('writer-a')
+        .setValue(this.plugin.getDeviceActiveCostProfile())
+        .onChange(async (value) => {
+          await this.plugin.setDeviceActiveCostProfile(value);
+        }));
+
+    containerEl.createEl('h3', { text: 'Shared Vault Settings' });
+    containerEl.createEl('p', {
+      text: 'These settings are stored in plugin data and sync with the shared vault.'
+    });
+
     new Setting(containerEl)
       .setName('Downstream Export Path Pattern')
-      .setDesc('Relative path under each lorebook output folder (SQLite Output Directory). Example: sillytavern/lorevault.json -> sillytavern/lorevault-<scope>.json and .rag.md. Use {scope} to place scope explicitly.')
+      .setDesc('Relative path under each lorebook output folder (SQLite Output Directory). Example: sillytavern/{scope}.json -> sillytavern/<scope>.json and .rag.md.')
       .addText(text => text
-        .setPlaceholder('sillytavern/lorevault.json')
+        .setPlaceholder('sillytavern/{scope}.json')
         .setValue(this.plugin.settings.outputPath)
         .onChange(async (value) => {
           this.plugin.settings.outputPath = this.normalizePathInput(value);
@@ -969,38 +1021,6 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     containerEl.createEl('p', {
       text: 'Configure LLM generation for "Continue Story with Context".'
     });
-    const activeDevicePresetId = this.plugin.getDeviceActiveCompletionPresetId();
-
-    new Setting(containerEl)
-      .setName('Active Completion Preset (This Device)')
-      .setDesc('Per-device selection. Selecting a preset immediately applies provider/model/token settings in this vault on this device.')
-      .addDropdown(dropdown => {
-        dropdown.addOption('', '(none)');
-        const sortedPresets = [...this.plugin.settings.completion.presets]
-          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-        for (const preset of sortedPresets) {
-          dropdown.addOption(preset.id, preset.name);
-        }
-        dropdown.setValue(activeDevicePresetId || '');
-        dropdown.onChange(async (value) => {
-          const activeId = value.trim();
-          if (!activeId) {
-            await this.plugin.setDeviceActiveCompletionPresetId('');
-            return;
-          }
-
-          const preset = this.plugin.settings.completion.presets.find(item => item.id === activeId);
-          if (!preset) {
-            new Notice('Preset not found.');
-            return;
-          }
-
-          this.applyCompletionPreset(preset);
-          await this.plugin.setDeviceActiveCompletionPresetId(preset.id);
-          await this.persistSettings();
-          this.display();
-        });
-      });
 
     const activePreset = this.plugin.settings.completion.presets
       .find(item => item.id === activeDevicePresetId) ?? null;
@@ -1591,16 +1611,6 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Device Cost Profile Label')
-      .setDesc('Optional per-device label attached to usage ledger metadata (for shared vaults across users/devices).')
-      .addText(text => text
-        .setPlaceholder('writer-a')
-        .setValue(this.plugin.getDeviceActiveCostProfile())
-        .onChange(async (value) => {
-          await this.plugin.setDeviceActiveCostProfile(value);
-        }));
-
-    new Setting(containerEl)
       .setName('Usage Ledger Path')
       .setDesc('Path to usage ledger JSON file inside your vault.')
       .addText(text => text
@@ -1650,7 +1660,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Daily Budget Warning (USD)')
-      .setDesc('Warn in manager panel when known daily (UTC) cost exceeds this amount. Set 0 to disable.')
+      .setDesc('Warn in Story Writing / Cost Analyzer when known daily (UTC) cost exceeds this amount. Set 0 to disable.')
       .addText(text => text
         .setValue(this.plugin.settings.costTracking.dailyBudgetUsd.toString())
         .onChange(async (value) => {
@@ -1663,7 +1673,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Session Budget Warning (USD)')
-      .setDesc('Warn in manager panel when known session cost exceeds this amount. Set 0 to disable.')
+      .setDesc('Warn in Story Writing / Cost Analyzer when known session cost exceeds this amount. Set 0 to disable.')
       .addText(text => text
         .setValue(this.plugin.settings.costTracking.sessionBudgetUsd.toString())
         .onChange(async (value) => {
@@ -1799,7 +1809,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('LLM Operation Log Path')
-      .setDesc('Vault-relative JSONL file path for operation logs. One JSON object per line.')
+      .setDesc('Vault-relative JSONL base path for operation logs. LoreVault writes one file per cost profile by suffixing this path.')
       .addText(text => text
         .setPlaceholder('.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl')
         .setValue(this.plugin.settings.operationLog.path)
@@ -1811,7 +1821,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('LLM Operation Log Max Entries')
-      .setDesc('Maximum number of recent log entries kept in the log file (oldest entries are trimmed).')
+      .setDesc('Maximum number of recent log entries kept in each per-profile log file (default 10000, range 20-20000). Oldest entries are trimmed.')
       .addText(text => text
         .setValue(this.plugin.settings.operationLog.maxEntries.toString())
         .onChange(async (value) => {

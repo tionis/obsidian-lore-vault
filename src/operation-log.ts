@@ -133,6 +133,7 @@ function safeJsonString(value: unknown, maxChars: number): string {
 function buildSearchText(record: CompletionOperationLogRecord): string {
   const parts = [
     record.id,
+    record.costProfile ?? '',
     record.kind,
     record.operationName,
     record.provider,
@@ -190,6 +191,10 @@ function coerceRecord(value: unknown, lineNumber: number): CompletionOperationLo
   const usage = coerceUsage(source.usage);
   if (usage) {
     record.usage = usage;
+  }
+  const costProfile = asString(source.costProfile).trim();
+  if (costProfile) {
+    record.costProfile = costProfile;
   }
   return record;
 }

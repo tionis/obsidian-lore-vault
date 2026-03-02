@@ -211,7 +211,7 @@ Large-vault profiling command (`npm run profile:large-vault`) provides determini
 Given configured `Downstream Export Path Pattern` + SQLite output directory:
 
 - SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebooks/<scope-slug>.db`)
-- world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/lorevault.json`)
+- world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/{scope}.json`)
 - rag file: `<sqliteOutputDir>/<downstreamSubpath>.rag.md`
 
 Downstream naming:
@@ -255,7 +255,7 @@ For downstream publishing tools/plugins:
   - `rag_chunks`: `path ASC, chunk_index ASC`
 - Stable downstream export roots:
   - canonical scope `.db` under configured SQLite output path
-  - ST-style outputs under a subpath of the SQLite root (`sillytavern/...` by default)
+  - ST-style outputs under a subpath of the SQLite root (`sillytavern/{scope}.json` by default)
 
 SQLite pack metadata:
 
@@ -562,22 +562,16 @@ Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel
 Capabilities:
 
 - lists discovered scopes with deterministic ordering in compact cards
-- separates generation monitor from scope actions for clearer layout
 - shows counts:
   - included notes
   - `world_info` entries
   - `rag` documents
-- generation monitor details:
-  - current generation state (`idle|preparing|retrieving|generating|error`)
-  - active scopes
-  - provider/model
-  - context window and token usage
-  - selected `world_info` and `rag` items used for the active/last run
-- usage/cost monitor details:
-  - session/day/week/month/project totals (requests/tokens/known cost/unknown cost count)
-  - known cost split (`provider_reported` vs `estimated`)
-  - budget warnings from configured daily/session/operation/model/scope limits
-- top breakdown lists by operation, model, scope, and cost source
+- provides quick navigation buttons:
+  - `Lorebook Auditor`
+  - `Query Simulation`
+  - `Story Writing Panel`
+  - `Cost Analyzer`
+- title-row refresh icon triggers a manual panel refresh
 
 ## Story Writing Panel
 
@@ -615,6 +609,17 @@ Capabilities:
 - compact collapsible usage/cost summary:
   - session/day/week/month/project totals
   - warnings when configured budgets are exceeded
+
+## Cost Analyzer
+
+Command: `Open Cost Analyzer`
+
+Capabilities:
+
+- select a cost profile (defaults to current device profile)
+- inspect profile-scoped totals (session/day/week/month/project)
+- inspect top breakdowns by operation, model, scope, and cost source
+- review budget warnings evaluated against the selected profile
 
 ## Inbound Wiki Import and Story Extraction (Phase 14)
 
@@ -692,9 +697,11 @@ Current merge policy (default):
 - warns when scopes have no included notes or no entries in one section
 - actions:
   - `Build/Export` per scope
-  - `Open Auditor` per scope
-  - `Open Lorebook Auditor` (toolbar)
-  - `Open Query Simulation` (toolbar)
+  - `Auditor` per scope
+  - `Lorebook Auditor` (toolbar)
+  - `Query Simulation` (toolbar)
+  - `Story Writing Panel` (toolbar)
+  - `Cost Analyzer` (toolbar)
 
 ## Lorebook Auditor UI
 
@@ -832,9 +839,14 @@ LLM operation log settings:
 - `Include Embedding Backend Calls`
 - `Open LLM Operation Log Explorer` (settings button + command)
 
-When enabled, LoreVault writes full LLM request/response content (including tool planner calls) to the configured JSONL file.
-When `Include Embedding Backend Calls` is enabled, LoreVault also writes embedding provider calls with `kind: embedding`.
-Use command `Open LLM Operation Log Explorer` to inspect/search entries, view parsed request messages (with preserved newlines) in expandable textboxes, and open full raw request/response payload JSON inside the plugin.
+Operation log defaults:
+
+- `Enable LLM Operation Log` is enabled by default.
+- `Include Embedding Backend Calls` is enabled by default.
+- LoreVault writes one JSONL file per cost profile by suffixing the configured base path.
+- default retention is `10000` entries per profile file.
+
+Use command `Open LLM Operation Log Explorer` to inspect/search entries, choose a cost profile, view parsed request messages (with preserved newlines) in expandable textboxes, and open the raw per-profile JSONL file.
 
 ## Story Chat Panel
 

@@ -21,6 +21,7 @@ test('parseOperationLogJsonl parses entries and sorts by start time descending',
     }),
     JSON.stringify({
       id: 'op-2',
+      costProfile: 'writer-a',
       kind: 'tool_planner',
       operationName: 'second',
       provider: 'openrouter',
@@ -41,8 +42,10 @@ test('parseOperationLogJsonl parses entries and sorts by start time descending',
   assert.equal(parsed.entries.length, 2);
   assert.equal(parsed.issues.length, 0);
   assert.equal(parsed.entries[0].record.id, 'op-2');
+  assert.equal(parsed.entries[0].record.costProfile, 'writer-a');
   assert.equal(parsed.entries[1].record.id, 'op-1');
   assert.equal(parsed.entries[0].searchText.includes('second'), true);
+  assert.equal(parsed.entries[0].searchText.includes('writer-a'), true);
   assert.equal(parsed.entries[0].searchText.includes('request failed'), true);
 });
 

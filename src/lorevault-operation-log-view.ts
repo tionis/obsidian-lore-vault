@@ -308,11 +308,14 @@ export class LorevaultOperationLogView extends ItemView {
   private searchQuery = '';
   private rowLimit = 120;
   private autoRefresh = false;
+  private selectedCostProfile = '';
+  private availableCostProfiles: string[] = [];
   private autoRefreshTimer: number | null = null;
   private statusEl: HTMLElement | null = null;
   private pathEl: HTMLElement | null = null;
   private issueEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
+  private costProfileSelectEl: HTMLSelectElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -381,6 +384,15 @@ export class LorevaultOperationLogView extends ItemView {
     autoRefreshLabel.createSpan({ text: 'Auto refresh (3s)' });
 
     const filters = contentEl.createDiv({ cls: 'lorevault-operation-log-filters' });
+    const costProfileSelect = filters.createEl('select');
+    costProfileSelect.title = 'Cost profile';
+    costProfileSelect.addEventListener('change', () => {
+      this.selectedCostProfile = costProfileSelect.value.trim();
+      void this.reloadEntries();
+    });
+    this.costProfileSelectEl = costProfileSelect;
+    this.renderCostProfileSelect();
+
     const searchInput = filters.createEl('input', { cls: 'lorevault-operation-log-search' });
     searchInput.type = 'search';
     searchInput.placeholder = 'Search operation/model/error/request text...';
@@ -458,13 +470,57 @@ export class LorevaultOperationLogView extends ItemView {
     this.renderStatus();
   }
 
+  private async refreshCostProfileOptions(): Promise<void> {
+    const known = await this.plugin.listKnownCostProfiles();
+    const deviceDefault = this.plugin.getDeviceEffectiveCostProfileLabel().trim();
+    const values = new Set<string>();
+    for (const profile of known) {
+      const normalized = profile.trim();
+      if (normalized) {
+        values.add(normalized);
+      }
+    }
+    if (deviceDefault) {
+      values.add(deviceDefault);
+    }
+    if (this.selectedCostProfile) {
+      values.add(this.selectedCostProfile);
+    }
+    this.availableCostProfiles = [...values].sort((left, right) => left.localeCompare(right));
+    if (!this.selectedCostProfile) {
+      this.selectedCostProfile = deviceDefault || this.availableCostProfiles[0] || '';
+    }
+  }
+
+  private renderCostProfileSelect(): void {
+    if (!this.costProfileSelectEl) {
+      return;
+    }
+    this.costProfileSelectEl.empty();
+    if (this.availableCostProfiles.length === 0) {
+      this.costProfileSelectEl.createEl('option', {
+        value: '',
+        text: '(none)'
+      });
+      this.costProfileSelectEl.value = '';
+      return;
+    }
+    for (const profile of this.availableCostProfiles) {
+      this.costProfileSelectEl.createEl('option', {
+        value: profile,
+        text: profile
+      });
+    }
+    this.costProfileSelectEl.value = this.selectedCostProfile;
+  }
+
   private updatePathSummary(): void {
     if (!this.pathEl) {
       return;
     }
     this.pathEl.empty();
     this.pathEl.createSpan({ text: 'Path: ' });
-    this.pathEl.createEl('code', { text: this.plugin.getOperationLogPath() });
+    this.pathEl.createEl('code', { text: this.plugin.getOperationLogPath(this.selectedCostProfile) });
   }
 
   private startAutoRefresh(): void {
@@ -486,9 +542,15 @@ export class LorevaultOperationLogView extends ItemView {
     this.loadVersion = loadVersion;
     this.isLoading = true;
     this.renderStatus();
+    try {
+      await this.refreshCostProfileOptions();
+      this.renderCostProfileSelect();
+    } catch (error) {
+      console.warn('LoreVault: Failed to load cost profile options for operation log view:', error);
+    }
     this.updatePathSummary();
     try {
-      const path = this.plugin.getOperationLogPath();
+      const path = this.plugin.getOperationLogPath(this.selectedCostProfile);
       const exists = await this.app.vault.adapter.exists(path);
       if (!exists) {
         if (loadVersion !== this.loadVersion) {
@@ -797,6 +859,7 @@ export class LorevaultOperationLogView extends ItemView {
     details.createEl('p', {
       text: [
         `ID: ${entry.record.id}`,
+        `Cost profile: ${entry.record.costProfile || '(none)'}`,
         `Provider: ${entry.record.provider}`,
         `Model: ${entry.record.model || '(none)'}`,
         `Duration: ${formatDuration(entry.record.durationMs)}`,
@@ -897,7 +960,7 @@ export class LorevaultOperationLogView extends ItemView {
   }
 
   private async openRawLogFile(): Promise<void> {
-    const path = this.plugin.getOperationLogPath();
+    const path = this.plugin.getOperationLogPath(this.selectedCostProfile);
     const abstract = this.app.vault.getAbstractFileByPath(path);
     if (!(abstract instanceof TFile)) {
       new Notice(`Operation log file does not exist yet: ${clampPreview(path, 180)}`);

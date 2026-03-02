@@ -54,6 +54,10 @@ import {
   LOREVAULT_OPERATION_LOG_VIEW_TYPE,
   LorevaultOperationLogView
 } from './lorevault-operation-log-view';
+import {
+  LOREVAULT_COST_ANALYZER_VIEW_TYPE,
+  LorevaultCostAnalyzerView
+} from './lorevault-cost-analyzer-view';
 import { LOREVAULT_IMPORT_VIEW_TYPE, LorevaultImportView } from './lorevault-import-view';
 import {
   LOREVAULT_STORY_EXTRACT_VIEW_TYPE,
@@ -131,6 +135,7 @@ import {
   ensureParentVaultFolderForFile,
   getVaultBasename,
   getVaultDirname,
+  getVaultExtname,
   joinVaultPath,
   normalizeVaultPath,
   normalizeVaultRelativePath
@@ -328,6 +333,15 @@ interface CompletionProfileWorkspaceStatus {
   effectiveCostProfile: string;
 }
 
+interface UsageReportSnapshotOptions {
+  costProfile?: string | null;
+  includeAllProfiles?: boolean;
+}
+
+interface OperationLogAppendOptions {
+  costProfile?: string;
+}
+
 interface CompletionPresetSuggestItem {
   id: string;
   label: string;
@@ -418,7 +432,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
   }
 
-  public getOperationLogPath(): string {
+  private getRawOperationLogBasePath(): string {
     const raw = (this.settings.operationLog.path ?? '')
       .toString()
       .trim()
@@ -426,14 +440,49 @@ export default class LoreBookConverterPlugin extends Plugin {
     return raw || DEFAULT_SETTINGS.operationLog.path;
   }
 
+  private normalizeCostProfileForFileSegment(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+  }
+
+  private appendCostProfileSuffixToPath(basePath: string, costProfile: string): string {
+    const normalizedProfile = this.normalizeCostProfileForFileSegment(costProfile) || 'default';
+    const extension = getVaultExtname(basePath);
+    if (extension) {
+      const stem = basePath.slice(0, -extension.length);
+      return `${stem}--${normalizedProfile}${extension}`;
+    }
+    return `${basePath}--${normalizedProfile}.jsonl`;
+  }
+
+  public getOperationLogPath(costProfile?: string | null): string {
+    const resolvedProfile = (costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel();
+    return this.appendCostProfileSuffixToPath(
+      this.getRawOperationLogBasePath(),
+      resolvedProfile || 'default'
+    );
+  }
+
   private isEmbeddingOperationLogEnabled(): boolean {
     return this.settings.operationLog.enabled && this.settings.operationLog.includeEmbeddings;
   }
 
-  private async appendOperationLogRecord(record: CompletionOperationLogRecord): Promise<void> {
-    const path = this.getOperationLogPath();
-    const maxEntries = Math.max(20, Math.min(5000, Math.floor(Number(this.settings.operationLog.maxEntries) || DEFAULT_SETTINGS.operationLog.maxEntries)));
-    const serialized = JSON.stringify(record);
+  private async appendOperationLogRecord(
+    record: CompletionOperationLogRecord,
+    options: OperationLogAppendOptions = {}
+  ): Promise<void> {
+    const costProfile = (options.costProfile ?? record.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default';
+    const path = this.getOperationLogPath(costProfile);
+    const maxEntries = Math.max(20, Math.min(20000, Math.floor(Number(this.settings.operationLog.maxEntries) || DEFAULT_SETTINGS.operationLog.maxEntries)));
+    const serialized = JSON.stringify({
+      ...record,
+      costProfile
+    });
 
     this.operationLogWriteQueue = this.operationLogWriteQueue
       .catch(() => undefined)
@@ -464,18 +513,24 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.queueOperationLogViewRefresh();
   }
 
-  public async appendCompletionOperationLog(record: CompletionOperationLogRecord): Promise<void> {
+  public async appendCompletionOperationLog(
+    record: CompletionOperationLogRecord,
+    options: OperationLogAppendOptions = {}
+  ): Promise<void> {
     if (!this.settings.operationLog.enabled) {
       return;
     }
-    await this.appendOperationLogRecord(record);
+    await this.appendOperationLogRecord(record, options);
   }
 
-  public async appendEmbeddingOperationLog(record: CompletionOperationLogRecord): Promise<void> {
+  public async appendEmbeddingOperationLog(
+    record: CompletionOperationLogRecord,
+    options: OperationLogAppendOptions = {}
+  ): Promise<void> {
     if (!this.isEmbeddingOperationLogEnabled()) {
       return;
     }
-    await this.appendOperationLogRecord(record);
+    await this.appendOperationLogRecord(record, options);
   }
 
   private getSecretStorage(): LoreVaultSecretStorage | null {
@@ -657,6 +712,69 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   public getDeviceActiveCostProfile(): string {
     return this.deviceProfileState.activeCostProfile;
+  }
+
+  private resolveDeviceCompletionForCostProfile(): CompletionProfileResolution {
+    const baseCompletion = this.cloneCompletionConfig(this.settings.completion);
+    const devicePresetId = this.deviceProfileState.activeCompletionPresetId;
+    if (devicePresetId) {
+      const preset = this.getCompletionPresetById(devicePresetId);
+      if (preset) {
+        return {
+          completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
+          source: 'device',
+          presetId: preset.id,
+          presetName: preset.name,
+          authorNotePath: ''
+        };
+      }
+    }
+    return {
+      completion: baseCompletion,
+      source: 'base',
+      presetId: '',
+      presetName: '',
+      authorNotePath: ''
+    };
+  }
+
+  private resolveEffectiveCostProfileLabel(apiKey: string): string {
+    const explicit = this.deviceProfileState.activeCostProfile.trim();
+    if (explicit) {
+      return explicit;
+    }
+    return this.buildAutoCostProfileLabel(apiKey);
+  }
+
+  public getDeviceEffectiveCostProfileLabel(): string {
+    const explicit = this.deviceProfileState.activeCostProfile.trim();
+    if (explicit) {
+      return explicit;
+    }
+    const resolution = this.resolveDeviceCompletionForCostProfile();
+    return this.buildAutoCostProfileLabel(resolution.completion.apiKey);
+  }
+
+  public async listKnownCostProfiles(): Promise<string[]> {
+    const profiles = new Set<string>();
+    const deviceExplicit = this.deviceProfileState.activeCostProfile.trim();
+    if (deviceExplicit) {
+      profiles.add(deviceExplicit);
+    }
+    const deviceEffective = this.getDeviceEffectiveCostProfileLabel().trim();
+    if (deviceEffective) {
+      profiles.add(deviceEffective);
+    }
+    const entries = await this.usageLedgerStore.listEntries();
+    for (const entry of entries) {
+      const profile = typeof entry.metadata?.costProfile === 'string'
+        ? entry.metadata.costProfile.trim()
+        : '';
+      if (profile) {
+        profiles.add(profile);
+      }
+    }
+    return [...profiles].sort((left, right) => left.localeCompare(right));
   }
 
   public async setDeviceActiveCompletionPresetId(presetId: string): Promise<void> {
@@ -887,7 +1005,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     const authorNotePreset = this.getCompletionPresetById(authorNotePresetId);
     const explicitCostProfile = this.deviceProfileState.activeCostProfile.trim();
-    const effectiveCostProfile = explicitCostProfile || this.buildAutoCostProfileLabel(effective.completion.apiKey);
+    const effectiveCostProfile = this.resolveEffectiveCostProfileLabel(effective.completion.apiKey);
 
     return {
       effective,
@@ -1553,6 +1671,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         pricingSnapshotAt: cost.pricingSnapshotAt,
         metadata: enrichedMetadata
       });
+      this.refreshStorySteeringViews();
+      this.refreshCostAnalyzerViews();
     } catch (error) {
       console.error('Failed to record usage entry:', error);
     }
@@ -1609,8 +1729,20 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  public async getUsageReportSnapshot(): Promise<UsageLedgerReportSnapshot> {
-    const entries = await this.usageLedgerStore.listEntries();
+  public async getUsageReportSnapshot(options: UsageReportSnapshotOptions = {}): Promise<UsageLedgerReportSnapshot> {
+    const allEntries = await this.usageLedgerStore.listEntries();
+    const includeAllProfiles = options.includeAllProfiles === true;
+    const selectedProfile = includeAllProfiles
+      ? ''
+      : (options.costProfile ?? this.getDeviceEffectiveCostProfileLabel() ?? '').trim();
+    const entries = includeAllProfiles || !selectedProfile
+      ? allEntries
+      : allEntries.filter(entry => {
+        const profile = typeof entry.metadata?.costProfile === 'string'
+          ? entry.metadata.costProfile.trim()
+          : '';
+        return profile === selectedProfile;
+      });
     const nowMs = Date.now();
     return buildUsageLedgerReportSnapshot(entries, {
       nowMs,
@@ -1626,7 +1758,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private async exportUsageReport(format: 'json' | 'csv'): Promise<void> {
     try {
       const entries = await this.usageLedgerStore.listEntries();
-      const snapshot = await this.getUsageReportSnapshot();
+      const snapshot = await this.getUsageReportSnapshot({ includeAllProfiles: true });
       const outputDir = this.resolveUsageReportOutputDir();
       await this.ensureVaultDirectory(outputDir);
 
@@ -1842,6 +1974,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshCostAnalyzerViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_COST_ANALYZER_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorevaultCostAnalyzerView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
   private queueOperationLogViewRefresh(): void {
     if (this.operationLogViewRefreshTimer !== null) {
       return;
@@ -1971,6 +2112,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultOperationLogView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openCostAnalyzerView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_COST_ANALYZER_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_COST_ANALYZER_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultCostAnalyzerView) {
       leaf.view.refresh();
     }
   }
@@ -2701,7 +2859,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       systemPrompt,
       userPrompt,
       operationName: 'author_note_rewrite',
-      onOperationLog: record => this.appendCompletionOperationLog(record),
+      onOperationLog: record => this.appendCompletionOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+      }),
       onUsage: usage => {
         usageReport = usage;
       }
@@ -3159,7 +3319,9 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const planner = createCompletionRetrievalToolPlanner(completion, {
       operationName: 'retrieval_tool_hooks',
-      onOperationLog: record => this.appendCompletionOperationLog(record)
+      onOperationLog: record => this.appendCompletionOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+      })
     });
     if (!planner) {
       return {
@@ -3462,7 +3624,9 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const planner = createCompletionToolPlanner(args.completion, {
       operationName: 'story_chat_agent_tools',
-      onOperationLog: record => this.appendCompletionOperationLog(record)
+      onOperationLog: record => this.appendCompletionOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(args.completion.apiKey)
+      })
     });
     if (!planner) {
       return {
@@ -4200,7 +4364,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
       operationName: 'keywords_generate',
-      onOperationLog: record => this.appendCompletionOperationLog(record),
+      onOperationLog: record => this.appendCompletionOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+      }),
       onUsage: usage => {
         usageReport = usage;
       }
@@ -4450,7 +4616,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       systemPrompt: prompt.systemPrompt,
       userPrompt: prompt.userPrompt,
       operationName: mode === 'chapter' ? 'summary_chapter' : 'summary_world_info',
-      onOperationLog: record => this.appendCompletionOperationLog(record),
+      onOperationLog: record => this.appendCompletionOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+      }),
       onUsage: usage => {
         usageReport = usage;
       }
@@ -5330,7 +5498,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         systemPrompt: effectiveSystemPrompt,
         userPrompt,
         operationName: 'story_chat_turn',
-        onOperationLog: record => this.appendCompletionOperationLog(record),
+        onOperationLog: record => this.appendCompletionOperationLog(record, {
+          costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+        }),
         onDelta: (delta: string) => {
           if (!delta) {
             return;
@@ -5759,7 +5929,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     merged.operationLog.maxEntries = Math.max(
       20,
-      Math.min(5000, Math.floor(Number(merged.operationLog.maxEntries ?? DEFAULT_SETTINGS.operationLog.maxEntries)))
+      Math.min(20000, Math.floor(Number(merged.operationLog.maxEntries ?? DEFAULT_SETTINGS.operationLog.maxEntries)))
     );
     merged.operationLog.includeEmbeddings = Boolean(
       merged.operationLog.includeEmbeddings
@@ -6244,7 +6414,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.liveContextIndex = new LiveContextIndex(
       this.app,
       () => this.settings,
-      record => this.appendEmbeddingOperationLog(record)
+      record => this.appendEmbeddingOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(this.settings.embeddings.apiKey)
+      })
     );
     this.chapterSummaryStore = new ChapterSummaryStore(this.app);
     this.lorebookScopeCache = new LorebookScopeCache({
@@ -6262,6 +6434,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_STORY_STEERING_VIEW_TYPE, leaf => new StorySteeringView(leaf, this));
     this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
     this.registerView(LOREVAULT_OPERATION_LOG_VIEW_TYPE, leaf => new LorevaultOperationLogView(leaf, this));
+    this.registerView(LOREVAULT_COST_ANALYZER_VIEW_TYPE, leaf => new LorevaultCostAnalyzerView(leaf, this));
     this.registerView(LOREVAULT_IMPORT_VIEW_TYPE, leaf => new LorevaultImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
     this.registerView(LOREVAULT_STORY_DELTA_VIEW_TYPE, leaf => new LorevaultStoryDeltaView(leaf, this));
@@ -6421,6 +6594,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open LLM Operation Log Explorer',
       callback: () => {
         void this.openOperationLogView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-cost-analyzer',
+      name: 'Open Cost Analyzer',
+      callback: () => {
+        void this.openCostAnalyzerView();
       }
     });
 
@@ -6754,6 +6935,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_OPERATION_LOG_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_COST_ANALYZER_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_DELTA_VIEW_TYPE);
@@ -6804,6 +6986,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.refreshStorySteeringViews();
     this.refreshHelpViews();
     this.refreshOperationLogViews();
+    this.refreshCostAnalyzerViews();
   }
 
   private resolveScopeFromActiveFile(activeFile: TFile | null): string | undefined {
@@ -7617,7 +7800,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         systemPrompt: this.settings.textCommands.systemPrompt,
         userPrompt,
         operationName: 'text_command_edit',
-        onOperationLog: record => this.appendCompletionOperationLog(record),
+        onOperationLog: record => this.appendCompletionOperationLog(record, {
+          costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+        }),
         onUsage: usage => {
           void this.recordCompletionUsage('text_command_edit', usage, {
             promptTemplateId: selection.promptId,
@@ -8223,7 +8408,9 @@ export default class LoreBookConverterPlugin extends Plugin {
         systemPrompt: effectiveSystemPrompt,
         userPrompt,
         operationName: 'editor_continuation',
-        onOperationLog: record => this.appendCompletionOperationLog(record),
+        onOperationLog: record => this.appendCompletionOperationLog(record, {
+          costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+        }),
         onDelta: (delta: string) => {
           if (!delta) {
             return;
@@ -8359,7 +8546,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       const sqliteReader = new SqlitePackReader(this.app);
       const embeddingService = this.settings.embeddings.enabled
         ? new EmbeddingService(this.app, this.settings.embeddings, {
-          onOperationLog: record => this.appendEmbeddingOperationLog(record)
+          onOperationLog: record => this.appendEmbeddingOperationLog(record, {
+            costProfile: this.resolveEffectiveCostProfileLabel(this.settings.embeddings.apiKey)
+          })
         })
         : null;
       const scopeAssignments: ScopeOutputAssignment[] = scopesToBuild.map(scope => ({

@@ -9,7 +9,7 @@ Reference design: `docs/planning.md`.
 - Optional retrieval extensions (Phase 12) are complete.
 - Phase 8 hardening is complete.
 - Phase 9 auto-summary workflows are complete.
-- Phase 13 cost tracking is complete (usage hooks + ledger + manager UI + JSON/CSV export + aggregation tests).
+- Phase 13 cost tracking is complete (usage hooks + ledger + Story Writing/Cost Analyzer UI + JSON/CSV export + aggregation tests).
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
@@ -18,7 +18,7 @@ Reference design: `docs/planning.md`.
 - Phase 19 mobile compatibility migration is complete (adapter-based export/cache IO + vault-relative path contract + manifest flip).
 - Story Steering LLM update prompt support is complete (optional per-run change request + baseline-preserving update behavior).
 - Story Chat agentic tool layer is complete (bounded lorebook/story/steering tool calls with scoped access and optional write gating).
-- LLM operation log is complete (full request/response/tool-planner payload persistence with retention controls + in-plugin explorer view).
+- LLM operation log is complete (full request/response/tool-planner/embedding payload persistence, per-cost-profile files, retention controls, and in-plugin explorer view).
 - Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 

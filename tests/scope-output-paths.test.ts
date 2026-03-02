@@ -7,15 +7,15 @@ import {
 } from '../src/scope-output-paths';
 
 test('resolveScopeOutputPaths keeps deterministic extensions', () => {
-  const resolved = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', false);
-  assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.json');
-  assert.equal(resolved.ragPath, 'lorebooks/sillytavern/lorevault-universe-yggdrasil.rag.md');
+  const resolved = resolveScopeOutputPaths('sillytavern/{scope}.json', 'universe/yggdrasil', false);
+  assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/universe-yggdrasil.json');
+  assert.equal(resolved.ragPath, 'lorebooks/sillytavern/universe-yggdrasil.rag.md');
   assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
 });
 
 test('resolveScopeOutputPaths appends slug regardless of build mode', () => {
-  const singleScope = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', false);
-  const multiScope = resolveScopeOutputPaths('sillytavern/lorevault.json', 'universe/yggdrasil', true);
+  const singleScope = resolveScopeOutputPaths('sillytavern/{scope}.json', 'universe/yggdrasil', false);
+  const multiScope = resolveScopeOutputPaths('sillytavern/{scope}.json', 'universe/yggdrasil', true);
   assert.equal(singleScope.worldInfoPath, multiScope.worldInfoPath);
   assert.equal(singleScope.ragPath, multiScope.ragPath);
   assert.equal(singleScope.sqlitePath, multiScope.sqlitePath);
@@ -65,11 +65,11 @@ test('resolveScopeOutputPaths rejects absolute downstream output patterns', () =
 
 test('resolveScopeOutputPaths rejects absolute sqlite output directories', () => {
   assert.throws(
-    () => resolveScopeOutputPaths('sillytavern/lorevault.json', 'world', false, '/tmp/lorebooks'),
+    () => resolveScopeOutputPaths('sillytavern/{scope}.json', 'world', false, '/tmp/lorebooks'),
     /Absolute filesystem paths are not supported/
   );
   assert.throws(
-    () => resolveScopeOutputPaths('sillytavern/lorevault.json', 'world', false, 'C:\\exports\\lorebooks'),
+    () => resolveScopeOutputPaths('sillytavern/{scope}.json', 'world', false, 'C:\\exports\\lorebooks'),
     /Absolute filesystem paths are not supported/
   );
 });

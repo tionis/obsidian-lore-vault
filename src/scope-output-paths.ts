@@ -19,7 +19,7 @@ export interface ScopeOutputAssignment {
 }
 
 const DEFAULT_SQLITE_OUTPUT_DIR = 'lorebooks';
-const DEFAULT_DOWNSTREAM_SUBPATH = 'sillytavern/lorevault.json';
+const DEFAULT_DOWNSTREAM_SUBPATH = 'sillytavern/{scope}.json';
 
 function normalizeVaultPathSeparators(value: string): string {
   return value.replace(/\\/g, '/');

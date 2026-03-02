@@ -95,7 +95,10 @@ If you prefer to build the plugin from source:
 
 1. **Configure plugin settings**
    - Go to Settings → LoreVault
-   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + fallback markdown projection; default `sillytavern/lorevault.json`)
+   - Configure top `Device Local Settings` first:
+     - `Active Completion Preset (This Device)`
+     - `Device Cost Profile Label`
+   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + fallback markdown projection; default `sillytavern/{scope}.json`)
    - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook; folder picker available; vault-relative paths only)
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
@@ -105,8 +108,8 @@ If you prefer to build the plugin from source:
    - Optional: create model presets; active preset selection is device-local (not synced between devices)
    - Optional: set a device-local cost profile label for usage metadata tagging (if empty, LoreVault auto-derives one from API key hash)
    - Optional: configure Story Chat tool calling (`Enable Story Chat Tool Calls`, call/token/time limits, optional write-action gate)
-   - Optional: enable LLM Operation Log (full request/response debug logs), choose log path/retention, and optionally include embedding backend calls
-   - Optional: open `LLM Operation Log Explorer` from settings (or command palette) to inspect/search captured calls in-plugin
+   - LLM Operation Log is enabled by default (including embedding backend calls); default retention is `10000` entries per profile log file
+   - Optional: open `LLM Operation Log Explorer` from settings (or command palette) to inspect/search captured calls by cost profile
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
@@ -140,7 +143,7 @@ If you prefer to build the plugin from source:
    - If needed, stop an active run with command `Stop Active Generation` (also available in editor menu while running)
    - LoreVault queries token-budgeted context (`world_info` + fallback entries) and streams generated continuation text
    - If tool hooks are enabled, LoreVault can add a bounded tool-retrieved context layer before generation
-   - If the active note defines long-form story metadata (`authorNote` link, `chapter`, optional prev/next refs; `storyId` optional fallback), LoreVault injects bounded prior chapter memory before lorebook context, scaling prior-chapter depth when context budget is larger
+   - If the active note defines long-form story metadata (`authorNote` link, `chapter`, optional prev/next refs), LoreVault injects bounded prior chapter memory before lorebook context, scaling prior-chapter depth when context budget is larger
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Author Note content is edited directly in the linked note (native Obsidian editor)
@@ -158,7 +161,8 @@ If you prefer to build the plugin from source:
      - `Continue Story` (toggles to `Stop` during generation) + `Insert Directive`
      - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
      - `Generate Chapter Summary`, `Create Next Chapter`
-   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner payloads (and optional embedding payloads) without leaving Obsidian
+   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads (profile-scoped logs) without leaving Obsidian
+   - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
 5. **Open embedded help**

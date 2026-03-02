@@ -80,6 +80,7 @@ export class StorySteeringView extends ItemView {
   private telemetryTimer: number | null = null;
   private usageSummary: UsageLedgerReportSnapshot | null = null;
   private usageSummaryError = '';
+  private usageSummaryProfile = '';
   private usageFetchInFlight = false;
   private lastUsageFetchAt = 0;
   private generationDetailsOpen = false;
@@ -162,9 +163,14 @@ export class StorySteeringView extends ItemView {
     }
   }
 
-  private async maybeRefreshUsageSummary(force = false): Promise<void> {
+  private async maybeRefreshUsageSummary(costProfile: string, force = false): Promise<void> {
+    const normalizedCostProfile = costProfile.trim();
     const now = Date.now();
-    if (!force && now - this.lastUsageFetchAt < 15000) {
+    if (
+      !force
+      && normalizedCostProfile === this.usageSummaryProfile
+      && now - this.lastUsageFetchAt < 15000
+    ) {
       return;
     }
     if (this.usageFetchInFlight) {
@@ -174,9 +180,13 @@ export class StorySteeringView extends ItemView {
     this.usageFetchInFlight = true;
     this.lastUsageFetchAt = now;
     try {
-      this.usageSummary = await this.plugin.getUsageReportSnapshot();
+      this.usageSummary = await this.plugin.getUsageReportSnapshot({
+        costProfile: normalizedCostProfile
+      });
+      this.usageSummaryProfile = normalizedCostProfile;
       this.usageSummaryError = '';
     } catch (error) {
+      this.usageSummary = null;
       this.usageSummaryError = error instanceof Error ? error.message : String(error);
     } finally {
       this.usageFetchInFlight = false;
@@ -308,8 +318,6 @@ export class StorySteeringView extends ItemView {
     this.isRendering = true;
 
     try {
-      await this.maybeRefreshUsageSummary(forceUsageRefresh);
-
       const telemetry = this.plugin.getGenerationTelemetry();
       const generationRunning = telemetry.state !== 'idle';
       const workspaceContext = await this.plugin.resolveAuthorNoteWorkspaceContext();
@@ -320,6 +328,7 @@ export class StorySteeringView extends ItemView {
         ? this.getMarkdownFileByPath(workspaceContext.activeFilePath)
         : null;
       const completionStatus = await this.plugin.getCompletionProfileWorkspaceStatus(workspaceFile);
+      await this.maybeRefreshUsageSummary(completionStatus.effectiveCostProfile, forceUsageRefresh);
       const completionPresets = this.plugin.getCompletionPresetItems();
 
       let lorebookTargetPath = '';

@@ -144,8 +144,8 @@ Notes:
 For each scope:
 
 - `lorebooks/<scope-slug>.db` (canonical SQLite pack)
-- `lorebooks/sillytavern/<name>-<scope-slug>.json` (`world_info`)
-- `lorebooks/sillytavern/<name>-<scope-slug>.rag.md` (`rag` projection)
+- `lorebooks/sillytavern/<scope-slug>.json` (`world_info`, default pattern `sillytavern/{scope}.json`)
+- `lorebooks/sillytavern/<scope-slug>.rag.md` (`rag` projection)
 
 Output naming remains deterministic; collisions fail the build.
 
@@ -191,18 +191,23 @@ Import and updates:
 Operations and reporting:
 
 - `Open LLM Operation Log Explorer`
+- `Open Cost Analyzer`
 - `Export Usage Report (JSON)`
 - `Export Usage Report (CSV)`
 
 ## Logging and Cost Tracking
 
-- Optional operation log captures full LLM request/response payloads.
-- Optional embedding backend call logging can be enabled for retrieval debugging.
+- Operation log is enabled by default and captures full LLM request/response payloads.
+- Embedding backend call logging is enabled by default.
+- Operation logs are namespaced by cost profile (one JSONL file per profile suffix).
+- Default retention is `10000` entries per profile log file.
+- Operation Log Explorer includes a cost-profile selector and defaults to the active device profile.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
 - Secret IDs are user-configurable; you can pick existing IDs in settings to reuse one secret across multiple presets.
 - Active completion preset and cost-profile label are device-local (Obsidian local storage), not shared vault settings.
-- Budget warnings are available for configured thresholds.
+- Budget warnings are evaluated per selected cost profile.
+- Cost Analyzer view provides per-profile breakdowns (totals + by-operation/model/scope/source).
 
 ## Development
 

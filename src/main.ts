@@ -2927,7 +2927,14 @@ export default class LoreBookConverterPlugin extends Plugin {
   ): boolean {
     const preserveViewport = options?.preserveViewport !== false;
     const scroller = preserveViewport ? this.resolveMarkdownEditorScroller(markdownView) : null;
-    const scrollInfo = preserveViewport ? editor.getScrollInfo() : null;
+    const scrollInfo = preserveViewport
+      ? (scroller
+        ? {
+          left: scroller.scrollLeft,
+          top: scroller.scrollTop
+        }
+        : editor.getScrollInfo())
+      : null;
     const selections = editor.listSelections().map(selection => ({
       from: selection.anchor,
       to: selection.head
@@ -2950,10 +2957,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     }
     if (preserveViewport && scrollInfo) {
-      editor.scrollTo(scrollInfo.left, scrollInfo.top);
       if (scroller) {
         scroller.scrollTop = scrollInfo.top;
         scroller.scrollLeft = scrollInfo.left;
+      } else {
+        editor.scrollTo(scrollInfo.left, scrollInfo.top);
       }
     }
     return true;
@@ -9436,6 +9444,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (streamScroller) {
         streamScroller.addEventListener('pointerdown', noteViewportInteraction, { passive: true });
         streamScroller.addEventListener('wheel', noteViewportInteraction, { passive: true });
+        streamScroller.addEventListener('scroll', noteViewportInteraction, { passive: true });
         streamScroller.addEventListener('touchstart', noteViewportInteraction, { passive: true });
         streamScroller.addEventListener('touchmove', noteViewportInteraction, { passive: true });
       }
@@ -9562,6 +9571,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (streamScroller) {
           streamScroller.removeEventListener('pointerdown', noteViewportInteraction);
           streamScroller.removeEventListener('wheel', noteViewportInteraction);
+          streamScroller.removeEventListener('scroll', noteViewportInteraction);
           streamScroller.removeEventListener('touchstart', noteViewportInteraction);
           streamScroller.removeEventListener('touchmove', noteViewportInteraction);
         }

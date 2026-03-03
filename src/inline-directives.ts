@@ -6,6 +6,7 @@ interface DirectiveMatch {
 
 const BRACKET_DIRECTIVE_PATTERN = /\[\s*LV:\s*([^\]\r\n]+?)\s*\]/gi;
 const COMMENT_DIRECTIVE_PATTERN = /<!--\s*LV:\s*([\s\S]*?)-->/gi;
+const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
 
 function normalizeDirectiveText(value: string): string {
   return value
@@ -43,9 +44,10 @@ export function renderInlineLoreDirectivesAsTags(source: string): InlineDirectiv
 
   const withCommentTags = source.replace(COMMENT_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
   const withAllTags = withCommentTags.replace(BRACKET_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
+  const withoutNonDirectiveComments = withAllTags.replace(HTML_COMMENT_PATTERN, '');
 
   return {
-    text: withAllTags,
+    text: withoutNonDirectiveComments,
     directives
   };
 }

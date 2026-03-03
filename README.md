@@ -143,6 +143,7 @@ Additional behavior:
 Notes:
 
 - Inline directives remain in-place near their source text in prompt staging.
+- Non-`LV:` HTML comments are stripped from staged prompt blocks before sending context to the LLM.
 - Chapter memory scales aggressively with available budget on large-context models and can include deeper prior-chapter coverage plus recent style excerpts (in addition to chapter summaries) when budget allows.
 - Optional semantic chapter recall can inject a `Related Past Scenes` block by embedding prior chapter chunks and selecting high-similarity matches to the current query/story window.
 - Chapter-memory lineage can walk linked prior chapters across different author-note anchors, but steering guidance is still taken only from the active note's linked author note.

@@ -67,6 +67,7 @@ test('stripInlineLoreDirectives removes directive markers from markdown', () => 
 test('renderInlineLoreDirectivesAsTags preserves placement and converts directives to inline tags', () => {
   const source = [
     'Before.',
+    '<!-- Keep this hidden note out of the prompt -->',
     '<!-- LV: Keep this scene claustrophobic -->',
     '',
     'Middle [LV: Raise tension] text.',
@@ -82,6 +83,7 @@ test('renderInlineLoreDirectivesAsTags preserves placement and converts directiv
   assert.equal(rendered.text.includes('<inline_story_directive>'), true);
   assert.equal(rendered.text.includes('Keep this scene claustrophobic'), true);
   assert.equal(rendered.text.includes('Raise tension'), true);
+  assert.equal(rendered.text.includes('hidden note out of the prompt'), false);
   assert.equal(rendered.text.includes('Before.'), true);
   assert.equal(rendered.text.includes('After.'), true);
 });

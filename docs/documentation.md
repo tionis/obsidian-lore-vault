@@ -993,6 +993,7 @@ Rules:
 - only strict-prefix `LV:` directives are parsed for steering
 - plain bracket text (for example `[Editor Note: ...]` or `[Make it bigger]`) is treated as normal prose
 - directives are converted to `<inline_story_directive>` tags in-place within each prompt context block
+- non-`LV:` HTML comments are stripped from staged prompt blocks before request dispatch
 - system prompt explicitly tells the model to follow `<inline_story_directive>` tags
 - resolved directives are shown in inspector traces before/with generation output
 - directives are excluded from lorebook exports and wiki import/update extraction flows

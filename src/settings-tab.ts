@@ -1631,7 +1631,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       text: 'Steering placement controls where Author Note markdown is staged in prompts.'
     });
     containerEl.createEl('p', {
-      text: 'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are kept in-place and rendered as `<inline_story_directive>` tags.'
+      text: 'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are kept in-place and rendered as `<inline_story_directive>` tags; non-`LV:` HTML comments are stripped from staged prompt blocks.'
     });
 
     const placementOptions = {

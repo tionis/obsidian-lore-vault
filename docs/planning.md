@@ -354,6 +354,7 @@ Planned/active steering primitives:
   - accepted syntax: `[LV: ...]` and `<!-- LV: ... -->`
   - non-prefixed bracket notes are treated as normal prose and ignored by steering parser
   - directives are converted to `<inline_story_directive>` tags in-place within staged prompt blocks
+  - non-`LV:` HTML comments are stripped from staged prompt blocks
   - directives are surfaced in inspector traces
 - configurable placement for author-note layer (`system`, pre-history, pre-response context)
 - deterministic token-budget partitioning per layer with clear reserves and headroom

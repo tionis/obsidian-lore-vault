@@ -531,6 +531,7 @@ Parser and staging constraints (implemented):
 
 - only strict-prefix `LV:` directives are parsed
 - directives are converted in-place where they appear in staged context blocks (story window, chat history/manual context, etc.)
+- non-`LV:` HTML comments are removed from staged prompt blocks
 - deterministic parse order follows source document order within each rendered block
 - system prompt explicitly instructs model to follow `<inline_story_directive>` tags
 - inspector traces include resolved directive summaries

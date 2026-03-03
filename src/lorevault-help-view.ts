@@ -143,6 +143,7 @@ export class LorevaultHelpView extends ItemView {
         'Cost profile label is configured in settings (device-local) and only affects usage metadata; when empty, LoreVault auto-derives one from API key hash.',
         'Cost budgets are configured per cost profile in settings. Pick a budget profile first, then edit daily/session/operation/model/scope limits for that profile.',
         'Story continuity aggressiveness (`Balanced` / `Aggressive`) is configured in settings and controls how much prior chapter memory + style carryover is injected.',
+        'Semantic chapter recall is enabled by default and configurable in Writing Completion settings; disable/tune it as needed. It can add `Related Past Scenes` from similar prior chapter chunks.',
         'Panel shows effective model, context usage, selected context items, and cost breakdown under the profile selector.'
       ],
       actions: [

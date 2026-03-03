@@ -1500,6 +1500,133 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           await this.persistSettings();
         }));
 
+    const semanticRecall = this.plugin.settings.completion.semanticChapterRecall;
+    containerEl.createEl('h4', { text: 'Semantic Chapter Recall' });
+    containerEl.createEl('p', {
+      text: 'Optionally retrieve related prior scene chunks by embedding similarity to the current writing/query context.'
+    });
+
+    new Setting(containerEl)
+      .setName('Enable Semantic Chapter Recall')
+      .setDesc('Enabled by default. If enabled, chapter memory can add a "Related Past Scenes" block from semantically similar prior chunks.')
+      .addToggle(toggle => toggle
+        .setValue(semanticRecall.enabled)
+        .onChange(async value => {
+          this.plugin.settings.completion.semanticChapterRecall.enabled = value;
+          await this.persistSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Max Source Chapters')
+      .setDesc('How many previous chapters are scanned for candidate chunks.')
+      .addText(text => text
+        .setValue(semanticRecall.maxSourceChapters.toString())
+        .onChange(async value => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 2 && numValue <= 120) {
+            this.plugin.settings.completion.semanticChapterRecall.maxSourceChapters = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Max Chunks')
+      .setDesc('Maximum retrieved related-scene chunks to inject per generation turn.')
+      .addText(text => text
+        .setValue(semanticRecall.maxChunks.toString())
+        .onChange(async value => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 1 && numValue <= 24) {
+            this.plugin.settings.completion.semanticChapterRecall.maxChunks = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Max Chunks Per Chapter')
+      .setDesc('Limit recalled chunks per chapter to avoid overfocusing one chapter.')
+      .addText(text => text
+        .setValue(semanticRecall.maxChunksPerChapter.toString())
+        .onChange(async value => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 1 && numValue <= 6) {
+            this.plugin.settings.completion.semanticChapterRecall.maxChunksPerChapter = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Chunk Max Chars')
+      .setDesc('Chunk size used when splitting prior chapter text for embeddings.')
+      .addText(text => text
+        .setValue(semanticRecall.chunkMaxChars.toString())
+        .onChange(async value => {
+          const numValue = parseInt(value, 10);
+          if (!isNaN(numValue) && numValue >= 300 && numValue <= 6000) {
+            this.plugin.settings.completion.semanticChapterRecall.chunkMaxChars = numValue;
+            if (this.plugin.settings.completion.semanticChapterRecall.chunkOverlapChars >= numValue) {
+              this.plugin.settings.completion.semanticChapterRecall.chunkOverlapChars = Math.max(
+                0,
+                Math.floor(numValue * 0.25)
+              );
+            }
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Chunk Overlap Chars')
+      .setDesc('Overlap between adjacent chunks for smoother semantic matching continuity.')
+      .addText(text => text
+        .setValue(semanticRecall.chunkOverlapChars.toString())
+        .onChange(async value => {
+          const numValue = parseInt(value, 10);
+          const maxValue = Math.max(0, this.plugin.settings.completion.semanticChapterRecall.chunkMaxChars - 1);
+          if (!isNaN(numValue) && numValue >= 0 && numValue <= 1500 && numValue <= maxValue) {
+            this.plugin.settings.completion.semanticChapterRecall.chunkOverlapChars = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Min Similarity')
+      .setDesc('Minimum cosine similarity threshold (0.0-1.0) for related-scene chunk inclusion.')
+      .addText(text => text
+        .setValue(semanticRecall.minSimilarity.toString())
+        .onChange(async value => {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue >= 0 && numValue <= 1) {
+            this.plugin.settings.completion.semanticChapterRecall.minSimilarity = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Recency Blend')
+      .setDesc('Blend factor (0.0-1.0): higher values prefer newer chapters when ranking similar chunks.')
+      .addText(text => text
+        .setValue(semanticRecall.recencyBlend.toString())
+        .onChange(async value => {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue >= 0 && numValue <= 1) {
+            this.plugin.settings.completion.semanticChapterRecall.recencyBlend = numValue;
+            await this.persistSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Semantic Recall Budget Share')
+      .setDesc('Fraction of chapter-memory budget reserved for related-scene semantic recall (0.05-0.80).')
+      .addText(text => text
+        .setValue(semanticRecall.budgetShare.toString())
+        .onChange(async value => {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue >= 0.05 && numValue <= 0.8) {
+            this.plugin.settings.completion.semanticChapterRecall.budgetShare = numValue;
+            await this.persistSettings();
+          }
+        }));
+
     containerEl.createEl('p', {
       text: 'Steering placement controls where Author Note markdown is staged in prompts.'
     });

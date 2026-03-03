@@ -169,6 +169,17 @@ export interface LoreBook {
 export type PromptLayerPlacement = 'system' | 'pre_history' | 'pre_response';
 export type StorySteeringExtractionSanitization = 'strict' | 'off';
 export type CompletionContinuityAggressiveness = 'balanced' | 'aggressive';
+export interface CompletionSemanticChapterRecallSettings {
+  enabled: boolean;
+  maxSourceChapters: number;
+  maxChunks: number;
+  maxChunksPerChapter: number;
+  chunkMaxChars: number;
+  chunkOverlapChars: number;
+  minSimilarity: number;
+  recencyBlend: number;
+  budgetShare: number;
+}
 
 export interface PromptLayerUsage {
   layer: string;
@@ -439,6 +450,7 @@ export interface ConverterSettings {
     promptReserveTokens: number;
     timeoutMs: number;
     continuityAggressiveness: CompletionContinuityAggressiveness;
+    semanticChapterRecall: CompletionSemanticChapterRecallSettings;
     layerPlacement: {
       storyNotes: PromptLayerPlacement;
     };
@@ -590,6 +602,17 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     promptReserveTokens: 400,
     timeoutMs: 60000,
     continuityAggressiveness: 'aggressive',
+    semanticChapterRecall: {
+      enabled: true,
+      maxSourceChapters: 40,
+      maxChunks: 10,
+      maxChunksPerChapter: 2,
+      chunkMaxChars: 1800,
+      chunkOverlapChars: 220,
+      minSimilarity: 0.16,
+      recencyBlend: 0.28,
+      budgetShare: 0.32
+    },
     layerPlacement: {
       storyNotes: 'pre_history'
     },

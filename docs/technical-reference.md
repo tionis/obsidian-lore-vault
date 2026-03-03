@@ -368,8 +368,24 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
   - then frontmatter `summary`
   - then deterministic body-head excerpt
 - when chapter-memory budget is large enough, injects additional bounded style excerpts from the most recent prior chapters
+- optional semantic chapter recall injects a bounded `## Related Past Scenes` block:
+  - source prior chapters are chunked deterministically (heading-aware + overlap controls)
+  - query text comes from active query/story window context
+  - chunks are embedded/scored by cosine similarity, then hybrid-ranked with recency blend
+  - bounded by max chunks, per-chapter cap, min similarity threshold, and reserved chapter-memory budget share
 - high-context models receive larger chapter-memory budgets, deeper prior-chapter windows, and more/larger recent style excerpts
 - `completion.continuityAggressiveness` (`balanced` | `aggressive`) selects the chapter-memory budget profile used by both continue-story and chat flows
+- `completion.semanticChapterRecall` controls the optional semantic layer:
+  - `enabled`
+  - `maxSourceChapters`
+  - `maxChunks`
+  - `maxChunksPerChapter`
+  - `chunkMaxChars`
+  - `chunkOverlapChars`
+  - `minSimilarity`
+  - `recencyBlend`
+  - `budgetShare`
+- default values are tuned for large-context continuity (`enabled: true`, `maxSourceChapters: 40`, `maxChunks: 10`, `maxChunksPerChapter: 2`, `chunkMaxChars: 1800`, `chunkOverlapChars: 220`, `minSimilarity: 0.16`, `recencyBlend: 0.28`, `budgetShare: 0.32`)
 - chapter-memory lineage can traverse linked prior chapters across author-note boundaries via chapter refs; author-note steering injection remains scoped to the active note's linked author note
 - injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 

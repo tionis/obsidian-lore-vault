@@ -314,6 +314,7 @@ Reference design: `docs/planning.md`.
   - [x] prevent failed query-embedding calls from aborting story completion (lexical fallback path)
   - [x] chunk/average long query embeddings deterministically before semantic scoring
   - [x] scale prior-chapter memory depth by available context budget (deterministic window expansion)
+  - [x] add optional/tunable semantic chapter recall over prior chapter chunks (`Related Past Scenes`) for large-context long-form writing
   - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output and shared Author Note linking
   - [x] add `Create Next Story Chapter` command + chapter-frontmatter-gated editor context action
   - [x] add `Fork Story from Active Note` (new fork note + cloned author note + isolated forward branch links)

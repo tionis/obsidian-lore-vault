@@ -144,8 +144,10 @@ Notes:
 
 - Inline directives remain in-place near their source text in prompt staging.
 - Chapter memory scales aggressively with available budget on large-context models and can include deeper prior-chapter coverage plus recent style excerpts (in addition to chapter summaries) when budget allows.
+- Optional semantic chapter recall can inject a `Related Past Scenes` block by embedding prior chapter chunks and selecting high-similarity matches to the current query/story window.
 - Chapter-memory lineage can walk linked prior chapters across different author-note anchors, but steering guidance is still taken only from the active note's linked author note.
 - `Story Continuity Aggressiveness` in settings controls chapter-memory behavior (`Balanced` vs `Aggressive`) for both Continue Story and Story Chat.
+- `Writing Completion -> Semantic Chapter Recall` controls this behavior and can be fully disabled (`Enable Semantic Chapter Recall` off). It is enabled by default. Tunables include chapter/chunk limits, chunk sizing, similarity threshold, recency blend, and budget share.
 - Long query windows for embeddings are chunked and averaged deterministically.
 - If embedding calls fail, LoreVault falls back to lexical retrieval instead of aborting generation.
 

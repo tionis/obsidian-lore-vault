@@ -121,6 +121,17 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
       timeoutMs: 60000,
+      semanticChapterRecall: {
+        enabled: false,
+        maxSourceChapters: 24,
+        maxChunks: 5,
+        maxChunksPerChapter: 1,
+        chunkMaxChars: 1400,
+        chunkOverlapChars: 180,
+        minSimilarity: 0.2,
+        recencyBlend: 0.35,
+        budgetShare: 0.24
+      },
       layerPlacement: {
         storyNotes: 'pre_history'
       },

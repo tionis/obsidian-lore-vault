@@ -23,6 +23,7 @@ function cloneSettings(settings: ConverterSettings): ConverterSettings {
     summaries: { ...settings.summaries },
     completion: {
       ...settings.completion,
+      semanticChapterRecall: { ...settings.completion.semanticChapterRecall },
       layerPlacement: { ...settings.completion.layerPlacement },
       presets: settings.completion.presets.map(preset => ({ ...preset }))
     }

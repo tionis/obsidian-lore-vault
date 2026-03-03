@@ -14,6 +14,7 @@ import {
   MarkdownFileInfo
 } from 'obsidian';
 import {
+  CompletionSemanticChapterRecallSettings,
   CostProfileBudgetSettings,
   ContinuitySelection,
   cloneDefaultTextCommandPromptTemplates,
@@ -21,6 +22,7 @@ import {
   ConverterSettings,
   DEFAULT_SETTINGS,
   LoreBookEntry,
+  RagChunk,
   PromptLayerPlacement,
   PromptLayerUsage,
   TextCommandPromptTemplate,
@@ -154,7 +156,7 @@ import {
   resolveChapterMemoryExcerptSectionTokenRange
 } from './context-window-strategy';
 import { renderInlineLoreDirectivesAsTags, stripInlineLoreDirectives } from './inline-directives';
-import { slugifyIdentifier } from './hash-utils';
+import { sha256Hex, slugifyIdentifier } from './hash-utils';
 import {
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
@@ -629,6 +631,8 @@ export default class LoreBookConverterPlugin extends Plugin {
   private pendingExportScopes = new Set<string>();
   private operationLogWriteQueue: Promise<void> = Promise.resolve();
   private operationLogViewRefreshTimer: number | null = null;
+  private chapterMemoryEmbeddingService: EmbeddingService | null = null;
+  private chapterMemoryEmbeddingSignature = '';
   private deviceProfileState: DeviceProfileState = {
     activeCompletionPresetId: '',
     activeStoryChatPresetId: '',
@@ -1101,6 +1105,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private cloneCompletionConfig(config: ConverterSettings['completion']): ConverterSettings['completion'] {
     return {
       ...config,
+      semanticChapterRecall: { ...config.semanticChapterRecall },
       layerPlacement: { ...config.layerPlacement },
       presets: config.presets.map(preset => ({ ...preset }))
     };
@@ -5291,7 +5296,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         const chapterMemory = await this.buildChapterMemoryContext(
           activeStoryFile,
           chapterMemoryBudget,
-          continuityAggressiveness
+          continuityAggressiveness,
+          querySeed || request.userMessage
         );
         chapterMemoryMarkdown = chapterMemory.markdown;
         chapterMemoryTokens = chapterMemory.usedTokens;
@@ -5993,7 +5999,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       },
       completion: {
         ...DEFAULT_SETTINGS.completion,
-        ...(data?.completion ?? {})
+        ...(data?.completion ?? {}),
+        semanticChapterRecall: {
+          ...DEFAULT_SETTINGS.completion.semanticChapterRecall,
+          ...(data?.completion?.semanticChapterRecall ?? {})
+        }
       },
       storyChat: {
         ...DEFAULT_SETTINGS.storyChat,
@@ -6358,6 +6368,48 @@ export default class LoreBookConverterPlugin extends Plugin {
     merged.completion.continuityAggressiveness = normalizeChapterMemoryAggressiveness(
       merged.completion.continuityAggressiveness
     );
+    const semanticRecallSettings = merged.completion.semanticChapterRecall ?? DEFAULT_SETTINGS.completion.semanticChapterRecall;
+    merged.completion.semanticChapterRecall = {
+      enabled: Boolean(semanticRecallSettings.enabled),
+      maxSourceChapters: Math.max(2, Math.min(120, Math.floor(Number(
+        semanticRecallSettings.maxSourceChapters
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.maxSourceChapters
+      )))),
+      maxChunks: Math.max(1, Math.min(24, Math.floor(Number(
+        semanticRecallSettings.maxChunks
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.maxChunks
+      )))),
+      maxChunksPerChapter: Math.max(1, Math.min(6, Math.floor(Number(
+        semanticRecallSettings.maxChunksPerChapter
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.maxChunksPerChapter
+      )))),
+      chunkMaxChars: Math.max(300, Math.min(6000, Math.floor(Number(
+        semanticRecallSettings.chunkMaxChars
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.chunkMaxChars
+      )))),
+      chunkOverlapChars: Math.max(0, Math.min(1500, Math.floor(Number(
+        semanticRecallSettings.chunkOverlapChars
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.chunkOverlapChars
+      )))),
+      minSimilarity: Math.max(0, Math.min(1, Number(
+        semanticRecallSettings.minSimilarity
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.minSimilarity
+      ))),
+      recencyBlend: Math.max(0, Math.min(1, Number(
+        semanticRecallSettings.recencyBlend
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.recencyBlend
+      ))),
+      budgetShare: Math.max(0.05, Math.min(0.8, Number(
+        semanticRecallSettings.budgetShare
+        ?? DEFAULT_SETTINGS.completion.semanticChapterRecall.budgetShare
+      )))
+    };
+    if (merged.completion.semanticChapterRecall.chunkOverlapChars >= merged.completion.semanticChapterRecall.chunkMaxChars) {
+      merged.completion.semanticChapterRecall.chunkOverlapChars = Math.max(
+        0,
+        Math.floor(merged.completion.semanticChapterRecall.chunkMaxChars * 0.25)
+      );
+    }
     const completionLayerPlacement = merged.completion.layerPlacement ?? DEFAULT_SETTINGS.completion.layerPlacement;
     merged.completion.layerPlacement = {
       storyNotes: this.resolvePromptLayerPlacement(
@@ -8263,7 +8315,8 @@ export default class LoreBookConverterPlugin extends Plugin {
   private async buildChapterMemoryContext(
     activeFile: TFile | null,
     tokenBudget: number,
-    aggressiveness: ChapterMemoryAggressiveness
+    aggressiveness: ChapterMemoryAggressiveness,
+    queryText: string
   ): Promise<{
     markdown: string;
     usedTokens: number;
@@ -8281,13 +8334,21 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const normalizedBudget = Math.max(96, Math.floor(tokenBudget));
+    const semanticSettings = this.resolveSemanticChapterRecallSettings();
+    const semanticReserveBudget = semanticSettings.enabled
+      ? Math.max(96, Math.min(
+        Math.floor(normalizedBudget * semanticSettings.budgetShare),
+        Math.floor(normalizedBudget * 0.65)
+      ))
+      : 0;
     const excerptReserveBudget = estimateChapterMemoryExcerptReserveTokens(
       normalizedBudget,
       aggressiveness
     );
-    const summaryBudgetCap = excerptReserveBudget > 0
-      ? Math.max(160, normalizedBudget - excerptReserveBudget)
-      : normalizedBudget;
+    const summaryBudgetCap = Math.max(
+      160,
+      normalizedBudget - excerptReserveBudget - semanticReserveBudget
+    );
     const maxExcerptChapters = estimateChapterMemoryExcerptChapterWindow(
       normalizedBudget,
       aggressiveness
@@ -8400,6 +8461,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
     }
 
+    let semanticRecallMarkdown = '';
+    let semanticRecallItems: string[] = [];
+    let semanticRecallTrace: string[] = [];
     let remainingExcerptBudget = normalizedBudget - usedTokens;
     if (maxExcerptChapters > 0 && remainingExcerptBudget >= excerptRange.activationTokens) {
       const excerptCandidates = [...includedSections]
@@ -8463,8 +8527,34 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     }
 
+    if (semanticSettings.enabled) {
+      const semanticBudget = Math.max(
+        0,
+        Math.min(
+          Math.max(0, normalizedBudget - usedTokens),
+          semanticReserveBudget > 0
+            ? semanticReserveBudget
+            : Math.floor(normalizedBudget * semanticSettings.budgetShare)
+        )
+      );
+      if (semanticBudget >= 72) {
+        const semanticRecall = await this.buildSemanticChapterRecallContext(
+          priorPaths,
+          priorOrderByPath,
+          nodeByPath,
+          queryText,
+          semanticBudget,
+          semanticSettings
+        );
+        semanticRecallMarkdown = semanticRecall.markdown;
+        semanticRecallItems = semanticRecall.items;
+        semanticRecallTrace = semanticRecall.layerTrace;
+        usedTokens += semanticRecall.usedTokens;
+      }
+    }
+
     includedSections.sort((left, right) => left.order - right.order);
-    const sections = includedSections.map(item => {
+    const chronologicalSections = includedSections.map(item => {
       const lines = [
         `### ${item.heading}`,
         `Source: \`${item.path}\``,
@@ -8476,7 +8566,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
       return lines.join('\n');
     });
-    const items = includedSections.map(item => item.chapterTitle);
+    const sections = [
+      chronologicalSections.join('\n\n---\n\n'),
+      semanticRecallMarkdown
+    ].filter(Boolean);
+    const items = [
+      ...includedSections.map(item => item.chapterTitle),
+      ...semanticRecallItems
+    ];
     const excerptCount = includedSections.filter(item => Boolean(item.excerptText)).length;
     const layerTrace = [
       `chapter_memory_window: ${includedSections.length}/${priorPaths.length} chapters (mode ${aggressiveness}, excerpts ${excerptCount}, budget ~${normalizedBudget} tokens, summary_budget ~${summaryBudgetCap} tokens)`,
@@ -8485,12 +8582,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         `(${item.summarySource}, summary ~${item.summaryTokens} tokens`,
         item.excerptTokens ? `, excerpt ~${item.excerptTokens} tokens` : '',
         ')'
-      ].join(''))
+      ].join('')),
+      ...semanticRecallTrace
     ];
+    const markdown = sections.join('\n\n---\n\n');
 
     return {
-      markdown: sections.join('\n\n---\n\n'),
-      usedTokens,
+      markdown,
+      usedTokens: Math.max(usedTokens, this.estimateTokens(markdown)),
       items,
       layerTrace
     };
@@ -8527,6 +8626,420 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalizeChapterMemoryAggressiveness(
       this.settings.completion.continuityAggressiveness
     );
+  }
+
+  private resolveSemanticChapterRecallSettings(): CompletionSemanticChapterRecallSettings {
+    const configured = this.settings.completion.semanticChapterRecall
+      ?? DEFAULT_SETTINGS.completion.semanticChapterRecall;
+    return {
+      enabled: Boolean(configured.enabled),
+      maxSourceChapters: Math.max(2, Math.floor(Number(configured.maxSourceChapters))),
+      maxChunks: Math.max(1, Math.floor(Number(configured.maxChunks))),
+      maxChunksPerChapter: Math.max(1, Math.floor(Number(configured.maxChunksPerChapter))),
+      chunkMaxChars: Math.max(300, Math.floor(Number(configured.chunkMaxChars))),
+      chunkOverlapChars: Math.max(0, Math.floor(Number(configured.chunkOverlapChars))),
+      minSimilarity: Math.max(0, Math.min(1, Number(configured.minSimilarity))),
+      recencyBlend: Math.max(0, Math.min(1, Number(configured.recencyBlend))),
+      budgetShare: Math.max(0.05, Math.min(0.8, Number(configured.budgetShare)))
+    };
+  }
+
+  private getChapterMemoryEmbeddingSignature(): string {
+    const emb = this.settings.embeddings;
+    return JSON.stringify({
+      enabled: emb.enabled,
+      provider: emb.provider,
+      endpoint: emb.endpoint,
+      model: emb.model,
+      instruction: emb.instruction,
+      batchSize: emb.batchSize,
+      timeoutMs: emb.timeoutMs,
+      cacheDir: emb.cacheDir,
+      chunkingMode: emb.chunkingMode,
+      minChunkChars: emb.minChunkChars,
+      maxChunkChars: emb.maxChunkChars,
+      overlapChars: emb.overlapChars
+    });
+  }
+
+  private getChapterMemoryEmbeddingService(): EmbeddingService | null {
+    const semanticSettings = this.resolveSemanticChapterRecallSettings();
+    if (!semanticSettings.enabled) {
+      this.chapterMemoryEmbeddingService = null;
+      this.chapterMemoryEmbeddingSignature = '';
+      return null;
+    }
+
+    const embeddings = this.settings.embeddings;
+    if (!embeddings.enabled) {
+      this.chapterMemoryEmbeddingService = null;
+      this.chapterMemoryEmbeddingSignature = '';
+      return null;
+    }
+    if (embeddings.provider !== 'ollama' && !embeddings.apiKey.trim()) {
+      this.chapterMemoryEmbeddingService = null;
+      this.chapterMemoryEmbeddingSignature = '';
+      return null;
+    }
+
+    const signature = this.getChapterMemoryEmbeddingSignature();
+    if (!this.chapterMemoryEmbeddingService || this.chapterMemoryEmbeddingSignature !== signature) {
+      this.chapterMemoryEmbeddingService = new EmbeddingService(this.app, embeddings, {
+        onOperationLog: record => this.appendEmbeddingOperationLog(record, {
+          costProfile: this.resolveEffectiveCostProfileLabel(embeddings.apiKey)
+        })
+      });
+      this.chapterMemoryEmbeddingSignature = signature;
+    }
+    return this.chapterMemoryEmbeddingService;
+  }
+
+  private splitChapterRecallSections(markdown: string): Array<{
+    heading: string;
+    text: string;
+  }> {
+    const normalized = markdown.replace(/\r\n?/g, '\n').trim();
+    if (!normalized) {
+      return [];
+    }
+    const lines = normalized.split('\n');
+    const sections: Array<{ heading: string; text: string }> = [];
+    let currentHeading = 'Scene';
+    let currentLines: string[] = [];
+    let seenAnyHeading = false;
+
+    for (const line of lines) {
+      const headingMatch = line.trim().match(/^#{1,6}\s+(.+)$/);
+      if (headingMatch) {
+        if (currentLines.length > 0) {
+          sections.push({
+            heading: currentHeading,
+            text: currentLines.join('\n').trim()
+          });
+        }
+        currentHeading = headingMatch[1].trim() || 'Scene';
+        currentLines = [];
+        seenAnyHeading = true;
+        continue;
+      }
+      currentLines.push(line);
+    }
+
+    if (currentLines.length > 0) {
+      sections.push({
+        heading: seenAnyHeading ? currentHeading : 'Scene',
+        text: currentLines.join('\n').trim()
+      });
+    }
+
+    return sections.filter(section => section.text.trim().length > 0);
+  }
+
+  private splitTextForChapterRecallChunks(
+    text: string,
+    maxChars: number,
+    overlapChars: number
+  ): Array<{
+    text: string;
+    startOffset: number;
+    endOffset: number;
+  }> {
+    const normalized = text.replace(/\r\n?/g, '\n').trim();
+    if (!normalized) {
+      return [];
+    }
+    const boundedMaxChars = Math.max(300, Math.floor(maxChars));
+    const boundedOverlap = Math.max(0, Math.min(boundedMaxChars - 1, Math.floor(overlapChars)));
+    const chunks: Array<{
+      text: string;
+      startOffset: number;
+      endOffset: number;
+    }> = [];
+    let cursor = 0;
+
+    while (cursor < normalized.length) {
+      const maxEnd = Math.min(normalized.length, cursor + boundedMaxChars);
+      let end = maxEnd;
+      if (maxEnd < normalized.length) {
+        const paragraphBreak = normalized.lastIndexOf('\n\n', maxEnd);
+        const lineBreak = normalized.lastIndexOf('\n', maxEnd);
+        if (paragraphBreak > cursor + Math.floor(boundedMaxChars * 0.45)) {
+          end = paragraphBreak;
+        } else if (lineBreak > cursor + Math.floor(boundedMaxChars * 0.65)) {
+          end = lineBreak;
+        }
+      }
+      end = Math.max(cursor + Math.min(120, boundedMaxChars), end);
+      end = Math.min(normalized.length, end);
+
+      const chunkText = normalized.slice(cursor, end).trim();
+      if (chunkText) {
+        chunks.push({
+          text: chunkText,
+          startOffset: cursor,
+          endOffset: end
+        });
+      }
+
+      if (end >= normalized.length) {
+        break;
+      }
+      const nextCursor = Math.max(cursor + 1, end - boundedOverlap);
+      if (nextCursor <= cursor) {
+        cursor = end;
+      } else {
+        cursor = nextCursor;
+      }
+    }
+
+    return chunks;
+  }
+
+  private async buildSemanticChapterRecallContext(
+    priorPaths: string[],
+    priorOrderByPath: Map<string, number>,
+    nodeByPath: Map<string, StoryThreadNode>,
+    queryText: string,
+    tokenBudget: number,
+    semanticSettings: CompletionSemanticChapterRecallSettings
+  ): Promise<{
+    markdown: string;
+    usedTokens: number;
+    items: string[];
+    layerTrace: string[];
+  }> {
+    const normalizedQuery = queryText.trim();
+    const normalizedBudget = Math.max(0, Math.floor(tokenBudget));
+    if (!semanticSettings.enabled || normalizedBudget < 72 || !normalizedQuery) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
+
+    const embeddingService = this.getChapterMemoryEmbeddingService();
+    if (!embeddingService) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        items: [],
+        layerTrace: ['chapter_memory_semantic: disabled (embedding service unavailable)']
+      };
+    }
+
+    const sourcePaths = priorPaths.slice(-semanticSettings.maxSourceChapters);
+    if (sourcePaths.length === 0) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
+
+    const ragChunks: RagChunk[] = [];
+    const chunkMeta = new Map<string, {
+      path: string;
+      order: number;
+      chapterTitle: string;
+      chapterHeading: string;
+      sectionHeading: string;
+      chunkIndex: number;
+      chunkText: string;
+    }>();
+    const maxChapterChars = Math.max(2400, semanticSettings.chunkMaxChars * 8);
+    let sourceOrdinal = 0;
+
+    for (const sourcePath of sourcePaths) {
+      const file = this.app.vault.getAbstractFileByPath(sourcePath);
+      if (!(file instanceof TFile)) {
+        continue;
+      }
+
+      let chapterBody = stripInlineLoreDirectives(stripFrontmatter(await this.app.vault.cachedRead(file))).trim();
+      chapterBody = stripSummarySectionFromBody(chapterBody).trim() || chapterBody;
+      if (!chapterBody) {
+        continue;
+      }
+      if (chapterBody.length > maxChapterChars) {
+        chapterBody = chapterBody.slice(chapterBody.length - maxChapterChars).trimStart();
+      }
+
+      const node = nodeByPath.get(sourcePath);
+      const chapterTitle = node?.chapterTitle || node?.title || file.basename;
+      const chapterPrefix = typeof node?.chapter === 'number' ? `Chapter ${node.chapter}` : 'Chapter';
+      const chapterHeading = `${chapterPrefix}: ${chapterTitle}`;
+      const sectionBlocks = this.splitChapterRecallSections(chapterBody);
+      let chunkOrdinal = 0;
+
+      for (const section of sectionBlocks) {
+        const splits = this.splitTextForChapterRecallChunks(
+          section.text,
+          semanticSettings.chunkMaxChars,
+          semanticSettings.chunkOverlapChars
+        );
+        for (const split of splits) {
+          const chunkId = `chapter-recall:${normalizeVaultPath(sourcePath)}:${chunkOrdinal}`;
+          const tokenEstimate = this.estimateTokens(split.text);
+          ragChunks.push({
+            chunkId,
+            docUid: sourceOrdinal + 1,
+            scope: 'chapter_memory',
+            path: sourcePath,
+            title: chapterTitle,
+            chunkIndex: chunkOrdinal,
+            heading: section.heading,
+            text: split.text,
+            textHash: sha256Hex(split.text),
+            tokenEstimate,
+            startOffset: split.startOffset,
+            endOffset: split.endOffset
+          });
+          chunkMeta.set(chunkId, {
+            path: sourcePath,
+            order: priorOrderByPath.get(sourcePath) ?? 0,
+            chapterTitle,
+            chapterHeading,
+            sectionHeading: section.heading,
+            chunkIndex: chunkOrdinal,
+            chunkText: split.text
+          });
+          chunkOrdinal += 1;
+        }
+      }
+
+      sourceOrdinal += 1;
+    }
+
+    if (ragChunks.length === 0) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
+
+    const queryEmbedding = await embeddingService.embedQuery(normalizedQuery);
+    if (!queryEmbedding) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        items: [],
+        layerTrace: ['chapter_memory_semantic: skipped (query embedding unavailable)']
+      };
+    }
+
+    const chunkEmbeddings = await embeddingService.embedChunks(ragChunks);
+    const similarityScores = embeddingService.scoreChunks(queryEmbedding, ragChunks, chunkEmbeddings);
+    if (similarityScores.length === 0) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
+
+    const scored = similarityScores
+      .map(score => {
+        const meta = chunkMeta.get(score.chunkId);
+        if (!meta) {
+          return null;
+        }
+        const recency = priorPaths.length <= 1
+          ? 1
+          : Math.max(0, Math.min(1, (meta.order + 1) / priorPaths.length));
+        const hybridScore = score.score * (1 - semanticSettings.recencyBlend) + recency * semanticSettings.recencyBlend;
+        return {
+          ...meta,
+          similarity: score.score,
+          hybridScore
+        };
+      })
+      .filter((item): item is {
+        path: string;
+        order: number;
+        chapterTitle: string;
+        chapterHeading: string;
+        sectionHeading: string;
+        chunkIndex: number;
+        chunkText: string;
+        similarity: number;
+        hybridScore: number;
+      } => Boolean(item))
+      .filter(item => item.similarity >= semanticSettings.minSimilarity)
+      .sort((left, right) => (
+        right.hybridScore - left.hybridScore
+        || right.similarity - left.similarity
+        || right.order - left.order
+        || left.path.localeCompare(right.path)
+        || left.chunkIndex - right.chunkIndex
+      ));
+
+    if (scored.length === 0) {
+      return {
+        markdown: '',
+        usedTokens: 0,
+        items: [],
+        layerTrace: [`chapter_memory_semantic: no chunks passed similarity threshold ${semanticSettings.minSimilarity.toFixed(2)}`]
+      };
+    }
+
+    const selectedSections: string[] = [];
+    const selectedItems: string[] = [];
+    const selectedTrace: string[] = [];
+    const selectedPerChapter = new Map<string, number>();
+    let usedTokens = 0;
+
+    for (const item of scored) {
+      if (selectedSections.length >= semanticSettings.maxChunks) {
+        break;
+      }
+      const alreadySelectedForChapter = selectedPerChapter.get(item.path) ?? 0;
+      if (alreadySelectedForChapter >= semanticSettings.maxChunksPerChapter) {
+        continue;
+      }
+      const remainingBudget = normalizedBudget - usedTokens;
+      if (remainingBudget < 56) {
+        break;
+      }
+      const remainingSlots = Math.max(1, semanticSettings.maxChunks - selectedSections.length);
+      const targetChunkTokens = Math.max(48, Math.floor(remainingBudget / remainingSlots) - 20);
+      let chunkText = this.trimTextHeadToTokenBudget(item.chunkText, targetChunkTokens).trim();
+      if (!chunkText) {
+        continue;
+      }
+      const buildSection = (bodyText: string): string => [
+        `### Related Past Scene: ${item.chapterHeading}`,
+        `Source: \`${item.path}\` | section ${item.sectionHeading} | chunk ${item.chunkIndex + 1} | similarity ${item.similarity.toFixed(3)}`,
+        '',
+        bodyText
+      ].join('\n');
+
+      let section = buildSection(chunkText);
+      let sectionTokens = this.estimateTokens(section);
+      if (sectionTokens > remainingBudget) {
+        chunkText = this.trimTextHeadToTokenBudget(item.chunkText, Math.max(36, remainingBudget - 24)).trim();
+        if (!chunkText) {
+          continue;
+        }
+        section = buildSection(chunkText);
+        sectionTokens = this.estimateTokens(section);
+        if (sectionTokens > remainingBudget) {
+          continue;
+        }
+      }
+
+      selectedSections.push(section);
+      selectedItems.push(`${item.chapterTitle} • chunk ${item.chunkIndex + 1}`);
+      selectedPerChapter.set(item.path, alreadySelectedForChapter + 1);
+      usedTokens += sectionTokens;
+      selectedTrace.push(
+        `chapter_memory_semantic:${item.chapterTitle} chunk ${item.chunkIndex + 1} (sim ${item.similarity.toFixed(3)}, hybrid ${item.hybridScore.toFixed(3)}, ~${sectionTokens} tokens)`
+      );
+    }
+
+    if (selectedSections.length === 0) {
+      return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
+    }
+
+    const markdown = [
+      '## Related Past Scenes',
+      '',
+      selectedSections.join('\n\n---\n\n')
+    ].join('\n');
+    return {
+      markdown,
+      usedTokens: this.estimateTokens(markdown),
+      items: selectedItems,
+      layerTrace: [
+        `chapter_memory_semantic: ${selectedSections.length}/${scored.length} chunks from ${sourcePaths.length} chapters (threshold ${semanticSettings.minSimilarity.toFixed(2)}, budget ~${normalizedBudget} tokens)`,
+        ...selectedTrace
+      ]
+    };
   }
 
   private sanitizeTextCommandPromptId(value: string, fallbackIndex: number): string {
@@ -9054,7 +9567,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         const chapterMemory = await this.buildChapterMemoryContext(
           resolvedActiveFile,
           chapterMemoryBudget,
-          continuityAggressiveness
+          continuityAggressiveness,
+          scopedQuery || storyWindow
         );
         chapterMemoryMarkdown = chapterMemory.markdown;
         chapterMemoryTokens = chapterMemory.usedTokens;

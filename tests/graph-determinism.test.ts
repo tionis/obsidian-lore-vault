@@ -157,6 +157,17 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       promptReserveTokens: 400,
       timeoutMs: 60000,
       continuityAggressiveness: 'aggressive',
+      semanticChapterRecall: {
+        enabled: false,
+        maxSourceChapters: 24,
+        maxChunks: 5,
+        maxChunksPerChapter: 1,
+        chunkMaxChars: 1400,
+        chunkOverlapChars: 180,
+        minSimilarity: 0.2,
+        recencyBlend: 0.35,
+        budgetShare: 0.24
+      },
       layerPlacement: {
         storyNotes: 'pre_history'
       },

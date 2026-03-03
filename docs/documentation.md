@@ -403,10 +403,16 @@ When running `Continue Story with Context`, LoreVault resolves a deterministic s
 The chapter-memory window scales deterministically with available chapter-memory budget, so larger context windows include more prior chapters.
 Chapter memory uses a rolling summary store (`## Summary` section preferred, `frontmatter summary` fallback, deterministic excerpt final fallback) so repeated generations avoid unnecessary re-parsing.
 When chapter-memory budget is sufficiently large, LoreVault additionally injects bounded style excerpts from the most recent prior chapters to better preserve narrative voice and pacing continuity.
+Optional semantic chapter recall can also inject a `## Related Past Scenes` block by chunking prior chapters, embedding chunks, and selecting high-similarity chunks against the current query/story window.
 On very large context windows, LoreVault allocates substantially more chapter-memory budget, so long-form threads can carry a deeper summary trail and richer recent-chapter style context.
 `Story Continuity Aggressiveness` (Settings -> Writing Completion) controls this behavior:
 - `Balanced`: moderate chapter-memory depth and style carryover.
 - `Aggressive`: larger chapter-memory budgets, deeper prior-chapter windows, and stronger style carryover.
+`Semantic Chapter Recall` settings (Settings -> Writing Completion -> Semantic Chapter Recall) control the optional embedding-based recall layer:
+- `Enable Semantic Chapter Recall` toggles the feature on/off.
+- tunables: max source chapters, max chunks, max chunks per chapter, chunk max/overlap chars, minimum similarity threshold, recency blend, and chapter-memory budget share reserved for semantic recall.
+- default profile is tuned for large-context drafting (`enabled`, `maxSourceChapters: 40`, `maxChunks: 10`, `maxChunksPerChapter: 2`, `chunkMaxChars: 1800`, `chunkOverlapChars: 220`, `minSimilarity: 0.16`, `recencyBlend: 0.28`, `budgetShare: 0.32`).
+If semantic recall is enabled but embeddings are unavailable/fail, LoreVault skips this layer and continues generation with summary/excerpt chapter memory plus normal retrieval.
 When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retrieval_context>`) before final generation.
 
 ## Text Commands (Selection Rewrite/Reformat)
@@ -484,6 +490,7 @@ Precedence:
   - chapter-link lineage traversal may include linked prior chapters across different Author Notes
   - only the active note's linked Author Note is injected as steering guidance
   - when budget allows: additional bounded style excerpts from recent prior chapter bodies (more recent chapters and larger excerpt slices on high-context models)
+  - optional semantic chunk recall (`## Related Past Scenes`) from prior chapters when enabled in Writing Completion settings
 - chapter summaries are not hard-length capped.
 - when a chapter summary contains multiple paragraphs, LoreVault writes it inside:
   - `<!-- LV_BEGIN_SUMMARY -->`

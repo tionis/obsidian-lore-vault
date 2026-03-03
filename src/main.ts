@@ -958,6 +958,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.buildAutoCostProfileLabel(apiKey);
   }
 
+  public resolveEffectiveCostProfileForApiKey(apiKey: string): string {
+    return this.resolveEffectiveCostProfileLabel(apiKey);
+  }
+
+  public buildAutoCostProfileForApiKey(apiKey: string): string {
+    return this.buildAutoCostProfileLabel(apiKey);
+  }
+
   public getDeviceEffectiveCostProfileLabel(): string {
     const explicit = this.deviceProfileState.activeCostProfile.trim();
     if (explicit) {
@@ -1872,7 +1880,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
   }
 
-  private async recordCompletionUsage(
+  public async recordCompletionUsage(
     operation: string,
     usage: CompletionUsageReport,
     metadata: {[key: string]: unknown} = {}

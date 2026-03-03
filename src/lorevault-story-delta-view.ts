@@ -225,6 +225,11 @@ export class LorevaultStoryDeltaView extends ItemView {
   private async resolveCompletionConfig(): Promise<{
     completion: ConverterSettings['completion'];
     profileLabel: string;
+    profileSource: string;
+    profileId: string;
+    profileName: string;
+    costProfile: string;
+    autoCostProfile: string;
   }> {
     const selectedPresetId = this.selectedCompletionPresetId.trim();
     if (selectedPresetId) {
@@ -245,7 +250,12 @@ export class LorevaultStoryDeltaView extends ItemView {
       }
       return {
         completion,
-        profileLabel: selectedPreset.name
+        profileLabel: selectedPreset.name,
+        profileSource: resolved.source,
+        profileId: resolved.presetId,
+        profileName: resolved.presetName,
+        costProfile: this.plugin.resolveEffectiveCostProfileForApiKey(completion.apiKey),
+        autoCostProfile: this.plugin.buildAutoCostProfileForApiKey(completion.apiKey)
       };
     }
 
@@ -261,7 +271,12 @@ export class LorevaultStoryDeltaView extends ItemView {
     }
     return {
       completion,
-      profileLabel: resolution.presetName || 'workspace effective profile'
+      profileLabel: resolution.presetName || 'workspace effective profile',
+      profileSource: resolution.source,
+      profileId: resolution.presetId,
+      profileName: resolution.presetName,
+      costProfile: this.plugin.resolveEffectiveCostProfileForApiKey(completion.apiKey),
+      autoCostProfile: this.plugin.buildAutoCostProfileForApiKey(completion.apiKey)
     };
   }
 
@@ -594,6 +609,11 @@ export class LorevaultStoryDeltaView extends ItemView {
     let completionResolution: {
       completion: ConverterSettings['completion'];
       profileLabel: string;
+      profileSource: string;
+      profileId: string;
+      profileName: string;
+      costProfile: string;
+      autoCostProfile: string;
     };
     try {
       completionResolution = await this.resolveCompletionConfig();
@@ -629,12 +649,28 @@ export class LorevaultStoryDeltaView extends ItemView {
         maxExistingPagesInPrompt: this.maxExistingPagesInPrompt,
         lowConfidenceThreshold: this.lowConfidenceThreshold,
         existingPages,
-        callModel: (systemPrompt, userPrompt) => requestStoryContinuation(completionResolution.completion, {
-          systemPrompt,
-          userPrompt,
-          operationName: 'story_delta_preview',
-          onOperationLog: record => this.plugin.appendCompletionOperationLog(record)
-        }),
+        callModel: (systemPrompt, userPrompt) => {
+          return requestStoryContinuation(completionResolution.completion, {
+            systemPrompt,
+            userPrompt,
+            operationName: 'story_delta_preview',
+            onOperationLog: record => this.plugin.appendCompletionOperationLog(record, {
+              costProfile: completionResolution.costProfile
+            }),
+            onUsage: usage => {
+              void this.plugin.recordCompletionUsage('story_delta_preview', usage, {
+                scopeCount: selectedScopes.length,
+                scopes: selectedScopes,
+                sourceMode: this.sourceMode,
+                sourceStoryNotePath: this.sourceStoryNotePath.trim(),
+                completionProfileSource: completionResolution.profileSource,
+                completionProfileId: completionResolution.profileId,
+                completionProfileName: completionResolution.profileName,
+                autoCostProfile: completionResolution.autoCostProfile
+              });
+            }
+          });
+        },
         onProgress: event => this.onDeltaProgress(event)
       });
 

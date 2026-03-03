@@ -120,6 +120,11 @@ export class LorevaultStoryExtractView extends ItemView {
   private async resolveCompletionConfig(): Promise<{
     completion: ConverterSettings['completion'];
     profileLabel: string;
+    profileSource: string;
+    profileId: string;
+    profileName: string;
+    costProfile: string;
+    autoCostProfile: string;
   }> {
     const selectedPresetId = this.selectedCompletionPresetId.trim();
     if (selectedPresetId) {
@@ -140,7 +145,12 @@ export class LorevaultStoryExtractView extends ItemView {
       }
       return {
         completion,
-        profileLabel: selectedPreset.name
+        profileLabel: selectedPreset.name,
+        profileSource: resolved.source,
+        profileId: resolved.presetId,
+        profileName: resolved.presetName,
+        costProfile: this.plugin.resolveEffectiveCostProfileForApiKey(completion.apiKey),
+        autoCostProfile: this.plugin.buildAutoCostProfileForApiKey(completion.apiKey)
       };
     }
 
@@ -156,7 +166,12 @@ export class LorevaultStoryExtractView extends ItemView {
     }
     return {
       completion,
-      profileLabel: resolution.presetName || 'workspace effective profile'
+      profileLabel: resolution.presetName || 'workspace effective profile',
+      profileSource: resolution.source,
+      profileId: resolution.presetId,
+      profileName: resolution.presetName,
+      costProfile: this.plugin.resolveEffectiveCostProfileForApiKey(completion.apiKey),
+      autoCostProfile: this.plugin.buildAutoCostProfileForApiKey(completion.apiKey)
     };
   }
 
@@ -171,6 +186,11 @@ export class LorevaultStoryExtractView extends ItemView {
     let completionResolution: {
       completion: ConverterSettings['completion'];
       profileLabel: string;
+      profileSource: string;
+      profileId: string;
+      profileName: string;
+      costProfile: string;
+      autoCostProfile: string;
     };
     try {
       completionResolution = await this.resolveCompletionConfig();
@@ -202,7 +222,19 @@ export class LorevaultStoryExtractView extends ItemView {
           systemPrompt,
           userPrompt,
           operationName: 'story_extract_preview',
-          onOperationLog: record => this.plugin.appendCompletionOperationLog(record)
+          onOperationLog: record => this.plugin.appendCompletionOperationLog(record, {
+            costProfile: completionResolution.costProfile
+          }),
+          onUsage: usage => {
+            void this.plugin.recordCompletionUsage('story_extract_preview', usage, {
+              lorebookName: this.lorebookName.trim(),
+              targetFolder: this.targetFolder.trim(),
+              completionProfileSource: completionResolution.profileSource,
+              completionProfileId: completionResolution.profileId,
+              completionProfileName: completionResolution.profileName,
+              autoCostProfile: completionResolution.autoCostProfile
+            });
+          }
         }),
         onProgress: event => this.onExtractionProgress(event)
       });

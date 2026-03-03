@@ -3,7 +3,7 @@ import { ConverterSettings, RagChunk, RagChunkEmbedding } from './models';
 import { sha256HexAsync, stableJsonHashAsync } from './hash-utils';
 import { requestEmbeddings } from './embedding-provider';
 import { CachedEmbeddingRecord, EmbeddingCache } from './embedding-cache';
-import { CompletionOperationLogger } from './completion-provider';
+import { CompletionOperationLogger, CompletionUsageReport } from './completion-provider';
 
 interface PendingChunk {
   chunk: RagChunk;
@@ -41,6 +41,7 @@ export interface RagSimilarityScore {
 
 interface EmbeddingServiceOptions {
   onOperationLog?: CompletionOperationLogger;
+  onUsage?: (operationName: string, usage: CompletionUsageReport, metadata: Record<string, unknown>) => void | Promise<void>;
 }
 
 function normalizeQueryText(text: string): string {
@@ -208,12 +209,14 @@ export class EmbeddingService {
   private cache: EmbeddingCache;
   private chunkingSignature: string;
   private onOperationLog: CompletionOperationLogger | undefined;
+  private onUsage: EmbeddingServiceOptions['onUsage'];
 
   constructor(app: App, config: ConverterSettings['embeddings'], options?: EmbeddingServiceOptions) {
     this.app = app;
     this.config = config;
     this.cache = new EmbeddingCache(app, config);
     this.onOperationLog = options?.onOperationLog;
+    this.onUsage = options?.onUsage;
     this.chunkingSignature = JSON.stringify({
       mode: config.chunkingMode,
       minChunkChars: config.minChunkChars,
@@ -294,7 +297,13 @@ export class EmbeddingService {
         texts: batch.map(item => item.chunk.text),
         instruction: this.config.instruction,
         operationName: 'embeddings_embed_chunks',
-        onOperationLog: this.onOperationLog
+        onOperationLog: this.onOperationLog,
+        onUsage: usage => {
+          void this.onUsage?.('embeddings_embed_chunks', usage, {
+            textCount: batch.length,
+            cacheMisses: batch.length
+          });
+        }
       });
 
       for (let j = 0; j < batch.length; j++) {
@@ -326,7 +335,14 @@ export class EmbeddingService {
         operationName: queryChunks.length > 1
           ? 'embeddings_embed_query_chunked'
           : 'embeddings_embed_query',
-        onOperationLog: this.onOperationLog
+        onOperationLog: this.onOperationLog,
+        onUsage: usage => {
+          void this.onUsage?.(
+            queryChunks.length > 1 ? 'embeddings_embed_query_chunked' : 'embeddings_embed_query',
+            usage,
+            { textCount: queryChunks.length }
+          );
+        }
       });
 
       if (queryChunks.length === 1) {
@@ -346,7 +362,12 @@ export class EmbeddingService {
             texts: [fallbackTail],
             instruction: this.config.instruction,
             operationName: 'embeddings_embed_query_recent_fallback',
-            onOperationLog: this.onOperationLog
+            onOperationLog: this.onOperationLog,
+            onUsage: usage => {
+              void this.onUsage?.('embeddings_embed_query_recent_fallback', usage, {
+                textCount: 1
+              });
+            }
           });
           return vectors[0] ?? null;
         } catch (fallbackError) {

@@ -1924,6 +1924,18 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private recordEmbeddingUsage(
+    operation: string,
+    usage: CompletionUsageReport,
+    apiKey: string,
+    metadata: {[key: string]: unknown} = {}
+  ): void {
+    void this.recordCompletionUsage(operation, usage, {
+      ...metadata,
+      autoCostProfile: this.buildAutoCostProfileLabel(apiKey)
+    });
+  }
+
   private normalizeVaultPath(value: string, fallback: string): string {
     const normalized = (value ?? '').toString().trim().replace(/\\/g, '/');
     return normalized || fallback;
@@ -6854,7 +6866,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       () => this.settings,
       record => this.appendEmbeddingOperationLog(record, {
         costProfile: this.resolveEffectiveCostProfileLabel(this.settings.embeddings.apiKey)
-      })
+      }),
+      (operationName, usage, metadata) => {
+        this.recordEmbeddingUsage(operationName, usage, this.settings.embeddings.apiKey, {
+          source: 'live_context_index',
+          ...metadata
+        });
+      }
     );
     this.chapterSummaryStore = new ChapterSummaryStore(this.app);
     this.lorebookScopeCache = new LorebookScopeCache({
@@ -8695,7 +8713,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.chapterMemoryEmbeddingService = new EmbeddingService(this.app, embeddings, {
         onOperationLog: record => this.appendEmbeddingOperationLog(record, {
           costProfile: this.resolveEffectiveCostProfileLabel(embeddings.apiKey)
-        })
+        }),
+        onUsage: (operationName, usage, metadata) => {
+          this.recordEmbeddingUsage(operationName, usage, embeddings.apiKey, {
+            source: 'chapter_memory',
+            ...metadata
+          });
+        }
       });
       this.chapterMemoryEmbeddingSignature = signature;
     }
@@ -10215,7 +10239,13 @@ export default class LoreBookConverterPlugin extends Plugin {
         ? new EmbeddingService(this.app, this.settings.embeddings, {
           onOperationLog: record => this.appendEmbeddingOperationLog(record, {
             costProfile: this.resolveEffectiveCostProfileLabel(this.settings.embeddings.apiKey)
-          })
+          }),
+          onUsage: (operationName, usage, metadata) => {
+            this.recordEmbeddingUsage(operationName, usage, this.settings.embeddings.apiKey, {
+              source: 'lorebook_build',
+              ...metadata
+            });
+          }
         })
         : null;
       const scopeAssignments: ScopeOutputAssignment[] = scopesToBuild.map(scope => ({

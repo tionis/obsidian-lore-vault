@@ -28,6 +28,7 @@ test('requestEmbeddings emits embedding operation log records', async () => {
   const globalAny = globalThis as any;
   const previousFetch = globalAny.fetch as FetchLike | undefined;
   let logRecord: any = null;
+  let usageRecord: any = null;
 
   globalAny.fetch = async (url: string, init?: { body?: string }) => {
     assert.equal(url, 'https://example.test/v1/embeddings');
@@ -41,11 +42,16 @@ test('requestEmbeddings emits embedding operation log records', async () => {
       ok: true,
       status: 200,
       json: async () => ({
+        usage: {
+          prompt_tokens: 42,
+          total_tokens: 42,
+          total_cost: 0.0007
+        },
         data: [
           { embedding: [0.1, 0.2, 0.3] }
         ]
       }),
-      text: async () => '{"data":[{"embedding":[0.1,0.2,0.3]}]}'
+      text: async () => '{"usage":{"prompt_tokens":42,"total_tokens":42,"total_cost":0.0007},"data":[{"embedding":[0.1,0.2,0.3]}]}'
     };
   };
 
@@ -56,6 +62,9 @@ test('requestEmbeddings emits embedding operation log records', async () => {
       operationName: 'embeddings_embed_query',
       onOperationLog: async (record) => {
         logRecord = record;
+      },
+      onUsage: (usage) => {
+        usageRecord = usage;
       }
     });
 
@@ -77,9 +86,32 @@ test('requestEmbeddings emits embedding operation log records', async () => {
       input: ['search query instruction\n\nhello world']
     });
     assert.deepEqual(logRecord.attempts[0].responseBody, {
+      usage: {
+        prompt_tokens: 42,
+        total_tokens: 42,
+        total_cost: 0.0007
+      },
       data: [
         { embedding: [0.1, 0.2, 0.3] }
       ]
+    });
+    assert.deepEqual(logRecord.usage, {
+      provider: 'openrouter',
+      model: 'embedding-model',
+      promptTokens: 42,
+      completionTokens: 0,
+      totalTokens: 42,
+      reportedCostUsd: 0.0007,
+      source: 'openai_usage'
+    });
+    assert.deepEqual(usageRecord, {
+      provider: 'openrouter',
+      model: 'embedding-model',
+      promptTokens: 42,
+      completionTokens: 0,
+      totalTokens: 42,
+      reportedCostUsd: 0.0007,
+      source: 'openai_usage'
     });
   } finally {
     globalAny.fetch = previousFetch;

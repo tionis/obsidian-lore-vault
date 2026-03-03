@@ -6,7 +6,7 @@ import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopePack } from './scope-pack-builder';
 import { EmbeddingService } from './embedding-service';
 import { sha256HexAsync } from './hash-utils';
-import { CompletionOperationLogger } from './completion-provider';
+import { CompletionOperationLogger, CompletionUsageReport } from './completion-provider';
 
 interface RefreshTask {
   changedPaths: Set<string>;
@@ -39,15 +39,18 @@ export class LiveContextIndex {
   private embeddingService: EmbeddingService | null = null;
   private embeddingSignature = '';
   private onEmbeddingOperationLog: CompletionOperationLogger | undefined;
+  private onEmbeddingUsage: ((operationName: string, usage: CompletionUsageReport, metadata: Record<string, unknown>) => void | Promise<void>) | undefined;
 
   constructor(
     app: App,
     getSettings: () => ConverterSettings,
-    onEmbeddingOperationLog?: CompletionOperationLogger
+    onEmbeddingOperationLog?: CompletionOperationLogger,
+    onEmbeddingUsage?: (operationName: string, usage: CompletionUsageReport, metadata: Record<string, unknown>) => void | Promise<void>
   ) {
     this.app = app;
     this.getSettings = getSettings;
     this.onEmbeddingOperationLog = onEmbeddingOperationLog;
+    this.onEmbeddingUsage = onEmbeddingUsage;
   }
 
   async initialize(): Promise<void> {
@@ -182,7 +185,8 @@ export class LiveContextIndex {
     const signature = this.getEmbeddingSignature(settings);
     if (!this.embeddingService || this.embeddingSignature !== signature) {
       this.embeddingService = new EmbeddingService(this.app, settings.embeddings, {
-        onOperationLog: this.onEmbeddingOperationLog
+        onOperationLog: this.onEmbeddingOperationLog,
+        onUsage: this.onEmbeddingUsage
       });
       this.embeddingSignature = signature;
     }

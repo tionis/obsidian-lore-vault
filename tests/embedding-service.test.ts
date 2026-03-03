@@ -73,6 +73,56 @@ test('averageEmbeddingVectors computes weighted mean deterministically', () => {
   assert.deepEqual(averaged, [2.5, 4.5, 6.5]);
 });
 
+test('EmbeddingService forwards usage reports from embedding requests', async () => {
+  const usageEvents: Array<{
+    operationName: string;
+    usage: any;
+    metadata: Record<string, unknown>;
+  }> = [];
+  const service = new EmbeddingService(createAppStub(), createEmbeddingConfig(), {
+    onUsage: (operationName, usage, metadata) => {
+      usageEvents.push({ operationName, usage, metadata });
+    }
+  });
+
+  const globalAny = globalThis as any;
+  const previousFetch = globalAny.fetch as FetchLike | undefined;
+  globalAny.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      usage: {
+        prompt_tokens: 12,
+        total_tokens: 12,
+        total_cost: 0.0002
+      },
+      data: [
+        { embedding: [0.3, 0.6, 0.9] }
+      ]
+    }),
+    text: async () => '{"usage":{"prompt_tokens":12,"total_tokens":12,"total_cost":0.0002},"data":[{"embedding":[0.3,0.6,0.9]}]}'
+  });
+
+  try {
+    const vector = await service.embedQuery('hello world');
+    assert.deepEqual(vector, [0.3, 0.6, 0.9]);
+    assert.equal(usageEvents.length, 1);
+    assert.equal(usageEvents[0].operationName, 'embeddings_embed_query');
+    assert.deepEqual(usageEvents[0].metadata, { textCount: 1 });
+    assert.deepEqual(usageEvents[0].usage, {
+      provider: 'openrouter',
+      model: 'embedding-model',
+      promptTokens: 12,
+      completionTokens: 0,
+      totalTokens: 12,
+      reportedCostUsd: 0.0002,
+      source: 'openai_usage'
+    });
+  } finally {
+    globalAny.fetch = previousFetch;
+  }
+});
+
 test('embedQuery retries with recent-tail fallback when chunked request fails', async () => {
   const service = new EmbeddingService(createAppStub(), createEmbeddingConfig());
   const input = [

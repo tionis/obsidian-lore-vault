@@ -1,5 +1,6 @@
 import { ConverterSettings } from './models';
 import {
+  CompletionUsageReport,
   CompletionOperationLogAttempt,
   CompletionOperationLogRecord,
   CompletionOperationLogger
@@ -10,6 +11,7 @@ export interface EmbeddingRequest {
   instruction: string;
   operationName?: string;
   onOperationLog?: CompletionOperationLogger;
+  onUsage?: (usage: CompletionUsageReport) => void;
 }
 
 function trimTrailingSlash(value: string): string {
@@ -78,6 +80,98 @@ function ensureVectorCount(vectors: number[][], expected: number): number[][] {
     throw new Error(`Embedding vector count mismatch: expected ${expected}, got ${vectors.length}.`);
   }
   return vectors;
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function extractReportedCostUsd(payload: any): number | null {
+  const candidates = [
+    payload?.usage?.cost,
+    payload?.usage?.total_cost,
+    payload?.usage?.estimated_cost,
+    payload?.cost,
+    payload?.total_cost
+  ];
+  for (const candidate of candidates) {
+    const parsed = asFiniteNumber(candidate);
+    if (parsed !== null && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function parseOpenAiUsage(payload: any): Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null {
+  const usage = payload?.usage ?? payload?.response?.usage ?? payload?.result?.usage;
+  if (!usage || typeof usage !== 'object') {
+    return null;
+  }
+
+  const promptTokensRaw = asFiniteNumber(usage.prompt_tokens ?? usage.input_tokens);
+  const totalTokensRaw = asFiniteNumber(usage.total_tokens);
+  const completionTokensRaw = asFiniteNumber(usage.completion_tokens ?? usage.output_tokens);
+
+  if (promptTokensRaw === null && totalTokensRaw === null && completionTokensRaw === null) {
+    return null;
+  }
+
+  const promptTokens = Math.max(
+    0,
+    Math.floor(promptTokensRaw ?? Math.max(0, (totalTokensRaw ?? 0) - (completionTokensRaw ?? 0)))
+  );
+  const completionTokens = Math.max(0, Math.floor(completionTokensRaw ?? 0));
+  const totalTokens = Math.max(
+    0,
+    Math.floor(totalTokensRaw ?? (promptTokens + completionTokens))
+  );
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reportedCostUsd: extractReportedCostUsd(payload)
+  };
+}
+
+function parseOllamaUsage(payload: any): Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null {
+  const promptTokensRaw = asFiniteNumber(
+    payload?.prompt_eval_count
+    ?? payload?.usage?.prompt_tokens
+    ?? payload?.usage?.input_tokens
+  );
+  const completionTokensRaw = asFiniteNumber(
+    payload?.eval_count
+    ?? payload?.usage?.completion_tokens
+    ?? payload?.usage?.output_tokens
+  );
+  const totalTokensRaw = asFiniteNumber(payload?.usage?.total_tokens);
+
+  if (promptTokensRaw === null && completionTokensRaw === null && totalTokensRaw === null) {
+    return null;
+  }
+
+  const promptTokens = Math.max(
+    0,
+    Math.floor(promptTokensRaw ?? Math.max(0, (totalTokensRaw ?? 0) - (completionTokensRaw ?? 0)))
+  );
+  const completionTokens = Math.max(0, Math.floor(completionTokensRaw ?? 0));
+  const totalTokens = Math.max(
+    0,
+    Math.floor(totalTokensRaw ?? (promptTokens + completionTokens))
+  );
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reportedCostUsd: extractReportedCostUsd(payload)
+  };
 }
 
 async function fetchJson(
@@ -156,6 +250,7 @@ export async function requestEmbeddings(
   let finalError = '';
   let aborted = false;
   let vectors: number[][] = [];
+  let usage: CompletionUsageReport | null = null;
 
   try {
     if (config.provider === 'ollama') {
@@ -172,6 +267,16 @@ export async function requestEmbeddings(
       attempts.push(attempt);
       const payload = await fetchJson(url, body, headers, config.timeoutMs, attempt);
       vectors = ensureVectorCount(parseOllamaEmbeddings(payload), texts.length);
+      const parsedUsage = parseOllamaUsage(payload);
+      if (parsedUsage) {
+        usage = {
+          provider: config.provider,
+          model: config.model,
+          source: 'ollama_usage',
+          ...parsedUsage
+        };
+        request.onUsage?.(usage);
+      }
       return vectors;
     }
 
@@ -188,6 +293,16 @@ export async function requestEmbeddings(
     attempts.push(attempt);
     const payload = await fetchJson(url, body, headers, config.timeoutMs, attempt);
     vectors = ensureVectorCount(parseOpenAiStyleEmbeddings(payload), texts.length);
+    const parsedUsage = parseOpenAiUsage(payload);
+    if (parsedUsage) {
+      usage = {
+        provider: config.provider,
+        model: config.model,
+        source: 'openai_usage',
+        ...parsedUsage
+      };
+      request.onUsage?.(usage);
+    }
     return vectors;
   } catch (error) {
     finalError = error instanceof Error ? error.message : String(error);
@@ -216,6 +331,7 @@ export async function requestEmbeddings(
         textCount: texts.length,
         instruction: request.instruction
       },
+      usage,
       attempts
     });
   }

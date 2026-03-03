@@ -11,7 +11,7 @@ Reference design: `docs/planning.md`.
 - Phase 9 auto-summary workflows are complete.
 - Phase 13 cost tracking is complete (usage hooks + ledger + Story Writing/Cost Analyzer UI + JSON/CSV export + aggregation tests).
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
-- Added lorebook forking utility (`Fork Active Lorebook Scope`) with deterministic scoped-copy, link rewrite, and retagging workflow.
+- Added lorebook forking utility (`Fork Active Lorebook`) with deterministic scoped-copy, link rewrite, and retagging workflow.
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
 - Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).

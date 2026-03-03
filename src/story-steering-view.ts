@@ -32,7 +32,7 @@ class LorebookScopeSuggestModal extends FuzzySuggestModal<string> {
   ) {
     super(app);
     this.scopes = [...scopes].sort((a, b) => a.localeCompare(b));
-    this.setPlaceholder('Pick a lorebook scope to add...');
+    this.setPlaceholder('Pick a lorebook to add...');
   }
 
   waitForSelection(): Promise<string | null> {
@@ -458,7 +458,7 @@ export class StorySteeringView extends ItemView {
       });
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',
-        text: `Context: scopes ${telemetry.scopes.join(', ') || '(none)'} | used ${formatTokenValue(telemetry.contextUsedTokens)} | left ${formatTokenValue(telemetry.contextRemainingTokens)}`
+        text: `Context: lorebooks ${telemetry.scopes.join(', ') || '(none)'} | used ${formatTokenValue(telemetry.contextUsedTokens)} | left ${formatTokenValue(telemetry.contextRemainingTokens)}`
       });
       activeNoteCard.createEl('p', {
         cls: 'lorevault-manager-generation-stats',

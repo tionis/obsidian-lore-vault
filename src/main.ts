@@ -521,11 +521,11 @@ class LorebookForkModal extends Modal {
     this.setTitle('Fork Lorebook');
     this.contentEl.empty();
     this.contentEl.createEl('p', {
-      text: `Create a lorebook fork from "${this.sourceScope}" by choosing a new lorebook scope and target folder.`
+      text: `Create a lorebook fork from "${this.sourceScope}" by choosing a new lorebook and target folder.`
     });
 
     const scopeRow = this.contentEl.createDiv({ cls: 'lorevault-modal-input-row' });
-    scopeRow.createEl('label', { text: 'New Lorebook Scope' });
+    scopeRow.createEl('label', { text: 'New Lorebook' });
     const scopeInput = scopeRow.createEl('input', {
       type: 'text',
       cls: 'lorevault-modal-input'
@@ -586,7 +586,7 @@ class LorebookForkModal extends Modal {
     const targetScope = this.scopeInputEl?.value.trim() ?? '';
     const targetFolder = this.folderInputEl?.value.trim() ?? '';
     if (!targetScope) {
-      new Notice('New lorebook scope cannot be empty.');
+      new Notice('New lorebook cannot be empty.');
       return;
     }
     if (!targetFolder) {
@@ -3794,7 +3794,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'get_lorebook_entry',
-          description: 'Read one lorebook entry by uid and optional scope.',
+          description: 'Read one lorebook entry by uid and optional lorebook.',
           parameters: {
             type: 'object',
             properties: {
@@ -3846,7 +3846,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'get_steering_scope',
-          description: 'Read the active note-level author note scope.',
+          description: 'Read the active note-level author note.',
           parameters: {
             type: 'object',
             properties: {}
@@ -3860,7 +3860,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         type: 'function',
         function: {
           name: 'update_steering_scope',
-          description: 'Update the active note-level author note scope.',
+          description: 'Update the active note-level author note.',
           parameters: {
             type: 'object',
             properties: {
@@ -3881,7 +3881,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           type: 'function',
           function: {
             name: 'create_lorebook_entry_note',
-            description: 'Create a new lorebook-tagged note in one of the selected lorebook scopes.',
+            description: 'Create a new lorebook-tagged note in one of the selected lorebooks.',
             parameters: {
               type: 'object',
               properties: {
@@ -4061,7 +4061,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       if (toolName === 'search_lorebook_entries') {
         if (!allowLorebook) {
-          return buildErrorResult(toolName, 'Lorebook tools are unavailable because no lorebook scopes are selected.');
+          return buildErrorResult(toolName, 'Lorebook tools are unavailable because no lorebooks are selected.');
         }
         const query = typeof payload.query === 'string' ? payload.query.trim() : '';
         if (!query) {
@@ -4118,7 +4118,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       if (toolName === 'get_lorebook_entry') {
         if (!allowLorebook) {
-          return buildErrorResult(toolName, 'Lorebook tools are unavailable because no lorebook scopes are selected.');
+          return buildErrorResult(toolName, 'Lorebook tools are unavailable because no lorebooks are selected.');
         }
         const uid = Math.floor(Number(payload.uid));
         if (!Number.isFinite(uid)) {
@@ -4138,11 +4138,11 @@ export default class LoreBookConverterPlugin extends Plugin {
           }
         }
         if (candidates.length === 0) {
-          return buildErrorResult(toolName, `Entry uid ${uid} was not found in allowed scopes.`);
+          return buildErrorResult(toolName, `Entry uid ${uid} was not found in allowed lorebooks.`);
         }
         if (candidates.length > 1 && !requestedScope) {
           const scopes = uniqueStrings(candidates.map(item => item.scope));
-          return buildErrorResult(toolName, `Entry uid ${uid} is ambiguous across scopes: ${scopes.join(', ')}. Specify scope.`);
+          return buildErrorResult(toolName, `Entry uid ${uid} is ambiguous across lorebooks: ${scopes.join(', ')}. Specify lorebook.`);
         }
         const selected = candidates.sort((left, right) => left.scope.localeCompare(right.scope))[0];
         const snippet = selected.entry.content.length > contentChars
@@ -4285,7 +4285,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (!scope) {
           return buildErrorResult(
             toolName,
-            'No active note-level author note scope is available for this turn.'
+            'No active note-level author note is available for this turn.'
           );
         }
         const state = await this.loadStorySteeringScope(scope);
@@ -4319,7 +4319,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (!scope) {
           return buildErrorResult(
             toolName,
-            'No active note-level author note scope is available for this turn.'
+            'No active note-level author note is available for this turn.'
           );
         }
         const rawState = payload.state && typeof payload.state === 'object' && !Array.isArray(payload.state)
@@ -4357,11 +4357,11 @@ export default class LoreBookConverterPlugin extends Plugin {
           return buildErrorResult(toolName, 'Write tools are disabled for this turn.');
         }
         if (!allowLorebook) {
-          return buildErrorResult(toolName, 'No lorebook scopes are selected for this chat turn.');
+          return buildErrorResult(toolName, 'No lorebooks are selected for this chat turn.');
         }
         const scope = typeof payload.scope === 'string' ? normalizeScope(payload.scope) : '';
         if (!scope || !lorebookScopeSet.has(scope)) {
-          return buildErrorResult(toolName, `scope must be one of selected scopes: ${[...lorebookScopeSet].join(', ')}`);
+          return buildErrorResult(toolName, `lorebook must be one of selected lorebooks: ${[...lorebookScopeSet].join(', ')}`);
         }
         const title = typeof payload.title === 'string' ? payload.title.trim() : '';
         const content = typeof payload.content === 'string' ? payload.content.trim() : '';
@@ -4456,7 +4456,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           'You are LoreVault Story Chat tool planner.',
           'Use tools to gather exact facts or update state only when needed.',
           'Respect hard boundaries:',
-          '- lorebook tools: selected lorebook scopes only',
+          '- lorebook tools: selected lorebooks only',
           '- story note tools: linked story/manual-selected note paths only',
           '- steering tools: active note-level author note only',
           'Never call write tools unless the user explicitly asks for updates/creation in this turn.',
@@ -4470,11 +4470,11 @@ export default class LoreBookConverterPlugin extends Plugin {
           '',
           `Recent chat history snippet:\n${args.historySnippet.trim() || '(none)'}`,
           '',
-          `Selected lorebook scopes: ${lorebookScopes.length > 0 ? lorebookScopes.join(', ') : '(none)'}`,
+          `Selected lorebooks: ${lorebookScopes.length > 0 ? lorebookScopes.join(', ') : '(none)'}`,
           `Linked/manual note paths (${allowedStoryFiles.length}): ${
             allowedStoryFiles.slice(0, 8).map(file => file.path).join(', ') || '(none)'
           }`,
-          `Active author-note scope: ${allowSteering && activeSteeringScope ? `${activeSteeringScope.type}:${activeSteeringScope.key}` : '(none)'}`,
+          `Active author note: ${allowSteering && activeSteeringScope ? `${activeSteeringScope.type}:${activeSteeringScope.key}` : '(none)'}`,
           `Write tools enabled for this turn: ${allowWriteActions ? 'yes' : 'no'}`
         ].join('\n')
       }
@@ -5055,7 +5055,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private async generateWorldInfoSummariesForActiveScope(): Promise<void> {
     const scope = this.resolveBuildScopeFromContext();
     if (!scope) {
-      new Notice('No active scope found for world_info summary generation.');
+      new Notice('No active lorebook found for world_info summary generation.');
       return;
     }
 
@@ -5063,7 +5063,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const summaries = buildScopeSummaries(notes, this.settings, scope);
     const summary = summaries[0];
     if (!summary) {
-      new Notice('No scope summary available.');
+      new Notice('No lorebook summary available.');
       return;
     }
 
@@ -5082,7 +5082,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     if (targets.length === 0) {
-      new Notice('No world_info notes without summary found in the active scope.');
+      new Notice('No world_info notes without summary found in the active lorebook.');
       return;
     }
 
@@ -5634,8 +5634,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       layerTrace.push(...chatAgentToolContextTrace);
     }
     if (useLorebookContext) {
-      layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} scope(s), ~${loreContextPromptTokens} tokens`);
-      layerTrace.push(`fallback_entries: ${totalRagCount} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} scopes enabled)`);
+      layerTrace.push(`graph_memory(world_info): ${totalWorldInfoCount} entries from ${selectedScopes.length} lorebook(s), ~${loreContextPromptTokens} tokens`);
+      layerTrace.push(`fallback_entries: ${totalRagCount} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${selectedScopes.length} lorebooks enabled)`);
       if (toolContextPromptTokens > 0 || toolContextLayerTrace.length > 0) {
         layerTrace.push(`tool_hooks: ${toolContextItems.length} entries, ~${toolContextPromptTokens} tokens`);
         layerTrace.push(...toolContextLayerTrace);
@@ -6913,7 +6913,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Add command
     this.addCommand({
       id: 'convert-to-lorebook',
-      name: 'Build Active Lorebook Scope',
+      name: 'Build Active Lorebook',
       callback: () => {
         void this.buildActiveScopeExport();
       }
@@ -7166,11 +7166,11 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.addCommand({
       id: 'fork-active-lorebook-scope',
-      name: 'Fork Active Lorebook Scope',
+      name: 'Fork Active Lorebook',
       callback: () => {
         void this.forkActiveLorebookScope().catch(error => {
-          console.error('LoreVault: Failed to fork lorebook scope:', error);
-          new Notice(`Failed to fork lorebook scope: ${error instanceof Error ? error.message : String(error)}`);
+          console.error('LoreVault: Failed to fork lorebook:', error);
+          new Notice(`Failed to fork lorebook: ${error instanceof Error ? error.message : String(error)}`);
         });
       }
     });
@@ -7185,7 +7185,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     this.addCommand({
       id: 'generate-world-info-summaries-active-scope',
-      name: 'Generate World Info Summaries (Active Scope)',
+      name: 'Generate World Info Summaries (Active Lorebook)',
       callback: () => {
         void this.generateWorldInfoSummariesForActiveScope();
       }
@@ -7925,13 +7925,13 @@ export default class LoreBookConverterPlugin extends Plugin {
   public async forkActiveLorebookScope(): Promise<void> {
     const sourceScope = this.resolveBuildScopeFromContext();
     if (!sourceScope) {
-      new Notice('No lorebook scope found for forking. Open a lorebook note or set Active Scope.');
+      new Notice('No lorebook found for forking. Open a lorebook note or set Active Lorebook.');
       return;
     }
 
     const sourceFiles = this.collectLorebookFilesForFork(sourceScope);
     if (sourceFiles.length === 0) {
-      new Notice(`No notes found for lorebook scope "${sourceScope}".`);
+      new Notice(`No notes found for lorebook "${sourceScope}".`);
       return;
     }
 
@@ -7942,11 +7942,11 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     const targetScope = this.normalizeLorebookScopeForFork(requested.targetScope);
     if (!targetScope) {
-      throw new Error('New lorebook scope is invalid.');
+      throw new Error('New lorebook is invalid.');
     }
     const normalizedSourceScope = normalizeScope(sourceScope);
     if (targetScope === normalizedSourceScope) {
-      throw new Error('New lorebook scope must be different from the source scope.');
+      throw new Error('New lorebook must be different from the source lorebook.');
     }
     const targetFolderRaw = normalizeVaultPath(requested.targetFolder).replace(/^\/+|\/+$/g, '');
     const targetFolder = targetFolderRaw || this.buildDefaultLorebookForkFolder(targetScope);
@@ -8608,7 +8608,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private async buildActiveScopeExport(): Promise<void> {
     const scope = this.resolveBuildScopeFromContext();
     if (!scope) {
-      new Notice('No lorebook scope found for active file. Tag the note or set Active Scope.');
+      new Notice('No lorebook found for active file. Tag the note or set Active Lorebook.');
       return;
     }
     await this.convertToLorebook(scope);
@@ -9457,7 +9457,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         promptReserveTokens: completion.promptReserveTokens,
         maxOutputTokens: completion.maxOutputTokens
       });
-      this.setGenerationStatus(`preparing | scopes ${initialScopeLabel}`, 'busy');
+      this.setGenerationStatus(`preparing | lorebooks ${initialScopeLabel}`, 'busy');
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
       const continuityAggressiveness = this.resolveContinuityAggressiveness();
@@ -9597,7 +9597,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         contextUsedTokens: chapterMemoryTokens + steeringNonSystemTokens
       });
       this.setGenerationStatus(
-        `retrieving | scopes ${initialScopeLabel} | ctx ${Math.max(0, availableForContext)} left`,
+        `retrieving | lorebooks ${initialScopeLabel} | ctx ${Math.max(0, availableForContext)} left`,
         'busy'
       );
 
@@ -9799,14 +9799,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         `steering(system): ~${steeringSystemTokens} tokens`,
         `steering(pre_history): ~${steeringPreHistoryPromptTokens} tokens`,
         `steering(pre_response): ~${steeringPreResponsePromptTokens} tokens`,
-        `scope_selection_source: ${scopeSelectionSource}`,
+        `lorebook_selection_source: ${scopeSelectionSource}`,
         `local_window: ~${storyPromptTokens} tokens`,
         `inline_directives: ${inlineDirectiveDiagnostics.join(', ')}`,
         `chapter_memory: ${chapterMemoryItems.length} sections, ~${chapterMemoryPromptTokens} tokens`,
         `continuity_state: threads ${mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads.length : 0}, open_loops ${mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops.length : 0}, canon_deltas ${mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas.length : 0}, ~${continuityPromptTokens} tokens`,
         ...chapterMemoryLayerTrace,
         `graph_memory(world_info): ${totalWorldInfo} entries, ~${loreContextPromptTokens} tokens`,
-        `fallback_entries: ${totalRag} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} scopes enabled)`,
+        `fallback_entries: ${totalRag} entries, policy ${ragPolicies.join('/')} (${ragEnabledScopes}/${Math.max(1, contexts.length)} lorebooks enabled)`,
         `tool_hooks: ${toolContextItems.length} entries, ~${toolContextPromptTokens} tokens`,
         ...toolContextLayerTrace
       ];
@@ -9860,11 +9860,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
 
       this.setGenerationStatus(
-        `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~0/${completion.maxOutputTokens}`,
+        `generating | lorebooks ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~0/${completion.maxOutputTokens}`,
         'busy'
       );
       new Notice(
-        `LoreVault generating | ${completion.provider} (${completion.model}) | scopes ${scopeLabel}`,
+        `LoreVault generating | ${completion.provider} (${completion.model}) | lorebooks ${scopeLabel}`,
         3500
       );
       const userPrompt = [
@@ -9965,7 +9965,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           statusText: 'generating'
         });
         this.setGenerationStatus(
-          `generating | scopes ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
+          `generating | lorebooks ${scopeLabel} | ctx ${Math.max(0, remainingInputTokens)} left | out ~${outTokens}/${completion.maxOutputTokens}`,
           'busy'
         );
       };
@@ -10146,7 +10146,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         lastError: ''
       });
       new Notice(
-        `Inserted continuation for ${selectedScopeLabels.length} scope(s) (${totalWorldInfo} world_info, ${totalRag} fallback, ~${generatedTokens} output tokens).`
+        `Inserted continuation for ${selectedScopeLabels.length} lorebook(s) (${totalWorldInfo} world_info, ${totalRag} fallback, ~${generatedTokens} output tokens).`
       );
       this.setGenerationStatus('idle', 'idle');
     } catch (error) {
@@ -10232,7 +10232,7 @@ export default class LoreBookConverterPlugin extends Plugin {
           ? null
           : new ProgressBar(
             files.length + 7, // files + graph + chunks + embeddings + sqlite + sqlite-read + world_info + fallback markdown
-            `Building LoreVault scope: ${scope || '(all)'}`
+            `Building LoreVault lorebook: ${scope || '(all)'}`
           );
 
         const scopePackResult = await buildScopePack(
@@ -10254,18 +10254,18 @@ export default class LoreBookConverterPlugin extends Plugin {
         let ragDocuments = scopePackResult.pack.ragDocuments;
 
         if (this.settings.sqlite.enabled) {
-          progress?.setStatus(`Scope ${scope || '(all)'}: exporting canonical SQLite pack...`);
+          progress?.setStatus(`Lorebook ${scope || '(all)'}: exporting canonical SQLite pack...`);
           await sqliteExporter.exportScopePack(scopePackResult.pack, paths.sqlitePath);
           progress?.update();
 
-          progress?.setStatus(`Scope ${scope || '(all)'}: reading exports from SQLite pack...`);
+          progress?.setStatus(`Lorebook ${scope || '(all)'}: reading exports from SQLite pack...`);
           const readPack = await sqliteReader.readScopePack(paths.sqlitePath);
           worldInfoEntries = readPack.worldInfoEntries;
           ragDocuments = readPack.ragDocuments;
           progress?.update();
         }
 
-        progress?.setStatus(`Scope ${scope || '(all)'}: exporting world_info JSON...`);
+        progress?.setStatus(`Lorebook ${scope || '(all)'}: exporting world_info JSON...`);
         await worldInfoExporter.exportLoreBookJson(
           this.mapEntriesByUid(worldInfoEntries),
           paths.worldInfoPath,
@@ -10273,14 +10273,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         );
         progress?.update();
 
-        progress?.setStatus(`Scope ${scope || '(all)'}: exporting fallback markdown...`);
+        progress?.setStatus(`Lorebook ${scope || '(all)'}: exporting fallback markdown...`);
         await ragExporter.exportRagMarkdown(ragDocuments, paths.ragPath, scope || '(all)');
         progress?.update();
 
         exportTimestampChanged = this.recordScopeCanonicalExport(scope, Date.now()) || exportTimestampChanged;
 
         progress?.success(
-          `Scope ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} fallback docs.`
+          `Lorebook ${scope || '(all)'} complete: ${worldInfoEntries.length} world_info entries, ${ragDocuments.length} fallback docs.`
         );
       }
 
@@ -10289,7 +10289,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       if (!silentSuccessNotice) {
-        new Notice(`LoreVault build complete for ${scopesToBuild.length} scope(s).`);
+        new Notice(`LoreVault build complete for ${scopesToBuild.length} lorebook(s).`);
       }
       this.liveContextIndex.requestFullRefresh();
       this.invalidateLorebookScopeCache();

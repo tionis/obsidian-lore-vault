@@ -117,7 +117,7 @@ export class LorebooksRoutingDebugView extends ItemView {
   private renderToolbar(container: HTMLElement, summaries: ScopeSummary[]): ScopeSummary | null {
     const toolbar = container.createDiv({ cls: 'lorevault-routing-toolbar' });
 
-    toolbar.createEl('span', { text: 'Scope:' });
+    toolbar.createEl('span', { text: 'Lorebook:' });
     const scopeSelect = toolbar.createEl('select', { cls: 'dropdown' });
     for (const summary of summaries) {
       const option = scopeSelect.createEl('option');
@@ -152,7 +152,7 @@ export class LorebooksRoutingDebugView extends ItemView {
   private renderSummaryHeader(container: HTMLElement, summary: ScopeSummary): void {
     const section = container.createDiv({ cls: 'lorevault-routing-summary' });
     section.createEl('p', {
-      text: `Scope ${formatScopeLabel(summary.scope)} | included ${summary.includedNotes} | entries ${summary.worldInfoEntries} | missing keywords ${summary.keywordlessEntries}`
+      text: `Lorebook ${formatScopeLabel(summary.scope)} | included ${summary.includedNotes} | entries ${summary.worldInfoEntries} | missing keywords ${summary.keywordlessEntries}`
     });
 
     const included = summary.notes.filter(note => note.included).length;
@@ -181,7 +181,7 @@ export class LorebooksRoutingDebugView extends ItemView {
     });
 
     if (entries.length === 0) {
-      section.createEl('p', { text: 'No world_info entries in this scope.' });
+      section.createEl('p', { text: 'No world_info entries in this lorebook.' });
       return;
     }
 
@@ -241,7 +241,7 @@ export class LorebooksRoutingDebugView extends ItemView {
         bodyDetails.createEl('summary', { text: 'full_body candidate (unavailable)' });
         bodyDetails.createEl('p', {
           cls: 'lorevault-routing-subtle',
-          text: 'No source note body found for this entry in the current scope pack.'
+          text: 'No source note body found for this entry in the current lorebook pack.'
         });
       } else if (bodyText.trim() === entry.content.trim()) {
         bodyDetails.createEl('summary', { text: `full_body candidate (~${estimateTokens(fullBodyTier)} tokens)` });
@@ -475,13 +475,13 @@ export class LorebooksRoutingDebugView extends ItemView {
     const notes = this.plugin.getCachedLorebookMetadata();
     const summaries = buildScopeSummaries(notes, this.plugin.settings);
     if (summaries.length === 0) {
-      contentEl.createEl('p', { text: 'No lorebook scopes found.' });
+      contentEl.createEl('p', { text: 'No lorebooks found.' });
       return;
     }
 
     const selectedSummary = this.renderToolbar(contentEl, summaries);
     if (!selectedSummary) {
-      contentEl.createEl('p', { text: 'No scope available.' });
+      contentEl.createEl('p', { text: 'No lorebook available.' });
       return;
     }
 
@@ -494,7 +494,7 @@ export class LorebooksRoutingDebugView extends ItemView {
       const message = error instanceof Error ? error.message : String(error);
       contentEl.createEl('p', {
         cls: 'lorevault-manager-warning-item',
-        text: `Failed to load scope pack: ${message}`
+        text: `Failed to load lorebook pack: ${message}`
       });
     }
 

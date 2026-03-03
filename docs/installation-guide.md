@@ -41,9 +41,9 @@ This guide will help you install the LoreVault plugin for Obsidian.
    - Toggle the switch to enable it
 
 4. **Verify installation**
-   - You should now see LoreVault ribbon icons in the left sidebar (build scope + manager + story chat + story writing)
+   - You should now see LoreVault ribbon icons in the left sidebar (build lorebook + manager + story chat + story writing)
    - The command palette (Ctrl+P or Cmd+P) should include:
-     - "Build Active Lorebook Scope"
+     - "Build Active Lorebook"
      - "Open LoreVault Manager" (opens right sidebar panel)
      - "Open LoreVault Lorebook Auditor" (opens dedicated lorebook audit panel)
      - "Open LoreVault Query Simulation" (opens dedicated retrieval simulation panel)
@@ -56,13 +56,13 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Generate World Info Summary (Active Note)"
      - "Generate Chapter Summary (Active Note)"
      - "Fork Story from Active Note"
-     - "Generate World Info Summaries (Active Scope)"
+     - "Generate World Info Summaries (Active Lorebook)"
      - "Generate Chapter Summaries (Current Story)"
      - "Export Usage Report (JSON)"
      - "Export Usage Report (CSV)"
      - "Import SillyTavern Lorebook"
      - "Extract Wiki Pages from Story"
-     - "Fork Active Lorebook Scope"
+     - "Fork Active Lorebook"
      - "Apply Story Delta to Existing Wiki"
      - "Open Lorebook Update"
      - "Create LoreVault Entry Template"
@@ -101,11 +101,11 @@ If you prefer to build the plugin from source:
    - Configure top `Device Local Settings` first:
      - `Active Completion Preset (This Device)`
      - `Device Cost Profile Label`
-   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + fallback markdown projection; default `sillytavern/{scope}.json`)
+   - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + fallback markdown projection; default `sillytavern/{lorebook}.json`)
    - Set `Default Lorebook Import Location` (default `LoreVault/import`) used by Import, Story Extraction, and Lorebook Fork defaults
-   - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook; folder picker available; vault-relative paths only)
-   - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
-   - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
+   - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<lorebook>.db` per lorebook; folder picker available; vault-relative paths only)
+   - Optional: include `{lorebook}` (or legacy `{scope}`) in downstream subpath for per-lorebook templating (otherwise LoreVault appends `-<lorebook-slug>` automatically)
+   - Configure Lorebook Selection (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
    - Optional: configure Writing Completion (provider, endpoint, API key, model, prompt)
    - API keys are stored via Obsidian Secret Storage (not in plugin `data.json`)
    - LoreVault only creates missing secrets and never overwrites existing secret values
@@ -122,7 +122,7 @@ If you prefer to build the plugin from source:
    - Optional: set `Story Continuity Aggressiveness` (`Balanced` or `Aggressive`) to control how much prior chapter memory/style carryover is injected
    - Optional: configure `Semantic Chapter Recall` (under Writing Completion) to toggle/tune embedding-based related prior-scene recall (`Related Past Scenes`) with controls for chapter/chunk limits, chunk sizing, similarity threshold, recency blend, and budget share (enabled by default with a large-context tuned profile)
    - Optional: configure Auto Summaries (summary input cap + world_info output cap)
-   - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/scope) per selected `Budget Cost Profile`
+   - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/lorebook) per selected `Budget Cost Profile`
    - Optional: configure embeddings backend/cache/chunking for semantic fallback retrieval
    - Adjust priority weights if needed
 
@@ -135,16 +135,16 @@ If you prefer to build the plugin from source:
    - Ensure your notes use hierarchical lorebook tags like `#lorebook/universe/...`
    - Notes are included as canonical lore entries by default
    - Use frontmatter `retrieval: none` to exclude a note from retrieval/export
-   - Use command "Build Active Lorebook Scope" (or the build ribbon icon) to export the active note scope
-   - Use "Open LoreVault Manager" for discovered scopes and per-scope build actions
-   - Use "Open LoreVault Lorebook Auditor" for scope quality diagnostics
+   - Use command "Build Active Lorebook" (or the build ribbon icon) to export the active note lorebook
+   - Use "Open LoreVault Manager" for discovered lorebooks and per-lorebook build actions
+   - Use "Open LoreVault Lorebook Auditor" for lorebook quality diagnostics
    - In Lorebook Auditor, use Quality Audit to detect missing keywords and run reviewed keyword generation for one or many notes
-   - Use "Open LoreVault Query Simulation" to simulate retrieval across one or multiple scopes with override knobs
+   - Use "Open LoreVault Query Simulation" to simulate retrieval across one or multiple lorebooks with override knobs
    - Monitor the progress bar as your vault is converted
 
 4. **Use writing-assistant context insertion**
    - Open a story note in editor view
-   - Optional: define story scopes in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
+   - Optional: define story lorebooks in frontmatter (for example `lorebooks: [universe, universe/yggdrasil]`)
    - Place cursor where you want to continue
    - Run command "Continue Story with Context" or use right-click in editor -> `LoreVault: Continue Story with Context`
    - Use right-click in story notes -> `LoreVault: Insert Inline Directive` to insert `<!-- LV: ... -->` at the cursor
@@ -159,7 +159,7 @@ If you prefer to build the plugin from source:
    - Author Note content is edited directly in the linked note (native Obsidian editor)
    - Optional: set `completionProfile: <preset-id>` in Author Note frontmatter (or via command `Set Author Note Completion Profile`) to override the completion profile for linked story operations
    - `Rewrite Author Note` supports an optional change prompt and shows a side-by-side source diff review before apply
-   - Lorebook scope selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-scope fallback)
+   - Lorebook selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-lorebook fallback)
    - In Story Writing panel, the device completion profile is selected from a dropdown and applies immediately
    - Cost profile label is configured in settings (not in Story Writing panel)
    - Inline instruction comments are supported as `[LV: ...]` and `<!-- LV: ... -->`; LoreVault renders them in-place as `<inline_story_directive>` tags during prompt assembly
@@ -187,7 +187,7 @@ If you prefer to build the plugin from source:
      - `Generate World Info Summary (Active Note)` for lore entry summary candidate
      - `Generate Chapter Summary (Active Note)` for chapter memory summary candidate
    - For batch workflows:
-     - `Generate World Info Summaries (Active Scope)`
+     - `Generate World Info Summaries (Active Lorebook)`
      - `Generate Chapter Summaries (Current Story)`
    - In the review modal:
      - `Write Summary Section` writes/updates the `## Summary` section in the note body
@@ -222,12 +222,12 @@ If you prefer to build the plugin from source:
    - Each chat/fork is stored as a markdown note in `LoreVault/chat`
    - Conversation notes use a readable session format (frontmatter + `## User` / `## Model` sections)
    - Assistant context metadata in saved notes is kept in collapsed `Context Meta` callouts (fenced `yaml`) plus expanded Message Info table rows
-   - Expand per-turn context inspector blocks to see selected scopes, resolved notes, pulled items, retrieval tool-hook traces, and chat agent tool call/write traces
+   - Expand per-turn context inspector blocks to see selected lorebooks, resolved notes, pulled items, retrieval tool-hook traces, and chat agent tool call/write traces
 
 9. **Import Existing Lorebook JSON (Phase 14)**
   - Run command `Import SillyTavern Lorebook`
   - Set target folder (prefilled from `Default Lorebook Import Location`, manual path or `Browse`) and default tags
-  - Select lorebooks in the list UI (delete per item, add interactively, or add custom scope with Enter in the inline text field)
+  - Select lorebooks in the list UI (delete per item, add interactively, or add custom lorebook with Enter in the inline text field)
   - Optional: pick a completion profile in the panel
   - Paste lorebook JSON in the panel text field
   - Click `Preview` to inspect planned file paths
@@ -248,8 +248,8 @@ If you prefer to build the plugin from source:
 11. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**
    - Run command `Apply Story Delta to Existing Wiki` (or alias `Open Lorebook Update`)
    - Provide story markdown directly or set `Source Story Note Path` (via `Pick Note` or `Use Active Note`)
-   - Choose `Source Scope`: `note` (single note), `chapter` (selected chapter note), or `story` (full story thread from selected note)
-   - Select one or more lorebook scopes in `Lorebooks to Consider` (interactive add + custom Enter-to-add)
+   - Choose `Source Range`: `note` (single note), `chapter` (selected chapter note), or `story` (full story thread from selected note)
+   - Select one or more lorebooks in `Lorebooks to Consider` (interactive add + custom Enter-to-add)
    - Pick completion profile for lorebook-update preview calls
    - Set `New Note Target Folder` (manual path or `Browse`) for create operations
    - Choose update policy:
@@ -261,11 +261,11 @@ If you prefer to build the plugin from source:
    - Review per-change side-by-side dry-run diffs
    - Select approved changes and click `Apply Selected` (live per-file apply progress)
 
-12. **Fork Lorebook Scope**
-   - Run command `Fork Active Lorebook Scope`
-   - Source scope is resolved from the active note lorebook scope (or configured `Active Scope`)
-   - Enter a new lorebook scope and target folder (default: `<Default Lorebook Import Location>/<new-scope>`)
-   - LoreVault copies scoped notes, rewrites internal links to copied notes, removes old lorebook tags, and applies the new lorebook tag
+12. **Fork Lorebook**
+   - Run command `Fork Active Lorebook`
+   - Source lorebook is resolved from the active note lorebook (or configured `Active Lorebook`)
+   - Enter a new lorebook and target folder (default: `<Default Lorebook Import Location>/<new-lorebook>`)
+   - LoreVault copies lorebook notes, rewrites internal links to copied notes, removes old lorebook tags, and applies the new lorebook tag
 
 ## Troubleshooting
 
@@ -274,7 +274,7 @@ If you prefer to build the plugin from source:
 - **Conversion fails**: Check the console (Ctrl+Shift+I) for error messages
 - **Plugin doesn't recognize files**:
   - Ensure notes are tagged under your configured lorebook tag prefix (default `#lorebook/...`)
-  - Check active scope and membership mode settings
+  - Check active lorebook and membership mode settings
   - Check explicit exclusion flag (`exclude: true`) in frontmatter
 
 ## Updates
@@ -303,4 +303,4 @@ If you encounter any issues with installation or usage, please:
 
 ---
 
-Once installed, you're ready to start building scoped LoreVault exports from your Obsidian notes.
+Once installed, you're ready to start building lorebook-based LoreVault exports from your Obsidian notes.

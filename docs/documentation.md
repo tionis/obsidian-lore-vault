@@ -4,13 +4,13 @@
 
 LoreVault compiles Obsidian notes into deterministic context exports.
 
-Current runtime export targets per scope:
+Current runtime export targets per lorebook:
 
 - canonical LoreVault SQLite pack (`.db`)
 - SillyTavern-style `world_info` JSON
 - fallback markdown projection pack
 
-Core scope boundary:
+Core lorebook boundary:
 
 - LoreVault does not provide human book/EPUB/PDF publishing output.
 - Human-oriented publishing should be implemented as a companion plugin consuming LoreVault exports.
@@ -35,18 +35,18 @@ Core scope boundary:
 
 ## Conversion Pipeline
 
-When you run **Build Active Lorebook Scope** or **Build/Export Scope**:
+When you run **Build Active Lorebook** or **Build/Export Lorebook**:
 
 1. Collect all markdown files
-2. Resolve lorebook scopes from hierarchical tags
+2. Resolve lorebooks from hierarchical tags
 3. Parse frontmatter + markdown body
 4. Include notes as canonical lore entries (unless `retrieval: none`)
 5. Build wikilink graph for `world_info` entries
 6. Compute deterministic `order`
 7. Build canonical SQLite pack (`world_info`, fallback docs/chunks/embeddings, source-note metadata, note-level embeddings)
-8. Export scoped `world_info` JSON + scoped fallback markdown
+8. Export lorebook `world_info` JSON + lorebook fallback markdown
 
-## Tag Scoping
+## Lorebook Selection
 
 Selection is driven by hierarchical tags under a configurable prefix:
 
@@ -65,14 +65,14 @@ Settings:
 
 Behavior:
 
-- `exact`: only notes with matching scope tag are included
-- `cascade`: notes in child and parent scopes are included within the same hierarchy branch
+- `exact`: only notes with matching lorebook tag are included
+- `cascade`: notes in child and parent lorebooks are included within the same hierarchy branch
 - notes with frontmatter `exclude: true` are always skipped
-- empty `activeScope`: no configured fallback scope
-- export command builds one scope at a time:
-  - active file lorebook scope first
+- empty `activeScope`: no configured fallback lorebook
+- export command builds one lorebook at a time:
+  - active file lorebook first
   - otherwise configured `activeScope`
-- manager view discovers all scopes and provides per-scope build actions
+- manager view discovers all lorebooks and provides per-lorebook build actions
 
 ## Frontmatter Parsing
 
@@ -196,7 +196,7 @@ Fixture coverage includes:
 
 - graph-order determinism
 - wikilink normalization and ambiguity handling
-- lorebook scope selection (`exact` + `cascade`)
+- lorebook selection (`exact` + `cascade`)
 - retrieval routing mode parsing and target resolution
 - output path resolution/collision checks
 - rag markdown export ordering
@@ -210,22 +210,22 @@ Large-vault profiling command (`npm run profile:large-vault`) provides determini
 
 Given configured `Downstream Export Path Pattern` + SQLite output directory:
 
-- SQLite pack file: `<sqliteOutputDir>/<scope-slug>.db` (default: `lorebooks/<scope-slug>.db`)
-- world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/{scope}.json`)
+- SQLite pack file: `<sqliteOutputDir>/<lorebook-slug>.db` (default: `lorebooks/<lorebook-slug>.db`)
+- world info file: `<sqliteOutputDir>/<downstreamSubpath>.json` (default subpath: `sillytavern/{lorebook}.json`)
 - rag file: `<sqliteOutputDir>/<downstreamSubpath>.rag.md`
 
 Downstream naming:
 
-- if downstream subpath contains `{scope}`: replace token with scope slug
-- otherwise append `-<scope-slug>` before extension
+- if downstream subpath contains `{lorebook}` (or legacy `{scope}`): replace token with lorebook slug
+- otherwise append `-<lorebook-slug>` before extension
 
 SQLite path behavior:
 
-- if SQLite output setting is a directory: write `<dir>/<scope-slug>.db`
-- if SQLite output setting is a `.db` file path: append `-<scope-slug>` unless `{scope}` is present
+- if SQLite output setting is a directory: write `<dir>/<lorebook-slug>.db`
+- if SQLite output setting is a `.db` file path: append `-<lorebook-slug>` unless `{lorebook}`/`{scope}` is present
 - SQLite output path must be vault-relative (absolute filesystem paths are rejected)
 - downstream export subpath/pattern must be vault-relative (absolute filesystem paths are rejected)
-- downstream exports are always written under the SQLite scope directory (for example `lorebooks/sillytavern/...`)
+- downstream exports are always written under the SQLite lorebook directory (for example `lorebooks/sillytavern/...`)
 
 Output build fails fast if path collisions are detected.
 
@@ -233,15 +233,15 @@ Export freshness policy (`LoreVault Settings -> SQLite`):
 
 - `manual`: only explicit build actions update exports
 - `on_build` (default): exports update when build commands/buttons run
-- `background_debounced`: vault edits queue impacted-scope rebuilds after debounce delay
-- manager scope cards display per-scope `Last canonical export` timestamp plus humanized relative age (`minutes/hours/days/months ago`)
+- `background_debounced`: vault edits queue impacted-lorebook rebuilds after debounce delay
+- manager lorebook cards display per-lorebook `Last canonical export` timestamp plus humanized relative age (`minutes/hours/days/months ago`)
 
 ## Companion Publishing Contract (Phase 10.5)
 
 For downstream publishing tools/plugins:
 
-- Treat SQLite scope packs as canonical inputs.
-- Do not re-parse vault markdown when a SQLite scope pack is available.
+- Treat SQLite lorebook packs as canonical inputs.
+- Do not re-parse vault markdown when a SQLite lorebook pack is available.
 - Stable core tables for downstream consumption:
   - `world_info_entries`
   - `rag_documents`
@@ -254,8 +254,8 @@ For downstream publishing tools/plugins:
   - `rag_documents`: `path ASC, title ASC, uid ASC`
   - `rag_chunks`: `path ASC, chunk_index ASC`
 - Stable downstream export roots:
-  - canonical scope `.db` under configured SQLite output path
-  - ST-style outputs under a subpath of the SQLite root (`sillytavern/{scope}.json` by default)
+  - canonical lorebook `.db` under configured SQLite output path
+  - ST-style outputs under a subpath of the SQLite root (`sillytavern/{lorebook}.json` by default)
 
 SQLite pack metadata:
 
@@ -305,12 +305,12 @@ Stop command: `Stop Active Generation`
 Also available in markdown editor right-click menu as `LoreVault: Continue Story with Context`.
 Also registered as an editor action command so it appears in mobile editor action menus.
 Also available via ribbon icon for fast mobile invocation.
-The same editor menu also exposes note-scoped summary actions when eligible:
+The same editor menu also exposes note-level summary actions when eligible:
 
 - `LoreVault: Insert Inline Directive` for story notes (chapter metadata or `authorNote` link).
 - `LoreVault: Run Text Command on Selection` (only when text selection is non-empty).
-- `LoreVault: Generate Keywords` for notes with lorebook-scope tags.
-- `LoreVault: Generate World Info Summary` for notes with lorebook-scope tags.
+- `LoreVault: Generate Keywords` for notes with lorebook tags.
+- `LoreVault: Generate World Info Summary` for notes with lorebook tags.
 - `LoreVault: Rewrite Author Note` for author-note documents.
 - `LoreVault: Continue Story with Context` is hidden for author-note documents.
 
@@ -340,23 +340,23 @@ Settings:
 - inline directives are converted in-place to `<inline_story_directive>` tags during prompt assembly
 - timeout
 
-Story lorebook scope selection order:
+Story lorebook selection order:
 
-1. Linked Author Note frontmatter scope keys (preferred)
-2. Story note frontmatter scope keys (fallback)
-3. no implicit scope fallback
+1. Linked Author Note frontmatter lorebook keys (preferred)
+2. Story note frontmatter lorebook keys (fallback)
+3. no implicit lorebook fallback
 
-Story frontmatter scope keys:
+Story frontmatter lorebook keys:
 
 - keys: `lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`
 - value format:
   - list: `['universe', 'universe/yggdrasil']`
   - comma-separated string: `universe, universe/yggdrasil`
-  - accepts `lorebook/<scope>` and `#lorebook/<scope>` forms
+  - accepts `lorebook/<lorebook>` and `#lorebook/<lorebook>` forms
 - behavior:
   - values are normalized and deduplicated deterministically
-  - each selected scope is queried and combined into completion context
-  - completion token budget is split across selected scopes
+  - each selected lorebook is queried and combined into completion context
+  - completion token budget is split across selected lorebooks
   - context budgets are trimmed iteratively if selected context exceeds input budget
 
 Optional continuity frontmatter keys for editor continuation:
@@ -384,7 +384,7 @@ Author Note model:
 - one note-level Author Note markdown document per story note link
 - Author Note content is edited directly in native Obsidian notes
 - optional `completionProfile` frontmatter can pin an Author Note to a completion preset id
-- optional frontmatter lorebook scopes use the same accepted scope keys as story notes
+- optional frontmatter lorebook values use the same accepted lorebook keys as story notes
 - default creation folder is configurable in settings (`Story Steering -> Author Note Folder`)
 - optional `lvDocType: authorNote` frontmatter marks notes as explicit Author Notes
 - if multiple story notes link to the same Author Note, rewrite/generation context includes all linked stories
@@ -431,7 +431,7 @@ Run flow:
 2. open prompt modal
   - choose prompt template from prompt-note files in your configured prompt folder (or custom prompt)
   - optional per-run lorebook-context toggle
-3. LoreVault optionally retrieves scoped lore context using selected text as query
+3. LoreVault optionally retrieves lorebook context using selected text as query
 4. LoreVault sends prompt + selected text (+ optional context) to completion provider
 5. response text is treated as replacement candidate
 6. if auto-accept is off, review modal shows an editable review with side-by-side source diff before apply
@@ -455,13 +455,13 @@ Commands:
 - `Generate Keywords (Active Note)`
 - `Generate World Info Summary (Active Note)`
 - `Generate Chapter Summary (Active Note)`
-- `Generate World Info Summaries (Active Scope)`
+- `Generate World Info Summaries (Active Lorebook)`
 - `Generate Chapter Summaries (Current Story)`
 
 Editor context menu behavior:
 
-- keyword generation action appears only when the current note is in a lorebook scope (tag-derived).
-- world_info summary action appears only when the current note is in a lorebook scope (tag-derived).
+- keyword generation action appears only when the current note is in a lorebook (tag-derived).
+- world_info summary action appears only when the current note is in a lorebook (tag-derived).
 - chapter summary generation is available via command palette and Story Writing panel.
 
 Review/acceptance flow:
@@ -532,7 +532,7 @@ Current behavior:
 
 ## Cost Tracking (Experimental, Phase 13)
 
-Current implemented scope:
+Current implemented feature set:
 
 - completion and summary requests capture usage when provider payload includes token usage
 - records are written to a local usage ledger JSON file
@@ -555,7 +555,7 @@ Settings:
 - `Session Budget Warning (USD)`
 - `Budget by Operation (USD)`
 - `Budget by Model (USD)`
-- `Budget by Scope (USD)`
+- `Budget by Lorebook (USD)`
 
 Budget settings are saved per selected cost profile.
 Use `Budget Cost Profile` in settings to switch which profile's budget set you edit.
@@ -589,7 +589,7 @@ Command: `Open LoreVault Manager` (opens a persistent right-side workspace panel
 
 Capabilities:
 
-- lists discovered scopes with deterministic ordering in compact cards
+- lists discovered lorebooks with deterministic ordering in compact cards
 - shows counts:
   - included notes
   - `world_info` entries
@@ -625,15 +625,15 @@ Capabilities:
   - API key bootstrap fields only create missing secrets; update existing secret values via Obsidian Secret Storage
   - device-local cost profile label is configured in settings (usage metadata tagging only); if empty, usage falls back to an automatic API-key hash profile
   - cost breakdown is shown in the same section directly under the profile selector
-- lorebook scope controls for active story note:
-  - show selected scopes from linked Author Note frontmatter
-  - add scopes via interactive picker
-  - remove scopes via per-item remove action
+- lorebook controls for active story note:
+  - show selected lorebooks from linked Author Note frontmatter
+  - add lorebooks via interactive picker
+  - remove lorebooks via per-item remove action
   - writes canonical `lorebooks` key on linked Author Note frontmatter
 - generation monitor details:
   - state/status
   - effective provider/model
-  - active scopes, token usage, output progress
+  - active lorebooks, token usage, output progress
   - collapsible selected context items (`world_info`, fallback items)
 - compact collapsible usage/cost summary:
   - session/day/week/month/project totals
@@ -646,8 +646,8 @@ Command: `Open Cost Analyzer`
 Capabilities:
 
 - select a cost profile (defaults to current device profile)
-- inspect profile-scoped totals (session/day/week/month/project)
-- inspect top breakdowns by operation, model, scope, and cost source
+- inspect profile totals (session/day/week/month/project)
+- inspect top breakdowns by operation, model, lorebook, and cost source
 - review budget warnings evaluated against the selected profile
 
 ## Inbound Wiki Import and Story Extraction (Phase 14)
@@ -656,7 +656,7 @@ Commands:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
-- `Fork Active Lorebook Scope`
+- `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
 
 Shared panel inputs:
@@ -677,16 +677,16 @@ Shared panel inputs:
   - completion profile selector used for extraction model calls
 - `Apply Story Delta to Existing Wiki`:
   - source story input: inline markdown or `Source Story Note Path` (`Pick Note` / `Use Active Note`)
-  - source scope mode: `note` | `chapter` | `story` (deterministic expansion from selected source note)
-  - lorebook scope selection list (add/remove scopes to consider for existing-page updates)
+  - source range mode: `note` | `chapter` | `story` (deterministic expansion from selected source note)
+  - lorebook selection list (add/remove lorebooks to consider for existing-page updates)
   - `New Note Target Folder` (used only for new-note creation)
   - default tags
   - completion profile selector used for lorebook-update model calls
-- `Fork Active Lorebook Scope`:
-  - source lorebook scope resolved from active note scope first, then configured active scope
-  - prompts for new lorebook scope + target folder
-  - default folder prefilled as `<Default Lorebook Import Location>/<new-scope>`
-  - copies all notes in source-scope branch into target folder with deterministic path allocation
+- `Fork Active Lorebook`:
+  - source lorebook resolved from active note lorebook first, then configured active lorebook
+  - prompts for new lorebook + target folder
+  - default folder prefilled as `<Default Lorebook Import Location>/<new-lorebook>`
+  - copies all notes in source-lorebook branch into target folder with deterministic path allocation
   - rewrites internal wikilinks/markdown links to the forked note paths
   - strips old lorebook inline tags from body text and writes the new lorebook tag in frontmatter
 
@@ -741,7 +741,7 @@ Current merge policy (default):
   - deterministic new-note creation in `New Note Target Folder`
 - story delta can use inline markdown or load source markdown from a selected story source note
 - source note mode supports deterministic `note`, `chapter`, or `story` expansion from the selected note (with picker support)
-- story delta selects existing notes from one or more chosen lorebook scopes
+- story delta selects existing notes from one or more chosen lorebooks
 - story delta preview includes per-change side-by-side source diffs with context windows and omitted-line markers
 - story delta preview includes conflict-review rows for update churn with quick decisions (`accept`, `reject`, `keep_both`)
 - conflict rows render diff details inline at the decision point (no separate detached diff section)
@@ -751,10 +751,10 @@ Current merge policy (default):
   - `reject`: skip write for that page
   - `keep_both`: keep existing note and write a deterministic companion `*.lorevault-proposed.md`
 - story delta apply still supports per-page approval checkboxes and `Apply Selected`
-- warns when scopes have no included notes or no entries in one section
+- warns when lorebooks have no included notes or no entries in one section
 - actions:
-  - `Build/Export` per scope
-  - `Auditor` per scope
+  - `Build/Export` per lorebook
+  - `Auditor` per lorebook
   - `Lorebook Auditor` (toolbar)
   - `Query Simulation` (toolbar)
   - `Story Writing Panel` (toolbar)
@@ -767,7 +767,7 @@ Command: `Open LoreVault Lorebook Auditor`
 Capabilities:
 
 - opens a dedicated workspace view with more horizontal space for lorebook auditing
-- scope selector for switching debug target
+- lorebook selector for switching debug target
 - lorebook contents panel with `world_info` entries (keywords, trigger parameters, collapsible content)
 - quality audit panel:
   - per-entry risk score (duplicate-like similarity, thin content, missing keywords)
@@ -784,8 +784,8 @@ Command: `Open LoreVault Query Simulation`
 Capabilities:
 
 - dedicated retrieval simulation view separated from routing diagnostics
-- multi-scope selection (query one or many lorebooks in a single run)
-- total token budget split evenly per selected scope
+- multi-lorebook selection (query one or many lorebooks in a single run)
+- total token budget split evenly per selected lorebook
 - optional override knobs:
   - `maxGraphHops`
   - `graphHopDecay`
@@ -800,14 +800,14 @@ Capabilities:
   - `worldInfoBodyLiftTokenCapPerEntry`
   - `worldInfoBodyLiftMinScore`
   - `worldInfoBodyLiftMaxHopDistance`
-- per-scope selected `world_info` diagnostics:
+- per-lorebook selected `world_info` diagnostics:
   - scores
   - graph backlink mode
   - graph path
   - reasons
   - content tiers (including `full_body` lifts)
   - body-lift decision trace (applied/skipped reason per entry)
-- per-scope selected fallback diagnostics:
+- per-lorebook selected fallback diagnostics:
   - score
   - matched terms
 
@@ -819,17 +819,17 @@ Runtime behavior:
 
 - initializes an in-memory context index at plugin load
 - subscribes to vault changes (`create`, `modify`, `delete`, `rename`)
-- applies debounced near-live refresh for affected scopes
+- applies debounced near-live refresh for affected lorebooks
 - supports full rebuild when settings change or export completes
 
 Query behavior:
 
 - query text source: active editor content up to cursor (last window)
 - inline directives source: strict-prefix directives in context markdown (`[LV: ...]`, `<!-- LV: ... -->`)
-- scope resolution:
+- lorebook resolution:
   - linked Author Note frontmatter (`lorebooks`, `lorebookScopes`, `lorevaultScopes`, `activeLorebooks`)
   - otherwise story note frontmatter (same keys)
-  - otherwise no lorebook retrieval scopes are selected
+  - otherwise no lorebook retrieval is selected
 - scoring:
   - `world_info` (primary):
     - deterministic seed detection from keywords/aliases/titles
@@ -844,7 +844,7 @@ Query behavior:
     - default fallback policy is `auto` (used when seed confidence is low or no `world_info` matches are selected)
     - configurable fallback policy: `off|auto|always`
 - completion:
-  - builds a prompt from scope context + recent near-cursor story context
+  - builds a prompt from lorebook context + recent near-cursor story context
   - stages explicit steering layer for author note (`system`, `pre-history`, `pre-response`)
   - converts inline directives to `<inline_story_directive>` tags in-place so directives stay near related text
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
@@ -867,7 +867,7 @@ Token budgeting:
 - reserves deterministic per-layer slices for steering/history/retrieval/output based on configured context window
 - trims near-cursor story context to keep minimum context capacity
 - splits budget between sections (`world_info` 70%, `rag` 30% by default)
-- iteratively shrinks per-scope context budget if total selected context exceeds input budget
+- iteratively shrinks per-lorebook context budget if total selected context exceeds input budget
 - runs deterministic overflow trimming in fixed layer order and records trim rationale in layer traces
 - `world_info` starts at `short` tier, then upgrades to `medium`/`full` if budget remains
 - top-scoring entries can be lifted to `full_body` using full note body when budget allows; if not, LoreVault falls back to excerpt lift
@@ -912,7 +912,7 @@ Command: `Open Story Chat`
 Current behavior:
 
 - opens a persistent workspace view (non-modal)
-- includes an in-chat generation monitor (state, scopes, token usage, output progress)
+- includes an in-chat generation monitor (state, lorebooks, token usage, output progress)
 - supports streaming send/stop controls
 - shows active conversation title with inline actions:
   - `Open Conversation` (interactive picker)
@@ -920,7 +920,7 @@ Current behavior:
 - exposes device-level Story Chat completion profile selection (`Chat Completion Profile`) independent from Story Writing panel profile selection
 - selected chat profile is shared across conversations on the same device and falls back to device/default completion when unset
 - stores per-chat context controls:
-  - selected lorebook scopes (add/remove list)
+  - selected lorebooks (add/remove list)
   - author note refs (interactive picker + remove; stored as `note:*` refs)
   - chapter/raw note refs (interactive picker + remove)
   - manual context text
@@ -948,11 +948,11 @@ Current behavior:
 
 Turn context assembly:
 
-- optional lorebook retrieval for selected scopes
+- optional lorebook retrieval for selected lorebooks
 - optional Story Chat agent tool layer (when enabled and budget allows):
   - search/read selected lorebook entries
   - search/read linked story and manually selected notes
-  - read/update the active note-level author note (scope is implicit)
+  - read/update the active note-level author note (selection is implicit)
   - optionally create lorebook notes when write actions are enabled and current turn includes explicit write intent
 - optional tool-retrieved context layer (when enabled and budget allows)
 - explicit steering layer (author note) plus in-place inline-directive tags
@@ -963,7 +963,7 @@ Turn context assembly:
 - recent chat history window
 - deterministic context inspector metadata attached to assistant turns:
   - effective completion profile source/id/name and completion model
-  - selected scopes
+  - selected lorebooks
   - resolved steering source refs + resolved author-note paths
   - unresolved steering source refs
   - resolved specific note paths

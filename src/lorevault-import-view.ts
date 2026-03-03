@@ -105,7 +105,7 @@ export class LorevaultImportView extends ItemView {
       new Notice('No additional lorebooks available.');
       return null;
     }
-    const modal = new LorebookScopeSuggestModal(this.app, uniqueScopes, 'Pick a lorebook scope to add...');
+    const modal = new LorebookScopeSuggestModal(this.app, uniqueScopes, 'Pick a lorebook to add...');
     const selectionPromise = modal.waitForSelection();
     modal.open();
     return selectionPromise;

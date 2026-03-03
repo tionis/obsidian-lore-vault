@@ -9,7 +9,7 @@ export class LorebookScopeSuggestModal extends FuzzySuggestModal<string> {
   constructor(
     app: App,
     scopes: string[],
-    placeholder = 'Pick a lorebook scope...'
+    placeholder = 'Pick a lorebook...'
   ) {
     super(app);
     this.scopes = [...scopes].sort((a, b) => a.localeCompare(b));

@@ -2,7 +2,7 @@
 
 LoreVault is an Obsidian plugin for deterministic writing context assembly.
 
-It turns tagged notes into scoped lorebooks, exports canonical packs, and provides writing/chat workflows that inject the right context while keeping the selection inspectable.
+It turns tagged notes into lorebooks, exports canonical packs, and provides writing/chat workflows that inject the right context while keeping the selection inspectable.
 
 ## Compatibility
 
@@ -12,22 +12,22 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 
 ## What LoreVault Does
 
-- Builds lorebook scopes from hierarchical tags (`#lorebook/...` by default).
-- Exports one canonical SQLite pack per scope.
-- Exports downstream scope files (`world_info` JSON and `rag` markdown projection).
+- Builds lorebooks from hierarchical tags (`#lorebook/...` by default).
+- Exports one canonical SQLite pack per lorebook.
+- Exports downstream lorebook files (`world_info` JSON and `rag` markdown projection).
 - Runs graph-first retrieval for story continuation and chat.
 - Supports optional embedding-assisted fallback retrieval.
 - Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
 - Provides a Story Chat panel with per-conversation context controls.
 - Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass` and `Scene Consistency Pass`.
-- Adds `Fork Active Lorebook Scope` to clone a lorebook scope into a new scope/folder while rewriting internal links.
+- Adds `Fork Active Lorebook` to clone a lorebook into a new lorebook/folder while rewriting internal links.
 - Keeps retrieval/debug behavior deterministic and inspectable.
 
 ## Quick Start
 
 1. Add lorebook tags to relevant notes (for example `#lorebook/universe/yggdrasil`).
 2. Add frontmatter metadata (`keywords`, `summary`, aliases) to improve retrieval quality.
-3. Open `LoreVault Manager` and run `Build/Export` for your target scope.
+3. Open `LoreVault Manager` and run `Build/Export` for your target lorebook.
 4. Open `Story Writing Panel`.
 5. Link an author note from your story note (`authorNote: [[...]]`) using `Open/Create Author Note` or `Link Author Note`.
 6. Use `Continue Story` to generate at the cursor.
@@ -36,10 +36,10 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 
 | Concept | Where it lives | Purpose |
 | --- | --- | --- |
-| Lorebook scope membership | Tags (`#lorebook/...`) | Determines scope inclusion |
+| Lorebook membership | Tags (`#lorebook/...`) | Determines lorebook inclusion |
 | Story-to-author-note link | Story frontmatter `authorNote` | Anchors writing instructions |
 | Author-note completion profile | Author note frontmatter `completionProfile` | Optional per-story model profile override |
-| Story lorebook selection | Story frontmatter `lorebooks` | Selects scopes for continuation/chat |
+| Story lorebook selection | Story frontmatter `lorebooks` | Selects lorebooks for continuation/chat |
 | Chapter ordering | `chapter`, `previousChapter`, `nextChapter` | Determines chapter threading/memory |
 | Inline directives | Story body (`<!-- LV: ... -->` or `[LV: ...]`) | Turn-level guidance kept next to the related text |
 
@@ -102,7 +102,7 @@ The panel also shows:
 - selected context items (`world_info` + fallback)
 - selected lorebooks from linked Author Note (interactive add + per-item remove)
 - device-local cost profile label configured in settings (usage metadata tagging; auto-derived from API key hash when empty)
-- budget settings are configured per cost profile in settings (daily/session + operation/model/scope maps)
+- budget settings are configured per cost profile in settings (daily/session + operation/model/lorebook maps)
 - collapsible cost breakdown (session/day/week/month/project) in the same panel section as the profile selector
 - rewrite/edit review modals use side-by-side source diffs (with omitted-line markers for large unchanged ranges)
 
@@ -154,11 +154,11 @@ Notes:
 
 ## Build and Export Outputs
 
-For each scope:
+For each lorebook:
 
-- `lorebooks/<scope-slug>.db` (canonical SQLite pack)
-- `lorebooks/sillytavern/<scope-slug>.json` (`world_info`, default pattern `sillytavern/{scope}.json`)
-- `lorebooks/sillytavern/<scope-slug>.rag.md` (`rag` projection)
+- `lorebooks/<lorebook-slug>.db` (canonical SQLite pack)
+- `lorebooks/sillytavern/<lorebook-slug>.json` (`world_info`, default pattern `sillytavern/{lorebook}.json`)
+- `lorebooks/sillytavern/<lorebook-slug>.rag.md` (`rag` projection)
 
 Output naming remains deterministic; collisions fail the build.
 
@@ -166,7 +166,7 @@ Output naming remains deterministic; collisions fail the build.
 
 Core:
 
-- `Build Active Lorebook Scope`
+- `Build Active Lorebook`
 - `Open LoreVault Manager`
 - `Open LoreVault Lorebook Auditor`
 - `Open LoreVault Query Simulation`
@@ -192,7 +192,7 @@ Quality and utility:
 
 - `Generate World Info Summary (Active Note)`
 - `Generate Keywords (Active Note)`
-- `Generate World Info Summaries (Active Scope)`
+- `Generate World Info Summaries (Active Lorebook)`
 - `Generate Chapter Summaries (Current Story)`
 - `Run Text Command on Selection`
 
@@ -200,7 +200,7 @@ Import and updates:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
-- `Fork Active Lorebook Scope`
+- `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki`
 - `Open Lorebook Update`
 
@@ -235,7 +235,7 @@ Operations and reporting:
 - Each completion preset has its own `Completion API Secret Name` used to load that preset's API key.
 - Active completion preset and cost-profile label are device-local (Obsidian local storage), not shared vault settings.
 - Budget warnings are evaluated per selected cost profile.
-- Cost Analyzer view provides per-profile breakdowns (totals + by-operation/model/scope/source).
+- Cost Analyzer view provides per-profile breakdowns (totals + by-operation/model/lorebook/source).
 
 ## Development
 

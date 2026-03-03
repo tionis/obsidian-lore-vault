@@ -509,7 +509,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     total_degree: 250,
     file_depth: 850
   },
-  outputPath: 'sillytavern/{scope}.json',
+  outputPath: 'sillytavern/{lorebook}.json',
   defaultLorebookImportLocation: 'LoreVault/import',
   defaultLoreBook: {
     orderByTitle: false,

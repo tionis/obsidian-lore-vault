@@ -98,7 +98,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Tag notes with `#lorebook/...`.',
         'Add `keywords` (or `key`) in frontmatter.',
-        'Open **LoreVault Manager** and run `Build/Export` for your scope.',
+        'Open **LoreVault Manager** and run `Build/Export` for your lorebook.',
         'Use `Continue Story with Context` in the editor to generate at the cursor.'
       ],
       actions: [
@@ -141,7 +141,7 @@ export class LorevaultHelpView extends ItemView {
         'Set author-note `completionProfile` via command `Set Author Note Completion Profile`.',
         'API keys are in Obsidian Secret Storage; each completion preset has a `Completion API Secret Name` used as its secret key id. LoreVault only creates missing secrets and never overwrites existing ones.',
         'Cost profile label is configured in settings (device-local) and only affects usage metadata; when empty, LoreVault auto-derives one from API key hash.',
-        'Cost budgets are configured per cost profile in settings. Pick a budget profile first, then edit daily/session/operation/model/scope limits for that profile.',
+        'Cost budgets are configured per cost profile in settings. Pick a budget profile first, then edit daily/session/operation/model/lorebook limits for that profile.',
         'Story continuity aggressiveness (`Balanced` / `Aggressive`) is configured in settings and controls how much prior chapter memory + style carryover is injected.',
         'Semantic chapter recall is enabled by default and configurable in Writing Completion settings; disable/tune it as needed. It can add `Related Past Scenes` from similar prior chapter chunks.',
         'Panel shows effective model, context usage, selected context items, and cost breakdown under the profile selector.'
@@ -185,7 +185,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
-        '`Fork Active Lorebook Scope`: clone one lorebook scope into a new scope/folder and rewrite internal links to the forked pages.',
+        '`Fork Active Lorebook`: clone one lorebook into a new lorebook/folder and rewrite internal links to the forked pages.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',
         'Import/Extraction/Fork default target folder is controlled by `Default Lorebook Import Location` in settings.',
         'All panels show staged progress while preview/apply is running.',
@@ -200,8 +200,8 @@ export class LorevaultHelpView extends ItemView {
 
     this.renderSection(contentEl, 'If Something Looks Wrong', {
       bullets: [
-        'No scopes found: verify your tags use the configured `#lorebook/...` prefix.',
-        'Weak retrieval: run Query Simulation and check selected scopes and fallback policy.',
+        'No lorebooks found: verify your tags use the configured `#lorebook/...` prefix.',
+        'Weak retrieval: run Query Simulation and check selected lorebooks and fallback policy.',
         'Short outputs: increase context window/output limits in settings.',
         'Unexpected behavior after changing settings: close and reopen the panel once.'
       ],

@@ -12,12 +12,12 @@ This document is the implementation-level reference for core architecture and ru
   - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings` for Story Writing; `chat preset -> device preset -> base settings` for Story Chat)
   - API key hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs; plugin only creates missing secrets and never overwrites existing values
   - device-local profile state via Obsidian local storage (active Story Writing preset, active Story Chat preset, and optional cost profile label; auto API-key hash fallback when blank)
-  - lorebook fork utility (`Fork Active Lorebook Scope`): deterministic branch copy + internal link rewrite + retagging
+  - lorebook fork utility (`Fork Active Lorebook`): deterministic branch copy + internal link rewrite + retagging
   - story-chat turn orchestration
   - vault-backed LLM operation log persistence (`operationLog` settings) with per-cost-profile JSONL namespace + explorer-view refresh hooks
 - `src/live-context-index.ts`
-  - near-live scope indexing
-  - scope pack rebuild strategy
+  - near-live lorebook indexing
+  - lorebook pack rebuild strategy
   - per-query context assembly dispatch
 - `src/context-query.ts`
   - graph-first `world_info` retrieval
@@ -44,12 +44,12 @@ This document is the implementation-level reference for core architecture and ru
   - message versions/regeneration/forking
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - note-level author-note storage resolved from story frontmatter `authorNote` link
-  - Story Writing panel combines writing controls, generation monitor, lorebook scope controls, context-item inspection, and compact cost summary
+  - Story Writing panel combines writing controls, generation monitor, lorebook controls, context-item inspection, and compact cost summary
   - panel actions are grouped: continue/stop + inline directive, author-note controls (open/create/link/rewrite), and chapter controls (summary + next chapter)
   - when an Author Note is active, panel lists linked chapters/stories
   - markdown editing remains native Obsidian note editing for Author Note content
   - single note-level author-note layer only (no global/story/chapter scope hierarchy)
-  - lorebook scope selection reads linked Author Note frontmatter first, then story-note frontmatter fallback
+  - lorebook selection reads linked Author Note frontmatter first, then story-note frontmatter fallback
   - linked-story detection is driven by story-note `authorNote` references (supports multi-story shared author notes)
   - LLM-assisted author-note rewrite flow with optional per-run update prompt
   - extraction sanitization mode (`strict` vs `off`) for lorebook-fact filtering
@@ -58,7 +58,7 @@ This document is the implementation-level reference for core architecture and ru
   - author-note completion profile override is managed by command (`Set Author Note Completion Profile`) and persisted as frontmatter `completionProfile`
   - device completion profile selection is a direct dropdown (no apply button) and shares a combined profile+cost section with cost breakdown
 - `src/lorevault-cost-analyzer-view.ts`
-  - profile-scoped cost analysis panel (totals + by-operation/model/scope/source breakdowns)
+  - profile-scoped cost analysis panel (totals + by-operation/model/lorebook/source breakdowns)
 - `src/lorebook-scope-cache.ts`
   - shared metadata/scope cache reused by manager/steering/auditor UI
   - explicit invalidation on vault and settings mutations
@@ -148,13 +148,13 @@ This document is the implementation-level reference for core architecture and ru
   - shared side-by-side diff preview generation for planned page writes
   - progress callbacks for chunk and render stages
 - `src/lorebook-scope-suggest-modal.ts`
-  - shared interactive lorebook scope picker modal
+  - shared interactive lorebook picker modal
 
 ## Export Pipeline Contract
 
-Per scope, LoreVault writes:
+Per lorebook, LoreVault writes:
 
-- canonical SQLite pack: `<scope>.db`
+- canonical SQLite pack: `<lorebook>.db`
 - downstream world info JSON
 - downstream fallback markdown projection
 
@@ -162,7 +162,7 @@ Storage contract:
 
 - SQLite export/read paths are vault-relative and use Obsidian adapter binary IO.
 - Absolute filesystem export paths are intentionally rejected.
-- export freshness policy supports `manual`, `on_build`, and `background_debounced` with impacted-scope rebuild queueing in background mode.
+- export freshness policy supports `manual`, `on_build`, and `background_debounced` with impacted-lorebook rebuild queueing in background mode.
 
 Canonicality:
 
@@ -259,13 +259,13 @@ Available hooks:
 
 - `search_entries`: lexical lookup over `world_info` titles/keywords/content
 - `expand_neighbors`: bounded wikilink-neighbor expansion from a seed entry
-- `get_entry`: targeted fetch by `uid` (+ optional scope)
+- `get_entry`: targeted fetch by `uid` (+ optional lorebook)
 
 Execution model:
 
 - completion provider is used as planner (`tool_choice=auto`) for OpenAI-compatible providers
 - planner emits tool calls
-- LoreVault executes calls locally over deterministic scope catalogs
+- LoreVault executes calls locally over deterministic lorebook catalogs
 - selected entries are rendered into a bounded `Tool Retrieval Context` block
 
 Hard limits per turn:
@@ -282,13 +282,13 @@ Story Chat has a separate bounded tool loop (`settings.storyChat.toolCalls.*`) t
 
 Available tools:
 
-- lorebook read/search (selected scopes only):
+- lorebook read/search (selected lorebooks only):
   - `search_lorebook_entries`
   - `get_lorebook_entry`
 - linked-story/manual-note read/search:
   - `search_story_notes`
   - `read_story_note`
-- active note-level author-note read/update (scope is implicit):
+- active note-level author-note read/update (selection is implicit):
   - `get_steering_scope`
   - `update_steering_scope`
 - optional lorebook note creation:
@@ -297,7 +297,7 @@ Available tools:
 Boundary contract:
 
 - no whole-vault traversal; tools are restricted to:
-  - selected lorebook scopes
+  - selected lorebooks
   - linked story note set (story thread + manually selected note refs)
   - the active note-level author note (`note`)
 - write tools require:
@@ -399,7 +399,7 @@ Runtime commands in `src/main.ts`:
 - `Split Active Story Note into Chapter Notes (Pick Folder)`
 - `Create Next Story Chapter`
 - `Fork Story from Active Note`
-- `Fork Active Lorebook Scope`
+- `Fork Active Lorebook`
 
 Contracts:
 
@@ -424,11 +424,11 @@ Contracts:
   - copies source Author Note markdown/frontmatter verbatim into the new Author Note
   - preserves forked story-note frontmatter, rewrites `authorNote` to the new forked Author Note link, and removes forward-link keys (`nextChapter`/`next`)
 - fork-lorebook utility:
-  - resolves source scope from active note scope first, then configured active scope
-  - prompts for new scope + target folder (`<Default Lorebook Import Location>/<new-scope>` prefill)
-  - copies all notes in the selected scope branch into the target folder with deterministic path allocation
+  - resolves source lorebook from active note lorebook first, then configured active lorebook
+  - prompts for new lorebook + target folder (`<Default Lorebook Import Location>/<new-lorebook>` prefill)
+  - copies all notes in the selected lorebook branch into the target folder with deterministic path allocation
   - rewrites internal wikilinks/markdown links to point to copied forked notes
-  - strips old lorebook inline tags from body text and rewrites frontmatter tags to the new lorebook scope
+  - strips old lorebook inline tags from body text and rewrites frontmatter tags to the new lorebook
 
 ## Auto Summary Internals (Phase 9)
 
@@ -436,7 +436,7 @@ Generation entrypoints in `src/main.ts`:
 
 - `Generate World Info Summary (Active Note)`
 - `Generate Chapter Summary (Active Note)`
-- `Generate World Info Summaries (Active Scope)`
+- `Generate World Info Summaries (Active Lorebook)`
 - `Generate Chapter Summaries (Current Story)`
 
 Flow:
@@ -465,7 +465,7 @@ Flow:
 
 1. capture selected editor range + source text
 2. open prompt modal (`src/text-command-modal.ts`)
-3. optionally retrieve lore context (scope/frontmatter resolution mirrors continuation behavior)
+3. optionally retrieve lore context (lorebook/frontmatter resolution mirrors continuation behavior)
 4. call completion provider with text-command system prompt + user prompt payload
 5. optionally record usage ledger entry (`operation = text_command_edit`)
 6. if auto-accept disabled, open review modal with side-by-side source diff (`src/text-command-review-modal.ts`)
@@ -502,7 +502,7 @@ Stored structure:
 - conversation context section (`Manual Context`)
 - per-conversation author-note refs (`note:*`)
 - per-conversation chapter/raw note refs
-- per-conversation lorebook scope selection
+- per-conversation lorebook selection
 - per-turn transcript sections (`## User` / `## Model`)
 - message versions with active version selector
 - assistant message info table includes generation/profile/context summary rows
@@ -600,8 +600,8 @@ Core contracts:
   - day/session
   - operation
   - provider:model
-  - lorebook scope
-- usage snapshots and warnings are profile-scoped (selected cost profile); full exports remain all-profiles
+  - lorebook
+- usage snapshots and warnings are scoped to the selected cost profile; full exports remain all-profiles
 - report CSV row ordering is deterministic (`timestamp ASC`, `id ASC`)
 
 Current non-goals in this phase:

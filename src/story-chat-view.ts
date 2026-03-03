@@ -115,7 +115,7 @@ class ScopePickerModal extends FuzzySuggestModal<string> {
     super(app);
     this.scopes = [...scopes].sort((a, b) => a.localeCompare(b));
     this.onChoose = onChoose;
-    this.setPlaceholder('Pick a lorebook scope to add...');
+    this.setPlaceholder('Pick a lorebook to add...');
   }
 
   getItems(): string[] {
@@ -608,7 +608,7 @@ export class StoryChatView extends ItemView {
       : `${telemetry.state}: ${telemetry.statusText}`;
 
     this.generationStateEl.setText(`Generation: ${status}`);
-    this.generationScopesEl.setText(`Scopes: ${scopes}`);
+    this.generationScopesEl.setText(`Lorebooks: ${scopes}`);
     this.generationTokensEl.setText(
       `Context window ${formatTokenValue(telemetry.contextWindowTokens)} | input ${formatTokenValue(telemetry.maxInputTokens)} | used ${formatTokenValue(telemetry.contextUsedTokens)} | remaining ${formatTokenValue(telemetry.contextRemainingTokens)}`
     );

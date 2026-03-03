@@ -7,18 +7,25 @@ import {
 } from '../src/scope-output-paths';
 
 test('resolveScopeOutputPaths keeps deterministic extensions', () => {
-  const resolved = resolveScopeOutputPaths('sillytavern/{scope}.json', 'universe/yggdrasil', false);
+  const resolved = resolveScopeOutputPaths('sillytavern/{lorebook}.json', 'universe/yggdrasil', false);
   assert.equal(resolved.worldInfoPath, 'lorebooks/sillytavern/universe-yggdrasil.json');
   assert.equal(resolved.ragPath, 'lorebooks/sillytavern/universe-yggdrasil.rag.md');
   assert.equal(resolved.sqlitePath, 'lorebooks/universe-yggdrasil.db');
 });
 
 test('resolveScopeOutputPaths appends slug regardless of build mode', () => {
-  const singleScope = resolveScopeOutputPaths('sillytavern/{scope}.json', 'universe/yggdrasil', false);
-  const multiScope = resolveScopeOutputPaths('sillytavern/{scope}.json', 'universe/yggdrasil', true);
+  const singleScope = resolveScopeOutputPaths('sillytavern/{lorebook}.json', 'universe/yggdrasil', false);
+  const multiScope = resolveScopeOutputPaths('sillytavern/{lorebook}.json', 'universe/yggdrasil', true);
   assert.equal(singleScope.worldInfoPath, multiScope.worldInfoPath);
   assert.equal(singleScope.ragPath, multiScope.ragPath);
   assert.equal(singleScope.sqlitePath, multiScope.sqlitePath);
+});
+
+test('resolveScopeOutputPaths supports {lorebook} token', () => {
+  const resolved = resolveScopeOutputPaths('{lorebook}/pack', 'Universe/Árc', false);
+  assert.equal(resolved.worldInfoPath, 'lorebooks/universe-rc/pack.json');
+  assert.equal(resolved.ragPath, 'lorebooks/universe-rc/pack.rag.md');
+  assert.equal(resolved.sqlitePath, 'lorebooks/universe-rc.db');
 });
 
 test('resolveScopeOutputPaths supports {scope} token', () => {
@@ -33,7 +40,7 @@ test('resolveScopeOutputPaths supports custom sqlite base path', () => {
     'sillytavern/pack.json',
     'universe/yggdrasil',
     true,
-    'packs/{scope}/canon.db'
+    'packs/{lorebook}/canon.db'
   );
   assert.equal(resolved.worldInfoPath, 'packs/universe-yggdrasil/sillytavern/pack-universe-yggdrasil.json');
   assert.equal(resolved.ragPath, 'packs/universe-yggdrasil/sillytavern/pack-universe-yggdrasil.rag.md');
@@ -65,11 +72,11 @@ test('resolveScopeOutputPaths rejects absolute downstream output patterns', () =
 
 test('resolveScopeOutputPaths rejects absolute sqlite output directories', () => {
   assert.throws(
-    () => resolveScopeOutputPaths('sillytavern/{scope}.json', 'world', false, '/tmp/lorebooks'),
+    () => resolveScopeOutputPaths('sillytavern/{lorebook}.json', 'world', false, '/tmp/lorebooks'),
     /Absolute filesystem paths are not supported/
   );
   assert.throws(
-    () => resolveScopeOutputPaths('sillytavern/{scope}.json', 'world', false, 'C:\\exports\\lorebooks'),
+    () => resolveScopeOutputPaths('sillytavern/{lorebook}.json', 'world', false, 'C:\\exports\\lorebooks'),
     /Absolute filesystem paths are not supported/
   );
 });

@@ -78,10 +78,10 @@ export class LorebooksManagerView extends ItemView {
 
   private renderScopeCard(container: HTMLElement, summary: ScopeSummary): void {
     const card = container.createDiv({ cls: 'lorevault-manager-card' });
-    card.createDiv({ cls: 'lorevault-manager-card-kicker', text: 'Lorebook Scope' });
+    card.createDiv({ cls: 'lorevault-manager-card-kicker', text: 'Lorebook' });
 
     const header = card.createDiv({ cls: 'lorevault-manager-card-header' });
-    header.createEl('h3', { text: `Scope: ${formatScopeLabel(summary.scope)}` });
+    header.createEl('h3', { text: `Lorebook: ${formatScopeLabel(summary.scope)}` });
 
     const stats = card.createEl('p', {
       text: `Included Notes: ${summary.includedNotes} | entries: ${summary.worldInfoEntries} | missing keywords: ${summary.keywordlessEntries}`
@@ -113,12 +113,12 @@ export class LorebooksManagerView extends ItemView {
           silentSuccessNotice: true
         });
         if (success) {
-          new Notice(`Scope export finished: ${formatScopeLabel(summary.scope)}`);
+          new Notice(`Lorebook export finished: ${formatScopeLabel(summary.scope)}`);
           this.render();
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        new Notice(`Scope build failed: ${message}`);
+        new Notice(`Lorebook build failed: ${message}`);
       }
     });
 
@@ -130,7 +130,7 @@ export class LorebooksManagerView extends ItemView {
 
   private renderScopesSection(container: HTMLElement, summaries: ScopeSummary[]): void {
     const section = container.createDiv({ cls: 'lorevault-manager-section' });
-    section.createEl('h3', { text: 'Lorebook Scopes' });
+    section.createEl('h3', { text: 'Lorebooks' });
     const grid = section.createDiv({ cls: 'lorevault-manager-scope-grid' });
 
     for (const summary of summaries) {
@@ -167,7 +167,7 @@ export class LorebooksManagerView extends ItemView {
 
     if (summaries.length === 0) {
       contentEl.createEl('p', {
-        text: 'No lorebook scopes found. Add tags under your configured prefix (for example #lorebook/universe).'
+        text: 'No lorebooks found. Add tags under your configured prefix (for example #lorebook/universe).'
       });
       return;
     }

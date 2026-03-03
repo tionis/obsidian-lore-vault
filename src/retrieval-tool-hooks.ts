@@ -376,9 +376,9 @@ function searchEntries(
   if (scopeValues.length === 0) {
     return {
       ok: false,
-      error: 'search_entries scope did not match active scopes.',
+      error: 'search_entries lorebook did not match active lorebooks.',
       selectedKeys: [],
-      trace: 'search_entries error: scope not active'
+      trace: 'search_entries error: lorebook not active'
     };
   }
 
@@ -512,7 +512,7 @@ function expandNeighbors(
   if (!sourceKey) {
     return {
       ok: false,
-      error: 'expand_neighbors could not resolve the requested entry in active scopes.',
+      error: 'expand_neighbors could not resolve the requested entry in active lorebooks.',
       selectedKeys: [],
       trace: `expand_neighbors error: entry ${uid} not found`
     };
@@ -630,7 +630,7 @@ function getEntry(
   if (!key) {
     return {
       ok: false,
-      error: 'get_entry could not resolve the requested entry in active scopes.',
+      error: 'get_entry could not resolve the requested entry in active lorebooks.',
       selectedKeys: [],
       trace: `get_entry error: entry ${uid} not found`
     };
@@ -771,7 +771,7 @@ function createPlannerUserPrompt(queryText: string, scopes: string[]): string {
     'Query text:',
     queryText.trim() || '(empty)',
     '',
-    `Active scopes: ${scopes.length > 0 ? scopes.map(getScopeLabel).join(', ') : '(none)'}`,
+    `Active lorebooks: ${scopes.length > 0 ? scopes.map(getScopeLabel).join(', ') : '(none)'}`,
     '',
     'Find the most relevant entries for this query.'
   ].join('\n');
@@ -783,7 +783,7 @@ export function createRetrievalToolDefinitions(): RetrievalToolDefinition[] {
       type: 'function',
       function: {
         name: 'search_entries',
-        description: 'Search world_info entries by query text and optional scope.',
+        description: 'Search world_info entries by query text and optional lorebook.',
         parameters: {
           type: 'object',
           properties: {
@@ -816,7 +816,7 @@ export function createRetrievalToolDefinitions(): RetrievalToolDefinition[] {
       type: 'function',
       function: {
         name: 'get_entry',
-        description: 'Fetch one entry by uid and optional scope.',
+        description: 'Fetch one entry by uid and optional lorebook.',
         parameters: {
           type: 'object',
           properties: {
@@ -861,7 +861,7 @@ export async function runModelDrivenRetrievalHooks(
       markdown: '',
       usedTokens: 0,
       selectedItems: [],
-      trace: ['tool_hooks: no active scopes'],
+      trace: ['tool_hooks: no active lorebooks'],
       executedCalls: 0,
       stopReason: 'completed',
       lastPlannerError: ''

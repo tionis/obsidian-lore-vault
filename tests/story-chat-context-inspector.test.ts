@@ -56,7 +56,7 @@ function buildMeta(overrides: Partial<StoryChatContextMeta> = {}): StoryChatCont
 
 test('buildStoryChatContextInspectorSummary exposes directive counts and scope list', () => {
   const summary = buildStoryChatContextInspectorSummary(buildMeta());
-  assert.match(summary, /scopes universe\/yggdrasil/);
+  assert.match(summary, /lorebooks universe\/yggdrasil/);
   assert.match(summary, /steering refs 1/);
   assert.match(summary, /directives 2/);
   assert.match(summary, /world_info 5/);
@@ -68,7 +68,7 @@ test('buildStoryChatContextInspectorLines renders inline directives and optional
   const lines = buildStoryChatContextInspectorLines(buildMeta());
   assert.ok(lines.includes('completion profile: base settings | model: (unknown)'));
   assert.ok(lines.includes('steering refs: note:stories/ch03.md'));
-  assert.ok(lines.includes('steering scopes: global:global, story:chronicles-main'));
+  assert.ok(lines.includes('steering lorebooks: global:global, story:chronicles-main'));
   assert.ok(lines.includes('unresolved steering refs: (none)'));
   assert.ok(lines.includes('inline directives: Keep POV narrow | Do not resolve cliffhanger'));
   assert.ok(lines.includes('chat tools: calls get_steering_scope: note:lvn-abc123'));
@@ -104,7 +104,7 @@ test('buildStoryChatContextInspectorLines renders none markers when optional lis
 
   assert.ok(lines.includes('inline directives: (none)'));
   assert.ok(lines.includes('steering refs: (none)'));
-  assert.ok(lines.includes('steering scopes: (none)'));
+  assert.ok(lines.includes('steering lorebooks: (none)'));
   assert.ok(lines.includes('unresolved steering refs: (none)'));
   assert.ok(lines.includes('chat tools: calls (none)'));
   assert.ok(lines.includes('chat tools: writes (none)'));

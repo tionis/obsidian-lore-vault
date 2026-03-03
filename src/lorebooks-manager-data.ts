@@ -175,10 +175,10 @@ export function buildScopeSummaries(
 
     const warnings: string[] = [];
     if (includedNotes === 0) {
-      warnings.push('No notes are included in this scope.');
+      warnings.push('No notes are included in this lorebook.');
     }
     if (worldInfoEntries === 0) {
-      warnings.push('No lore entries in this scope.');
+      warnings.push('No lore entries in this lorebook.');
     }
     if (keywordlessEntries > 0) {
       warnings.push(`${keywordlessEntries} entries are missing explicit keywords.`);

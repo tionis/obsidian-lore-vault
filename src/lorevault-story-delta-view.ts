@@ -357,7 +357,7 @@ export class LorevaultStoryDeltaView extends ItemView {
   private async collectTargetPages(): Promise<StoryDeltaExistingPageInput[]> {
     const selectedScopes = this.getNormalizedSelectedScopes();
     if (selectedScopes.length === 0) {
-      throw new Error('Select at least one lorebook scope to consider.');
+      throw new Error('Select at least one lorebook to consider.');
     }
 
     const prefix = this.plugin.settings.tagScoping.tagPrefix;
@@ -455,7 +455,7 @@ export class LorevaultStoryDeltaView extends ItemView {
       new Notice('No additional lorebooks available.');
       return null;
     }
-    const modal = new LorebookScopeSuggestModal(this.app, uniqueScopes, 'Pick a lorebook scope to add...');
+    const modal = new LorebookScopeSuggestModal(this.app, uniqueScopes, 'Pick a lorebook to add...');
     const selectionPromise = modal.waitForSelection();
     modal.open();
     return selectionPromise;
@@ -1064,7 +1064,7 @@ export class LorevaultStoryDeltaView extends ItemView {
         }));
 
     new Setting(contentEl)
-      .setName('Source Scope')
+      .setName('Source Range')
       .setDesc('How Source Story Note Path is expanded when Story Markdown is empty.')
       .addDropdown(dropdown => {
         dropdown.addOption('note', 'Note (selected note only)');
@@ -1124,7 +1124,7 @@ export class LorevaultStoryDeltaView extends ItemView {
 
     const scopesSetting = new Setting(contentEl)
       .setName('Lorebooks to Consider')
-      .setDesc('Only notes in these lorebook scopes are considered for existing-page updates.');
+      .setDesc('Only notes in these lorebooks are considered for existing-page updates.');
     const selectedList = scopesSetting.controlEl.createDiv({ cls: 'lorevault-import-review-list' });
     if (selectedScopes.length === 0) {
       selectedList.createEl('p', { text: 'No lorebooks selected.' });

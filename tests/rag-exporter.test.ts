@@ -95,6 +95,6 @@ test('RagExporter falls back to _No content_ for empty note bodies', async () =>
 
   assert.equal(writes.length, 1);
   assert.deepEqual(createdFolders, ['exports']);
-  assert.ok(writes[0].content.includes('Scope: `(all)`'));
+  assert.ok(writes[0].content.includes('Lorebook: `(all)`'));
   assert.ok(writes[0].content.includes('_No content_'));
 });

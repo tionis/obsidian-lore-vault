@@ -19,7 +19,13 @@ export interface ScopeOutputAssignment {
 }
 
 const DEFAULT_SQLITE_OUTPUT_DIR = 'lorebooks';
-const DEFAULT_DOWNSTREAM_SUBPATH = 'sillytavern/{scope}.json';
+const DEFAULT_DOWNSTREAM_SUBPATH = 'sillytavern/{lorebook}.json';
+
+function replaceLorebookToken(value: string, replacement: string): string {
+  return value
+    .replace(/\{lorebook\}/g, replacement)
+    .replace(/\{scope\}/g, replacement);
+}
 
 function normalizeVaultPathSeparators(value: string): string {
   return value.replace(/\\/g, '/');
@@ -44,14 +50,14 @@ function resolveSqlitePath(scopeSlug: string, sqliteBaseOutputPath?: string): st
 
   if (hasDbExt) {
     const rawStem = configured.slice(0, -sqliteExt.length);
-    const stemWithScope = rawStem.includes('{scope}')
-      ? rawStem.replace(/\{scope\}/g, scopeSlug)
+    const stemWithScope = rawStem.includes('{lorebook}') || rawStem.includes('{scope}')
+      ? replaceLorebookToken(rawStem, scopeSlug)
       : `${rawStem}-${scopeSlug}`;
     return normalizeVaultPathSeparators(`${stemWithScope}.db`);
   }
 
-  const outputDir = configured.includes('{scope}')
-    ? configured.replace(/\{scope\}/g, scopeSlug)
+  const outputDir = configured.includes('{lorebook}') || configured.includes('{scope}')
+    ? replaceLorebookToken(configured, scopeSlug)
     : configured;
   return normalizeVaultPathSeparators(joinVaultPath(outputDir, `${scopeSlug}.db`));
 }
@@ -80,8 +86,8 @@ export function resolveScopeOutputPaths(
     : downstreamBasePath;
 
   let stemWithScope = stem;
-  if (stem.includes('{scope}')) {
-    stemWithScope = stem.replace(/\{scope\}/g, scopeSlug);
+  if (stem.includes('{lorebook}') || stem.includes('{scope}')) {
+    stemWithScope = replaceLorebookToken(stem, scopeSlug);
   } else {
     stemWithScope = `${stem}-${scopeSlug}`;
   }
@@ -119,7 +125,7 @@ export function assertUniqueOutputPaths(
       const key = `${kind}:${toCollisionKey(outputPath)}`;
       const existingScope = seenByPath.get(key);
       if (existingScope && existingScope !== assignment.scope) {
-        collisions.add(`${kind} path "${outputPath}" from scopes "${existingScope}" and "${assignment.scope}"`);
+        collisions.add(`${kind} path "${outputPath}" from lorebooks "${existingScope}" and "${assignment.scope}"`);
       } else if (!existingScope) {
         seenByPath.set(key, assignment.scope);
       }

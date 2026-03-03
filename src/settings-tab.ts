@@ -677,9 +677,9 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Downstream Export Path Pattern')
-      .setDesc('Relative path under each lorebook output folder (SQLite Output Directory). Example: sillytavern/{scope}.json -> sillytavern/<scope>.json and .rag.md.')
+      .setDesc('Relative path under each lorebook output folder (SQLite Output Directory). Example: sillytavern/{lorebook}.json -> sillytavern/<lorebook>.json and .rag.md.')
       .addText(text => text
-        .setPlaceholder('sillytavern/{scope}.json')
+        .setPlaceholder('sillytavern/{lorebook}.json')
         .setValue(this.plugin.settings.outputPath)
         .onChange(async (value) => {
           this.plugin.settings.outputPath = this.normalizePathInput(value);
@@ -707,8 +707,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           });
         }));
 
-    // Lorebook Scope section
-    containerEl.createEl('h3', { text: 'Lorebook Scope' });
+    // Lorebook selection section
+    containerEl.createEl('h3', { text: 'Lorebook Selection' });
 
     new Setting(containerEl)
       .setName('Lorebook Tag Prefix')
@@ -722,8 +722,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Active Scope')
-      .setDesc('Optional scope path under the tag prefix, e.g. universe/yggdrasil (empty = all lorebook tags)')
+      .setName('Active Lorebook')
+      .setDesc('Optional lorebook path under the tag prefix, e.g. universe/yggdrasil (empty = all lorebook tags)')
       .addText(text => text
         .setPlaceholder('universe/yggdrasil')
         .setValue(this.plugin.settings.tagScoping.activeScope)
@@ -734,7 +734,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Membership Mode')
-      .setDesc('Exact: include only exact scope tags. Cascade: include exact scope, parent scopes, and child scopes.')
+      .setDesc('Exact: include only exact lorebook tags. Cascade: include exact lorebook, parent lorebooks, and child lorebooks.')
       .addDropdown(dropdown => dropdown
         .addOptions({
           'exact': 'Exact',
@@ -1005,7 +1005,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Enable SQLite Pack Export')
-      .setDesc('Write a SQLite pack per built scope.')
+      .setDesc('Write a SQLite pack per built lorebook.')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.sqlite.enabled)
         .onChange(async (value) => {
@@ -1016,7 +1016,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     let sqliteOutputInput: TextComponent | null = null;
     const sqliteOutputSetting = new Setting(containerEl)
       .setName('SQLite Output Directory')
-      .setDesc('Vault-relative directory for canonical SQLite packs. Type a path or browse existing folders. LoreVault writes one <scope>.db per lorebook.')
+      .setDesc('Vault-relative directory for canonical SQLite packs. Type a path or browse existing folders. LoreVault writes one <lorebook>.db per lorebook.')
       .addText(text => {
         sqliteOutputInput = text;
         text
@@ -1041,7 +1041,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Export Freshness Policy')
-      .setDesc('Controls canonical export freshness. manual: only explicit Build/Export. on_build: refresh only when build commands run. background_debounced: auto-rebuild impacted scopes after vault edits.')
+      .setDesc('Controls canonical export freshness. manual: only explicit Build/Export. on_build: refresh only when build commands run. background_debounced: auto-rebuild impacted lorebooks after vault edits.')
       .addDropdown(dropdown => dropdown
         .addOptions({
           manual: 'manual',
@@ -1060,7 +1060,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Background Export Debounce (ms)')
-      .setDesc('Used only for background_debounced policy. LoreVault waits this long after edits before rebuilding impacted scopes.')
+      .setDesc('Used only for background_debounced policy. LoreVault waits this long after edits before rebuilding impacted lorebooks.')
       .addText(text => text
         .setValue(String(this.plugin.settings.sqlite.backgroundDebounceMs ?? 1800))
         .onChange(async value => {
@@ -2132,8 +2132,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     let scopeBudgetDraft = this.formatBudgetMapInput(selectedBudgetSettings.budgetByScopeUsd);
     new Setting(containerEl)
-      .setName('Budget by Scope (USD)')
-      .setDesc(`Optional lorebook-scope budgets for "${selectedBudgetProfileLabel}". One per line: scope=value (for example universe/main=3.5).`)
+      .setName('Budget by Lorebook (USD)')
+      .setDesc(`Optional lorebook budgets for "${selectedBudgetProfileLabel}". One per line: lorebook=value (for example universe/main=3.5).`)
       .addTextArea(text => {
         text.inputEl.rows = 3;
         text
@@ -2149,10 +2149,10 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           try {
             selectedBudgetSettings.budgetByScopeUsd = this.parseBudgetMapInput(scopeBudgetDraft);
             await persistSelectedBudgetSettings();
-            new Notice('Applied scope budgets.');
+            new Notice('Applied lorebook budgets.');
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            new Notice(`Invalid scope budgets: ${message}`);
+            new Notice(`Invalid lorebook budgets: ${message}`);
           }
         }));
 

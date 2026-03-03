@@ -37,7 +37,7 @@ export class RagExporter {
     const markdown = [
       '# LoreVault RAG Pack',
       '',
-      `Scope: \`${normalizedScopeLabel}\``,
+      `Lorebook: \`${normalizedScopeLabel}\``,
       '',
       sections.join('\n---\n\n')
     ].join('\n');

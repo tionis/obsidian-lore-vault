@@ -371,10 +371,10 @@ export class LorebooksQuerySimulationView extends ItemView {
 
   private renderScopeSelector(container: HTMLElement, availableScopes: string[]): void {
     const section = container.createDiv({ cls: 'lorevault-routing-section' });
-    section.createEl('h3', { text: 'Scopes to Simulate' });
+    section.createEl('h3', { text: 'Lorebooks to Simulate' });
     section.createEl('p', {
       cls: 'lorevault-routing-subtle',
-      text: 'Query runs once per selected lorebook scope with token budget split evenly across selected scopes.'
+      text: 'Query runs once per selected lorebook with token budget split evenly across selected lorebooks.'
     });
 
     const actions = section.createDiv({ cls: 'lorevault-routing-query-controls' });
@@ -676,12 +676,12 @@ export class LorebooksQuerySimulationView extends ItemView {
     const totalWorldInfo = successful.reduce((sum, item) => sum + (item.result?.worldInfo.length ?? 0), 0);
     const totalRag = successful.reduce((sum, item) => sum + (item.result?.rag.length ?? 0), 0);
     section.createEl('p', {
-      text: `Scopes: ${this.results.length} | used tokens: ${totalUsed} | world_info ${totalWorldInfo} | fallback ${totalRag}`
+      text: `Lorebooks: ${this.results.length} | used tokens: ${totalUsed} | world_info ${totalWorldInfo} | fallback ${totalRag}`
     });
 
     for (const scopeResult of this.results) {
       const details = section.createEl('details', { cls: 'lorevault-routing-entry' });
-      details.createEl('summary', { text: `Scope ${formatScopeLabel(scopeResult.scope)}` });
+      details.createEl('summary', { text: `Lorebook ${formatScopeLabel(scopeResult.scope)}` });
 
       if (scopeResult.error) {
         details.createEl('p', {
@@ -808,7 +808,7 @@ export class LorebooksQuerySimulationView extends ItemView {
 
     const scopes = [...this.selectedScopes].sort((a, b) => a.localeCompare(b));
     if (scopes.length === 0) {
-      new Notice('Select at least one scope.');
+      new Notice('Select at least one lorebook.');
       return;
     }
 
@@ -859,7 +859,7 @@ export class LorebooksQuerySimulationView extends ItemView {
 
     const scopes = this.discoverScopes();
     if (scopes.length === 0) {
-      contentEl.createEl('p', { text: 'No lorebook scopes found.' });
+      contentEl.createEl('p', { text: 'No lorebooks found.' });
       return;
     }
 

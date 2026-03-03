@@ -1109,7 +1109,7 @@ export function serializeConversationMarkdown(document: ConversationDocument): s
         const meta = version.contextMeta;
         lines.push(`> | Completion Profile | ${toProfileLabel(meta)} |`);
         lines.push(`> | Completion Model | ${meta.completionModel?.trim() || '(unknown)'} |`);
-        lines.push(`> | Scopes | ${toListOrNone(meta.scopes)} |`);
+        lines.push(`> | Lorebooks | ${toListOrNone(meta.scopes)} |`);
         lines.push(`> | Context Tokens | ${String(meta.contextTokens)} |`);
         lines.push(`> | world_info Count | ${String(meta.worldInfoCount)} |`);
         lines.push(`> | Fallback Count | ${String(meta.ragCount)} |`);

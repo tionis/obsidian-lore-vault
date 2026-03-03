@@ -405,8 +405,8 @@ Contracts:
   - prompts for a new note name (prefilled with source note name, must differ)
   - creates fork note in the same folder as the source note
   - creates a new derived Author Note for the fork and links the fork to it
-  - copies source Author Note markdown/frontmatter into the new Author Note
-  - preserves `previousChapter` refs and clears `nextChapter` refs on the forked chapter metadata to avoid forward-branch mixing
+  - copies source Author Note markdown/frontmatter verbatim into the new Author Note
+  - preserves forked story-note frontmatter, rewrites `authorNote` to the new forked Author Note link, and removes forward-link keys (`nextChapter`/`next`)
 - fork-lorebook utility:
   - resolves source scope from active note scope first, then configured active scope
   - prompts for new scope + target folder (`<Default Lorebook Import Location>/<new-scope>` prefill)

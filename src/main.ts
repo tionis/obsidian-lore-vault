@@ -154,6 +154,7 @@ import {
   resolveChapterMemoryExcerptSectionTokenRange
 } from './context-window-strategy';
 import { renderInlineLoreDirectivesAsTags, stripInlineLoreDirectives } from './inline-directives';
+import { slugifyIdentifier } from './hash-utils';
 import {
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
@@ -7503,31 +7504,37 @@ export default class LoreBookConverterPlugin extends Plugin {
     return `${normalizeVaultPath(targetPathNoExt)}.md`;
   }
 
-  private buildForkedStoryMarkdown(activeFile: TFile, sourceMarkdown: string): string {
-    const cache = this.app.metadataCache.getFileCache(activeFile);
-    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-    const hasChapterFields = (
-      getFrontmatterValue(frontmatter, 'chapter', 'chapterIndex', 'scene') !== undefined ||
-      getFrontmatterValue(frontmatter, 'chapterTitle', 'sceneTitle') !== undefined ||
-      getFrontmatterValue(frontmatter, 'previousChapter', 'previous', 'prevChapter', 'prev') !== undefined ||
-      getFrontmatterValue(frontmatter, 'nextChapter', 'next') !== undefined
-    );
-    if (!hasChapterFields) {
-      return sourceMarkdown;
-    }
+  private buildForkedStoryMarkdown(sourceMarkdown: string): string {
+    return sourceMarkdown;
+  }
 
-    const node = this.getStoryThreadNodeForFile(activeFile);
-    if (!node) {
-      return sourceMarkdown;
+  private async resolveForkedAuthorNotePath(forkStoryFile: TFile): Promise<string> {
+    const folder = normalizeVaultRelativePath(this.getStorySteeringFolderPath());
+    const stem = slugifyIdentifier(`${forkStoryFile.basename}-author-note`) || 'author-note';
+    const basePath = joinVaultPath(folder, `${stem}.md`);
+    let candidatePath = basePath;
+    let suffix = 2;
+    while (await this.app.vault.adapter.exists(candidatePath)) {
+      candidatePath = basePath.replace(/\.md$/i, `-${suffix}.md`);
+      suffix += 1;
     }
+    return normalizeVaultPath(candidatePath);
+  }
 
-    const explicitStoryId = (asString(getFrontmatterValue(frontmatter, 'storyId', 'story')) ?? '').trim();
-    return upsertStoryChapterFrontmatter(sourceMarkdown, {
-      storyId: explicitStoryId,
-      chapter: node.chapter,
-      chapterTitle: node.chapterTitle || node.title || activeFile.basename,
-      previousChapterRefs: node.previousChapterRefs,
-      nextChapterRefs: []
+  private async setForkStoryAuthorNoteLink(storyFile: TFile, authorNoteFile: TFile): Promise<void> {
+    const linkedPath = normalizeLinkTarget(authorNoteFile.path);
+    const normalizeFrontmatterKey = (value: string): string => value
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, '');
+    await this.app.fileManager.processFrontMatter(storyFile, frontmatter => {
+      frontmatter.authorNote = `[[${linkedPath}]]`;
+      for (const key of Object.keys(frontmatter)) {
+        const normalizedKey = normalizeFrontmatterKey(key);
+        if (normalizedKey === 'nextchapter' || normalizedKey === 'next') {
+          delete frontmatter[key];
+        }
+      }
     });
   }
 
@@ -7536,12 +7543,19 @@ export default class LoreBookConverterPlugin extends Plugin {
     forkStoryFile: TFile
   ): Promise<TFile> {
     const sourceAuthorNote = await this.storySteeringStore.resolveAuthorNoteFileForStory(sourceStoryFile);
-    const forkAuthorNote = await this.storySteeringStore.ensureAuthorNoteForStory(forkStoryFile);
-    if (sourceAuthorNote instanceof TFile && sourceAuthorNote.path !== forkAuthorNote.path) {
-      const sourceMarkdown = await this.app.vault.cachedRead(sourceAuthorNote);
-      await this.app.vault.modify(forkAuthorNote, sourceMarkdown);
-      await this.storySteeringStore.linkStoryToAuthorNote(forkStoryFile, forkAuthorNote);
+    if (!(sourceAuthorNote instanceof TFile)) {
+      return this.storySteeringStore.ensureAuthorNoteForStory(forkStoryFile);
     }
+
+    const forkAuthorNotePath = await this.resolveForkedAuthorNotePath(forkStoryFile);
+    await ensureParentVaultFolderForFile(this.app, forkAuthorNotePath);
+    const sourceMarkdown = await this.app.vault.cachedRead(sourceAuthorNote);
+    await this.app.vault.create(forkAuthorNotePath, sourceMarkdown);
+    const forkAuthorNote = this.app.vault.getAbstractFileByPath(forkAuthorNotePath);
+    if (!(forkAuthorNote instanceof TFile)) {
+      throw new Error(`Failed to create forked author note at ${forkAuthorNotePath}`);
+    }
+    await this.setForkStoryAuthorNoteLink(forkStoryFile, forkAuthorNote);
     return forkAuthorNote;
   }
 
@@ -7571,7 +7585,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const sourceMarkdown = await this.app.vault.cachedRead(activeFile);
-    const forkMarkdown = this.buildForkedStoryMarkdown(activeFile, sourceMarkdown);
+    const forkMarkdown = this.buildForkedStoryMarkdown(sourceMarkdown);
     await ensureParentVaultFolderForFile(this.app, targetPath);
     await this.app.vault.create(targetPath, forkMarkdown);
 

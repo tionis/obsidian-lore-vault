@@ -518,7 +518,10 @@ Current behavior:
 - create-next command creates a new chapter note in the active note folder, sets current note `nextChapter`, sets new note `previousChapter`, and links the new note to the same Author Note.
 - create-next chapter is exposed in Story Writing panel (and command palette), not editor context menu.
 - fork-story command prompts for a new note name (prefilled from active note), creates a copied note in the same folder, creates a new derived Author Note, links the fork to the new Author Note, and copies source Author Note markdown/frontmatter into the new Author Note.
-- forked chapter notes preserve `previousChapter` refs and clear `nextChapter` refs to avoid mixing forward branch content.
+- fork-story keeps story frontmatter unchanged except:
+  - `authorNote` is rewritten to the forked Author Note link
+  - forward-link keys (`nextChapter`/`next`) are removed to avoid branch-mixing with downstream chapters
+- when a source Author Note exists, its markdown (including frontmatter like `lorebooks` and `completionProfile`) is copied verbatim into the forked Author Note.
 
 ## Cost Tracking (Experimental, Phase 13)
 

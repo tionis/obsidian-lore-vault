@@ -28,6 +28,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       ...(overrides.weights ?? {})
     },
     outputPath: overrides.outputPath ?? '',
+    defaultLorebookImportLocation: overrides.defaultLorebookImportLocation ?? 'LoreVault/import',
     defaultLoreBook: {
       orderByTitle: false,
       useDroste: true,

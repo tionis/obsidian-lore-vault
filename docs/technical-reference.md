@@ -12,6 +12,7 @@ This document is the implementation-level reference for core architecture and ru
   - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings` for Story Writing; `chat preset -> device preset -> base settings` for Story Chat)
   - API key hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs; plugin only creates missing secrets and never overwrites existing values
   - device-local profile state via Obsidian local storage (active Story Writing preset, active Story Chat preset, and optional cost profile label; auto API-key hash fallback when blank)
+  - lorebook fork utility (`Fork Active Lorebook Scope`): deterministic branch copy + internal link rewrite + retagging
   - story-chat turn orchestration
   - vault-backed LLM operation log persistence (`operationLog` settings) with per-cost-profile JSONL namespace + explorer-view refresh hooks
 - `src/live-context-index.ts`
@@ -120,10 +121,12 @@ This document is the implementation-level reference for core architecture and ru
 - `src/lorevault-import-view.ts`
   - import panel UI (`Import SillyTavern Lorebook`)
   - lorebook list add/remove UX (interactive picker + Enter-to-add)
+  - target-folder default sourced from shared setting `defaultLorebookImportLocation`
   - staged progress reporting for parse/build/apply
 - `src/lorevault-story-extract-view.ts`
   - extraction panel (`Extract Wiki Pages from Story`) with preview/apply flow
   - explicit completion profile selection + chunk/apply progress status
+  - target-folder default sourced from shared setting `defaultLorebookImportLocation`
 - `src/story-extraction.ts`
   - deterministic chunking
   - per-chunk extraction prompt/validation
@@ -380,6 +383,7 @@ Runtime commands in `src/main.ts`:
 - `Split Active Story Note into Chapter Notes (Pick Folder)`
 - `Create Next Story Chapter`
 - `Fork Story from Active Note`
+- `Fork Active Lorebook Scope`
 
 Contracts:
 
@@ -403,6 +407,12 @@ Contracts:
   - creates a new derived Author Note for the fork and links the fork to it
   - copies source Author Note markdown/frontmatter into the new Author Note
   - preserves `previousChapter` refs and clears `nextChapter` refs on the forked chapter metadata to avoid forward-branch mixing
+- fork-lorebook utility:
+  - resolves source scope from active note scope first, then configured active scope
+  - prompts for new scope + target folder (`<Default Lorebook Import Location>/<new-scope>` prefill)
+  - copies all notes in the selected scope branch into the target folder with deterministic path allocation
+  - rewrites internal wikilinks/markdown links to point to copied forked notes
+  - strips old lorebook inline tags from body text and rewrites frontmatter tags to the new lorebook scope
 
 ## Auto Summary Internals (Phase 9)
 

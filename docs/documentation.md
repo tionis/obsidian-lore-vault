@@ -646,9 +646,14 @@ Commands:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
+- `Fork Active Lorebook Scope`
 - `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
 
 Shared panel inputs:
+
+- shared default target folder setting:
+  - `Default Lorebook Import Location` (settings, default `LoreVault/import`)
+  - used to prefill target folder in import, extraction, and lorebook-fork flows
 
 - `Import SillyTavern Lorebook`:
   - target folder (manual path or Browse picker)
@@ -667,6 +672,13 @@ Shared panel inputs:
   - `New Note Target Folder` (used only for new-note creation)
   - default tags
   - completion profile selector used for lorebook-update model calls
+- `Fork Active Lorebook Scope`:
+  - source lorebook scope resolved from active note scope first, then configured active scope
+  - prompts for new lorebook scope + target folder
+  - default folder prefilled as `<Default Lorebook Import Location>/<new-scope>`
+  - copies all notes in source-scope branch into target folder with deterministic path allocation
+  - rewrites internal wikilinks/markdown links to the forked note paths
+  - strips old lorebook inline tags from body text and writes the new lorebook tag in frontmatter
 
 Implemented now:
 
@@ -690,6 +702,7 @@ Implemented now:
   - import panel reports parse/build/apply stages and per-file write progress
   - extraction panel reports chunk-by-chunk progress and apply-write progress
   - story-delta panel reports chunk-by-chunk progress and apply-write progress
+- lorebook fork reports deterministic completion summary with created note count
 - lorebook update is exposed via both commands:
   - `Apply Story Delta to Existing Wiki`
   - `Open Lorebook Update` (alias command)

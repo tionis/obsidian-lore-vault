@@ -340,6 +340,7 @@ export interface ConverterSettings {
     file_depth: number;
   };
   outputPath: string;
+  defaultLorebookImportLocation: string;
   defaultLoreBook: {
     orderByTitle: boolean;
     useDroste: boolean;
@@ -497,6 +498,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     file_depth: 850
   },
   outputPath: 'sillytavern/{scope}.json',
+  defaultLorebookImportLocation: 'LoreVault/import',
   defaultLoreBook: {
     orderByTitle: false,
     useDroste: true,

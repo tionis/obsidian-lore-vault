@@ -184,8 +184,10 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
+        '`Fork Active Lorebook Scope`: clone one lorebook scope into a new scope/folder and rewrite internal links to the forked pages.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',
-        'All three panels show staged progress while preview/apply is running.',
+        'Import/Extraction/Fork default target folder is controlled by `Default Lorebook Import Location` in settings.',
+        'All panels show staged progress while preview/apply is running.',
         'Story-delta and rewrite review steps show side-by-side source diffs at the point where you accept/reject changes.'
       ],
       actions: [

@@ -69,6 +69,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
     },
     weights,
     outputPath: '',
+    defaultLorebookImportLocation: 'LoreVault/import',
     defaultLoreBook: {
       orderByTitle: false,
       useDroste: true,

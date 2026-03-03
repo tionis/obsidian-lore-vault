@@ -489,6 +489,121 @@ class StoryForkNameModal extends Modal {
   }
 }
 
+interface LorebookForkRequest {
+  targetScope: string;
+  targetFolder: string;
+}
+
+class LorebookForkModal extends Modal {
+  private readonly sourceScope: string;
+  private readonly defaultTargetFolder: string;
+  private resolveResult: ((value: LorebookForkRequest | null) => void) | null = null;
+  private settled = false;
+  private scopeInputEl: HTMLInputElement | null = null;
+  private folderInputEl: HTMLInputElement | null = null;
+
+  constructor(app: App, sourceScope: string, defaultTargetFolder: string) {
+    super(app);
+    this.sourceScope = sourceScope;
+    this.defaultTargetFolder = defaultTargetFolder;
+  }
+
+  waitForResult(): Promise<LorebookForkRequest | null> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  onOpen(): void {
+    this.setTitle('Fork Lorebook');
+    this.contentEl.empty();
+    this.contentEl.createEl('p', {
+      text: `Create a lorebook fork from "${this.sourceScope}" by choosing a new lorebook scope and target folder.`
+    });
+
+    const scopeRow = this.contentEl.createDiv({ cls: 'lorevault-modal-input-row' });
+    scopeRow.createEl('label', { text: 'New Lorebook Scope' });
+    const scopeInput = scopeRow.createEl('input', {
+      type: 'text',
+      cls: 'lorevault-modal-input'
+    });
+    scopeInput.value = this.sourceScope;
+    scopeInput.placeholder = 'universe/my-fork';
+    scopeInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.submit();
+      }
+    });
+    this.scopeInputEl = scopeInput;
+
+    const folderRow = this.contentEl.createDiv({ cls: 'lorevault-modal-input-row' });
+    folderRow.createEl('label', { text: 'Target Folder' });
+    const folderInput = folderRow.createEl('input', {
+      type: 'text',
+      cls: 'lorevault-modal-input'
+    });
+    folderInput.value = this.defaultTargetFolder;
+    folderInput.placeholder = 'LoreVault/import/my-fork';
+    folderInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.submit();
+      }
+    });
+    this.folderInputEl = folderInput;
+    const browseButton = folderRow.createEl('button', { text: 'Browse' });
+    browseButton.addEventListener('click', () => {
+      openVaultFolderPicker(this.app, path => {
+        if (this.folderInputEl) {
+          this.folderInputEl.value = path;
+        }
+      });
+    });
+
+    const actions = this.contentEl.createDiv({ cls: 'lorevault-modal-actions' });
+    const cancelButton = actions.createEl('button', { text: 'Cancel' });
+    cancelButton.addEventListener('click', () => this.close());
+
+    const submitButton = actions.createEl('button', { text: 'Create Fork' });
+    submitButton.addClass('mod-cta');
+    submitButton.addEventListener('click', () => this.submit());
+
+    window.setTimeout(() => {
+      this.scopeInputEl?.focus();
+      this.scopeInputEl?.select();
+    }, 0);
+  }
+
+  onClose(): void {
+    this.finish(null);
+  }
+
+  private submit(): void {
+    const targetScope = this.scopeInputEl?.value.trim() ?? '';
+    const targetFolder = this.folderInputEl?.value.trim() ?? '';
+    if (!targetScope) {
+      new Notice('New lorebook scope cannot be empty.');
+      return;
+    }
+    if (!targetFolder) {
+      new Notice('Target folder cannot be empty.');
+      return;
+    }
+    this.finish({ targetScope, targetFolder });
+    this.close();
+  }
+
+  private finish(value: LorebookForkRequest | null): void {
+    if (this.settled) {
+      return;
+    }
+    this.settled = true;
+    this.resolveResult?.(value);
+    this.resolveResult = null;
+  }
+}
+
 const LOREVAULT_DEVICE_STATE_KEY = 'lorevault/device-state/v1';
 const AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY = 'completionProfile';
 const COMPLETION_PRESET_SECRET_PREFIX = 'lorevault-completion-';
@@ -521,6 +636,10 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   private getBaseOutputPath(): string {
     return this.settings.outputPath?.trim() || DEFAULT_SETTINGS.outputPath;
+  }
+
+  public getDefaultLorebookImportLocation(): string {
+    return this.settings.defaultLorebookImportLocation?.trim() || DEFAULT_SETTINGS.defaultLorebookImportLocation;
   }
 
   private getRawOperationLogBasePath(): string {
@@ -5896,6 +6015,17 @@ export default class LoreBookConverterPlugin extends Plugin {
       console.warn(`Invalid downstream output path "${merged.outputPath}". Falling back to default.`);
       merged.outputPath = DEFAULT_SETTINGS.outputPath;
     }
+    const mergedDefaultImportLocation = (merged.defaultLorebookImportLocation ?? '').toString().trim().replace(/\\/g, '/');
+    try {
+      merged.defaultLorebookImportLocation = normalizeVaultRelativePath(
+        mergedDefaultImportLocation || DEFAULT_SETTINGS.defaultLorebookImportLocation
+      );
+    } catch {
+      console.warn(
+        `Invalid default lorebook import location "${merged.defaultLorebookImportLocation}". Falling back to default.`
+      );
+      merged.defaultLorebookImportLocation = DEFAULT_SETTINGS.defaultLorebookImportLocation;
+    }
 
     // Keep settings valid even when older config files contain incomplete trigger config.
     if (merged.defaultEntry.constant) {
@@ -6974,6 +7104,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'fork-active-lorebook-scope',
+      name: 'Fork Active Lorebook Scope',
+      callback: () => {
+        void this.forkActiveLorebookScope().catch(error => {
+          console.error('LoreVault: Failed to fork lorebook scope:', error);
+          new Notice(`Failed to fork lorebook scope: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
       id: 'generate-chapter-summary-active-note',
       name: 'Generate Chapter Summary (Active Note)',
       callback: () => {
@@ -7442,6 +7583,357 @@ export default class LoreBookConverterPlugin extends Plugin {
     const forkAuthorNote = await this.ensureForkedAuthorNote(activeFile, forkStoryFile);
     await this.app.workspace.getLeaf(true).openFile(forkStoryFile);
     new Notice(`Fork created: ${forkStoryFile.path} (author note: ${forkAuthorNote.path})`);
+  }
+
+  private normalizeLorebookScopeForFork(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/\\/g, '/')
+      .replace(/[^a-z0-9/_\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/\/+/g, '/')
+      .replace(/-+/g, '-')
+      .replace(/^[-/]+|[-/]+$/g, '');
+  }
+
+  private buildDefaultLorebookForkFolder(targetScope: string): string {
+    const base = this.getDefaultLorebookImportLocation();
+    if (!targetScope) {
+      return base;
+    }
+    return normalizeVaultPath(joinVaultPath(base, targetScope));
+  }
+
+  private async promptForLorebookForkRequest(sourceScope: string): Promise<LorebookForkRequest | null> {
+    const suggestedScope = `${sourceScope}-fork`;
+    const modal = new LorebookForkModal(
+      this.app,
+      sourceScope,
+      this.buildDefaultLorebookForkFolder(suggestedScope)
+    );
+    const resultPromise = modal.waitForResult();
+    modal.open();
+    return resultPromise;
+  }
+
+  private collectLorebookFilesForFork(sourceScope: string): TFile[] {
+    const normalizedSourceScope = normalizeScope(sourceScope);
+    const branchPrefix = `${normalizedSourceScope}/`;
+    return this.app.vault
+      .getMarkdownFiles()
+      .filter(file => {
+        const scopes = this.getLorebookScopesForFile(file);
+        return scopes.some(scope => scope === normalizedSourceScope || scope.startsWith(branchPrefix));
+      })
+      .sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  private resolveCommonDirectory(paths: string[]): string {
+    if (paths.length === 0) {
+      return '';
+    }
+    const splitPaths = paths.map(path => normalizeVaultPath(path).split('/').filter(Boolean));
+    const first = splitPaths[0];
+    let commonLength = first.length;
+    for (let index = 1; index < splitPaths.length; index += 1) {
+      const current = splitPaths[index];
+      let shared = 0;
+      while (
+        shared < commonLength &&
+        shared < current.length &&
+        first[shared].localeCompare(current[shared], undefined, { sensitivity: 'accent' }) === 0
+      ) {
+        shared += 1;
+      }
+      commonLength = shared;
+      if (commonLength === 0) {
+        break;
+      }
+    }
+    return first.slice(0, commonLength).join('/');
+  }
+
+  private allocateUniqueMarkdownPath(candidatePath: string, usedPaths: Set<string>): string {
+    const normalized = normalizeVaultPath(candidatePath).replace(/^\/+/, '');
+    const withExt = normalized.toLowerCase().endsWith('.md')
+      ? normalized
+      : `${normalized}.md`;
+    const folder = getVaultDirname(withExt);
+    const baseName = getVaultBasename(withExt);
+    const stem = baseName.replace(/\.md$/i, '') || 'entry';
+    for (let attempt = 1; attempt <= 5000; attempt += 1) {
+      const suffix = attempt === 1 ? '' : `-${attempt}`;
+      const fileName = `${stem}${suffix}.md`;
+      const candidate = folder ? `${folder}/${fileName}` : fileName;
+      const normalizedCandidate = normalizeVaultPath(candidate);
+      const key = normalizedCandidate.toLowerCase();
+      if (usedPaths.has(key)) {
+        continue;
+      }
+      usedPaths.add(key);
+      return normalizedCandidate;
+    }
+    throw new Error(`Unable to allocate target path for forked lorebook file "${candidatePath}".`);
+  }
+
+  private buildRelativeVaultLinkPath(fromPath: string, toPath: string): string {
+    const fromDirSegments = getVaultDirname(normalizeVaultPath(fromPath))
+      .split('/')
+      .filter(Boolean);
+    const toSegments = normalizeVaultPath(toPath)
+      .split('/')
+      .filter(Boolean);
+    let shared = 0;
+    while (
+      shared < fromDirSegments.length &&
+      shared < toSegments.length &&
+      fromDirSegments[shared].localeCompare(toSegments[shared], undefined, { sensitivity: 'accent' }) === 0
+    ) {
+      shared += 1;
+    }
+    const up = fromDirSegments.length - shared;
+    const down = toSegments.slice(shared);
+    const relativeSegments = [
+      ...new Array(up).fill('..'),
+      ...down
+    ];
+    const joined = relativeSegments.join('/');
+    return joined || getVaultBasename(toPath);
+  }
+
+  private isExternalLinkTarget(target: string): boolean {
+    const normalized = target.trim();
+    return /^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith('//');
+  }
+
+  private rewriteForkedWikilinks(
+    markdown: string,
+    sourceFile: TFile,
+    sourceToTargetPath: Map<string, string>
+  ): string {
+    return markdown.replace(/\[\[([^\]]+)\]\]/g, (fullMatch, rawInner: string) => {
+      const inner = rawInner.trim();
+      if (!inner) {
+        return fullMatch;
+      }
+
+      const pipeIndex = inner.indexOf('|');
+      const targetAndAnchor = pipeIndex >= 0 ? inner.slice(0, pipeIndex).trim() : inner;
+      const alias = pipeIndex >= 0 ? inner.slice(pipeIndex + 1) : '';
+      const hashIndex = targetAndAnchor.indexOf('#');
+      const targetPathRaw = (hashIndex >= 0 ? targetAndAnchor.slice(0, hashIndex) : targetAndAnchor).trim();
+      const hashSuffix = hashIndex >= 0 ? targetAndAnchor.slice(hashIndex) : '';
+      if (!targetPathRaw) {
+        return fullMatch;
+      }
+
+      const resolved = this.app.metadataCache.getFirstLinkpathDest(targetPathRaw, sourceFile.path);
+      if (!(resolved instanceof TFile)) {
+        return fullMatch;
+      }
+      const mapped = sourceToTargetPath.get(normalizeVaultPath(resolved.path).toLowerCase());
+      if (!mapped) {
+        return fullMatch;
+      }
+
+      const mappedTarget = mapped.replace(/\.md$/i, '');
+      const rewrittenTarget = `${mappedTarget}${hashSuffix}`;
+      return alias ? `[[${rewrittenTarget}|${alias}]]` : `[[${rewrittenTarget}]]`;
+    });
+  }
+
+  private rewriteForkedMarkdownLinks(
+    markdown: string,
+    sourceFile: TFile,
+    targetFilePath: string,
+    sourceToTargetPath: Map<string, string>
+  ): string {
+    return markdown.replace(/(!?)\[([^\]]*)\]\(([^)]+)\)/g, (fullMatch, bang: string, label: string, rawHref: string) => {
+      if (bang) {
+        return fullMatch;
+      }
+
+      const href = rawHref.trim();
+      if (!href) {
+        return fullMatch;
+      }
+      const firstWhitespace = href.search(/\s/);
+      const hrefPathPart = firstWhitespace >= 0 ? href.slice(0, firstWhitespace) : href;
+      const hrefSuffix = firstWhitespace >= 0 ? href.slice(firstWhitespace) : '';
+      const hadAngleBrackets = hrefPathPart.startsWith('<') && hrefPathPart.endsWith('>');
+      const hrefCore = hadAngleBrackets ? hrefPathPart.slice(1, -1) : hrefPathPart;
+      if (!hrefCore || hrefCore.startsWith('#') || this.isExternalLinkTarget(hrefCore)) {
+        return fullMatch;
+      }
+
+      const hashIndex = hrefCore.indexOf('#');
+      const targetPathRaw = hashIndex >= 0 ? hrefCore.slice(0, hashIndex) : hrefCore;
+      const hashSuffix = hashIndex >= 0 ? hrefCore.slice(hashIndex) : '';
+      if (!targetPathRaw) {
+        return fullMatch;
+      }
+
+      const resolved = this.app.metadataCache.getFirstLinkpathDest(targetPathRaw, sourceFile.path);
+      if (!(resolved instanceof TFile)) {
+        return fullMatch;
+      }
+
+      const mapped = sourceToTargetPath.get(normalizeVaultPath(resolved.path).toLowerCase());
+      const resolvedTargetPath = mapped
+        ? this.buildRelativeVaultLinkPath(targetFilePath, mapped)
+        : this.buildRelativeVaultLinkPath(targetFilePath, resolved.path);
+      const rewrittenHrefCore = `${resolvedTargetPath}${hashSuffix}`;
+      const rewrittenHref = hadAngleBrackets ? `<${rewrittenHrefCore}>` : rewrittenHrefCore;
+      return `[${label}](${rewrittenHref}${hrefSuffix})`;
+    });
+  }
+
+  private stripLorebookTagsFromBody(markdown: string): string {
+    const normalizedPrefix = normalizeTagPrefix(this.settings.tagScoping.tagPrefix);
+    if (!normalizedPrefix) {
+      return markdown;
+    }
+    const escapedPrefix = normalizedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const frontmatterMatch = markdown.match(/^---\s*\r?\n[\s\S]*?\r?\n---(?:\s*\r?\n)?/);
+    const frontmatterBlock = frontmatterMatch?.[0] ?? '';
+    const body = frontmatterMatch ? markdown.slice(frontmatterMatch[0].length) : markdown;
+    const tagPattern = new RegExp(
+      `(^|[\\s(])#${escapedPrefix}(?:\\/[A-Za-z0-9_/-]+)?(?=$|[\\s).,;:!?])`,
+      'gm'
+    );
+    const cleanedBody = body.replace(tagPattern, (_full, prefixChar: string) => prefixChar);
+    return `${frontmatterBlock}${cleanedBody}`;
+  }
+
+  private normalizeTagValue(tag: string): string {
+    return tag
+      .trim()
+      .replace(/^#+/, '')
+      .replace(/^\/+|\/+$/g, '')
+      .toLowerCase();
+  }
+
+  private isLorebookTag(tag: string): boolean {
+    const normalizedPrefix = normalizeTagPrefix(this.settings.tagScoping.tagPrefix);
+    const normalizedTag = this.normalizeTagValue(tag);
+    return normalizedTag === normalizedPrefix || normalizedTag.startsWith(`${normalizedPrefix}/`);
+  }
+
+  private uniqueCaseInsensitive(values: string[]): string[] {
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const value of values) {
+      const normalized = value.trim();
+      if (!normalized) {
+        continue;
+      }
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      deduped.push(normalized);
+    }
+    return deduped;
+  }
+
+  private async retagForkedLorebookFile(file: TFile, targetScope: string): Promise<void> {
+    const normalizedPrefix = normalizeTagPrefix(this.settings.tagScoping.tagPrefix) || DEFAULT_SETTINGS.tagScoping.tagPrefix;
+    const targetTag = `${normalizedPrefix}/${targetScope}`;
+    await this.app.fileManager.processFrontMatter(file, frontmatter => {
+      const existingTags = asStringArray(frontmatter.tags);
+      const retainedTags = existingTags.filter(tag => !this.isLorebookTag(tag));
+      frontmatter.tags = this.uniqueCaseInsensitive([...retainedTags, targetTag]);
+    });
+  }
+
+  public async forkActiveLorebookScope(): Promise<void> {
+    const sourceScope = this.resolveBuildScopeFromContext();
+    if (!sourceScope) {
+      new Notice('No lorebook scope found for forking. Open a lorebook note or set Active Scope.');
+      return;
+    }
+
+    const sourceFiles = this.collectLorebookFilesForFork(sourceScope);
+    if (sourceFiles.length === 0) {
+      new Notice(`No notes found for lorebook scope "${sourceScope}".`);
+      return;
+    }
+
+    const requested = await this.promptForLorebookForkRequest(sourceScope);
+    if (!requested) {
+      return;
+    }
+
+    const targetScope = this.normalizeLorebookScopeForFork(requested.targetScope);
+    if (!targetScope) {
+      throw new Error('New lorebook scope is invalid.');
+    }
+    const normalizedSourceScope = normalizeScope(sourceScope);
+    if (targetScope === normalizedSourceScope) {
+      throw new Error('New lorebook scope must be different from the source scope.');
+    }
+    const targetFolderRaw = normalizeVaultPath(requested.targetFolder).replace(/^\/+|\/+$/g, '');
+    const targetFolder = targetFolderRaw || this.buildDefaultLorebookForkFolder(targetScope);
+    let normalizedTargetFolder = '';
+    try {
+      normalizedTargetFolder = normalizeVaultRelativePath(targetFolder);
+    } catch {
+      throw new Error('Target folder must be a vault-relative path.');
+    }
+    if (!normalizedTargetFolder) {
+      throw new Error('Target folder cannot be empty.');
+    }
+
+    const usedPaths = new Set(
+      this.app.vault.getMarkdownFiles().map(file => normalizeVaultPath(file.path).toLowerCase())
+    );
+    const sourceDirectories = sourceFiles.map(file => getVaultDirname(file.path));
+    const commonDirectory = this.resolveCommonDirectory(sourceDirectories);
+    const sourceToTargetPath = new Map<string, string>();
+    for (const sourceFile of sourceFiles) {
+      const normalizedSourcePath = normalizeVaultPath(sourceFile.path);
+      const relativeSourcePath = commonDirectory && normalizedSourcePath.startsWith(`${commonDirectory}/`)
+        ? normalizedSourcePath.slice(commonDirectory.length + 1)
+        : getVaultBasename(normalizedSourcePath);
+      const candidatePath = normalizeVaultPath(joinVaultPath(normalizedTargetFolder, relativeSourcePath));
+      const targetPath = this.allocateUniqueMarkdownPath(candidatePath, usedPaths);
+      sourceToTargetPath.set(normalizedSourcePath.toLowerCase(), targetPath);
+    }
+
+    for (const sourceFile of sourceFiles) {
+      const sourcePathKey = normalizeVaultPath(sourceFile.path).toLowerCase();
+      const targetPath = sourceToTargetPath.get(sourcePathKey);
+      if (!targetPath) {
+        continue;
+      }
+      const sourceMarkdown = await this.app.vault.cachedRead(sourceFile);
+      const rewrittenWikilinks = this.rewriteForkedWikilinks(
+        sourceMarkdown,
+        sourceFile,
+        sourceToTargetPath
+      );
+      const rewrittenLinks = this.rewriteForkedMarkdownLinks(
+        rewrittenWikilinks,
+        sourceFile,
+        targetPath,
+        sourceToTargetPath
+      );
+      const retaggedBody = this.stripLorebookTagsFromBody(rewrittenLinks);
+      await ensureParentVaultFolderForFile(this.app, targetPath);
+      await this.app.vault.create(targetPath, retaggedBody);
+      const createdFile = this.app.vault.getAbstractFileByPath(targetPath);
+      if (createdFile instanceof TFile) {
+        await this.retagForkedLorebookFile(createdFile, targetScope);
+      }
+    }
+
+    this.invalidateLorebookScopeCache();
+    this.refreshManagerViews();
+    new Notice(
+      `Forked lorebook "${sourceScope}" -> "${targetScope}" (${sourceFiles.length} note${sourceFiles.length === 1 ? '' : 's'})`
+    );
   }
 
   private getStoryThreadNodeForFile(file: TFile): StoryThreadNode | null {

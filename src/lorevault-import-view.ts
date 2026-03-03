@@ -12,7 +12,7 @@ export const LOREVAULT_IMPORT_VIEW_TYPE = 'lorevault-import-view';
 
 export class LorevaultImportView extends ItemView {
   private plugin: LoreBookConverterPlugin;
-  private targetFolder = 'LoreVault/import';
+  private targetFolder = '';
   private defaultTags = '';
   private selectedLorebooks: string[] = [];
   private lorebookJson = '';
@@ -32,6 +32,7 @@ export class LorevaultImportView extends ItemView {
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
     this.plugin = plugin;
+    this.targetFolder = this.plugin.getDefaultLorebookImportLocation();
   }
 
   getViewType(): string {
@@ -149,6 +150,10 @@ export class LorevaultImportView extends ItemView {
   }
 
   private buildSharedInputs(container: HTMLElement): void {
+    if (!this.targetFolder.trim()) {
+      this.targetFolder = this.plugin.getDefaultLorebookImportLocation();
+    }
+    const defaultTargetFolder = this.plugin.getDefaultLorebookImportLocation();
     let targetFolderInput: { setValue: (value: string) => void } | null = null;
     new Setting(container)
       .setName('Target Folder')
@@ -156,7 +161,7 @@ export class LorevaultImportView extends ItemView {
       .addText(text => {
         targetFolderInput = text;
         text
-          .setPlaceholder('LoreVault/import')
+          .setPlaceholder(defaultTargetFolder)
           .setValue(this.targetFolder)
           .onChange(value => {
             this.targetFolder = value.trim();

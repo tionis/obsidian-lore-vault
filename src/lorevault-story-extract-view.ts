@@ -14,7 +14,7 @@ export const LOREVAULT_STORY_EXTRACT_VIEW_TYPE = 'lorevault-story-extract-view';
 
 export class LorevaultStoryExtractView extends ItemView {
   private plugin: LoreBookConverterPlugin;
-  private targetFolder = 'LoreVault/import';
+  private targetFolder = '';
   private defaultTags = '';
   private lorebookName = '';
   private storyMarkdown = '';
@@ -34,6 +34,7 @@ export class LorevaultStoryExtractView extends ItemView {
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
     this.plugin = plugin;
+    this.targetFolder = this.plugin.getDefaultLorebookImportLocation();
   }
 
   getViewType(): string {
@@ -350,6 +351,10 @@ export class LorevaultStoryExtractView extends ItemView {
     contentEl.addClass('lorevault-import-view');
     contentEl.createEl('h2', { text: 'Extract Wiki Pages from Story' });
 
+    if (!this.targetFolder.trim()) {
+      this.targetFolder = this.plugin.getDefaultLorebookImportLocation();
+    }
+    const defaultTargetFolder = this.plugin.getDefaultLorebookImportLocation();
     let targetFolderInput: { setValue: (value: string) => void } | null = null;
     new Setting(contentEl)
       .setName('Target Folder')
@@ -357,7 +362,7 @@ export class LorevaultStoryExtractView extends ItemView {
       .addText(text => {
         targetFolderInput = text;
         text
-          .setPlaceholder('LoreVault/import')
+          .setPlaceholder(defaultTargetFolder)
           .setValue(this.targetFolder)
           .onChange(value => {
             this.targetFolder = value.trim();

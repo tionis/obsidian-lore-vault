@@ -9,6 +9,7 @@ import {
   TFolder
 } from 'obsidian';
 import LoreBookConverterPlugin from './main';
+import { openVaultFolderPicker } from './folder-suggest-modal';
 import {
   CostProfileBudgetSettings,
   CompletionPreset,
@@ -683,6 +684,27 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           this.plugin.settings.outputPath = this.normalizePathInput(value);
           await this.persistSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Default Lorebook Import Location')
+      .setDesc('Default target folder used by Lorebook Import, Story Extraction, and Lorebook Fork workflows.')
+      .addText(text => text
+        .setPlaceholder('LoreVault/import')
+        .setValue(this.plugin.settings.defaultLorebookImportLocation)
+        .onChange(async (value) => {
+          this.plugin.settings.defaultLorebookImportLocation = this.normalizePathInput(value);
+          await this.persistSettings();
+        }))
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          openVaultFolderPicker(this.app, async path => {
+            const normalized = this.normalizePathInput(path) || DEFAULT_SETTINGS.defaultLorebookImportLocation;
+            this.plugin.settings.defaultLorebookImportLocation = normalized;
+            await this.persistSettings();
+            this.display();
+          });
         }));
 
     // Lorebook Scope section

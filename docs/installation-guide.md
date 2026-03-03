@@ -62,6 +62,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Export Usage Report (CSV)"
      - "Import SillyTavern Lorebook"
      - "Extract Wiki Pages from Story"
+     - "Fork Active Lorebook Scope"
      - "Apply Story Delta to Existing Wiki"
      - "Open Lorebook Update"
      - "Create LoreVault Entry Template"
@@ -101,6 +102,7 @@ If you prefer to build the plugin from source:
      - `Active Completion Preset (This Device)`
      - `Device Cost Profile Label`
    - Set `Downstream Export Path Pattern` for exports (`world_info` JSON + fallback markdown projection; default `sillytavern/{scope}.json`)
+   - Set `Default Lorebook Import Location` (default `LoreVault/import`) used by Import, Story Extraction, and Lorebook Fork defaults
    - Optional: configure canonical SQLite output directory (default `lorebooks/`, one `<scope>.db` per lorebook; folder picker available; vault-relative paths only)
    - Optional: include `{scope}` in downstream subpath for per-scope templating (otherwise LoreVault appends `-<scope-slug>` automatically)
    - Configure Lorebook Scope (`tagPrefix`, `activeScope`, `membershipMode`, `includeUntagged`)
@@ -222,7 +224,7 @@ If you prefer to build the plugin from source:
 
 9. **Import Existing Lorebook JSON (Phase 14)**
   - Run command `Import SillyTavern Lorebook`
-  - Set target folder (manual path or `Browse`) and default tags
+  - Set target folder (prefilled from `Default Lorebook Import Location`, manual path or `Browse`) and default tags
   - Select lorebooks in the list UI (delete per item, add interactively, or add custom scope with Enter in the inline text field)
   - Optional: pick a completion profile in the panel
   - Paste lorebook JSON in the panel text field
@@ -233,7 +235,7 @@ If you prefer to build the plugin from source:
 
 10. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`
-   - Set target folder (manual path or `Browse`), default tags, lorebook name, chunk/extraction limits, and completion profile
+   - Set target folder (prefilled from `Default Lorebook Import Location`, manual path or `Browse`), default tags, lorebook name, chunk/extraction limits, and completion profile
    - Paste story markdown
    - Click `Preview Extraction` to run chunked LLM extraction with deterministic merge preview
    - Monitor live chunk-stage progress while preview runs
@@ -256,6 +258,12 @@ If you prefer to build the plugin from source:
    - Monitor live chunk-stage progress while preview runs
    - Review per-change side-by-side dry-run diffs
    - Select approved changes and click `Apply Selected` (live per-file apply progress)
+
+12. **Fork Lorebook Scope**
+   - Run command `Fork Active Lorebook Scope`
+   - Source scope is resolved from the active note lorebook scope (or configured `Active Scope`)
+   - Enter a new lorebook scope and target folder (default: `<Default Lorebook Import Location>/<new-scope>`)
+   - LoreVault copies scoped notes, rewrites internal links to copied notes, removes old lorebook tags, and applies the new lorebook tag
 
 ## Troubleshooting
 

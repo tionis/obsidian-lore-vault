@@ -20,6 +20,7 @@ It turns tagged notes into scoped lorebooks, exports canonical packs, and provid
 - Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
 - Provides a Story Chat panel with per-conversation context controls.
 - Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass` and `Scene Consistency Pass`.
+- Adds `Fork Active Lorebook Scope` to clone a lorebook scope into a new scope/folder while rewriting internal links.
 - Keeps retrieval/debug behavior deterministic and inspectable.
 
 ## Quick Start
@@ -196,6 +197,7 @@ Import and updates:
 
 - `Import SillyTavern Lorebook`
 - `Extract Wiki Pages from Story`
+- `Fork Active Lorebook Scope`
 - `Apply Story Delta to Existing Wiki`
 - `Open Lorebook Update`
 
@@ -205,6 +207,7 @@ Import/extraction/update panel behavior:
 - extraction and lorebook-update previews report chunk-stage progress while running
 - import and apply flows report live write progress while files are being created/updated
 - lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
+- default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)
 - story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions
 
 Operations and reporting:

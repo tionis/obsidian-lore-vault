@@ -239,3 +239,158 @@ export function resolveStoryThread(
     orderedPaths
   };
 }
+
+export function resolveStoryThreadLineage(
+  nodes: StoryThreadNode[],
+  currentPath: string
+): StoryThreadResolution | null {
+  const current = nodes.find(node => node.path === currentPath);
+  if (!current) {
+    return null;
+  }
+
+  const sortedNodes = [...nodes].sort(compareNodes);
+  const byPath = new Map(sortedNodes.map(node => [node.path, node]));
+  const pathLookup = new Map<string, string>();
+  const basenameLookup = new Map<string, string>();
+  for (const node of sortedNodes) {
+    const normalizedPath = normalizeChapterRef(node.path);
+    if (normalizedPath && !pathLookup.has(normalizedPath)) {
+      pathLookup.set(normalizedPath, node.path);
+    }
+    const basename = normalizeChapterRef(node.path.split('/').pop() ?? '');
+    if (basename && !basenameLookup.has(basename)) {
+      basenameLookup.set(basename, node.path);
+    }
+  }
+
+  const outgoing = new Map<string, Set<string>>();
+  const incoming = new Map<string, Set<string>>();
+  for (const node of sortedNodes) {
+    outgoing.set(node.path, new Set());
+    incoming.set(node.path, new Set());
+  }
+
+  const addEdge = (from: string, to: string): void => {
+    if (from === to) {
+      return;
+    }
+    const fromSet = outgoing.get(from);
+    const toSet = incoming.get(to);
+    if (!fromSet || !toSet || fromSet.has(to)) {
+      return;
+    }
+    fromSet.add(to);
+    toSet.add(from);
+  };
+
+  for (const node of sortedNodes) {
+    for (const ref of node.previousChapterRefs) {
+      const resolved = resolveRefToPath(ref, pathLookup, basenameLookup);
+      if (resolved && byPath.has(resolved)) {
+        addEdge(resolved, node.path);
+      }
+    }
+    for (const ref of node.nextChapterRefs) {
+      const resolved = resolveRefToPath(ref, pathLookup, basenameLookup);
+      if (resolved && byPath.has(resolved)) {
+        addEdge(node.path, resolved);
+      }
+    }
+  }
+
+  const comparePaths = (left: string, right: string): number => {
+    const leftNode = byPath.get(left);
+    const rightNode = byPath.get(right);
+    if (!leftNode || !rightNode) {
+      return left.localeCompare(right);
+    }
+    return compareNodes(leftNode, rightNode);
+  };
+
+  const lineageSet = new Set<string>([current.path]);
+  const queue: string[] = [current.path];
+  while (queue.length > 0) {
+    const nextPath = queue.shift();
+    if (!nextPath) {
+      break;
+    }
+    const parents = [...(incoming.get(nextPath) ?? new Set<string>())].sort(comparePaths);
+    for (const parentPath of parents) {
+      if (lineageSet.has(parentPath)) {
+        continue;
+      }
+      lineageSet.add(parentPath);
+      queue.push(parentPath);
+    }
+  }
+
+  // Always include the current anchor's own nodes so chapter-order-only threads
+  // still resolve deterministically even when explicit prev/next links are sparse.
+  for (const node of sortedNodes) {
+    if (node.storyId === current.storyId) {
+      lineageSet.add(node.path);
+    }
+  }
+
+  const lineagePaths = [...lineageSet];
+  if (lineagePaths.length === 0) {
+    return null;
+  }
+
+  const lineageInDegree = new Map<string, number>();
+  for (const path of lineagePaths) {
+    lineageInDegree.set(path, 0);
+  }
+  for (const path of lineagePaths) {
+    const targets = outgoing.get(path) ?? new Set<string>();
+    for (const target of targets) {
+      if (!lineageSet.has(target)) {
+        continue;
+      }
+      lineageInDegree.set(target, (lineageInDegree.get(target) ?? 0) + 1);
+    }
+  }
+
+  const lineageQueue: string[] = [];
+  for (const path of [...lineageSet].sort(comparePaths)) {
+    if ((lineageInDegree.get(path) ?? 0) === 0) {
+      insertSorted(lineageQueue, path, comparePaths);
+    }
+  }
+
+  const orderedPaths: string[] = [];
+  while (lineageQueue.length > 0) {
+    const nextPath = lineageQueue.shift();
+    if (!nextPath) {
+      break;
+    }
+    orderedPaths.push(nextPath);
+    const targets = outgoing.get(nextPath) ?? new Set<string>();
+    for (const target of [...targets].sort(comparePaths)) {
+      if (!lineageSet.has(target)) {
+        continue;
+      }
+      const nextInDegree = (lineageInDegree.get(target) ?? 0) - 1;
+      lineageInDegree.set(target, nextInDegree);
+      if (nextInDegree === 0) {
+        insertSorted(lineageQueue, target, comparePaths);
+      }
+    }
+  }
+
+  const resolvedOrder = orderedPaths.length === lineageSet.size
+    ? orderedPaths
+    : [...lineageSet].sort(comparePaths);
+  const currentIndex = resolvedOrder.indexOf(currentPath);
+  if (currentIndex < 0) {
+    return null;
+  }
+
+  return {
+    storyId: current.storyId,
+    currentPath,
+    currentIndex,
+    orderedPaths: resolvedOrder
+  };
+}

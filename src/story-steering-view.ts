@@ -258,6 +258,17 @@ export class StorySteeringView extends ItemView {
     }
   }
 
+  private async forkStory(): Promise<void> {
+    try {
+      await this.plugin.forkStoryFromActiveNote();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to fork story: ${message}`);
+    } finally {
+      await this.render(true);
+    }
+  }
+
   private async generateChapterSummary(): Promise<void> {
     try {
       await this.plugin.generateSummaryForActiveNote('chapter');
@@ -421,6 +432,12 @@ export class StorySteeringView extends ItemView {
       createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
       createNextChapterButton.addEventListener('click', () => {
         void this.createNextChapter();
+      });
+
+      const forkStoryButton = chapterActions.createEl('button', { text: 'Fork Story' });
+      forkStoryButton.disabled = generationRunning || !this.plugin.canForkStoryForActiveNote();
+      forkStoryButton.addEventListener('click', () => {
+        void this.forkStory();
       });
 
       const activeNoteCard = contentEl.createDiv({ cls: 'lorevault-manager-card lorevault-manager-generation-card' });

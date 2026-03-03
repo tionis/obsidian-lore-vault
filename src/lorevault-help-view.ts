@@ -136,7 +136,7 @@ export class LorevaultHelpView extends ItemView {
         'Generation actions: `Continue Story` (switches to `Stop` while running) and `Insert Directive`.',
         'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are rendered in-place as `<inline_story_directive>` tags during generation.',
         'Author note actions: `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`.',
-        'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`.',
+        'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`.',
         'Completion profile: use the panel dropdown (applies immediately). If an Author Note override exists the selector is disabled and shows `Overridden by Author Note`.',
         'Set author-note `completionProfile` via command `Set Author Note Completion Profile`.',
         'API keys are in Obsidian Secret Storage; each completion preset has a `Completion API Secret Name` used as its secret key id. LoreVault only creates missing secrets and never overwrites existing ones.',

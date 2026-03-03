@@ -367,6 +367,7 @@ If graph order is incomplete/cyclic, resolver falls back to deterministic chapte
 - when chapter-memory budget is large enough, injects additional bounded style excerpts from the most recent prior chapters
 - high-context models receive larger chapter-memory budgets, deeper prior-chapter windows, and more/larger recent style excerpts
 - `completion.continuityAggressiveness` (`balanced` | `aggressive`) selects the chapter-memory budget profile used by both continue-story and chat flows
+- chapter-memory lineage can traverse linked prior chapters across author-note boundaries via chapter refs; author-note steering injection remains scoped to the active note's linked author note
 - injects `<story_chapter_memory>` block before lorebook context in continuation and chat prompts
 
 This provides a dedicated chapter-memory layer before graph retrieval.
@@ -378,6 +379,7 @@ Runtime commands in `src/main.ts`:
 - `Split Active Story Note into Chapter Notes`
 - `Split Active Story Note into Chapter Notes (Pick Folder)`
 - `Create Next Story Chapter`
+- `Fork Story from Active Note`
 
 Contracts:
 
@@ -395,6 +397,12 @@ Contracts:
   - sets new note `previousChapter` to active note
   - links new note to the same Author Note as the active note
 - create-next chapter is exposed in Story Writing panel and command palette (not editor context menu).
+- fork-story utility:
+  - prompts for a new note name (prefilled with source note name, must differ)
+  - creates fork note in the same folder as the source note
+  - creates a new derived Author Note for the fork and links the fork to it
+  - copies source Author Note markdown/frontmatter into the new Author Note
+  - preserves `previousChapter` refs and clears `nextChapter` refs on the forked chapter metadata to avoid forward-branch mixing
 
 ## Auto Summary Internals (Phase 9)
 

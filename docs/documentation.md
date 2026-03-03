@@ -481,6 +481,8 @@ Precedence:
   - summary section content (`LV_BEGIN/LV_END` block when present, otherwise first paragraph)
   - frontmatter `summary` (fallback)
   - deterministic excerpt fallback
+  - chapter-link lineage traversal may include linked prior chapters across different Author Notes
+  - only the active note's linked Author Note is injected as steering guidance
   - when budget allows: additional bounded style excerpts from recent prior chapter bodies (more recent chapters and larger excerpt slices on high-context models)
 - chapter summaries are not hard-length capped.
 - when a chapter summary contains multiple paragraphs, LoreVault writes it inside:
@@ -499,6 +501,7 @@ Commands:
 - `Split Active Story Note into Chapter Notes`
 - `Split Active Story Note into Chapter Notes (Pick Folder)`
 - `Create Next Story Chapter`
+- `Fork Story from Active Note`
 
 Current behavior:
 
@@ -514,6 +517,8 @@ Current behavior:
 - split command in pick-folder mode writes chapter files to the selected existing vault folder.
 - create-next command creates a new chapter note in the active note folder, sets current note `nextChapter`, sets new note `previousChapter`, and links the new note to the same Author Note.
 - create-next chapter is exposed in Story Writing panel (and command palette), not editor context menu.
+- fork-story command prompts for a new note name (prefilled from active note), creates a copied note in the same folder, creates a new derived Author Note, links the fork to the new Author Note, and copies source Author Note markdown/frontmatter into the new Author Note.
+- forked chapter notes preserve `previousChapter` refs and clear `nextChapter` refs to avoid mixing forward branch content.
 
 ## Cost Tracking (Experimental, Phase 13)
 
@@ -596,7 +601,7 @@ Capabilities:
 - active-note writing controls:
   - group 1: `Continue Story` (toggles to `Stop` while generation is running), `Insert Directive` (`<!-- LV: ... -->`)
   - group 2: `Open/Create Author Note`, `Link Author Note` (interactive picker), `Rewrite Author Note`
-  - group 3: `Generate Chapter Summary`, `Create Next Chapter`
+  - group 3: `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`
 - Author Note workflow:
   - linked from story frontmatter `authorNote`
   - authored in native Obsidian note editor

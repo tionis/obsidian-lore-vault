@@ -55,6 +55,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Generate Keywords (Active Note)"
      - "Generate World Info Summary (Active Note)"
      - "Generate Chapter Summary (Active Note)"
+     - "Fork Story from Active Note"
      - "Generate World Info Summaries (Active Scope)"
      - "Generate Chapter Summaries (Current Story)"
      - "Export Usage Report (JSON)"
@@ -162,10 +163,11 @@ If you prefer to build the plugin from source:
      - `Split Active Story Note into Chapter Notes`
      - `Split Active Story Note into Chapter Notes (Pick Folder)`
      - `Create Next Story Chapter`
+     - `Fork Story from Active Note`
    - Story Writing Panel action groups:
      - `Continue Story` (toggles to `Stop` during generation) + `Insert Directive`
      - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
-     - `Generate Chapter Summary`, `Create Next Chapter`
+     - `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads (profile-scoped logs) without leaving Obsidian
    - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry

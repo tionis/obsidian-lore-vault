@@ -88,7 +88,7 @@ The panel groups writing actions into three rows:
 
 - `Continue Story` (switches to `Stop` while generating), `Insert Directive`
 - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
-- `Generate Chapter Summary`, `Create Next Chapter`
+- `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`
 
 The panel also shows:
 
@@ -143,6 +143,7 @@ Notes:
 
 - Inline directives remain in-place near their source text in prompt staging.
 - Chapter memory scales aggressively with available budget on large-context models and can include deeper prior-chapter coverage plus recent style excerpts (in addition to chapter summaries) when budget allows.
+- Chapter-memory lineage can walk linked prior chapters across different author-note anchors, but steering guidance is still taken only from the active note's linked author note.
 - `Story Continuity Aggressiveness` in settings controls chapter-memory behavior (`Balanced` vs `Aggressive`) for both Continue Story and Story Chat.
 - Long query windows for embeddings are chunked and averaged deterministically.
 - If embedding calls fail, LoreVault falls back to lexical retrieval instead of aborting generation.
@@ -178,6 +179,7 @@ Writing:
 - `Rewrite Author Note`
 - `Insert Inline Directive at Cursor`
 - `Create Next Story Chapter`
+- `Fork Story from Active Note`
 - `Split Active Story Note into Chapter Notes`
 - `Split Active Story Note into Chapter Notes (Pick Folder)`
 - `Generate Chapter Summary (Active Note)`

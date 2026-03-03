@@ -128,6 +128,16 @@
   margin-top: 12px;
 }
 
+.lorevault-modal-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-modal-input {
+  width: 100%;
+}
+
 /* Lorebooks Manager View */
 .lorevault-manager-view {
   height: 100%;

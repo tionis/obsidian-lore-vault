@@ -315,6 +315,8 @@ Reference design: `docs/planning.md`.
   - [x] scale prior-chapter memory depth by available context budget (deterministic window expansion)
   - [x] add chapter split utilities (`H1` story title + `H2` chapter split) with linked chapter frontmatter output and shared Author Note linking
   - [x] add `Create Next Story Chapter` command + chapter-frontmatter-gated editor context action
+  - [x] add `Fork Story from Active Note` (new fork note + cloned author note + isolated forward branch links)
+  - [x] allow chapter-memory lineage traversal across chapter refs even when linked chapters use different Author Notes
 - [x] Text command consistency default prompt updates:
   - [x] bias `Canon Consistency Pass` template toward lorebook factual consistency constraints
   - [x] add `Scene Consistency Pass` template for internal scene continuity fixes (character positions, movement continuity, object state, spatial logic)

@@ -1,6 +1,7 @@
 import {
   App,
   FuzzySuggestModal,
+  Modal,
   MarkdownView,
   Plugin,
   Notice,
@@ -95,7 +96,7 @@ import { createRetrievalToolCatalog, runModelDrivenRetrievalHooks } from './retr
 import {
   StoryThreadNode,
   parseStoryThreadNodeFromFrontmatter,
-  resolveStoryThread
+  resolveStoryThreadLineage
 } from './story-thread-resolver';
 import {
   asBoolean,
@@ -402,6 +403,89 @@ class CompletionPresetSuggestModal extends FuzzySuggestModal<CompletionPresetSug
       this.resolveResult(value);
       this.resolveResult = null;
     }
+  }
+}
+
+class StoryForkNameModal extends Modal {
+  private readonly sourceName: string;
+  private readonly initialName: string;
+  private resolveResult: ((value: string | null) => void) | null = null;
+  private settled = false;
+  private inputEl: HTMLInputElement | null = null;
+
+  constructor(app: App, sourceName: string, initialName: string) {
+    super(app);
+    this.sourceName = sourceName.trim();
+    this.initialName = initialName.trim();
+  }
+
+  waitForResult(): Promise<string | null> {
+    return new Promise(resolve => {
+      this.resolveResult = resolve;
+    });
+  }
+
+  onOpen(): void {
+    this.setTitle('Fork Story');
+    this.contentEl.empty();
+    this.contentEl.createEl('p', {
+      text: 'Enter a name for the forked story note. It must be different from the current note name.'
+    });
+
+    const row = this.contentEl.createDiv({ cls: 'lorevault-modal-input-row' });
+    row.createEl('label', { text: 'Fork Note Name' });
+    const input = row.createEl('input', {
+      type: 'text',
+      cls: 'lorevault-modal-input'
+    });
+    input.value = this.initialName;
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.submit();
+      }
+    });
+    this.inputEl = input;
+
+    const actions = this.contentEl.createDiv({ cls: 'lorevault-modal-actions' });
+    const cancelButton = actions.createEl('button', { text: 'Cancel' });
+    cancelButton.addEventListener('click', () => this.close());
+
+    const submitButton = actions.createEl('button', { text: 'Create Fork' });
+    submitButton.addClass('mod-cta');
+    submitButton.addEventListener('click', () => this.submit());
+
+    window.setTimeout(() => {
+      this.inputEl?.focus();
+      this.inputEl?.select();
+    }, 0);
+  }
+
+  onClose(): void {
+    this.finish(null);
+  }
+
+  private submit(): void {
+    const value = this.inputEl?.value.trim() ?? '';
+    if (!value) {
+      new Notice('Fork note name cannot be empty.');
+      return;
+    }
+    if (value.localeCompare(this.sourceName, undefined, { sensitivity: 'accent' }) === 0) {
+      new Notice('Fork note name must be different from the source note name.');
+      return;
+    }
+    this.finish(value);
+    this.close();
+  }
+
+  private finish(value: string | null): void {
+    if (this.settled) {
+      return;
+    }
+    this.settled = true;
+    this.resolveResult?.(value);
+    this.resolveResult = null;
   }
 }
 
@@ -3760,7 +3844,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (args.activeStoryFile) {
       allowedStoryPaths.add(normalizeVaultPath(args.activeStoryFile.path));
       const nodes = this.collectStoryThreadNodes();
-      const resolution = resolveStoryThread(nodes, args.activeStoryFile.path);
+      const resolution = resolveStoryThreadLineage(nodes, args.activeStoryFile.path);
       if (resolution) {
         for (const path of resolution.orderedPaths) {
           const normalized = normalizeVaultPath(path);
@@ -4893,7 +4977,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const nodes = this.collectStoryThreadNodes();
-    const resolution = resolveStoryThread(nodes, activeFile.path);
+    const resolution = resolveStoryThreadLineage(nodes, activeFile.path);
     if (!resolution) {
       new Notice('Active note is not in a resolvable story thread.');
       return;
@@ -6879,6 +6963,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'fork-story-from-active-note',
+      name: 'Fork Story from Active Note',
+      callback: () => {
+        void this.forkStoryFromActiveNote().catch(error => {
+          console.error('LoreVault: Failed to fork story:', error);
+          new Notice(`Failed to fork story: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
       id: 'generate-chapter-summary-active-note',
       name: 'Generate Chapter Summary (Active Note)',
       callback: () => {
@@ -7227,6 +7322,128 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.noteHasChapterFrontmatter(activeFile);
   }
 
+  public canForkStoryForActiveNote(): boolean {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      return false;
+    }
+    if (this.noteIsAuthorNote(activeFile)) {
+      return false;
+    }
+    return this.noteHasChapterFrontmatter(activeFile) || this.noteHasAuthorNoteLink(activeFile);
+  }
+
+  private sanitizeForkNoteName(value: string): string {
+    const trimmed = value.trim().replace(/\.md$/i, '');
+    return trimmed;
+  }
+
+  private async promptForForkStoryName(activeFile: TFile): Promise<string | null> {
+    const modal = new StoryForkNameModal(this.app, activeFile.basename, activeFile.basename);
+    const resultPromise = modal.waitForResult();
+    modal.open();
+    return resultPromise;
+  }
+
+  private resolveForkStoryPath(activeFile: TFile, forkName: string): string {
+    const normalizedName = this.sanitizeForkNoteName(forkName);
+    if (!normalizedName) {
+      throw new Error('Fork note name cannot be empty.');
+    }
+    if (normalizedName.includes('/') || normalizedName.includes('\\')) {
+      throw new Error('Fork note name must not include path separators.');
+    }
+
+    const sourcePathNoExt = activeFile.path.replace(/\.md$/i, '');
+    const targetPathNoExt = joinVaultPath(getVaultDirname(activeFile.path), normalizedName);
+    if (normalizeVaultPath(sourcePathNoExt).toLowerCase() === normalizeVaultPath(targetPathNoExt).toLowerCase()) {
+      throw new Error('Fork note name must be different from the source note.');
+    }
+    return `${normalizeVaultPath(targetPathNoExt)}.md`;
+  }
+
+  private buildForkedStoryMarkdown(activeFile: TFile, sourceMarkdown: string): string {
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const hasChapterFields = (
+      getFrontmatterValue(frontmatter, 'chapter', 'chapterIndex', 'scene') !== undefined ||
+      getFrontmatterValue(frontmatter, 'chapterTitle', 'sceneTitle') !== undefined ||
+      getFrontmatterValue(frontmatter, 'previousChapter', 'previous', 'prevChapter', 'prev') !== undefined ||
+      getFrontmatterValue(frontmatter, 'nextChapter', 'next') !== undefined
+    );
+    if (!hasChapterFields) {
+      return sourceMarkdown;
+    }
+
+    const node = this.getStoryThreadNodeForFile(activeFile);
+    if (!node) {
+      return sourceMarkdown;
+    }
+
+    const explicitStoryId = (asString(getFrontmatterValue(frontmatter, 'storyId', 'story')) ?? '').trim();
+    return upsertStoryChapterFrontmatter(sourceMarkdown, {
+      storyId: explicitStoryId,
+      chapter: node.chapter,
+      chapterTitle: node.chapterTitle || node.title || activeFile.basename,
+      previousChapterRefs: node.previousChapterRefs,
+      nextChapterRefs: []
+    });
+  }
+
+  private async ensureForkedAuthorNote(
+    sourceStoryFile: TFile,
+    forkStoryFile: TFile
+  ): Promise<TFile> {
+    const sourceAuthorNote = await this.storySteeringStore.resolveAuthorNoteFileForStory(sourceStoryFile);
+    const forkAuthorNote = await this.storySteeringStore.ensureAuthorNoteForStory(forkStoryFile);
+    if (sourceAuthorNote instanceof TFile && sourceAuthorNote.path !== forkAuthorNote.path) {
+      const sourceMarkdown = await this.app.vault.cachedRead(sourceAuthorNote);
+      await this.app.vault.modify(forkAuthorNote, sourceMarkdown);
+      await this.storySteeringStore.linkStoryToAuthorNote(forkStoryFile, forkAuthorNote);
+    }
+    return forkAuthorNote;
+  }
+
+  public async forkStoryFromActiveNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('Open a story note before forking.');
+      return;
+    }
+    if (this.noteIsAuthorNote(activeFile)) {
+      new Notice('Forking is only available from story notes, not author notes.');
+      return;
+    }
+    if (!this.noteHasChapterFrontmatter(activeFile) && !this.noteHasAuthorNoteLink(activeFile)) {
+      new Notice('Active note is not recognized as a story note (requires chapter metadata or an authorNote link).');
+      return;
+    }
+
+    const requestedName = await this.promptForForkStoryName(activeFile);
+    if (!requestedName) {
+      return;
+    }
+
+    const targetPath = this.resolveForkStoryPath(activeFile, requestedName);
+    if (await this.app.vault.adapter.exists(targetPath)) {
+      throw new Error(`A note already exists at ${targetPath}. Choose a different name.`);
+    }
+
+    const sourceMarkdown = await this.app.vault.cachedRead(activeFile);
+    const forkMarkdown = this.buildForkedStoryMarkdown(activeFile, sourceMarkdown);
+    await ensureParentVaultFolderForFile(this.app, targetPath);
+    await this.app.vault.create(targetPath, forkMarkdown);
+
+    const forkStoryFile = this.app.vault.getAbstractFileByPath(targetPath);
+    if (!(forkStoryFile instanceof TFile)) {
+      throw new Error(`Failed to create forked story note at ${targetPath}`);
+    }
+
+    const forkAuthorNote = await this.ensureForkedAuthorNote(activeFile, forkStoryFile);
+    await this.app.workspace.getLeaf(true).openFile(forkStoryFile);
+    new Notice(`Fork created: ${forkStoryFile.path} (author note: ${forkAuthorNote.path})`);
+  }
+
   private getStoryThreadNodeForFile(file: TFile): StoryThreadNode | null {
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
@@ -7544,7 +7761,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const nodes = this.collectStoryThreadNodes();
-    const resolution = resolveStoryThread(nodes, activeFile.path);
+    const resolution = resolveStoryThreadLineage(nodes, activeFile.path);
     if (!resolution || resolution.currentIndex <= 0) {
       return { markdown: '', usedTokens: 0, items: [], layerTrace: [] };
     }

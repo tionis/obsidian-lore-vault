@@ -9864,18 +9864,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         'busy'
       );
       new Notice(
-        [
-          `LoreVault generating for scopes: ${scopeLabel}`,
-          `Provider: ${completion.provider} (${completion.model})`,
-          `Context window left: ${Math.max(0, remainingInputTokens)} tokens`,
-          `inline directives: ${resolvedInlineDirectiveItems.join(' | ') || '(none)'}`,
-          `chapter memory: ${chapterMemoryItems.join(', ') || '(none)'}`,
-          `continuity: threads ${(mergedContinuity.selection.includePlotThreads ? mergedContinuity.plotThreads : []).join(' | ') || '(none)'} | open loops ${(mergedContinuity.selection.includeOpenLoops ? mergedContinuity.openLoops : []).join(' | ') || '(none)'} | canon deltas ${(mergedContinuity.selection.includeCanonDeltas ? mergedContinuity.canonDeltas : []).join(' | ') || '(none)'}`,
-          `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
-          `fallback: ${ragDetails.join(', ') || '(none)'}`,
-          `tool_hooks: ${toolContextItems.join(', ') || '(none)'}`,
-          `layers: ${contextLayerTrace.join(' | ')}`
-        ].join('\n')
+        `LoreVault generating | ${completion.provider} (${completion.model}) | scopes ${scopeLabel}`,
+        3500
       );
       const userPrompt = [
         'Continue the story from where it currently ends.',

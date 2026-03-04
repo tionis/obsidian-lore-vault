@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildCharacterCardImportPlan,
+  parseCharacterCardCharacterExtractResponse,
   parseCharacterCardRewriteResponse,
   parseSillyTavernCharacterCardJson,
   parseSillyTavernCharacterCardPngBytes
@@ -95,6 +96,27 @@ test('parseCharacterCardRewriteResponse preserves long author-note markdown cont
   assert.equal(first.includes('exceptionally gritty'), true);
 });
 
+test('parseCharacterCardCharacterExtractResponse parses character-page payload', () => {
+  const parsed = parseCharacterCardCharacterExtractResponse(JSON.stringify({
+    title: 'Captain Sol',
+    summary: 'Veteran fleet commander balancing doctrine and political pressure.',
+    keywords: ['captain sol', 'third fleet'],
+    aliases: ['Sol'],
+    markdown: [
+      '## Overview',
+      'Captain Sol commands the Third Fleet and prioritizes disciplined tactical execution.'
+    ].join('\n'),
+    rewriteNotes: ['Removed roleplay placeholders.']
+  }));
+
+  assert.equal(parsed.title, 'Captain Sol');
+  assert.equal(parsed.summary.includes('Veteran fleet commander'), true);
+  assert.equal(parsed.markdown.includes('## Overview'), true);
+  assert.deepEqual(parsed.keywords, ['captain sol', 'third fleet']);
+  assert.deepEqual(parsed.aliases, ['Sol']);
+  assert.deepEqual(parsed.rewriteNotes, ['Removed roleplay placeholders.']);
+});
+
 test('buildCharacterCardImportPlan creates story + author note + embedded lorebook pages', () => {
   const card = parseSillyTavernCharacterCardJson(JSON.stringify({
     spec: 'chara_card_v2',
@@ -159,4 +181,57 @@ test('buildCharacterCardImportPlan creates story + author note + embedded lorebo
   assert.match(storyPage.content, /!\[\[cards\/captain-sol\.png\]\]/);
   assert.match(authorPage.content, /lvDocType: "authorNote"/);
   assert.match(authorPage.content, /completionProfile: "openrouter-default"/);
+});
+
+test('buildCharacterCardImportPlan optionally includes extracted character wiki page', () => {
+  const card = parseSillyTavernCharacterCardJson(JSON.stringify({
+    data: {
+      name: 'Wakaba',
+      creator: 'SynthWriter',
+      description: 'A volatile cyber-entity',
+      personality: 'Cheerful and possessive',
+      scenario: 'Night City intrusion'
+    }
+  }));
+  const rewrite = parseCharacterCardRewriteResponse(JSON.stringify({
+    title: 'Wakaba: First Draft',
+    storyMarkdown: 'Opening scene.',
+    authorNoteMarkdown: '# Author Note\n- Keep tension high.',
+    rewriteNotes: []
+  }));
+  const characterPage = parseCharacterCardCharacterExtractResponse(JSON.stringify({
+    title: 'Wakaba',
+    summary: 'Sentient AI entity bound to a prototype chip and visible only to the host.',
+    keywords: ['wakaba', 'prototype chip'],
+    aliases: ['SUCCUBI.exe'],
+    markdown: [
+      '## Overview',
+      'Wakaba is an unstable sentient AI embedded in a prototype Arasaka chip.',
+      '',
+      '## Capabilities',
+      '- Can influence nearby connected systems.',
+      '- Interfaces directly with host neural pathways.'
+    ].join('\n'),
+    rewriteNotes: []
+  }));
+
+  const plan = buildCharacterCardImportPlan(card, rewrite, {
+    targetFolder: 'LoreVault/import',
+    authorNoteFolder: 'LoreVault/author-notes',
+    defaultTagsRaw: 'wiki, imported',
+    lorebookNames: ['universe/yggdrasil/characters'],
+    tagPrefix: 'lorebook',
+    maxSummaryChars: 320,
+    includeEmbeddedLorebook: false,
+    sourceCardPath: 'cards/wakaba.json',
+    completionPresetId: '',
+    characterPage
+  });
+
+  const extractedPage = plan.pages.find(page => page.path.endsWith('/characters/wakaba.md'));
+  assert.ok(extractedPage);
+  assert.match(extractedPage.content, /sourceType: "sillytavern_character_card_character_extract"/);
+  assert.match(extractedPage.content, /## Summary/);
+  assert.match(extractedPage.content, /Sentient AI entity bound to a prototype chip/);
+  assert.match(extractedPage.content, /tags:\n {2}- "wiki"\n {2}- "imported"\n {2}- "lorebook\/universe\/yggdrasil\/characters"/);
 });

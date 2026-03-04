@@ -6,6 +6,7 @@ import {
   buildImportedWikiPages,
   parseSillyTavernLorebookPayload
 } from './sillytavern-import';
+import { upsertSummarySectionInMarkdown } from './summary-utils';
 import { normalizeVaultPath } from './vault-path-utils';
 
 export interface ParsedCharacterCard {
@@ -38,6 +39,15 @@ export interface CharacterCardRewriteResult {
   rewriteNotes: string[];
 }
 
+export interface CharacterCardCharacterExtractResult {
+  title: string;
+  summary: string;
+  markdown: string;
+  keywords: string[];
+  aliases: string[];
+  rewriteNotes: string[];
+}
+
 export interface BuildCharacterCardImportPlanOptions {
   targetFolder: string;
   authorNoteFolder: string;
@@ -48,6 +58,7 @@ export interface BuildCharacterCardImportPlanOptions {
   includeEmbeddedLorebook: boolean;
   sourceCardPath: string;
   completionPresetId: string;
+  characterPage?: CharacterCardCharacterExtractResult | null;
 }
 
 export interface CharacterCardImportPlan {
@@ -138,6 +149,11 @@ function normalizeLorebookNames(values: string[]): string[] {
     .sort((left, right) => left.localeCompare(right));
 }
 
+function normalizeTagPrefix(tagPrefix: string): string {
+  const normalized = tagPrefix.trim().replace(/^#+/, '').replace(/^\/+|\/+$/g, '');
+  return normalized || 'lorebook';
+}
+
 function toSafeFileStem(value: string): string {
   const withoutControls = [...value]
     .filter(char => char.charCodeAt(0) >= 32)
@@ -186,6 +202,77 @@ function ensureHeading(markdown: string, heading: string): string {
     return `${normalized}\n`;
   }
   return `# ${heading}\n\n${normalized}\n`;
+}
+
+function normalizeSummaryLine(value: string): string {
+  return value
+    .replace(/\r\n?/g, '\n')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractFirstParagraphText(markdown: string): string {
+  const normalized = markdown
+    .replace(/\r\n?/g, '\n')
+    .trim();
+  if (!normalized) {
+    return '';
+  }
+  const withoutFrontmatter = normalized.replace(/^---\n[\s\S]*?\n---\n*/m, '');
+  const withoutHeadings = withoutFrontmatter
+    .split('\n')
+    .map(line => line.replace(/^\s*#{1,6}\s+/, '').trim())
+    .join('\n');
+  const firstParagraph = withoutHeadings.split(/\n\s*\n/, 1)[0] ?? '';
+  return firstParagraph
+    .replace(/^\s*[-*]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildCharacterPageSummary(summary: string, markdown: string, maxChars: number): string {
+  const explicitSummary = normalizeSummaryLine(summary);
+  const fallbackSummary = normalizeSummaryLine(extractFirstParagraphText(markdown));
+  const candidate = explicitSummary || fallbackSummary;
+  if (!candidate) {
+    return '';
+  }
+  const limit = Math.floor(maxChars);
+  if (!Number.isFinite(limit) || limit <= 0 || candidate.length <= limit) {
+    return candidate;
+  }
+  return `${candidate.slice(0, Math.max(0, limit - 3)).trimEnd()}...`;
+}
+
+function buildLorebookTags(tagPrefix: string, lorebookNames: string[]): string[] {
+  const normalizedPrefix = normalizeTagPrefix(tagPrefix);
+  return uniqueStrings(lorebookNames.map(scope => `${normalizedPrefix}/${scope}`));
+}
+
+function resolveUniquePlanPath(candidatePath: string, usedPathKeys: Set<string>): string {
+  const normalized = normalizeVaultPath(candidatePath.trim());
+  if (!normalized) {
+    throw new Error('Character page path is empty.');
+  }
+  const lower = normalized.toLowerCase();
+  if (!usedPathKeys.has(lower)) {
+    usedPathKeys.add(lower);
+    return normalized;
+  }
+
+  const extensionMatch = normalized.match(/(\.[^./\\]+)$/);
+  const extension = extensionMatch?.[1] ?? '';
+  const base = extension ? normalized.slice(0, -extension.length) : normalized;
+  for (let attempt = 2; attempt <= 9999; attempt += 1) {
+    const nextPath = `${base}-${attempt}${extension}`;
+    const nextKey = nextPath.toLowerCase();
+    if (!usedPathKeys.has(nextKey)) {
+      usedPathKeys.add(nextKey);
+      return nextPath;
+    }
+  }
+
+  throw new Error(`Failed to allocate unique import path for ${normalized}.`);
 }
 
 function resolveCharacterCardAvatarLink(sourceCardPath: string): string {
@@ -469,6 +556,61 @@ export function buildCharacterCardRewriteUserPrompt(card: ParsedCharacterCard): 
   ].join('\n');
 }
 
+export function buildCharacterCardCharacterExtractSystemPrompt(): string {
+  return [
+    'You are a careful lore extraction editor.',
+    'Extract only the character from a SillyTavern character card and produce one wiki-ready character page payload.',
+    'Return JSON only. Do not wrap in markdown fences.',
+    'Required JSON schema:',
+    '{',
+    '  "title": "string",',
+    '  "summary": "string",',
+    '  "keywords": ["string"],',
+    '  "aliases": ["string"],',
+    '  "markdown": "markdown string",',
+    '  "rewriteNotes": ["string"]',
+    '}',
+    'Rules:',
+    '- Focus only on durable character facts and constraints (identity, traits, capabilities, limits, motivations, key relationships).',
+    '- Exclude scene planning, writing instructions, meta commentary, and conversion notes.',
+    '- Rewrite roleplay placeholders (for example {{char}}, {{user}}, <START>) into neutral lore wording when needed.',
+    '- Keep output concise, specific, and canon-consistent with the card payload.',
+    '- markdown should be wiki-style character content body (no YAML frontmatter).'
+  ].join('\n');
+}
+
+export function buildCharacterCardCharacterExtractUserPrompt(card: ParsedCharacterCard): string {
+  const promptPayload = {
+    card: {
+      sourceFormat: card.sourceFormat,
+      spec: card.spec,
+      specVersion: card.specVersion,
+      name: card.name,
+      tags: card.tags,
+      creator: card.creator,
+      creatorNotes: card.creatorNotes,
+      description: card.description,
+      personality: card.personality,
+      scenario: card.scenario,
+      firstMessage: card.firstMessage,
+      messageExample: card.messageExample,
+      alternateGreetings: card.alternateGreetings,
+      groupOnlyGreetings: card.groupOnlyGreetings,
+      systemPrompt: card.systemPrompt,
+      postHistoryInstructions: card.postHistoryInstructions
+    }
+  };
+
+  return [
+    'Extract a single character wiki page payload from this card.',
+    '',
+    'Input JSON:',
+    JSON.stringify(promptPayload, null, 2),
+    '',
+    'Output only JSON with keys: title, summary, keywords, aliases, markdown, rewriteNotes.'
+  ].join('\n');
+}
+
 export function parseCharacterCardRewriteResponse(raw: string): CharacterCardRewriteResult {
   const payload = extractJsonPayload(raw);
   const objectPayload = asRecord(payload);
@@ -499,6 +641,39 @@ export function parseCharacterCardRewriteResponse(raw: string): CharacterCardRew
     title,
     storyMarkdown,
     authorNoteMarkdown,
+    rewriteNotes
+  };
+}
+
+export function parseCharacterCardCharacterExtractResponse(raw: string): CharacterCardCharacterExtractResult {
+  const payload = extractJsonPayload(raw);
+  const objectPayload = asRecord(payload);
+  if (!objectPayload) {
+    throw new Error('Character extraction response payload is not an object.');
+  }
+
+  const title = asString(objectPayload.title)
+    || asString(objectPayload.name)
+    || 'Character';
+  const summary = asString(objectPayload.summary)
+    || asString(objectPayload.overview);
+  const markdown = asString(objectPayload.markdown)
+    || asString(objectPayload.content)
+    || asString(objectPayload.body);
+  const keywords = asStringArray(objectPayload.keywords ?? objectPayload.key);
+  const aliases = asStringArray(objectPayload.aliases);
+  const rewriteNotes = asStringArray(objectPayload.rewriteNotes ?? objectPayload.notes);
+
+  if (!markdown && !summary) {
+    throw new Error('Character extraction response is missing `markdown` and `summary`.');
+  }
+
+  return {
+    title,
+    summary,
+    markdown: markdown || summary,
+    keywords,
+    aliases,
     rewriteNotes
   };
 }
@@ -577,6 +752,51 @@ function buildAuthorNoteContent(
   return lines.join('\n');
 }
 
+function buildCharacterWikiPageContent(
+  card: ParsedCharacterCard,
+  extraction: CharacterCardCharacterExtractResult,
+  targetFolder: string,
+  defaultTags: string[],
+  lorebookNames: string[],
+  tagPrefix: string,
+  sourceCardPath: string,
+  maxSummaryChars: number
+): ImportedWikiPage {
+  const title = extraction.title || card.name || 'Character';
+  const characterStem = toSafeFileStem(title);
+  const characterPath = normalizeVaultPath(`${targetFolder}/characters/${characterStem}.md`);
+  const lorebookTags = buildLorebookTags(tagPrefix, lorebookNames);
+  const tags = uniqueStrings([...defaultTags, ...lorebookTags]);
+  const frontmatter: string[] = ['---'];
+  frontmatter.push(`title: ${yamlQuote(title)}`);
+  frontmatter.push(...yamlArrayBlock('aliases', extraction.aliases));
+  frontmatter.push(...yamlArrayBlock('keywords', extraction.keywords));
+  frontmatter.push(...yamlArrayBlock('tags', tags));
+  frontmatter.push(`type: "character"`);
+  frontmatter.push(`sourceType: "sillytavern_character_card_character_extract"`);
+  frontmatter.push(`characterCardName: ${yamlQuote(card.name || title)}`);
+  if (card.creator) {
+    frontmatter.push(`characterCardCreator: ${yamlQuote(card.creator)}`);
+  }
+  if (sourceCardPath) {
+    frontmatter.push(`characterCardPath: ${yamlQuote(sourceCardPath)}`);
+  }
+  frontmatter.push('---');
+
+  const body = ensureHeading(extraction.markdown, title).trimEnd();
+  const baseContent = [...frontmatter, '', body, ''].join('\n');
+  const summary = buildCharacterPageSummary(extraction.summary, extraction.markdown, maxSummaryChars);
+  const content = summary
+    ? upsertSummarySectionInMarkdown(baseContent, summary)
+    : baseContent;
+
+  return {
+    path: characterPath,
+    content,
+    uid: 2
+  };
+}
+
 export function buildCharacterCardImportPlan(
   card: ParsedCharacterCard,
   rewrite: CharacterCardRewriteResult,
@@ -637,6 +857,22 @@ export function buildCharacterCardImportPlan(
   ];
 
   const warnings: string[] = [];
+  if (options.characterPage) {
+    const usedPaths = new Set(pages.map(page => page.path.toLowerCase()));
+    const characterPage = buildCharacterWikiPageContent(
+      card,
+      options.characterPage,
+      targetFolder,
+      defaultTags,
+      effectiveLorebooks,
+      options.tagPrefix,
+      options.sourceCardPath,
+      options.maxSummaryChars
+    );
+    characterPage.path = resolveUniquePlanPath(characterPage.path, usedPaths);
+    pages.push(characterPage);
+  }
+
   if (options.includeEmbeddedLorebook && card.embeddedLorebookEntries.length > 0) {
     const embeddedFolder = normalizeVaultPath(`${targetFolder}/${storyStem}-lorebook`);
     const embeddedOptions: BuildImportedWikiPagesOptions = {

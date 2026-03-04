@@ -122,16 +122,16 @@ This document is the implementation-level reference for core architecture and ru
 - `src/sillytavern-character-card.ts`
   - ST character-card parser (`.png` `ccv3/chara` metadata + `.json` payloads)
   - deterministic card-field normalization (v1/v2/v3 shapes)
-  - rewrite prompt/response schema helpers
+  - rewrite prompt/response schema helpers (story/author-note + character-only wiki extraction)
   - freeform author-note markdown passthrough (`authorNoteMarkdown`) with prompt-driven guidance
   - image-card avatar propagation into generated story notes (`characterCardAvatar` frontmatter + `![[...]]` embed)
-  - story+author-note import plan builder with optional embedded-lorebook conversion
+  - story+author-note import plan builder with optional character-page extraction + optional embedded-lorebook conversion
 - `src/lorevault-import-view.ts`
   - import panel UI (`Import SillyTavern Lorebook` + `Import SillyTavern Character Card`)
   - lorebook list add/remove UX (interactive picker + Enter-to-add)
-  - character-card file picker and optional embedded-lorebook import toggle
+  - character-card file picker and optional embedded-lorebook/character-page extraction toggles
   - character-card planned-write editor (editable path + content before apply)
-  - model rewrite stage for character-card import with completion usage/operation-log hooks
+  - model rewrite/extraction stages for character-card import with completion usage/operation-log hooks
   - target-folder default sourced from shared setting `defaultLorebookImportLocation`
   - staged progress reporting for parse/build/apply
 - `src/lorevault-story-extract-view.ts`
@@ -661,6 +661,7 @@ Implemented:
 - deterministic file naming/path allocation
 - deterministic frontmatter/body mapping for generated wiki pages (summary persisted in `## Summary` section)
 - deterministic story+author-note note mapping for character-card rewrite output
+- optional character-only wiki-page extraction mapping for character-card imports (`<target>/characters/<name>.md`)
 - preview and apply import flows
 - staged import progress reporting (parse/build/apply with per-file write updates)
 - story extraction command/view with preview/apply workflow

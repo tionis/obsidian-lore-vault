@@ -217,6 +217,7 @@ Import/extraction/update panel behavior:
 - import and apply flows report live write progress while files are being created/updated
 - lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
 - character-card import can optionally import embedded card lorebooks into generated wiki notes
+- character-card import can optionally run `Extract Character Wiki Page` to create one character-only lorebook page from scenario/card context
 - character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
 - character-card preview exposes editable planned writes (path + content) before import apply
 - story notes generated from image-based character cards include linked avatar metadata and an embedded image reference for visual vibe anchoring

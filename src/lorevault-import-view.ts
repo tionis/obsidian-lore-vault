@@ -11,10 +11,14 @@ import { openVaultFolderPicker } from './folder-suggest-modal';
 import { LorebookScopeSuggestModal } from './lorebook-scope-suggest-modal';
 import { readVaultBinary } from './vault-binary-io';
 import {
+  buildCharacterCardCharacterExtractSystemPrompt,
+  buildCharacterCardCharacterExtractUserPrompt,
   buildCharacterCardImportPlan,
+  CharacterCardCharacterExtractResult,
   buildCharacterCardRewriteSystemPrompt,
   buildCharacterCardRewriteUserPrompt,
   CharacterCardImportPlan,
+  parseCharacterCardCharacterExtractResponse,
   parseCharacterCardRewriteResponse,
   parseSillyTavernCharacterCardJson,
   parseSillyTavernCharacterCardPngBytes
@@ -99,6 +103,7 @@ export class LorevaultImportView extends ItemView {
 
   private characterCardPath = '';
   private includeEmbeddedLorebook = true;
+  private includeCharacterWikiPage = false;
 
   private selectedCompletionPresetId = '';
   private running = false;
@@ -180,6 +185,7 @@ export class LorevaultImportView extends ItemView {
       this.defaultTags,
       this.characterCardPath.trim(),
       String(this.includeEmbeddedLorebook),
+      String(this.includeCharacterWikiPage),
       this.selectedCompletionPresetId.trim(),
       this.getNormalizedLorebooks().join(','),
       this.plugin.settings.tagScoping.tagPrefix,
@@ -547,6 +553,16 @@ export class LorevaultImportView extends ItemView {
           this.includeEmbeddedLorebook = value;
           this.invalidatePreparedPages();
         }));
+
+    new Setting(container)
+      .setName('Extract Character Wiki Page')
+      .setDesc('Run a character-only extraction pass and include one character wiki page in the import plan.')
+      .addToggle(toggle => toggle
+        .setValue(this.includeCharacterWikiPage)
+        .onChange(value => {
+          this.includeCharacterWikiPage = value;
+          this.invalidatePreparedPages();
+        }));
   }
 
   private async buildLorebookImportPages(): Promise<ImportedWikiPage[]> {
@@ -619,6 +635,32 @@ export class LorevaultImportView extends ItemView {
     });
 
     const rewrite = parseCharacterCardRewriteResponse(response);
+    let characterPage: CharacterCardCharacterExtractResult | null = null;
+    if (this.includeCharacterWikiPage) {
+      this.setProgress(
+        'Extracting character wiki page...',
+        card.name || abstract.basename
+      );
+      const characterPageResponse = await requestStoryContinuation(completionResolution.completion, {
+        systemPrompt: buildCharacterCardCharacterExtractSystemPrompt(),
+        userPrompt: buildCharacterCardCharacterExtractUserPrompt(card),
+        operationName: 'character_card_character_extract',
+        onOperationLog: record => this.plugin.appendCompletionOperationLog(record, {
+          costProfile: completionResolution.costProfile
+        }),
+        onUsage: usage => {
+          void this.plugin.recordCompletionUsage('character_card_character_extract', usage, {
+            cardPath: abstract.path,
+            completionProfileSource: completionResolution.profileSource,
+            completionProfileId: completionResolution.profileId,
+            completionProfileName: completionResolution.profileName,
+            autoCostProfile: completionResolution.autoCostProfile
+          });
+        }
+      });
+      characterPage = parseCharacterCardCharacterExtractResponse(characterPageResponse);
+    }
+
     const authorNoteFolder = this.plugin.getStorySteeringFolderPath();
     this.setProgress('Building import write plan...', card.name || abstract.basename);
     const plan = buildCharacterCardImportPlan(card, rewrite, {
@@ -630,14 +672,20 @@ export class LorevaultImportView extends ItemView {
       maxSummaryChars: this.plugin.settings.summaries.maxSummaryChars,
       includeEmbeddedLorebook: this.includeEmbeddedLorebook,
       sourceCardPath: abstract.path,
-      completionPresetId: this.selectedCompletionPresetId.trim()
+      completionPresetId: this.selectedCompletionPresetId.trim(),
+      characterPage
     });
 
-    const embeddedCount = Math.max(0, plan.pages.length - 2);
+    const characterPageCount = this.includeCharacterWikiPage ? 1 : 0;
+    const embeddedCount = Math.max(0, plan.pages.length - 2 - characterPageCount);
+    const characterSuffix = characterPageCount > 0 ? ' + character wiki page' : '';
     const rewriteNoteSuffix = rewrite.rewriteNotes.length > 0
       ? ` | rewrite notes: ${rewrite.rewriteNotes.length}`
       : '';
-    this.previewSummary = `Preview: story note + author note${embeddedCount > 0 ? ` + ${embeddedCount} embedded lorebook note(s)` : ''}${rewriteNoteSuffix}.`;
+    const characterExtractNoteSuffix = characterPage && characterPage.rewriteNotes.length > 0
+      ? ` | character extract notes: ${characterPage.rewriteNotes.length}`
+      : '';
+    this.previewSummary = `Preview: story note + author note${characterSuffix}${embeddedCount > 0 ? ` + ${embeddedCount} embedded lorebook note(s)` : ''}${rewriteNoteSuffix}${characterExtractNoteSuffix}.`;
     this.previewPaths = plan.pages.map(page => page.path);
     this.previewWarnings = [
       ...card.warnings,

@@ -677,6 +677,7 @@ Shared panel inputs:
   - default tags
   - lorebook selection list with per-item delete, interactive add picker, and Enter-to-add custom input
   - completion profile selector (used for LLM rewrite into freeform story format)
+  - optional `Extract Character Wiki Page` toggle for one character-only wiki page from scenario/card context
   - optional `Import Embedded Lorebook` toggle for card `character_book` payloads
 - `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)
@@ -752,6 +753,11 @@ Current mapping for imported character cards:
 - author note body is taken directly from model-provided `authorNoteMarkdown`
   - no hardcoded section template, caps, or structural post-processing
   - steering is prompt-driven; model chooses the most relevant markdown structure
+- optional `Extract Character Wiki Page` adds one character-only wiki note:
+  - generated from card scenario/context via dedicated extraction pass
+  - writes a lorebook-tagged character page under `<target>/characters/<name>.md`
+  - includes deterministic frontmatter (`type: "character"`, aliases/keywords/tags, source-card metadata)
+  - inserts `## Summary` section using extracted summary or markdown fallback
 - character-card preview allows editing planned writes (target path + markdown content) before apply
 - optional embedded lorebook import:
   - card `character_book` entries are converted to wiki notes using the same deterministic lorebook-import path/materialization pipeline

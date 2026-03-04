@@ -240,9 +240,10 @@ If you prefer to build the plugin from source:
     - Pick a `.png`/`.json` card file from the vault
     - Keep/adjust completion profile for rewrite
     - Optional: enable/disable embedded lorebook import
+    - Optional: enable `Extract Character Wiki Page` to generate one character-only lorebook page from scenario/card context
     - Rewrite output uses freeform `authorNoteMarkdown` (no enforced section template in plugin post-processing)
     - In preview, review and edit planned write paths/content before apply
-    - Preview and import generated story note + linked author note (+ optional embedded lorebook notes)
+    - Preview and import generated story note + linked author note (+ optional character wiki page and embedded lorebook notes)
 
 10. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`

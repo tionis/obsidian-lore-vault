@@ -238,6 +238,7 @@ Import/extraction/update panel behavior:
 - `Sync Character Card Library` scans `Character Card Source Folder` and creates/updates one `lvDocType: characterCard` meta note per source card in `Character Card Meta Folder`
 - synced character-card meta notes expose parsed card fields in frontmatter (name/creator/tags/description/personality/scenario/messages/prompts/lorebook stats) for Bases-friendly filtering/grouping
 - optional `Auto-Generate Card Summaries on Sync` adds concise LLM-generated catalog fields (`cardSummary`, themes/tone, scenario focus, hook) and tracks stale summaries by card hash without overwriting manual summaries
+- sync now shows live progress notifications (stage + percent + elapsed time), useful for long runs with LLM summary generation
 - when a synced character-card meta note exists, generated story notes include `characterCardMeta: [[...]]` for backlink-based related-story tracing
 - story notes generated from image-based character cards include linked avatar metadata and an embedded image reference for visual vibe anchoring
 - default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)

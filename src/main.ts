@@ -2694,6 +2694,30 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   public async syncCharacterCardLibrary(): Promise<void> {
+    const progressNotice = new Notice('Character-card sync starting...', 0);
+    const progressStartedAt = Date.now();
+    let lastProgressUpdateAt = 0;
+    const updateProgressNotice = (
+      phase: string,
+      completed: number,
+      total: number,
+      details = '',
+      force = false
+    ): void => {
+      const now = Date.now();
+      if (!force && now - lastProgressUpdateAt < 180) {
+        return;
+      }
+      lastProgressUpdateAt = now;
+      const safeTotal = Math.max(0, total);
+      const safeCompleted = Math.max(0, Math.min(completed, safeTotal));
+      const pct = safeTotal > 0 ? Math.floor((safeCompleted / safeTotal) * 100) : 100;
+      const elapsedSeconds = Math.max(0, Math.floor((now - progressStartedAt) / 1000));
+      const base = `Character-card sync ${phase} ${safeCompleted}/${safeTotal} (${pct}%)`;
+      const suffix = details ? ` | ${details}` : '';
+      progressNotice.setMessage(`${base}${suffix} | ${elapsedSeconds}s`);
+    };
+
     const metaFolder = this.getCharacterCardMetaFolderPath();
     const sourceFiles = this.getCharacterCardSourceFiles();
     const metaFiles = this.app.vault.getMarkdownFiles()
@@ -2729,6 +2753,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     const seenCardPaths = new Set<string>();
     const autoSummaryEnabled = Boolean(this.settings.characterCards.autoSummaryEnabled);
     const autoSummaryRegenerate = Boolean(this.settings.characterCards.summaryRegenerateOnHashChange);
+    const totalProgressItems = sourceFiles.length + existingByCardPath.size;
+    let progressCompleted = 0;
+    updateProgressNotice(
+      'initializing',
+      progressCompleted,
+      totalProgressItems,
+      `${sourceFiles.length} source card(s), ${existingByCardPath.size} existing meta note(s)`,
+      true
+    );
     const summaryCompletionResolution = autoSummaryEnabled
       ? this.resolveCharacterCardSummaryCompletion()
       : null;
@@ -2737,202 +2770,248 @@ export default class LoreBookConverterPlugin extends Plugin {
       new Notice(`Card summary generation disabled: ${summaryCompletionResolution.error}`);
     }
 
-    for (const sourceFile of sourceFiles) {
-      const normalizedSourcePath = normalizeVaultPath(sourceFile.path);
-      if (!normalizedSourcePath) {
-        continue;
-      }
-      const sourceKey = normalizedSourcePath.toLowerCase();
-      seenCardPaths.add(sourceKey);
-
-      try {
-        const parsed = await this.parseCharacterCardSourceFile(sourceFile);
-        if (parsed.parseError) {
-          parseErrors += 1;
-        }
-        let metaFile = existingByCardPath.get(sourceKey) ?? null;
-        if (!metaFile) {
-          const metaPath = this.buildCharacterCardMetaFilePath(metaFolder, sourceFile, parsed.parsedCard, usedMetaPaths);
-          await ensureParentVaultFolderForFile(this.app, metaPath);
-          const skeleton = this.buildCharacterCardMetaSkeleton(sourceFile, parsed.parsedCard);
-          const createdFile = await this.app.vault.create(metaPath, skeleton);
-          if (!(createdFile instanceof TFile)) {
-            throw new Error(`Failed to create meta note for ${sourceFile.path}.`);
-          }
-          metaFile = createdFile;
-          existingByCardPath.set(sourceKey, metaFile);
-          created += 1;
-        } else {
-          updated += 1;
-        }
-
-        const parsedCard = parsed.parsedCard;
-        const docTitle = parsedCard?.name || sourceFile.basename || 'Character Card';
-        const existingCache = this.app.metadataCache.getFileCache(metaFile);
-        const existingFrontmatter = normalizeFrontmatter((existingCache?.frontmatter ?? {}) as FrontmatterData);
-        const existingStatus = (asString(getFrontmatterValue(existingFrontmatter, 'status')) ?? '').toLowerCase();
-        const existingLorebooks = asStringArray(getFrontmatterValue(existingFrontmatter, 'lorebooks'));
-        const existingCompletionProfile = asString(getFrontmatterValue(existingFrontmatter, 'completionProfile'));
-        const existingCardSummary = asString(getFrontmatterValue(existingFrontmatter, 'cardSummary')) ?? '';
-        const existingCardSummaryForHash = asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryForHash')) ?? '';
-        const existingCardSummarySource = (asString(getFrontmatterValue(existingFrontmatter, 'cardSummarySource')) ?? '').trim().toLowerCase();
-        const existingCardSummaryHasContent = Boolean(existingCardSummary.trim());
-        const existingCardSummaryHashMismatch = Boolean(existingCardSummaryForHash) && existingCardSummaryForHash !== parsed.cardHash;
-
-        let generatedSummary: CharacterCardSummaryPayload | null = null;
-        let summarySyncError = '';
-        const shouldGenerateSummary = Boolean(
-          autoSummaryEnabled
-          && parsedCard
-          && summaryCompletionResolution
-          && !summaryCompletionResolution.error
-          && (
-            !existingCardSummaryHasContent
-            || (
-              autoSummaryRegenerate
-              && existingCardSummaryHashMismatch
-              && existingCardSummarySource === 'llm_auto'
-            )
-          )
+    try {
+      for (let sourceIndex = 0; sourceIndex < sourceFiles.length; sourceIndex += 1) {
+        const sourceFile = sourceFiles[sourceIndex];
+        updateProgressNotice(
+          'processing cards',
+          progressCompleted,
+          totalProgressItems,
+          `${sourceIndex + 1}/${sourceFiles.length}: ${sourceFile.basename}`
         );
-
-        if (shouldGenerateSummary && parsedCard && summaryCompletionResolution && !summaryCompletionResolution.error) {
-          try {
-            generatedSummary = await this.generateCharacterCardSummary(sourceFile, parsedCard, summaryCompletionResolution);
-            summaryGenerated += 1;
-          } catch (error) {
-            summaryFailed += 1;
-            summarySyncError = error instanceof Error ? error.message : String(error);
-          }
-        } else if (autoSummaryEnabled && parsedCard) {
-          summarySkipped += 1;
+        const normalizedSourcePath = normalizeVaultPath(sourceFile.path);
+        if (!normalizedSourcePath) {
+          progressCompleted += 1;
+          continue;
         }
+        const sourceKey = normalizedSourcePath.toLowerCase();
+        seenCardPaths.add(sourceKey);
 
-        if (!generatedSummary && existingCardSummaryHasContent && existingCardSummaryHashMismatch) {
-          summaryStale += 1;
-        }
-
-        await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
-          frontmatter.lvDocType = CHARACTER_CARD_META_DOC_TYPE;
-          frontmatter.title = docTitle;
-          frontmatter.characterName = docTitle;
-          frontmatter.cardPath = sourceFile.path;
-          frontmatter.cardFile = `[[${normalizeLinkTarget(sourceFile.path)}]]`;
-          frontmatter.cardFormat = sourceFile.extension.toLowerCase();
-          frontmatter.cardHash = parsed.cardHash;
-          frontmatter.cardSpec = parsedCard?.spec ?? '';
-          frontmatter.cardSpecVersion = parsedCard?.specVersion ?? '';
-          frontmatter.creator = parsedCard?.creator ?? '';
-          frontmatter.creatorNotes = parsedCard?.creatorNotes ?? '';
-          frontmatter.cardTags = parsedCard?.tags ?? [];
-          frontmatter.cardDescription = parsedCard?.description ?? '';
-          frontmatter.cardPersonality = parsedCard?.personality ?? '';
-          frontmatter.cardScenario = parsedCard?.scenario ?? '';
-          frontmatter.cardFirstMessage = parsedCard?.firstMessage ?? '';
-          frontmatter.cardMessageExample = parsedCard?.messageExample ?? '';
-          frontmatter.cardAlternateGreetings = parsedCard?.alternateGreetings ?? [];
-          frontmatter.cardGroupOnlyGreetings = parsedCard?.groupOnlyGreetings ?? [];
-          frontmatter.cardSystemPrompt = parsedCard?.systemPrompt ?? '';
-          frontmatter.cardPostHistoryInstructions = parsedCard?.postHistoryInstructions ?? '';
-          frontmatter.embeddedLorebookName = parsedCard?.embeddedLorebookName ?? '';
-          frontmatter.embeddedLorebookEntryCount = parsedCard?.embeddedLorebookEntries.length ?? 0;
-          frontmatter.cardMtime = new Date(sourceFile.stat.mtime).toISOString();
-          frontmatter.cardSizeBytes = sourceFile.stat.size;
-          frontmatter.sourceType = 'sillytavern_character_card_library';
-          frontmatter.lastSynced = nowIso;
-          if (existingLorebooks.length > 0) {
-            frontmatter.lorebooks = existingLorebooks;
-          } else if (!Array.isArray(frontmatter.lorebooks)) {
-            frontmatter.lorebooks = [];
-          }
-          if (existingCompletionProfile) {
-            frontmatter.completionProfile = existingCompletionProfile;
-          } else if (typeof frontmatter.completionProfile === 'string' && !frontmatter.completionProfile.trim()) {
-            delete frontmatter.completionProfile;
-          }
-          frontmatter.status = existingStatus && existingStatus !== 'missing_source'
-            ? existingStatus
-            : 'inbox';
-          if (parsed.avatarLink) {
-            frontmatter.avatar = parsed.avatarLink;
-          } else {
-            delete frontmatter.avatar;
-          }
+        try {
+          const parsed = await this.parseCharacterCardSourceFile(sourceFile);
           if (parsed.parseError) {
-            frontmatter.parseError = parsed.parseError;
-          } else {
-            delete frontmatter.parseError;
+            parseErrors += 1;
           }
-          if (parsed.warnings.length > 0) {
-            frontmatter.syncWarnings = parsed.warnings;
+          let metaFile = existingByCardPath.get(sourceKey) ?? null;
+          if (!metaFile) {
+            const metaPath = this.buildCharacterCardMetaFilePath(metaFolder, sourceFile, parsed.parsedCard, usedMetaPaths);
+            await ensureParentVaultFolderForFile(this.app, metaPath);
+            const skeleton = this.buildCharacterCardMetaSkeleton(sourceFile, parsed.parsedCard);
+            const createdFile = await this.app.vault.create(metaPath, skeleton);
+            if (!(createdFile instanceof TFile)) {
+              throw new Error(`Failed to create meta note for ${sourceFile.path}.`);
+            }
+            metaFile = createdFile;
+            existingByCardPath.set(sourceKey, metaFile);
+            created += 1;
           } else {
-            delete frontmatter.syncWarnings;
+            updated += 1;
           }
-          if (generatedSummary) {
-            frontmatter.cardSummary = generatedSummary.summary;
-            frontmatter.cardSummaryThemes = generatedSummary.themes;
-            frontmatter.cardSummaryTone = generatedSummary.tone;
-            frontmatter.cardSummaryScenarioFocus = generatedSummary.scenarioFocus;
-            frontmatter.cardSummaryHook = generatedSummary.hook;
-            frontmatter.cardSummaryForHash = parsed.cardHash;
-            frontmatter.cardSummaryUpdatedAt = nowIso;
-            frontmatter.cardSummarySource = 'llm_auto';
-            frontmatter.cardSummaryStale = false;
-            delete frontmatter.cardSummarySyncError;
-          } else if (existingCardSummaryHasContent) {
-            frontmatter.cardSummaryStale = existingCardSummaryHashMismatch;
-            if (summarySyncError) {
+
+          const parsedCard = parsed.parsedCard;
+          const docTitle = parsedCard?.name || sourceFile.basename || 'Character Card';
+          const existingCache = this.app.metadataCache.getFileCache(metaFile);
+          const existingFrontmatter = normalizeFrontmatter((existingCache?.frontmatter ?? {}) as FrontmatterData);
+          const existingStatus = (asString(getFrontmatterValue(existingFrontmatter, 'status')) ?? '').toLowerCase();
+          const existingLorebooks = asStringArray(getFrontmatterValue(existingFrontmatter, 'lorebooks'));
+          const existingCompletionProfile = asString(getFrontmatterValue(existingFrontmatter, 'completionProfile'));
+          const existingCardSummary = asString(getFrontmatterValue(existingFrontmatter, 'cardSummary')) ?? '';
+          const existingCardSummaryForHash = asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryForHash')) ?? '';
+          const existingCardSummarySource = (asString(getFrontmatterValue(existingFrontmatter, 'cardSummarySource')) ?? '').trim().toLowerCase();
+          const existingCardSummaryHasContent = Boolean(existingCardSummary.trim());
+          const existingCardSummaryHashMismatch = Boolean(existingCardSummaryForHash) && existingCardSummaryForHash !== parsed.cardHash;
+
+          let generatedSummary: CharacterCardSummaryPayload | null = null;
+          let summarySyncError = '';
+          const shouldGenerateSummary = Boolean(
+            autoSummaryEnabled
+            && parsedCard
+            && summaryCompletionResolution
+            && !summaryCompletionResolution.error
+            && (
+              !existingCardSummaryHasContent
+              || (
+                autoSummaryRegenerate
+                && existingCardSummaryHashMismatch
+                && existingCardSummarySource === 'llm_auto'
+              )
+            )
+          );
+
+          if (shouldGenerateSummary && parsedCard && summaryCompletionResolution && !summaryCompletionResolution.error) {
+            updateProgressNotice(
+              'processing cards',
+              progressCompleted,
+              totalProgressItems,
+              `${sourceIndex + 1}/${sourceFiles.length}: generating summary for ${sourceFile.basename}`,
+              true
+            );
+            try {
+              generatedSummary = await this.generateCharacterCardSummary(sourceFile, parsedCard, summaryCompletionResolution);
+              summaryGenerated += 1;
+            } catch (error) {
+              summaryFailed += 1;
+              summarySyncError = error instanceof Error ? error.message : String(error);
+            }
+          } else if (autoSummaryEnabled && parsedCard) {
+            summarySkipped += 1;
+          }
+
+          if (!generatedSummary && existingCardSummaryHasContent && existingCardSummaryHashMismatch) {
+            summaryStale += 1;
+          }
+
+          await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
+            frontmatter.lvDocType = CHARACTER_CARD_META_DOC_TYPE;
+            frontmatter.title = docTitle;
+            frontmatter.characterName = docTitle;
+            frontmatter.cardPath = sourceFile.path;
+            frontmatter.cardFile = `[[${normalizeLinkTarget(sourceFile.path)}]]`;
+            frontmatter.cardFormat = sourceFile.extension.toLowerCase();
+            frontmatter.cardHash = parsed.cardHash;
+            frontmatter.cardSpec = parsedCard?.spec ?? '';
+            frontmatter.cardSpecVersion = parsedCard?.specVersion ?? '';
+            frontmatter.creator = parsedCard?.creator ?? '';
+            frontmatter.creatorNotes = parsedCard?.creatorNotes ?? '';
+            frontmatter.cardTags = parsedCard?.tags ?? [];
+            frontmatter.cardDescription = parsedCard?.description ?? '';
+            frontmatter.cardPersonality = parsedCard?.personality ?? '';
+            frontmatter.cardScenario = parsedCard?.scenario ?? '';
+            frontmatter.cardFirstMessage = parsedCard?.firstMessage ?? '';
+            frontmatter.cardMessageExample = parsedCard?.messageExample ?? '';
+            frontmatter.cardAlternateGreetings = parsedCard?.alternateGreetings ?? [];
+            frontmatter.cardGroupOnlyGreetings = parsedCard?.groupOnlyGreetings ?? [];
+            frontmatter.cardSystemPrompt = parsedCard?.systemPrompt ?? '';
+            frontmatter.cardPostHistoryInstructions = parsedCard?.postHistoryInstructions ?? '';
+            frontmatter.embeddedLorebookName = parsedCard?.embeddedLorebookName ?? '';
+            frontmatter.embeddedLorebookEntryCount = parsedCard?.embeddedLorebookEntries.length ?? 0;
+            frontmatter.cardMtime = new Date(sourceFile.stat.mtime).toISOString();
+            frontmatter.cardSizeBytes = sourceFile.stat.size;
+            frontmatter.sourceType = 'sillytavern_character_card_library';
+            frontmatter.lastSynced = nowIso;
+            if (existingLorebooks.length > 0) {
+              frontmatter.lorebooks = existingLorebooks;
+            } else if (!Array.isArray(frontmatter.lorebooks)) {
+              frontmatter.lorebooks = [];
+            }
+            if (existingCompletionProfile) {
+              frontmatter.completionProfile = existingCompletionProfile;
+            } else if (typeof frontmatter.completionProfile === 'string' && !frontmatter.completionProfile.trim()) {
+              delete frontmatter.completionProfile;
+            }
+            frontmatter.status = existingStatus && existingStatus !== 'missing_source'
+              ? existingStatus
+              : 'inbox';
+            if (parsed.avatarLink) {
+              frontmatter.avatar = parsed.avatarLink;
+            } else {
+              delete frontmatter.avatar;
+            }
+            if (parsed.parseError) {
+              frontmatter.parseError = parsed.parseError;
+            } else {
+              delete frontmatter.parseError;
+            }
+            if (parsed.warnings.length > 0) {
+              frontmatter.syncWarnings = parsed.warnings;
+            } else {
+              delete frontmatter.syncWarnings;
+            }
+            if (generatedSummary) {
+              frontmatter.cardSummary = generatedSummary.summary;
+              frontmatter.cardSummaryThemes = generatedSummary.themes;
+              frontmatter.cardSummaryTone = generatedSummary.tone;
+              frontmatter.cardSummaryScenarioFocus = generatedSummary.scenarioFocus;
+              frontmatter.cardSummaryHook = generatedSummary.hook;
+              frontmatter.cardSummaryForHash = parsed.cardHash;
+              frontmatter.cardSummaryUpdatedAt = nowIso;
+              frontmatter.cardSummarySource = 'llm_auto';
+              frontmatter.cardSummaryStale = false;
+              delete frontmatter.cardSummarySyncError;
+            } else if (existingCardSummaryHasContent) {
+              frontmatter.cardSummaryStale = existingCardSummaryHashMismatch;
+              if (summarySyncError) {
+                frontmatter.cardSummarySyncError = summarySyncError;
+              } else {
+                delete frontmatter.cardSummarySyncError;
+              }
+            } else if (summarySyncError) {
               frontmatter.cardSummarySyncError = summarySyncError;
             } else {
               delete frontmatter.cardSummarySyncError;
+              delete frontmatter.cardSummaryStale;
             }
-          } else if (summarySyncError) {
-            frontmatter.cardSummarySyncError = summarySyncError;
-          } else {
-            delete frontmatter.cardSummarySyncError;
-            delete frontmatter.cardSummaryStale;
-          }
-          delete frontmatter.missingSourceSince;
-        });
-      } catch (error) {
-        failures += 1;
-        console.warn('LoreVault: Failed syncing character-card meta note:', sourceFile.path, error);
+            delete frontmatter.missingSourceSince;
+          });
+        } catch (error) {
+          failures += 1;
+          console.warn('LoreVault: Failed syncing character-card meta note:', sourceFile.path, error);
+        } finally {
+          progressCompleted += 1;
+          updateProgressNotice(
+            'processing cards',
+            progressCompleted,
+            totalProgressItems,
+            `${sourceIndex + 1}/${sourceFiles.length}: ${sourceFile.basename}`
+          );
+        }
       }
-    }
 
-    for (const [cardPathKey, metaFile] of existingByCardPath.entries()) {
-      if (seenCardPaths.has(cardPathKey)) {
-        continue;
+      const existingEntries = [...existingByCardPath.entries()];
+      for (let missingIndex = 0; missingIndex < existingEntries.length; missingIndex += 1) {
+        const [cardPathKey, metaFile] = existingEntries[missingIndex];
+        updateProgressNotice(
+          'marking missing',
+          progressCompleted,
+          totalProgressItems,
+          `${missingIndex + 1}/${existingEntries.length}: ${metaFile.basename}`
+        );
+        if (seenCardPaths.has(cardPathKey)) {
+          progressCompleted += 1;
+          continue;
+        }
+        try {
+          await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
+            frontmatter.status = 'missing_source';
+            if (!asString(frontmatter.missingSourceSince)) {
+              frontmatter.missingSourceSince = nowIso;
+            }
+            frontmatter.lastSynced = nowIso;
+          });
+          markedMissing += 1;
+        } catch (error) {
+          failures += 1;
+          console.warn('LoreVault: Failed marking missing source card meta note:', metaFile.path, error);
+        } finally {
+          progressCompleted += 1;
+          updateProgressNotice(
+            'marking missing',
+            progressCompleted,
+            totalProgressItems,
+            `${missingIndex + 1}/${existingEntries.length}: ${metaFile.basename}`
+          );
+        }
       }
-      try {
-        await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
-          frontmatter.status = 'missing_source';
-          if (!asString(frontmatter.missingSourceSince)) {
-            frontmatter.missingSourceSince = nowIso;
-          }
-          frontmatter.lastSynced = nowIso;
-        });
-        markedMissing += 1;
-      } catch (error) {
-        failures += 1;
-        console.warn('LoreVault: Failed marking missing source card meta note:', metaFile.path, error);
-      }
-    }
 
-    const summary = [
-      `Character-card sync complete (${sourceFiles.length} source files).`,
-      `${created} created`,
-      `${updated} updated`,
-      `${markedMissing} missing-source`,
-      `${parseErrors} parse errors`,
-      `${summaryGenerated} summaries`,
-      `${summaryStale} stale summaries`,
-      `${summaryFailed} summary failures`,
-      `${summarySkipped} summary skipped`,
-      `${summaryConfigErrorCount} summary config errors`,
-      `${failures} failures`
-    ].join(' | ');
-    new Notice(summary);
+      updateProgressNotice('finalizing', totalProgressItems, totalProgressItems, 'done', true);
+
+      const summary = [
+        `Character-card sync complete (${sourceFiles.length} source files).`,
+        `${created} created`,
+        `${updated} updated`,
+        `${markedMissing} missing-source`,
+        `${parseErrors} parse errors`,
+        `${summaryGenerated} summaries`,
+        `${summaryStale} stale summaries`,
+        `${summaryFailed} summary failures`,
+        `${summarySkipped} summary skipped`,
+        `${summaryConfigErrorCount} summary config errors`,
+        `${failures} failures`
+      ].join(' | ');
+      new Notice(summary);
+    } finally {
+      progressNotice.hide();
+    }
   }
 
   private discoverAllScopes(files: TFile[]): string[] {

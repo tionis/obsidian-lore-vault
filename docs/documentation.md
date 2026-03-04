@@ -710,6 +710,7 @@ Shared panel inputs:
   - updates parsed card metadata for Bases-friendly frontmatter usage (`characterName`, `cardTags`, description/personality/scenario, greetings/messages/prompts, embedded-lorebook stats)
   - optional auto-summary mode generates concise card catalog fields (`cardSummary`, themes/tone, scenario focus, hook) via completion profile selection
   - auto-summary updates are hash-aware (`cardSummaryForHash`); manual summaries are preserved and stale summaries are flagged instead of silently overwritten
+  - shows live sync progress notifications (phase, percent, elapsed time) while processing cards and missing-source checks
   - marks notes `status: missing_source` when source cards are removed (no automatic deletion)
 - `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)

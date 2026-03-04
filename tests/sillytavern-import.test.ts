@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   applyImportedWikiPages,
   buildImportedWikiPages,
-  parseSillyTavernLorebookJson
+  parseSillyTavernLorebookJson,
+  parseSillyTavernLorebookPayload
 } from '../src/sillytavern-import';
 
 test('parseSillyTavernLorebookJson parses object-style entries and sorts deterministically', () => {
@@ -60,6 +61,62 @@ test('buildImportedWikiPages maps tags/keywords/aliases/content deterministicall
   assert.equal(/^summary:/m.test(pages[0].content), false);
   assert.match(pages[0].content, /## Summary\n\nCaptain Sol leads the Third Fleet\./);
   assert.match(pages[0].content, /Captain Sol leads the Third Fleet\./);
+});
+
+test('buildImportedWikiPages supports disabling summary truncation with zero maxSummaryChars', () => {
+  const longContent = `${'Archive detail sentence. '.repeat(40)}Final canon marker.`;
+  const pages = buildImportedWikiPages([
+    {
+      uid: 8,
+      comment: 'Archive Chronicle',
+      content: longContent,
+      key: ['archive'],
+      keysecondary: [],
+      disable: false
+    }
+  ], {
+    targetFolder: 'wiki/imported',
+    defaultTagsRaw: '',
+    lorebookName: 'chronicle/main',
+    tagPrefix: 'lorebook',
+    maxSummaryChars: 0
+  });
+
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].content.includes('...'), false);
+  assert.match(pages[0].content, /Final canon marker\./);
+});
+
+test('parseSillyTavernLorebookPayload accepts character-book style entries', () => {
+  const result = parseSillyTavernLorebookPayload({
+    name: 'Embedded',
+    entries: [
+      {
+        id: 42,
+        keys: ['Captain Sol'],
+        secondary_keys: ['Sol'],
+        comment: 'Captain Sol',
+        content: 'Commander profile.',
+        enabled: true
+      },
+      {
+        id: 43,
+        keys: ['Hidden Item'],
+        secondary_keys: [],
+        comment: 'Hidden Item',
+        content: 'Should be disabled.',
+        enabled: false
+      }
+    ]
+  });
+
+  assert.equal(result.entries.length, 2);
+  assert.equal(result.entries[0].uid, 42);
+  assert.deepEqual(result.entries[0].key, ['Captain Sol']);
+  assert.deepEqual(result.entries[0].keysecondary, ['Sol']);
+  assert.equal(result.entries[0].disable, false);
+  assert.equal(result.entries[1].uid, 43);
+  assert.equal(result.entries[1].disable, true);
 });
 
 function createMockApp() {

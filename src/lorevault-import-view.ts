@@ -344,12 +344,9 @@ export class LorevaultImportView extends ItemView {
   }
 
   private async pickCharacterCardFile(): Promise<string | null> {
-    const supported = new Set(['png', 'json']);
-    const files = this.app.vault.getFiles()
-      .filter(file => supported.has(file.extension.toLowerCase()))
-      .sort((left, right) => left.path.localeCompare(right.path));
+    const files = this.plugin.listCharacterCardSourceFiles();
     if (files.length === 0) {
-      new Notice('No `.png` or `.json` character-card files found in the vault.');
+      new Notice(`No character cards found in ${this.plugin.getCharacterCardSourceFolderPath()}.`);
       return null;
     }
     const modal = new CharacterCardFileSuggestModal(this.app, files, 'Pick a SillyTavern character card...');
@@ -519,7 +516,7 @@ export class LorevaultImportView extends ItemView {
     let pathInput: { setValue: (value: string) => void } | null = null;
     new Setting(container)
       .setName('Character Card File')
-      .setDesc('Vault path to a `.png` or `.json` SillyTavern character card.')
+      .setDesc('Vault path to a `.png` or `.json` SillyTavern character card (typically from Character Card Source Folder).')
       .addText(text => {
         pathInput = text;
         text
@@ -662,6 +659,7 @@ export class LorevaultImportView extends ItemView {
     }
 
     const authorNoteFolder = this.plugin.getStorySteeringFolderPath();
+    const characterCardMetaPath = this.plugin.findCharacterCardMetaPathBySourcePath(abstract.path);
     this.setProgress('Building import write plan...', card.name || abstract.basename);
     const plan = buildCharacterCardImportPlan(card, rewrite, {
       targetFolder: this.targetFolder,
@@ -673,7 +671,8 @@ export class LorevaultImportView extends ItemView {
       includeEmbeddedLorebook: this.includeEmbeddedLorebook,
       sourceCardPath: abstract.path,
       completionPresetId: this.selectedCompletionPresetId.trim(),
-      characterPage
+      characterPage,
+      characterCardMetaPath
     });
 
     const characterPageCount = this.includeCharacterWikiPage ? 1 : 0;

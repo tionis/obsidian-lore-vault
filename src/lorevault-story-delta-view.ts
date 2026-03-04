@@ -1230,7 +1230,7 @@ export class LorevaultStoryDeltaView extends ItemView {
 
     new Setting(contentEl)
       .setName('Update Policy')
-      .setDesc('safe_append keeps existing metadata; structured_merge updates summary-section/keywords/aliases too.')
+      .setDesc('safe_append keeps existing metadata; structured_merge updates summary-section/keywords/aliases (single summary candidate, no concatenation).')
       .addDropdown(dropdown => {
         dropdown.addOption('safe_append', 'safe_append');
         dropdown.addOption('structured_merge', 'structured_merge');

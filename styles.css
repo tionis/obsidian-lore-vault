@@ -1433,3 +1433,184 @@
     grid-template-columns: 1fr;
   }
 }
+
+.lorevault-bases-character-view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lorevault-bases-character-summary,
+.lorevault-bases-character-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lorevault-bases-character-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lorevault-bases-character-group-title {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lorevault-bases-character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.lorevault-bases-character-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--background-primary);
+}
+
+.lorevault-bases-character-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.lorevault-bases-character-avatar-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  flex: 0 0 auto;
+}
+
+.lorevault-bases-character-card-large-avatar .lorevault-bases-character-avatar-wrap {
+  width: 84px;
+  height: 84px;
+}
+
+.lorevault-bases-character-avatar-button {
+  cursor: zoom-in;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.lorevault-bases-character-avatar-button:hover,
+.lorevault-bases-character-avatar-button:focus-visible {
+  border-color: var(--interactive-accent);
+}
+
+.lorevault-bases-character-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lorevault-bases-character-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lorevault-bases-character-title-wrap h4 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.lorevault-bases-character-creator,
+.lorevault-bases-character-path {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.lorevault-bases-character-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lorevault-bases-character-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.lorevault-bases-character-field {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--background-secondary);
+}
+
+.lorevault-bases-character-field h5 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.lorevault-bases-character-field-body {
+  font-size: 13px;
+}
+
+.lorevault-bases-character-field-body > *:first-child {
+  margin-top: 0;
+}
+
+.lorevault-bases-character-field-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.lorevault-bases-character-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lorevault-bases-character-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lorevault-bases-character-action-icon {
+  display: inline-flex;
+}
+
+.lorevault-bases-avatar-preview-body {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 2px;
+}
+
+.lorevault-bases-avatar-preview-image {
+  display: block;
+  max-width: min(92vw, 920px);
+  max-height: min(78vh, 920px);
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}

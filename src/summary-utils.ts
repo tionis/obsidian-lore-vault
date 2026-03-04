@@ -32,7 +32,7 @@ export function normalizeGeneratedSummaryText(
     return '';
   }
   const limit = typeof maxChars === 'number' && Number.isFinite(maxChars)
-    ? Math.max(80, Math.floor(maxChars))
+    ? Math.floor(maxChars)
     : 0;
   if (limit <= 0 || normalized.length <= limit) {
     return normalized;

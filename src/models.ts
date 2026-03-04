@@ -484,6 +484,10 @@ export interface ConverterSettings {
     folder: string;
     extractionSanitization: StorySteeringExtractionSanitization;
   };
+  characterCards: {
+    sourceFolder: string;
+    metaFolder: string;
+  };
   textCommands: {
     autoAcceptEdits: boolean;
     defaultIncludeLorebookContext: boolean;
@@ -566,7 +570,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   summaries: {
     promptVersion: 1,
     maxInputChars: 12000,
-    maxSummaryChars: 320
+    maxSummaryChars: 0
   },
   costTracking: {
     enabled: false,
@@ -649,6 +653,10 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   storySteering: {
     folder: 'LoreVault/author-notes',
     extractionSanitization: 'strict'
+  },
+  characterCards: {
+    sourceFolder: 'LoreVault/character-cards/source',
+    metaFolder: 'LoreVault/character-cards/library'
   },
   textCommands: {
     autoAcceptEdits: false,

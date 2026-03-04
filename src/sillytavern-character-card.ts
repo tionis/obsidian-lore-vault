@@ -57,6 +57,7 @@ export interface BuildCharacterCardImportPlanOptions {
   maxSummaryChars: number;
   includeEmbeddedLorebook: boolean;
   sourceCardPath: string;
+  characterCardMetaPath?: string;
   completionPresetId: string;
   characterPage?: CharacterCardCharacterExtractResult | null;
 }
@@ -685,10 +686,14 @@ function buildStoryPageContent(
   authorNotePath: string,
   defaultTags: string[],
   lorebookNames: string[],
-  sourceCardPath: string
+  sourceCardPath: string,
+  characterCardMetaPath: string
 ): string {
   const heading = rewrite.title || card.name || 'Imported Story';
   const avatarLink = resolveCharacterCardAvatarLink(sourceCardPath);
+  const metaLink = characterCardMetaPath
+    ? `[[${normalizeLinkTarget(characterCardMetaPath)}]]`
+    : '';
   const lines: string[] = ['---'];
   lines.push(`title: ${yamlQuote(heading)}`);
   lines.push(`authorNote: ${yamlQuote(`[[${normalizeLinkTarget(authorNotePath)}]]`)}`);
@@ -704,6 +709,9 @@ function buildStoryPageContent(
   }
   if (sourceCardPath) {
     lines.push(`characterCardPath: ${yamlQuote(sourceCardPath)}`);
+  }
+  if (metaLink) {
+    lines.push(`characterCardMeta: ${yamlQuote(metaLink)}`);
   }
   if (avatarLink) {
     lines.push(`characterCardAvatar: ${yamlQuote(avatarLink)}`);
@@ -831,7 +839,8 @@ export function buildCharacterCardImportPlan(
     authorNotePath,
     defaultTags,
     effectiveLorebooks,
-    options.sourceCardPath
+    options.sourceCardPath,
+    options.characterCardMetaPath ?? ''
   );
   const authorNoteContent = buildAuthorNoteContent(
     card,

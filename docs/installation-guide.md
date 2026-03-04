@@ -62,6 +62,8 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Export Usage Report (CSV)"
      - "Import SillyTavern Lorebook"
      - "Import SillyTavern Character Card"
+     - "Sync Character Card Library"
+     - Bases view type "LoreVault Characters" available in Bases view selector
      - "Extract Wiki Pages from Story"
      - "Fork Active Lorebook"
      - "Apply Story Delta to Existing Wiki"
@@ -236,14 +238,18 @@ If you prefer to build the plugin from source:
   - Imported summaries are written to note `## Summary` sections
   - Click `Import` to create/update generated wiki notes deterministically
   - For character cards:
+    - Optional setup: configure `Character Card Source Folder` and `Character Card Meta Folder` in settings
+    - Optional setup: run `Sync Character Card Library` to create/update `lvDocType: characterCard` meta notes for source cards
     - Run command `Import SillyTavern Character Card` (or switch import type in the same panel)
     - Pick a `.png`/`.json` card file from the vault
     - Keep/adjust completion profile for rewrite
     - Optional: enable/disable embedded lorebook import
     - Optional: enable `Extract Character Wiki Page` to generate one character-only lorebook page from scenario/card context
     - Rewrite output uses freeform `authorNoteMarkdown` (no enforced section template in plugin post-processing)
+    - If a synced character-card meta note exists, generated story frontmatter includes `characterCardMeta: [[...]]` backlink target
     - In preview, review and edit planned write paths/content before apply
     - Preview and import generated story note + linked author note (+ optional character wiki page and embedded lorebook notes)
+    - Optional: in a Base filtered to character meta notes, switch to the `LoreVault Characters` view for avatar-card rendering and markdown/HTML field display
 
 10. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`

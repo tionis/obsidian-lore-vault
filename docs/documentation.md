@@ -650,12 +650,31 @@ Capabilities:
 - inspect top breakdowns by operation, model, lorebook, and cost source
 - review budget warnings evaluated against the selected profile
 
+## Character Library Bases View
+
+LoreVault registers a custom Bases view type: `LoreVault Characters`.
+
+Usage:
+
+- create/open a Base that targets your character-card meta notes (`lvDocType: characterCard`)
+- in the Bases view switcher, pick `LoreVault Characters`
+
+Behavior:
+
+- renders avatar images from `avatar` / `characterCardAvatar` / `cardFile`
+- clicking an avatar opens a larger preview modal
+- renders personality/description/scenario as markdown (HTML in those fields is rendered by Obsidian's markdown renderer)
+- shows quick actions to open the meta note and linked source card
+- field visibility respects Bases property visibility/order plus view toggles
+- exposes view options: max cards, avatar size, and section visibility
+
 ## Inbound Wiki Import and Story Extraction (Phase 14)
 
 Commands:
 
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
+- `Sync Character Card Library`
 - `Extract Wiki Pages from Story`
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
@@ -664,6 +683,9 @@ Shared panel inputs:
 
 - shared default target folder setting:
   - `Default Lorebook Import Location` (settings, default `LoreVault/import`)
+- character-card library settings:
+  - `Character Card Source Folder` (raw `.png`/`.json` cards, default `LoreVault/character-cards/source`)
+  - `Character Card Meta Folder` (`lvDocType: characterCard` notes, default `LoreVault/character-cards/library`)
   - used to prefill target folder in import, extraction, and lorebook-fork flows
 
 - `Import SillyTavern Lorebook`:
@@ -679,6 +701,11 @@ Shared panel inputs:
   - completion profile selector (used for LLM rewrite into freeform story format)
   - optional `Extract Character Wiki Page` toggle for one character-only wiki page from scenario/card context
   - optional `Import Embedded Lorebook` toggle for card `character_book` payloads
+- `Sync Character Card Library`:
+  - scans source folder for `.png`/`.json` cards
+  - ensures one meta note exists per source card in meta folder
+  - updates parsed card metadata for Bases-friendly frontmatter usage (`characterName`, `cardTags`, description/personality/scenario, greetings/messages/prompts, embedded-lorebook stats)
+  - marks notes `status: missing_source` when source cards are removed (no automatic deletion)
 - `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)
   - default tags
@@ -743,6 +770,7 @@ Current mapping for imported character cards:
   - `authorNote: [[...]]`
   - `sourceType: "sillytavern_character_card_import"`
   - card metadata (`characterCardName`, optional creator/spec/path, tag list)
+  - `characterCardMeta: [[...]]` when a synced character-card meta note exists for the selected source card
   - `characterCardAvatar` when source card is an image file (wikilink to source image)
   - selected lorebooks
 - story note body includes an embedded avatar image reference (`![[...]]`) when the source card is image-based

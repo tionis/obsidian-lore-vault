@@ -19,6 +19,7 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 - Supports optional embedding-assisted fallback retrieval.
 - Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
 - Provides a Story Chat panel with per-conversation context controls.
+- Registers a custom Bases view (`LoreVault Characters`) for character-card libraries with avatar cards and markdown-rendered character fields.
 - Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass` and `Scene Consistency Pass`.
 - Adds `Fork Active Lorebook` to clone a lorebook into a new lorebook/folder while rewriting internal links.
 - Story extraction/update keeps one best summary candidate per page (instead of concatenating multiple summary strings).
@@ -131,6 +132,19 @@ Additional behavior:
 - optional bounded tool-calling (search/read lorebooks and selected notes, read/update linked author note)
 - per-response context inspector and layer/token diagnostics
 
+## Character Library Bases View
+
+LoreVault registers a custom Bases view type named `LoreVault Characters` (Obsidian Bases view switcher).
+
+Use it with your character-card meta notes (`lvDocType: characterCard`) to get:
+
+- avatar image cards
+- click avatar to open a larger preview modal
+- markdown/HTML rendering for long text fields such as personality/description/scenario
+- quick actions to open the meta note or source card
+- card section visibility also respects Bases property visibility/order configuration
+- view options for max cards, avatar size, and visible sections
+
 ## Continuation Behavior (High Level)
 
 `Continue Story with Context`:
@@ -202,6 +216,7 @@ Import and updates:
 
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
+- `Sync Character Card Library`
 - `Extract Wiki Pages from Story`
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki`
@@ -220,6 +235,9 @@ Import/extraction/update panel behavior:
 - character-card import can optionally run `Extract Character Wiki Page` to create one character-only lorebook page from scenario/card context
 - character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
 - character-card preview exposes editable planned writes (path + content) before import apply
+- `Sync Character Card Library` scans `Character Card Source Folder` and creates/updates one `lvDocType: characterCard` meta note per source card in `Character Card Meta Folder`
+- synced character-card meta notes expose parsed card fields in frontmatter (name/creator/tags/description/personality/scenario/messages/prompts/lorebook stats) for Bases-friendly filtering/grouping
+- when a synced character-card meta note exists, generated story notes include `characterCardMeta: [[...]]` for backlink-based related-story tracing
 - story notes generated from image-based character cards include linked avatar metadata and an embedded image reference for visual vibe anchoring
 - default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)
 - story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions

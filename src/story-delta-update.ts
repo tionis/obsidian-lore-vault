@@ -127,6 +127,7 @@ interface PageState {
   pageKey: string;
   title: string;
   summary: string;
+  summaryConfidence: number;
   keywords: string[];
   aliases: string[];
   tags: string[];
@@ -236,34 +237,85 @@ function toSafeFileStem(value: string): string {
   return normalized || 'entry';
 }
 
-function buildSummary(content: string, maxChars: number): string {
-  const singleLine = content
+function normalizeSummaryLine(value: string): string {
+  return value
     .replace(/\r?\n+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!singleLine) {
-    return '';
-  }
-  const limit = Math.max(80, Math.floor(maxChars));
-  if (singleLine.length <= limit) {
-    return singleLine;
-  }
-  return `${singleLine.slice(0, limit).trimEnd()}...`;
 }
 
-function mergeSummary(existing: string, incoming: string, maxSummaryChars: number): string {
-  if (!incoming) {
-    return existing;
+function choosePreferredSummary(
+  existing: string,
+  existingConfidence: number,
+  incoming: string,
+  incomingConfidence: number
+): { summary: string; confidence: number } {
+  const normalizedIncoming = normalizeSummaryLine(incoming);
+  if (!normalizedIncoming) {
+    return {
+      summary: existing,
+      confidence: existingConfidence
+    };
   }
-  if (!existing) {
-    return buildSummary(incoming, maxSummaryChars);
+
+  const normalizedExisting = normalizeSummaryLine(existing);
+  if (!normalizedExisting) {
+    return {
+      summary: normalizedIncoming,
+      confidence: incomingConfidence
+    };
   }
-  const lowerExisting = existing.toLowerCase();
-  const lowerIncoming = incoming.toLowerCase();
+
+  const lowerExisting = normalizedExisting.toLowerCase();
+  const lowerIncoming = normalizedIncoming.toLowerCase();
+  if (lowerExisting === lowerIncoming) {
+    return {
+      summary: normalizedIncoming,
+      confidence: Math.max(existingConfidence, incomingConfidence)
+    };
+  }
+
   if (lowerExisting.includes(lowerIncoming)) {
-    return buildSummary(existing, maxSummaryChars);
+    return {
+      summary: normalizedExisting,
+      confidence: existingConfidence
+    };
   }
-  return buildSummary(`${existing} | ${incoming}`, maxSummaryChars);
+
+  if (lowerIncoming.includes(lowerExisting)) {
+    return {
+      summary: normalizedIncoming,
+      confidence: incomingConfidence
+    };
+  }
+
+  // Prefer recency unless the incoming summary is substantially lower confidence.
+  const confidenceSlack = 0.1;
+  if (incomingConfidence + confidenceSlack >= existingConfidence) {
+    return {
+      summary: normalizedIncoming,
+      confidence: incomingConfidence
+    };
+  }
+
+  return {
+    summary: normalizedExisting,
+    confidence: existingConfidence
+  };
+}
+
+function mergeSummary(existing: string, incoming: string, existingConfidence: number, incomingConfidence: number): {
+  summary: string;
+  confidence: number;
+} {
+  if (!existing) {
+    const normalizedIncoming = normalizeSummaryLine(incoming);
+    return {
+      summary: normalizedIncoming,
+      confidence: normalizedIncoming ? incomingConfidence : existingConfidence
+    };
+  }
+  return choosePreferredSummary(existing, existingConfidence, incoming, incomingConfidence);
 }
 
 function splitFrontmatter(content: string): SplitFrontmatter {
@@ -533,7 +585,7 @@ function buildPrompts(
   options: StoryDeltaUpdateOptions
 ): { systemPrompt: string; userPrompt: string } {
   const policyText = options.updatePolicy === 'structured_merge'
-    ? 'structured_merge (update summary/keywords/aliases when confidence is high)'
+    ? 'structured_merge (replace summary with the best single candidate, update keywords/aliases when confidence is high)'
     : 'safe_append (append durable updates without rewriting existing metadata)';
 
   const systemPrompt = [
@@ -753,6 +805,7 @@ function createPageStateFromInput(input: StoryDeltaExistingPageInput): PageState
     pageKey: resolvedKey,
     title: parsed.title || inferredTitle,
     summary: resolvedSummary?.text ?? '',
+    summaryConfidence: 0,
     keywords: parsed.keywords,
     aliases: parsed.aliases,
     tags: parsed.tags,
@@ -781,6 +834,7 @@ function buildNewPageState(
     pageKey,
     title,
     summary: '',
+    summaryConfidence: 0,
     keywords: [],
     aliases: [],
     tags: [...tags],
@@ -857,7 +911,14 @@ function applyOperation(
     if (!state.title && operation.title) {
       state.title = operation.title;
     }
-    state.summary = mergeSummary(state.summary, operation.summary, options.maxSummaryChars);
+    const mergedSummary = mergeSummary(
+      state.summary,
+      operation.summary,
+      state.summaryConfidence,
+      operation.confidence
+    );
+    state.summary = mergedSummary.summary;
+    state.summaryConfidence = mergedSummary.confidence;
     state.keywords = uniqueStrings([...state.keywords, ...operation.keywords]);
     state.aliases = uniqueStrings([...state.aliases, ...operation.aliases]);
   }

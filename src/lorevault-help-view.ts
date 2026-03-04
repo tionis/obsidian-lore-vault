@@ -185,9 +185,13 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
         '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
+        '`Sync Character Card Library`: scan Character Card Source Folder and create/update one `lvDocType: characterCard` meta note per card.',
+        'Synced character-card meta notes expose card metadata in frontmatter for Bases usage (name/tags/description/personality/scenario/messages/prompts).',
+        'Bases integration: use view type `LoreVault Characters` in a Base filtered to character-card notes for avatar-card rendering and markdown/HTML field display.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
         'Optional `Extract Character Wiki Page` runs a character-only pass and adds one lorebook-ready character page derived from the card scenario/context.',
         'Character-card preview includes editable planned writes so you can adjust file paths and markdown content before import.',
+        'When a synced card meta note exists, generated story notes store `characterCardMeta: [[...]]` for backlink-based related-story tracking.',
         'When the source card is image-based, generated story notes keep a linked avatar reference in frontmatter and embed the image in the note body.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
         '`Fork Active Lorebook`: clone one lorebook into a new lorebook/folder and rewrite internal links to the forked pages.',
@@ -199,6 +203,7 @@ export class LorevaultHelpView extends ItemView {
       actions: [
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
         { label: 'Open Character Card Import', onClick: () => void this.plugin.openImportLorebookView('character_card') },
+        { label: 'Sync Character Cards', onClick: () => void this.plugin.syncCharacterCardLibrary() },
         { label: 'Open Story Extraction', onClick: () => void this.plugin.openStoryExtractionView() },
         { label: 'Open Lorebook Update', onClick: () => void this.plugin.openStoryDeltaView() }
       ]

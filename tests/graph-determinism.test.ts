@@ -205,6 +205,10 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       folder: 'LoreVault/steering',
       extractionSanitization: 'strict'
     },
+    characterCards: {
+      sourceFolder: 'LoreVault/character-cards/source',
+      metaFolder: 'LoreVault/character-cards/library'
+    },
     textCommands: {
       autoAcceptEdits: false,
       defaultIncludeLorebookContext: false,

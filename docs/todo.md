@@ -145,7 +145,9 @@ Reference design: `docs/planning.md`.
 - [x] Remove enforced author-note section normalization/caps; keep author-note shaping prompt-driven via `authorNoteMarkdown`.
 - [x] Add editable planned-write preview for character-card import (path + content adjustments before apply).
 - [x] Add optional character-only extraction pass for character cards (`Extract Character Wiki Page`) with deterministic single-page wiki output.
+- [x] Add character-card library sync workflow (source folder + meta folder + `Sync Character Card Library` command + story backlink via `characterCardMeta`).
 - [x] Add optional conversion of embedded card lorebooks (`character_book`) into imported wiki notes.
+- [x] Add custom Bases renderer (`LoreVault Characters`) for character libraries with avatar cards and markdown-rendered personality/description/scenario.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 

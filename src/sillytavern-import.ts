@@ -93,15 +93,15 @@ function normalizeImportedEntry(raw: unknown, fallbackUid: number): ImportedLore
     return null;
   }
   const entry = raw as {[key: string]: unknown};
-  const uidValue = Number(entry.uid);
+  const uidValue = Number(entry.uid ?? entry.id);
   const uid = Number.isFinite(uidValue) && uidValue >= 0
     ? Math.floor(uidValue)
     : fallbackUid;
-  const comment = asString(entry.comment);
+  const comment = asString(entry.comment ?? entry.name);
   const content = typeof entry.content === 'string' ? entry.content.trim() : '';
-  const key = normalizeStringArray(entry.key);
-  const keysecondary = normalizeStringArray(entry.keysecondary);
-  const disable = asBoolean(entry.disable);
+  const key = normalizeStringArray(entry.key ?? entry.keys);
+  const keysecondary = normalizeStringArray(entry.keysecondary ?? entry.secondary_keys);
+  const disable = asBoolean(entry.disable) || entry.enabled === false;
 
   return {
     uid,
@@ -123,6 +123,9 @@ function compareImportedEntries(left: ImportedLorebookEntry, right: ImportedLore
 }
 
 function readEntriesFromParsedPayload(parsed: unknown): unknown[] {
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
   if (!parsed || typeof parsed !== 'object') {
     return [];
   }
@@ -137,12 +140,11 @@ function readEntriesFromParsedPayload(parsed: unknown): unknown[] {
   return [];
 }
 
-export function parseSillyTavernLorebookJson(rawJson: string): ParseSillyTavernLorebookResult {
+export function parseSillyTavernLorebookPayload(parsed: unknown): ParseSillyTavernLorebookResult {
   const warnings: string[] = [];
-  const parsed = JSON.parse(rawJson) as unknown;
   const rawEntries = readEntriesFromParsedPayload(parsed);
   if (rawEntries.length === 0) {
-    warnings.push('No entries found in pasted JSON.');
+    warnings.push('No entries found in lorebook payload.');
   }
 
   const entries: ImportedLorebookEntry[] = [];
@@ -160,6 +162,11 @@ export function parseSillyTavernLorebookJson(rawJson: string): ParseSillyTavernL
     entries,
     warnings
   };
+}
+
+export function parseSillyTavernLorebookJson(rawJson: string): ParseSillyTavernLorebookResult {
+  const parsed = JSON.parse(rawJson) as unknown;
+  return parseSillyTavernLorebookPayload(parsed);
 }
 
 function normalizeTagPrefix(tagPrefix: string): string {
@@ -252,8 +259,8 @@ function buildSummary(content: string, maxChars: number): string {
   if (!singleLine) {
     return '';
   }
-  const limit = Math.max(80, Math.floor(maxChars));
-  if (singleLine.length <= limit) {
+  const limit = Math.floor(maxChars);
+  if (!Number.isFinite(limit) || limit <= 0 || singleLine.length <= limit) {
     return singleLine;
   }
   return `${singleLine.slice(0, limit).trimEnd()}...`;

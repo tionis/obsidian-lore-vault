@@ -407,3 +407,58 @@ test('story delta preview surfaces update conflicts for high-churn replacements'
   assert.ok(result.conflicts[0].diffAddedLines > 0);
   assert.ok(result.conflicts[0].diffRemovedLines > 0);
 });
+
+test('structured_merge replaces summary with best candidate instead of concatenating', async () => {
+  const result = await buildStoryDeltaPlan({
+    storyMarkdown: '# Chapter\nThe archive entry is revised for canon clarity.',
+    newNoteFolder: 'wiki',
+    defaultTagsRaw: 'wiki',
+    lorebookScopes: ['story/main'],
+    tagPrefix: 'lorebook',
+    updatePolicy: 'structured_merge',
+    maxChunkChars: 500,
+    maxSummaryChars: 220,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    lowConfidenceThreshold: 0.5,
+    existingPages: [
+      {
+        path: 'wiki/archive.md',
+        content: [
+          '---',
+          'title: "Archive"',
+          'pageKey: "location/archive"',
+          '---',
+          '',
+          '## Summary',
+          '',
+          'Older archive summary.',
+          '',
+          '## Overview',
+          '',
+          'Existing detail text.',
+          ''
+        ].join('\n')
+      }
+    ],
+    callModel: async () => JSON.stringify({
+      operations: [
+        {
+          pageKey: 'location/archive',
+          title: 'Archive',
+          summary: 'Updated archive summary with corrected canon details.',
+          keywords: ['archive'],
+          aliases: [],
+          content: '## Overview\n\nUpdated detail text.',
+          confidence: 0.9,
+          rationale: 'Direct canon correction in chapter.'
+        }
+      ]
+    })
+  });
+
+  assert.equal(result.pages.length, 1);
+  assert.match(result.pages[0].content, /## Summary\n\nUpdated archive summary with corrected canon details\./);
+  assert.equal(result.pages[0].content.includes('Older archive summary.'), false);
+  assert.equal(result.pages[0].content.includes(' | '), false);
+});

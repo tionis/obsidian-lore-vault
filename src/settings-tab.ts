@@ -707,6 +707,59 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           });
         }));
 
+    containerEl.createEl('h3', { text: 'Character Card Library' });
+
+    new Setting(containerEl)
+      .setName('Character Card Source Folder')
+      .setDesc('Folder scanned by `Sync Character Card Library` for `.png`/`.json` source cards.')
+      .addText(text => text
+        .setPlaceholder('LoreVault/character-cards/source')
+        .setValue(this.plugin.settings.characterCards.sourceFolder)
+        .onChange(async (value) => {
+          this.plugin.settings.characterCards.sourceFolder = this.normalizePathInput(value);
+          await this.persistSettings();
+        }))
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          openVaultFolderPicker(this.app, async path => {
+            const normalized = this.normalizePathInput(path) || DEFAULT_SETTINGS.characterCards.sourceFolder;
+            this.plugin.settings.characterCards.sourceFolder = normalized;
+            await this.persistSettings();
+            this.display();
+          });
+        }));
+
+    new Setting(containerEl)
+      .setName('Character Card Meta Folder')
+      .setDesc('Folder where synced character-card meta notes (`lvDocType: characterCard`) are stored.')
+      .addText(text => text
+        .setPlaceholder('LoreVault/character-cards/library')
+        .setValue(this.plugin.settings.characterCards.metaFolder)
+        .onChange(async (value) => {
+          this.plugin.settings.characterCards.metaFolder = this.normalizePathInput(value);
+          await this.persistSettings();
+        }))
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          openVaultFolderPicker(this.app, async path => {
+            const normalized = this.normalizePathInput(path) || DEFAULT_SETTINGS.characterCards.metaFolder;
+            this.plugin.settings.characterCards.metaFolder = normalized;
+            await this.persistSettings();
+            this.display();
+          });
+        }));
+
+    new Setting(containerEl)
+      .setName('Sync Character Card Library')
+      .setDesc('Creates/updates one meta note per source card and marks missing-source records without deleting them.')
+      .addButton(button => button
+        .setButtonText('Run Sync')
+        .onClick(() => {
+          void this.plugin.syncCharacterCardLibrary();
+        }));
+
     // Lorebook selection section
     containerEl.createEl('h3', { text: 'Lorebook Selection' });
 
@@ -1889,12 +1942,12 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Summary Max Output Chars')
-      .setDesc('Hard cap for normalized world_info summaries. Chapter summaries are not length-capped.')
+      .setDesc('Hard cap for normalized world_info summaries (set to 0 to disable). Chapter summaries are not length-capped.')
       .addText(text => text
         .setValue(this.plugin.settings.summaries.maxSummaryChars.toString())
         .onChange(async (value) => {
           const numValue = parseInt(value);
-          if (!isNaN(numValue) && numValue >= 80) {
+          if (!isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.summaries.maxSummaryChars = numValue;
             await this.plugin.saveData(this.plugin.settings);
           }

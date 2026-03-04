@@ -17,6 +17,13 @@ test('normalizeGeneratedSummaryText flattens whitespace and enforces max chars',
   assert.ok(clipped.endsWith('...'));
 });
 
+test('normalizeGeneratedSummaryText supports disabling max chars with zero', () => {
+  const source = 'A'.repeat(400);
+  const normalized = normalizeGeneratedSummaryText(source, 0);
+  assert.equal(normalized.length, source.length);
+  assert.equal(normalized.endsWith('...'), false);
+});
+
 test('normalizeGeneratedSummaryText preserves paragraphs when requested', () => {
   const normalized = normalizeGeneratedSummaryText(
     'Para one.\n\nPara two.\n\nPara three.',

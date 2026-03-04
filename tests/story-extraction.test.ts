@@ -179,7 +179,8 @@ test('extractWikiPagesFromStory merges repeated page updates across chunks deter
   assert.match(alice?.content ?? '', /keywords:\n {2}- "Alice"\n {2}- "Rowan"/);
   assert.equal(/^summary:/m.test(alice?.content ?? ''), false);
   assert.match(alice?.content ?? '', /^# Alice$/m);
-  assert.match(alice?.content ?? '', /## Summary\n\nYoung scholar entering the city\./);
+  assert.match(alice?.content ?? '', /## Summary\n\nInvestigates the old tower with Rowan\./);
+  assert.equal((alice?.content ?? '').includes(' | '), false);
   assert.match(alice?.content ?? '', /## Backstory\n\nAlice arrives in the city seeking clues\./);
   assert.match(alice?.content ?? '', /Alice arrives in the city seeking clues\./);
   assert.match(alice?.content ?? '', /works with Rowan\./);

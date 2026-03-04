@@ -74,6 +74,7 @@ interface PageState {
   pageKey: string;
   title: string;
   summary: string;
+  summaryConfidence: number;
   keywords: string[];
   aliases: string[];
   contentBlocks: string[];
@@ -169,8 +170,8 @@ function buildSummary(content: string, maxChars: number): string {
   if (!singleLine) {
     return '';
   }
-  const limit = Math.max(80, Math.floor(maxChars));
-  if (singleLine.length <= limit) {
+  const limit = Math.floor(maxChars);
+  if (!Number.isFinite(limit) || limit <= 0 || singleLine.length <= limit) {
     return singleLine;
   }
   return `${singleLine.slice(0, limit).trimEnd()}...`;
@@ -370,20 +371,85 @@ function normalizePageKey(value: string): string {
     .replace(/^[-/]+|[-/]+$/g, '');
 }
 
-function mergeSummary(existing: string, incoming: string, maxSummaryChars: number): string {
-  if (!incoming) {
-    return existing;
+function normalizeSummaryLine(value: string): string {
+  return value
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function choosePreferredSummary(
+  existing: string,
+  existingConfidence: number,
+  incoming: string,
+  incomingConfidence: number
+): { summary: string; confidence: number } {
+  const normalizedIncoming = normalizeSummaryLine(incoming);
+  if (!normalizedIncoming) {
+    return {
+      summary: existing,
+      confidence: existingConfidence
+    };
   }
-  if (!existing) {
-    return buildSummary(incoming, maxSummaryChars);
+
+  const normalizedExisting = normalizeSummaryLine(existing);
+  if (!normalizedExisting) {
+    return {
+      summary: normalizedIncoming,
+      confidence: incomingConfidence
+    };
   }
-  const lowerExisting = existing.toLowerCase();
-  const lowerIncoming = incoming.toLowerCase();
+
+  const lowerExisting = normalizedExisting.toLowerCase();
+  const lowerIncoming = normalizedIncoming.toLowerCase();
+  if (lowerExisting === lowerIncoming) {
+    return {
+      summary: normalizedIncoming,
+      confidence: Math.max(existingConfidence, incomingConfidence)
+    };
+  }
+
   if (lowerExisting.includes(lowerIncoming)) {
-    return buildSummary(existing, maxSummaryChars);
+    return {
+      summary: normalizedExisting,
+      confidence: existingConfidence
+    };
   }
-  const merged = `${existing} | ${incoming}`;
-  return buildSummary(merged, maxSummaryChars);
+
+  if (lowerIncoming.includes(lowerExisting)) {
+    return {
+      summary: normalizedIncoming,
+      confidence: incomingConfidence
+    };
+  }
+
+  // Prefer recency unless the incoming summary is substantially lower confidence.
+  const confidenceSlack = 0.1;
+  if (incomingConfidence + confidenceSlack >= existingConfidence) {
+    return {
+      summary: normalizedIncoming,
+      confidence: incomingConfidence
+    };
+  }
+
+  return {
+    summary: normalizedExisting,
+    confidence: existingConfidence
+  };
+}
+
+function mergeSummary(existing: string, incoming: string, existingConfidence: number, incomingConfidence: number): {
+  summary: string;
+  confidence: number;
+} {
+  if (!existing) {
+    const normalizedIncoming = normalizeSummaryLine(incoming);
+    return {
+      summary: normalizedIncoming,
+      confidence: normalizedIncoming ? incomingConfidence : existingConfidence
+    };
+  }
+  return choosePreferredSummary(existing, existingConfidence, incoming, incomingConfidence);
 }
 
 function mergeContentBlocks(existing: string[], incoming: string): string[] {
@@ -503,7 +569,7 @@ function buildPageContent(
     rawBody,
     '(no extracted content)'
   );
-  let summary = mergeSummary('', page.summary, maxSummaryChars);
+  let summary = normalizeSummaryLine(page.summary);
   if (!summary && page.contentBlocks.length > 0) {
     summary = buildSummary(page.contentBlocks.join(' '), maxSummaryChars);
   }
@@ -587,6 +653,7 @@ export async function extractWikiPagesFromStory(
           pageKey: key,
           title: sanitizeWikiTitle(operation.title || '', deriveWikiTitleFromPageKey(key)),
           summary: '',
+          summaryConfidence: 0,
           keywords: [],
           aliases: [],
           contentBlocks: []
@@ -596,7 +663,14 @@ export async function extractWikiPagesFromStory(
         } else if (!existing.title) {
           existing.title = deriveWikiTitleFromPageKey(key);
         }
-        existing.summary = mergeSummary(existing.summary, operation.summary, options.maxSummaryChars);
+        const mergedSummary = mergeSummary(
+          existing.summary,
+          operation.summary,
+          existing.summaryConfidence,
+          operation.confidence
+        );
+        existing.summary = mergedSummary.summary;
+        existing.summaryConfidence = mergedSummary.confidence;
         existing.keywords = uniqueStrings([...existing.keywords, ...operation.keywords]);
         existing.aliases = uniqueStrings([...existing.aliases, ...operation.aliases]);
         existing.contentBlocks = mergeContentBlocks(existing.contentBlocks, operation.content);

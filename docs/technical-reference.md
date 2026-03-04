@@ -129,11 +129,26 @@ This document is the implementation-level reference for core architecture and ru
 - `src/lorevault-import-view.ts`
   - import panel UI (`Import SillyTavern Lorebook` + `Import SillyTavern Character Card`)
   - lorebook list add/remove UX (interactive picker + Enter-to-add)
-  - character-card file picker and optional embedded-lorebook/character-page extraction toggles
+  - character-card file picker sourced from configured character-card source folder
+  - optional embedded-lorebook/character-page extraction toggles
   - character-card planned-write editor (editable path + content before apply)
   - model rewrite/extraction stages for character-card import with completion usage/operation-log hooks
   - target-folder default sourced from shared setting `defaultLorebookImportLocation`
   - staged progress reporting for parse/build/apply
+- `src/character-card-bases-view.ts`
+  - custom Bases view registration id `lorevault-character-bases-view` (`LoreVault Characters`)
+  - card-grid rendering of Bases query rows for character-card metadata notes
+  - avatar resolution from wikilink/markdown-link/image URL sources
+  - click-to-preview avatar modal for larger image inspection
+  - field visibility integrates Bases property-order visibility with view-level toggles
+  - markdown-rendered long fields (`cardPersonality`, `cardDescription`, `cardScenario`) using Obsidian renderer
+  - per-view options (`maxCards`, `largeAvatars`, visibility toggles)
+- `src/main.ts`
+  - `Sync Character Card Library` command: source-folder scan -> meta-note upsert (`lvDocType: characterCard`)
+  - meta-note lifecycle: create/update by `cardPath`, mark `status: missing_source` when source disappears (no delete)
+  - synced meta frontmatter carries parsed card fields for Bases workflows (identity, tags, prose fields, prompts, greeting variants, and embedded-lorebook counts)
+  - Bases integration: `registerBasesView` hooks `LoreVault Characters` custom renderer when Bases core plugin is enabled
+  - helper lookup used by character-card import to inject story frontmatter backlink (`characterCardMeta: [[...]]`)
 - `src/lorevault-story-extract-view.ts`
   - extraction panel (`Extract Wiki Pages from Story`) with preview/apply flow
   - explicit completion profile selection + chunk/apply progress status
@@ -656,11 +671,13 @@ Implemented:
 
 - inbound SillyTavern lorebook JSON import command/view
 - inbound SillyTavern character-card import command/view (`.png` + `.json`)
+- character-card library sync command/view model (`Sync Character Card Library`)
 - deterministic entry normalization and sorting
 - deterministic character-card field normalization across v1/v2/v3 shapes
 - deterministic file naming/path allocation
 - deterministic frontmatter/body mapping for generated wiki pages (summary persisted in `## Summary` section)
 - deterministic story+author-note note mapping for character-card rewrite output
+- deterministic story-to-character-card-meta backlink injection (`characterCardMeta`) when a synced meta note exists
 - optional character-only wiki-page extraction mapping for character-card imports (`<target>/characters/<name>.md`)
 - preview and apply import flows
 - staged import progress reporting (parse/build/apply with per-file write updates)

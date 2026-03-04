@@ -71,6 +71,10 @@ import {
   LOREVAULT_STORY_DELTA_VIEW_TYPE,
   LorevaultStoryDeltaView
 } from './lorevault-story-delta-view';
+import {
+  createLorevaultCharacterBasesViewRegistration,
+  LOREVAULT_CHARACTER_BASES_VIEW_ID
+} from './character-card-bases-view';
 import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
 import { EmbeddingService } from './embedding-service';
@@ -144,6 +148,7 @@ import {
   normalizeVaultPath,
   normalizeVaultRelativePath
 } from './vault-path-utils';
+import { readVaultBinary } from './vault-binary-io';
 import {
   ChapterMemoryAggressiveness,
   estimateChapterMemoryExcerptChapterWindow,
@@ -156,7 +161,7 @@ import {
   resolveChapterMemoryExcerptSectionTokenRange
 } from './context-window-strategy';
 import { renderInlineLoreDirectivesAsTags, stripInlineLoreDirectives } from './inline-directives';
-import { sha256Hex, slugifyIdentifier } from './hash-utils';
+import { sha256Hex, slugifyIdentifier, stableJsonHash } from './hash-utils';
 import {
   createEmptyStorySteeringState,
   mergeStorySteeringStates,
@@ -182,6 +187,11 @@ import {
   trimTextForTokenBudget
 } from './prompt-staging';
 import { LorebookScopeCache } from './lorebook-scope-cache';
+import {
+  ParsedCharacterCard,
+  parseSillyTavernCharacterCardJson,
+  parseSillyTavernCharacterCardPngBytes
+} from './sillytavern-character-card';
 import {
   buildChapterFileStem,
   buildStoryChapterNoteMarkdown,
@@ -610,6 +620,8 @@ class LorebookForkModal extends Modal {
 const LOREVAULT_DEVICE_STATE_KEY = 'lorevault/device-state/v1';
 const AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY = 'completionProfile';
 const COMPLETION_PRESET_SECRET_PREFIX = 'lorevault-completion-';
+const CHARACTER_CARD_META_DOC_TYPE = 'characterCard';
+const CHARACTER_CARD_SOURCE_EXTENSIONS = new Set(['png', 'json']);
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
@@ -645,6 +657,58 @@ export default class LoreBookConverterPlugin extends Plugin {
 
   public getDefaultLorebookImportLocation(): string {
     return this.settings.defaultLorebookImportLocation?.trim() || DEFAULT_SETTINGS.defaultLorebookImportLocation;
+  }
+
+  public getCharacterCardSourceFolderPath(): string {
+    return this.settings.characterCards.sourceFolder?.trim() || DEFAULT_SETTINGS.characterCards.sourceFolder;
+  }
+
+  public getCharacterCardMetaFolderPath(): string {
+    return this.settings.characterCards.metaFolder?.trim() || DEFAULT_SETTINGS.characterCards.metaFolder;
+  }
+
+  private isPathInVaultFolder(path: string, folder: string): boolean {
+    const normalizedPath = normalizeVaultPath(path).toLowerCase();
+    const normalizedFolder = normalizeVaultPath(folder).toLowerCase();
+    if (!normalizedPath || !normalizedFolder) {
+      return false;
+    }
+    return normalizedPath === normalizedFolder || normalizedPath.startsWith(`${normalizedFolder}/`);
+  }
+
+  private getCharacterCardSourceFiles(): TFile[] {
+    const sourceFolder = this.getCharacterCardSourceFolderPath();
+    return this.app.vault.getFiles()
+      .filter(file => this.isPathInVaultFolder(file.path, sourceFolder))
+      .filter(file => CHARACTER_CARD_SOURCE_EXTENSIONS.has(file.extension.toLowerCase()))
+      .sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  public listCharacterCardSourceFiles(): TFile[] {
+    return this.getCharacterCardSourceFiles();
+  }
+
+  public findCharacterCardMetaPathBySourcePath(sourcePath: string): string {
+    const normalizedSourcePath = normalizeVaultPath(sourcePath.trim());
+    if (!normalizedSourcePath) {
+      return '';
+    }
+    const metaFolder = this.getCharacterCardMetaFolderPath();
+    const candidates = this.app.vault.getMarkdownFiles()
+      .filter(file => this.isPathInVaultFolder(file.path, metaFolder));
+    for (const file of candidates) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+      const docType = (asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '').toLowerCase();
+      if (docType !== CHARACTER_CARD_META_DOC_TYPE.toLowerCase()) {
+        continue;
+      }
+      const cardPath = normalizeVaultPath(asString(getFrontmatterValue(frontmatter, 'cardPath', 'characterCardPath')) ?? '');
+      if (cardPath && cardPath.toLowerCase() === normalizedSourcePath.toLowerCase()) {
+        return file.path;
+      }
+    }
+    return '';
   }
 
   private getRawOperationLogBasePath(): string {
@@ -2394,7 +2458,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  async openImportLorebookView(): Promise<void> {
+  async openImportLorebookView(mode: 'lorebook_json' | 'character_card' = 'lorebook_json'): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE)[0];
 
     if (!leaf) {
@@ -2407,6 +2471,7 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultImportView) {
+      leaf.view.setImportMode(mode);
       leaf.view.refresh();
     }
   }
@@ -2443,6 +2508,258 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (leaf.view instanceof LorevaultStoryDeltaView) {
       leaf.view.refresh();
     }
+  }
+
+  private buildCharacterCardMetaFilePath(
+    metaFolder: string,
+    sourceFile: TFile,
+    parsedCard: ParsedCharacterCard | null,
+    usedPaths: Set<string>
+  ): string {
+    const titleStem = slugifyIdentifier(parsedCard?.name || sourceFile.basename || 'character-card');
+    const sourceStem = slugifyIdentifier(sourceFile.basename || 'card');
+    const baseStem = titleStem === sourceStem ? `${titleStem}-card` : `${titleStem}-${sourceStem}-card`;
+    for (let attempt = 1; attempt <= 9999; attempt += 1) {
+      const suffix = attempt === 1 ? '' : `-${attempt}`;
+      const candidatePath = normalizeVaultPath(`${metaFolder}/${baseStem}${suffix}.md`);
+      const key = candidatePath.toLowerCase();
+      if (!usedPaths.has(key)) {
+        usedPaths.add(key);
+        return candidatePath;
+      }
+    }
+    throw new Error(`Failed to allocate character-card meta note path for ${sourceFile.path}.`);
+  }
+
+  private buildCharacterCardMetaSkeleton(sourceFile: TFile, parsedCard: ParsedCharacterCard | null): string {
+    const title = parsedCard?.name || sourceFile.basename || 'Character Card';
+    return [
+      '---',
+      `lvDocType: "${CHARACTER_CARD_META_DOC_TYPE}"`,
+      `title: ${JSON.stringify(title)}`,
+      '---',
+      '',
+      `# ${title} Card`,
+      '',
+      `Source: [[${normalizeLinkTarget(sourceFile.path)}]]`,
+      '',
+      'Managed by `Sync Character Card Library`.',
+      ''
+    ].join('\n');
+  }
+
+  private async parseCharacterCardSourceFile(sourceFile: TFile): Promise<{
+    parsedCard: ParsedCharacterCard | null;
+    parseError: string;
+    warnings: string[];
+    cardHash: string;
+    avatarLink: string;
+  }> {
+    const extension = sourceFile.extension.toLowerCase();
+    const avatarLink = extension === 'png'
+      ? `[[${normalizeLinkTarget(sourceFile.path)}]]`
+      : '';
+    try {
+      if (extension === 'json') {
+        const raw = await this.app.vault.read(sourceFile);
+        const parsedCard = parseSillyTavernCharacterCardJson(raw);
+        return {
+          parsedCard,
+          parseError: '',
+          warnings: parsedCard.warnings,
+          cardHash: `sha256:${stableJsonHash(parsedCard.rawPayload)}`,
+          avatarLink
+        };
+      }
+      if (extension === 'png') {
+        const bytes = await readVaultBinary(this.app, sourceFile.path);
+        const parsedCard = parseSillyTavernCharacterCardPngBytes(bytes);
+        return {
+          parsedCard,
+          parseError: '',
+          warnings: parsedCard.warnings,
+          cardHash: `sha256:${stableJsonHash(parsedCard.rawPayload)}`,
+          avatarLink
+        };
+      }
+
+      return {
+        parsedCard: null,
+        parseError: `Unsupported file extension: .${extension}`,
+        warnings: [],
+        cardHash: `sha256:${sha256Hex(`${sourceFile.path}:${sourceFile.stat.mtime}:${sourceFile.stat.size}`)}`,
+        avatarLink
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        parsedCard: null,
+        parseError: message,
+        warnings: [],
+        cardHash: `sha256:${sha256Hex(`${sourceFile.path}:${sourceFile.stat.mtime}:${sourceFile.stat.size}`)}`,
+        avatarLink
+      };
+    }
+  }
+
+  public async syncCharacterCardLibrary(): Promise<void> {
+    const metaFolder = this.getCharacterCardMetaFolderPath();
+    const sourceFiles = this.getCharacterCardSourceFiles();
+    const metaFiles = this.app.vault.getMarkdownFiles()
+      .filter(file => this.isPathInVaultFolder(file.path, metaFolder));
+
+    const existingByCardPath = new Map<string, TFile>();
+    const usedMetaPaths = new Set<string>();
+    for (const metaFile of metaFiles) {
+      usedMetaPaths.add(metaFile.path.toLowerCase());
+      const cache = this.app.metadataCache.getFileCache(metaFile);
+      const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+      const docType = (asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '').toLowerCase();
+      if (docType !== CHARACTER_CARD_META_DOC_TYPE.toLowerCase()) {
+        continue;
+      }
+      const cardPath = normalizeVaultPath(asString(getFrontmatterValue(frontmatter, 'cardPath', 'characterCardPath')) ?? '');
+      if (cardPath && !existingByCardPath.has(cardPath.toLowerCase())) {
+        existingByCardPath.set(cardPath.toLowerCase(), metaFile);
+      }
+    }
+
+    let created = 0;
+    let updated = 0;
+    let markedMissing = 0;
+    let parseErrors = 0;
+    let failures = 0;
+    const nowIso = new Date().toISOString();
+    const seenCardPaths = new Set<string>();
+
+    for (const sourceFile of sourceFiles) {
+      const normalizedSourcePath = normalizeVaultPath(sourceFile.path);
+      if (!normalizedSourcePath) {
+        continue;
+      }
+      const sourceKey = normalizedSourcePath.toLowerCase();
+      seenCardPaths.add(sourceKey);
+
+      try {
+        const parsed = await this.parseCharacterCardSourceFile(sourceFile);
+        if (parsed.parseError) {
+          parseErrors += 1;
+        }
+        let metaFile = existingByCardPath.get(sourceKey) ?? null;
+        if (!metaFile) {
+          const metaPath = this.buildCharacterCardMetaFilePath(metaFolder, sourceFile, parsed.parsedCard, usedMetaPaths);
+          await ensureParentVaultFolderForFile(this.app, metaPath);
+          const skeleton = this.buildCharacterCardMetaSkeleton(sourceFile, parsed.parsedCard);
+          const createdFile = await this.app.vault.create(metaPath, skeleton);
+          if (!(createdFile instanceof TFile)) {
+            throw new Error(`Failed to create meta note for ${sourceFile.path}.`);
+          }
+          metaFile = createdFile;
+          existingByCardPath.set(sourceKey, metaFile);
+          created += 1;
+        } else {
+          updated += 1;
+        }
+
+        const parsedCard = parsed.parsedCard;
+        const docTitle = parsedCard?.name || sourceFile.basename || 'Character Card';
+        const existingCache = this.app.metadataCache.getFileCache(metaFile);
+        const existingFrontmatter = normalizeFrontmatter((existingCache?.frontmatter ?? {}) as FrontmatterData);
+        const existingStatus = (asString(getFrontmatterValue(existingFrontmatter, 'status')) ?? '').toLowerCase();
+        const existingLorebooks = asStringArray(getFrontmatterValue(existingFrontmatter, 'lorebooks'));
+        const existingCompletionProfile = asString(getFrontmatterValue(existingFrontmatter, 'completionProfile'));
+        await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
+          frontmatter.lvDocType = CHARACTER_CARD_META_DOC_TYPE;
+          frontmatter.title = docTitle;
+          frontmatter.characterName = docTitle;
+          frontmatter.cardPath = sourceFile.path;
+          frontmatter.cardFile = `[[${normalizeLinkTarget(sourceFile.path)}]]`;
+          frontmatter.cardFormat = sourceFile.extension.toLowerCase();
+          frontmatter.cardHash = parsed.cardHash;
+          frontmatter.cardSpec = parsedCard?.spec ?? '';
+          frontmatter.cardSpecVersion = parsedCard?.specVersion ?? '';
+          frontmatter.creator = parsedCard?.creator ?? '';
+          frontmatter.creatorNotes = parsedCard?.creatorNotes ?? '';
+          frontmatter.cardTags = parsedCard?.tags ?? [];
+          frontmatter.cardDescription = parsedCard?.description ?? '';
+          frontmatter.cardPersonality = parsedCard?.personality ?? '';
+          frontmatter.cardScenario = parsedCard?.scenario ?? '';
+          frontmatter.cardFirstMessage = parsedCard?.firstMessage ?? '';
+          frontmatter.cardMessageExample = parsedCard?.messageExample ?? '';
+          frontmatter.cardAlternateGreetings = parsedCard?.alternateGreetings ?? [];
+          frontmatter.cardGroupOnlyGreetings = parsedCard?.groupOnlyGreetings ?? [];
+          frontmatter.cardSystemPrompt = parsedCard?.systemPrompt ?? '';
+          frontmatter.cardPostHistoryInstructions = parsedCard?.postHistoryInstructions ?? '';
+          frontmatter.embeddedLorebookName = parsedCard?.embeddedLorebookName ?? '';
+          frontmatter.embeddedLorebookEntryCount = parsedCard?.embeddedLorebookEntries.length ?? 0;
+          frontmatter.cardMtime = new Date(sourceFile.stat.mtime).toISOString();
+          frontmatter.cardSizeBytes = sourceFile.stat.size;
+          frontmatter.sourceType = 'sillytavern_character_card_library';
+          frontmatter.lastSynced = nowIso;
+          if (existingLorebooks.length > 0) {
+            frontmatter.lorebooks = existingLorebooks;
+          } else if (!Array.isArray(frontmatter.lorebooks)) {
+            frontmatter.lorebooks = [];
+          }
+          if (existingCompletionProfile) {
+            frontmatter.completionProfile = existingCompletionProfile;
+          } else if (typeof frontmatter.completionProfile === 'string' && !frontmatter.completionProfile.trim()) {
+            delete frontmatter.completionProfile;
+          }
+          frontmatter.status = existingStatus && existingStatus !== 'missing_source'
+            ? existingStatus
+            : 'inbox';
+          if (parsed.avatarLink) {
+            frontmatter.avatar = parsed.avatarLink;
+          } else {
+            delete frontmatter.avatar;
+          }
+          if (parsed.parseError) {
+            frontmatter.parseError = parsed.parseError;
+          } else {
+            delete frontmatter.parseError;
+          }
+          if (parsed.warnings.length > 0) {
+            frontmatter.syncWarnings = parsed.warnings;
+          } else {
+            delete frontmatter.syncWarnings;
+          }
+          delete frontmatter.missingSourceSince;
+        });
+      } catch (error) {
+        failures += 1;
+        console.warn('LoreVault: Failed syncing character-card meta note:', sourceFile.path, error);
+      }
+    }
+
+    for (const [cardPathKey, metaFile] of existingByCardPath.entries()) {
+      if (seenCardPaths.has(cardPathKey)) {
+        continue;
+      }
+      try {
+        await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
+          frontmatter.status = 'missing_source';
+          if (!asString(frontmatter.missingSourceSince)) {
+            frontmatter.missingSourceSince = nowIso;
+          }
+          frontmatter.lastSynced = nowIso;
+        });
+        markedMissing += 1;
+      } catch (error) {
+        failures += 1;
+        console.warn('LoreVault: Failed marking missing source card meta note:', metaFile.path, error);
+      }
+    }
+
+    const summary = [
+      `Character-card sync complete (${sourceFiles.length} source files).`,
+      `${created} created`,
+      `${updated} updated`,
+      `${markedMissing} missing-source`,
+      `${parseErrors} parse errors`,
+      `${failures} failures`
+    ].join(' | ');
+    new Notice(summary);
   }
 
   private discoverAllScopes(files: TFile[]): string[] {
@@ -4877,6 +5194,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     userPrompt: string;
   } {
     const maxChars = this.settings.summaries.maxInputChars;
+    const summaryCap = Math.max(0, Math.floor(this.settings.summaries.maxSummaryChars));
     const truncated = bodyText.length > maxChars ? bodyText.slice(0, maxChars) : bodyText;
     const systemPrompt = mode === 'chapter'
       ? [
@@ -4890,7 +5208,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       : [
         'You write concise canonical summaries for a fiction writing assistant.',
         'Output one plain-text paragraph only.',
-        `Keep summary under ${this.settings.summaries.maxSummaryChars} characters.`,
+        ...(summaryCap > 0 ? [`Keep summary under ${summaryCap} characters.`] : []),
         'Focus on durable facts, names, states, and consequences.',
         'Do not include headings, markdown, or bullet points.',
         'Do not include reasoning, analysis, or preambles like "I need to..." or numbered planning.',
@@ -6037,6 +6355,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         ...DEFAULT_SETTINGS.storySteering,
         ...(data?.storySteering ?? {})
       },
+      characterCards: {
+        ...DEFAULT_SETTINGS.characterCards,
+        ...(data?.characterCards ?? {})
+      },
       textCommands: {
         ...DEFAULT_SETTINGS.textCommands,
         ...(data?.textCommands ?? {})
@@ -6189,8 +6511,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       Math.min(60000, Math.floor(Number(merged.summaries.maxInputChars)))
     );
     merged.summaries.maxSummaryChars = Math.max(
-      80,
-      Math.min(2000, Math.floor(Number(merged.summaries.maxSummaryChars)))
+      0,
+      Math.min(20000, Math.floor(Number(merged.summaries.maxSummaryChars)))
     );
 
     merged.costTracking.enabled = Boolean(merged.costTracking.enabled);
@@ -6560,6 +6882,25 @@ export default class LoreBookConverterPlugin extends Plugin {
       ? 'off'
       : DEFAULT_SETTINGS.storySteering.extractionSanitization;
 
+    const mergedCharacterCardSourceFolder = (merged.characterCards.sourceFolder ?? '').toString().trim().replace(/\\/g, '/');
+    try {
+      merged.characterCards.sourceFolder = normalizeVaultRelativePath(
+        mergedCharacterCardSourceFolder || DEFAULT_SETTINGS.characterCards.sourceFolder
+      );
+    } catch {
+      console.warn(`Invalid character card source folder "${merged.characterCards.sourceFolder}". Falling back to default.`);
+      merged.characterCards.sourceFolder = DEFAULT_SETTINGS.characterCards.sourceFolder;
+    }
+    const mergedCharacterCardMetaFolder = (merged.characterCards.metaFolder ?? '').toString().trim().replace(/\\/g, '/');
+    try {
+      merged.characterCards.metaFolder = normalizeVaultRelativePath(
+        mergedCharacterCardMetaFolder || DEFAULT_SETTINGS.characterCards.metaFolder
+      );
+    } catch {
+      console.warn(`Invalid character card meta folder "${merged.characterCards.metaFolder}". Falling back to default.`);
+      merged.characterCards.metaFolder = DEFAULT_SETTINGS.characterCards.metaFolder;
+    }
+
     merged.textCommands.autoAcceptEdits = Boolean(merged.textCommands.autoAcceptEdits);
     merged.textCommands.defaultIncludeLorebookContext = Boolean(merged.textCommands.defaultIncludeLorebookContext);
     merged.textCommands.maxContextTokens = Math.max(
@@ -6894,6 +7235,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_IMPORT_VIEW_TYPE, leaf => new LorevaultImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
     this.registerView(LOREVAULT_STORY_DELTA_VIEW_TYPE, leaf => new LorevaultStoryDeltaView(leaf, this));
+    const basesViewRegistered = this.registerBasesView(
+      LOREVAULT_CHARACTER_BASES_VIEW_ID,
+      createLorevaultCharacterBasesViewRegistration()
+    );
+    if (!basesViewRegistered) {
+      console.info('LoreVault: Bases are disabled in this vault; custom character Bases view was not registered.');
+    }
 
     // Add custom ribbon icons with clearer intent.
     addIcon('lorevault-manager', `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
@@ -7065,7 +7413,23 @@ export default class LoreBookConverterPlugin extends Plugin {
       id: 'import-sillytavern-lorebook',
       name: 'Import SillyTavern Lorebook',
       callback: () => {
-        void this.openImportLorebookView();
+        void this.openImportLorebookView('lorebook_json');
+      }
+    });
+
+    this.addCommand({
+      id: 'import-sillytavern-character-card',
+      name: 'Import SillyTavern Character Card',
+      callback: () => {
+        void this.openImportLorebookView('character_card');
+      }
+    });
+
+    this.addCommand({
+      id: 'sync-character-card-library',
+      name: 'Sync Character Card Library',
+      callback: () => {
+        void this.syncCharacterCardLibrary();
       }
     });
 

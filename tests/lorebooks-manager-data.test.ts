@@ -173,6 +173,10 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       ...(overrides.storySteering ?? {}),
       extractionSanitization: overrides.storySteering?.extractionSanitization ?? 'strict'
     },
+    characterCards: {
+      sourceFolder: overrides.characterCards?.sourceFolder ?? 'LoreVault/character-cards/source',
+      metaFolder: overrides.characterCards?.metaFolder ?? 'LoreVault/character-cards/library'
+    },
     textCommands: {
       autoAcceptEdits: false,
       defaultIncludeLorebookContext: false,

@@ -184,6 +184,9 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Import and Update', {
       bullets: [
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
+        '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
+        'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
+        'Character-card preview includes editable planned writes so you can adjust file paths and markdown content before import.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
         '`Fork Active Lorebook`: clone one lorebook into a new lorebook/folder and rewrite internal links to the forked pages.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',
@@ -193,6 +196,7 @@ export class LorevaultHelpView extends ItemView {
       ],
       actions: [
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
+        { label: 'Open Character Card Import', onClick: () => void this.plugin.openImportLorebookView('character_card') },
         { label: 'Open Story Extraction', onClick: () => void this.plugin.openStoryExtractionView() },
         { label: 'Open Lorebook Update', onClick: () => void this.plugin.openStoryDeltaView() }
       ]

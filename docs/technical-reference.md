@@ -118,9 +118,19 @@ This document is the implementation-level reference for core architecture and ru
   - deterministic aggregation/snapshot + CSV serialization
 - `src/sillytavern-import.ts`
   - deterministic ST lorebook parse + wiki note materialization + apply writes
+  - shared payload parser also accepts embedded `character_book` entry shapes (`keys`, `secondary_keys`, `enabled`)
+- `src/sillytavern-character-card.ts`
+  - ST character-card parser (`.png` `ccv3/chara` metadata + `.json` payloads)
+  - deterministic card-field normalization (v1/v2/v3 shapes)
+  - rewrite prompt/response schema helpers
+  - freeform author-note markdown passthrough (`authorNoteMarkdown`) with prompt-driven guidance
+  - story+author-note import plan builder with optional embedded-lorebook conversion
 - `src/lorevault-import-view.ts`
-  - import panel UI (`Import SillyTavern Lorebook`)
+  - import panel UI (`Import SillyTavern Lorebook` + `Import SillyTavern Character Card`)
   - lorebook list add/remove UX (interactive picker + Enter-to-add)
+  - character-card file picker and optional embedded-lorebook import toggle
+  - character-card planned-write editor (editable path + content before apply)
+  - model rewrite stage for character-card import with completion usage/operation-log hooks
   - target-folder default sourced from shared setting `defaultLorebookImportLocation`
   - staged progress reporting for parse/build/apply
 - `src/lorevault-story-extract-view.ts`
@@ -444,7 +454,7 @@ Flow:
 1. read note body (`stripFrontmatter`)
 2. build constrained prompt with summary mode (`world_info` or `chapter`)
 3. call completion provider (non-stream request)
-4. normalize summary text (`world_info`: capped single paragraph; `chapter`: multi-paragraph allowed, no hard length cap)
+4. normalize summary text (`world_info`: single paragraph with optional cap; set cap to `0` to disable truncation. `chapter`: multi-paragraph allowed, no hard length cap)
 5. show review modal with edit + accept options
 6. write accepted summary into note `## Summary` section (`chapter` multi-paragraph summaries use `LV_BEGIN/LV_END` markers)
 7. request index/view refresh and chapter-summary cache invalidation for affected note
@@ -644,15 +654,18 @@ Explorer surface:
 Implemented:
 
 - inbound SillyTavern lorebook JSON import command/view
+- inbound SillyTavern character-card import command/view (`.png` + `.json`)
 - deterministic entry normalization and sorting
+- deterministic character-card field normalization across v1/v2/v3 shapes
 - deterministic file naming/path allocation
 - deterministic frontmatter/body mapping for generated wiki pages (summary persisted in `## Summary` section)
+- deterministic story+author-note note mapping for character-card rewrite output
 - preview and apply import flows
 - staged import progress reporting (parse/build/apply with per-file write updates)
 - story extraction command/view with preview/apply workflow
 - deterministic chunking and per-chunk schema-constrained extraction
 - iterative existing-page state injection between chunks
-- deterministic merge behavior (summary merge, set unions, unique content append)
+- deterministic merge behavior (single summary-candidate replacement, set unions, unique content append)
 - merged story summaries are written to note `## Summary` sections (legacy frontmatter summary treated as fallback input)
 - extraction chunk/render progress callbacks surfaced in panel UI
 
@@ -673,7 +686,7 @@ Implemented:
 - per-change approval selection in panel and `Apply Selected` writes only approved changes
 - merge policies:
   - `safe_append`: preserve metadata on existing notes, append unique content blocks
-  - `structured_merge`: deterministic summary/keyword/alias merge + unique content append
+  - `structured_merge`: deterministic summary replacement (recency-biased, confidence-aware), keyword/alias union, and unique content append
 - idempotence guard: duplicate content blocks are not appended on rerun
 - safe-append guard: existing notes without frontmatter stay frontmatter-free
 - fixture-backed tests for parsing, gating, deterministic paths, and idempotence behavior

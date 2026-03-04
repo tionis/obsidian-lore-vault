@@ -1,22 +1,105 @@
-import { ItemView, Notice, Setting, WorkspaceLeaf } from 'obsidian';
+import { App, FuzzySuggestModal, ItemView, Notice, Setting, TFile, WorkspaceLeaf } from 'obsidian';
 import LoreBookConverterPlugin from './main';
+import { requestStoryContinuation } from './completion-provider';
 import {
   applyImportedWikiPages,
   buildImportedWikiPages,
+  ImportedWikiPage,
   parseSillyTavernLorebookJson
 } from './sillytavern-import';
 import { openVaultFolderPicker } from './folder-suggest-modal';
 import { LorebookScopeSuggestModal } from './lorebook-scope-suggest-modal';
+import { readVaultBinary } from './vault-binary-io';
+import {
+  buildCharacterCardImportPlan,
+  buildCharacterCardRewriteSystemPrompt,
+  buildCharacterCardRewriteUserPrompt,
+  CharacterCardImportPlan,
+  parseCharacterCardRewriteResponse,
+  parseSillyTavernCharacterCardJson,
+  parseSillyTavernCharacterCardPngBytes
+} from './sillytavern-character-card';
+import { normalizeVaultPath } from './vault-path-utils';
+import { ConverterSettings } from './models';
 
 export const LOREVAULT_IMPORT_VIEW_TYPE = 'lorevault-import-view';
+
+type ImportMode = 'lorebook_json' | 'character_card';
+
+interface ImportCompletionResolution {
+  completion: ConverterSettings['completion'];
+  profileLabel: string;
+  profileSource: string;
+  profileId: string;
+  profileName: string;
+  costProfile: string;
+  autoCostProfile: string;
+}
+
+class CharacterCardFileSuggestModal extends FuzzySuggestModal<TFile> {
+  private readonly files: TFile[];
+  private readonly placeholder: string;
+  private resolver: ((value: TFile | null) => void) | null = null;
+  private resolved = false;
+  private selectedFile: TFile | null = null;
+
+  constructor(app: App, files: TFile[], placeholder = 'Pick a character card...') {
+    super(app);
+    this.files = files;
+    this.placeholder = placeholder;
+    this.setPlaceholder(this.placeholder);
+  }
+
+  waitForSelection(): Promise<TFile | null> {
+    return new Promise(resolve => {
+      this.resolver = resolve;
+    });
+  }
+
+  getItems(): TFile[] {
+    return this.files;
+  }
+
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  onChooseItem(file: TFile): void {
+    this.selectedFile = file;
+    this.finish(file);
+  }
+
+  onClose(): void {
+    super.onClose();
+    window.setTimeout(() => {
+      this.finish(this.selectedFile);
+    }, 0);
+  }
+
+  private finish(file: TFile | null): void {
+    if (this.resolved || !this.resolver) {
+      return;
+    }
+    this.resolved = true;
+    const resolve = this.resolver;
+    this.resolver = null;
+    resolve(file);
+  }
+}
 
 export class LorevaultImportView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private targetFolder = '';
   private defaultTags = '';
   private selectedLorebooks: string[] = [];
+  private importMode: ImportMode = 'lorebook_json';
+
   private lorebookJson = '';
   private skipDisabled = true;
+
+  private characterCardPath = '';
+  private includeEmbeddedLorebook = true;
+
   private selectedCompletionPresetId = '';
   private running = false;
   private runningMode: 'preview' | 'import' | null = null;
@@ -28,6 +111,9 @@ export class LorevaultImportView extends ItemView {
   private previewPaths: string[] = [];
   private importSummary = '';
   private lastError = '';
+
+  private preparedPages: ImportedWikiPage[] = [];
+  private preparedKey = '';
 
   constructor(leaf: WorkspaceLeaf, plugin: LoreBookConverterPlugin) {
     super(leaf);
@@ -47,6 +133,16 @@ export class LorevaultImportView extends ItemView {
     return 'inbox';
   }
 
+  public setImportMode(mode: ImportMode): void {
+    if (this.importMode === mode) {
+      return;
+    }
+    this.importMode = mode;
+    this.clearOutput();
+    this.invalidatePreparedPages();
+    this.render();
+  }
+
   async onOpen(): Promise<void> {
     this.render();
   }
@@ -57,6 +153,39 @@ export class LorevaultImportView extends ItemView {
 
   refresh(): void {
     this.render();
+  }
+
+  private invalidatePreparedPages(): void {
+    this.preparedPages = [];
+    this.preparedKey = '';
+  }
+
+  private getPreparedKey(): string {
+    if (this.importMode === 'lorebook_json') {
+      return [
+        this.importMode,
+        this.targetFolder.trim(),
+        this.defaultTags,
+        this.lorebookJson,
+        String(this.skipDisabled),
+        this.getNormalizedLorebooks().join(','),
+        this.plugin.settings.tagScoping.tagPrefix,
+        String(this.plugin.settings.summaries.maxSummaryChars)
+      ].join('\u0000');
+    }
+
+    return [
+      this.importMode,
+      this.targetFolder.trim(),
+      this.defaultTags,
+      this.characterCardPath.trim(),
+      String(this.includeEmbeddedLorebook),
+      this.selectedCompletionPresetId.trim(),
+      this.getNormalizedLorebooks().join(','),
+      this.plugin.settings.tagScoping.tagPrefix,
+      String(this.plugin.settings.summaries.maxSummaryChars),
+      this.plugin.getStorySteeringFolderPath()
+    ].join('\u0000');
   }
 
   private getNormalizedLorebooks(): string[] {
@@ -89,12 +218,14 @@ export class LorevaultImportView extends ItemView {
     }
     this.selectedLorebooks.push(normalized);
     this.selectedLorebooks = this.getNormalizedLorebooks();
+    this.invalidatePreparedPages();
     this.render();
   }
 
   private removeLorebook(scope: string): void {
     const normalized = scope.trim().toLowerCase();
     this.selectedLorebooks = this.selectedLorebooks.filter(item => item.trim().toLowerCase() !== normalized);
+    this.invalidatePreparedPages();
     this.render();
   }
 
@@ -134,6 +265,36 @@ export class LorevaultImportView extends ItemView {
     return preset?.name ?? selectedId;
   }
 
+  private async resolveCompletionConfig(): Promise<ImportCompletionResolution> {
+    const selectedPresetId = this.selectedCompletionPresetId.trim();
+    if (selectedPresetId && !this.plugin.getCompletionPresetById(selectedPresetId)) {
+      new Notice(`Selected completion profile is missing: ${selectedPresetId}`);
+      throw new Error(`Missing completion profile: ${selectedPresetId}`);
+    }
+
+    const resolved = this.plugin.resolveEffectiveCompletionForStoryChat(selectedPresetId);
+    const completion = resolved.completion;
+    if (!completion.enabled) {
+      new Notice('Writing completion is disabled. Enable it in settings first.');
+      throw new Error('Writing completion is disabled.');
+    }
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
+      new Notice('Missing completion API key. Configure it in settings first.');
+      throw new Error('Missing completion API key.');
+    }
+
+    const profileLabel = resolved.presetName || 'workspace effective profile';
+    return {
+      completion,
+      profileLabel,
+      profileSource: resolved.source,
+      profileId: resolved.presetId,
+      profileName: resolved.presetName,
+      costProfile: this.plugin.resolveEffectiveCostProfileForApiKey(completion.apiKey),
+      autoCostProfile: this.plugin.buildAutoCostProfileForApiKey(completion.apiKey)
+    };
+  }
+
   private setProgress(stage: string, details = ''): void {
     this.progressStage = stage;
     this.progressDetails = details;
@@ -147,6 +308,49 @@ export class LorevaultImportView extends ItemView {
     this.previewPaths = [];
     this.importSummary = '';
     this.lastError = '';
+  }
+
+  private syncPreviewPathsFromPreparedPages(): void {
+    this.previewPaths = this.preparedPages.map(page => page.path);
+  }
+
+  private normalizePagesForApply(pages: ImportedWikiPage[]): ImportedWikiPage[] {
+    const normalizedPages: ImportedWikiPage[] = [];
+    const seenPaths = new Set<string>();
+    for (let index = 0; index < pages.length; index += 1) {
+      const page = pages[index];
+      const normalizedPath = normalizeVaultPath((page.path ?? '').trim());
+      if (!normalizedPath) {
+        throw new Error(`Planned file ${index + 1} is missing a target path.`);
+      }
+      const pathKey = normalizedPath.toLowerCase();
+      if (seenPaths.has(pathKey)) {
+        throw new Error(`Duplicate planned file path: ${normalizedPath}`);
+      }
+      seenPaths.add(pathKey);
+      normalizedPages.push({
+        ...page,
+        path: normalizedPath,
+        content: typeof page.content === 'string' ? page.content : ''
+      });
+    }
+    return normalizedPages;
+  }
+
+  private async pickCharacterCardFile(): Promise<string | null> {
+    const supported = new Set(['png', 'json']);
+    const files = this.app.vault.getFiles()
+      .filter(file => supported.has(file.extension.toLowerCase()))
+      .sort((left, right) => left.path.localeCompare(right.path));
+    if (files.length === 0) {
+      new Notice('No `.png` or `.json` character-card files found in the vault.');
+      return null;
+    }
+    const modal = new CharacterCardFileSuggestModal(this.app, files, 'Pick a SillyTavern character card...');
+    const resultPromise = modal.waitForSelection();
+    modal.open();
+    const selected = await resultPromise;
+    return selected?.path ?? null;
   }
 
   private buildSharedInputs(container: HTMLElement): void {
@@ -165,6 +369,7 @@ export class LorevaultImportView extends ItemView {
           .setValue(this.targetFolder)
           .onChange(value => {
             this.targetFolder = value.trim();
+            this.invalidatePreparedPages();
           });
       })
       .addButton(button => button
@@ -172,6 +377,7 @@ export class LorevaultImportView extends ItemView {
         .onClick(() => {
           openVaultFolderPicker(this.app, path => {
             this.targetFolder = path;
+            this.invalidatePreparedPages();
             targetFolderInput?.setValue(path);
           });
         }));
@@ -186,8 +392,23 @@ export class LorevaultImportView extends ItemView {
           .setValue(this.defaultTags)
           .onChange(value => {
             this.defaultTags = value;
+            this.invalidatePreparedPages();
           });
       });
+
+    new Setting(container)
+      .setName('Import Type')
+      .setDesc('Choose what you are importing from SillyTavern.')
+      .addDropdown(dropdown => dropdown
+        .addOption('lorebook_json', 'Lorebook JSON')
+        .addOption('character_card', 'Character Card')
+        .setValue(this.importMode)
+        .onChange(value => {
+          this.importMode = value === 'character_card' ? 'character_card' : 'lorebook_json';
+          this.clearOutput();
+          this.invalidatePreparedPages();
+          this.render();
+        }));
 
     new Setting(container)
       .setName('Completion Profile')
@@ -205,6 +426,7 @@ export class LorevaultImportView extends ItemView {
           .setValue(selected)
           .onChange(value => {
             this.selectedCompletionPresetId = value.trim();
+            this.invalidatePreparedPages();
           });
       });
 
@@ -261,38 +483,195 @@ export class LorevaultImportView extends ItemView {
     });
   }
 
+  private buildLorebookJsonInputs(container: HTMLElement): void {
+    new Setting(container)
+      .setName('Skip Disabled Entries')
+      .setDesc('Ignore entries with disable=true in imported lorebook JSON.')
+      .addToggle(toggle => toggle
+        .setValue(this.skipDisabled)
+        .onChange(value => {
+          this.skipDisabled = value;
+          this.invalidatePreparedPages();
+        }));
+
+    new Setting(container)
+      .setName('Lorebook JSON')
+      .setDesc('Paste the full SillyTavern lorebook JSON payload.')
+      .addTextArea(text => {
+        text.inputEl.rows = 12;
+        text
+          .setPlaceholder('{"entries": {...}}')
+          .setValue(this.lorebookJson)
+          .onChange(value => {
+            this.lorebookJson = value;
+            this.invalidatePreparedPages();
+          });
+      });
+  }
+
+  private buildCharacterCardInputs(container: HTMLElement): void {
+    let pathInput: { setValue: (value: string) => void } | null = null;
+    new Setting(container)
+      .setName('Character Card File')
+      .setDesc('Vault path to a `.png` or `.json` SillyTavern character card.')
+      .addText(text => {
+        pathInput = text;
+        text
+          .setPlaceholder('cards/character.png')
+          .setValue(this.characterCardPath)
+          .onChange(value => {
+            this.characterCardPath = value.trim();
+            this.invalidatePreparedPages();
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          void (async () => {
+            const selectedPath = await this.pickCharacterCardFile();
+            if (!selectedPath) {
+              return;
+            }
+            this.characterCardPath = selectedPath;
+            this.invalidatePreparedPages();
+            pathInput?.setValue(selectedPath);
+          })();
+        }));
+
+    new Setting(container)
+      .setName('Import Embedded Lorebook')
+      .setDesc('When the card contains an embedded lorebook, import it into wiki notes too.')
+      .addToggle(toggle => toggle
+        .setValue(this.includeEmbeddedLorebook)
+        .onChange(value => {
+          this.includeEmbeddedLorebook = value;
+          this.invalidatePreparedPages();
+        }));
+  }
+
+  private async buildLorebookImportPages(): Promise<ImportedWikiPage[]> {
+    if (!this.lorebookJson.trim()) {
+      throw new Error('Paste lorebook JSON before running import.');
+    }
+    const parsed = parseSillyTavernLorebookJson(this.lorebookJson);
+    const entries = this.skipDisabled
+      ? parsed.entries.filter(entry => !entry.disable)
+      : parsed.entries;
+    this.previewWarnings = parsed.warnings;
+    if (entries.length === 0) {
+      throw new Error('No importable entries found.');
+    }
+    this.setProgress('Building import plan...', `${entries.length} entries`);
+    const pages = buildImportedWikiPages(entries, {
+      targetFolder: this.targetFolder,
+      defaultTagsRaw: this.defaultTags,
+      lorebookName: '',
+      lorebookNames: this.getNormalizedLorebooks(),
+      tagPrefix: this.plugin.settings.tagScoping.tagPrefix,
+      maxSummaryChars: this.plugin.settings.summaries.maxSummaryChars
+    });
+    this.previewSummary = `Preview: ${entries.length} entries -> ${pages.length} wiki note(s).`;
+    this.previewPaths = pages.map(page => page.path);
+    return pages;
+  }
+
+  private async buildCharacterCardImportPlan(): Promise<CharacterCardImportPlan> {
+    const cardPath = normalizeVaultPath(this.characterCardPath.trim());
+    if (!cardPath) {
+      throw new Error('Choose a character-card file before preview/import.');
+    }
+    const abstract = this.app.vault.getAbstractFileByPath(cardPath);
+    if (!(abstract instanceof TFile)) {
+      throw new Error(`Character-card file not found: ${cardPath}`);
+    }
+    const extension = abstract.extension.toLowerCase();
+    if (extension !== 'png' && extension !== 'json') {
+      throw new Error(`Unsupported character-card file type: .${extension}. Use .png or .json.`);
+    }
+
+    const completionResolution = await this.resolveCompletionConfig();
+    this.setProgress('Loading character card...', `Profile: ${completionResolution.profileLabel}`);
+
+    const card = extension === 'json'
+      ? parseSillyTavernCharacterCardJson(await this.app.vault.read(abstract))
+      : parseSillyTavernCharacterCardPngBytes(await readVaultBinary(this.app, abstract.path));
+
+    this.setProgress(
+      'Rewriting card into freeform story format...',
+      card.name || abstract.basename
+    );
+    const response = await requestStoryContinuation(completionResolution.completion, {
+      systemPrompt: buildCharacterCardRewriteSystemPrompt(),
+      userPrompt: buildCharacterCardRewriteUserPrompt(card),
+      operationName: 'character_card_rewrite',
+      onOperationLog: record => this.plugin.appendCompletionOperationLog(record, {
+        costProfile: completionResolution.costProfile
+      }),
+      onUsage: usage => {
+        void this.plugin.recordCompletionUsage('character_card_rewrite', usage, {
+          cardPath: abstract.path,
+          completionProfileSource: completionResolution.profileSource,
+          completionProfileId: completionResolution.profileId,
+          completionProfileName: completionResolution.profileName,
+          autoCostProfile: completionResolution.autoCostProfile
+        });
+      }
+    });
+
+    const rewrite = parseCharacterCardRewriteResponse(response);
+    const authorNoteFolder = this.plugin.getStorySteeringFolderPath();
+    this.setProgress('Building import write plan...', card.name || abstract.basename);
+    const plan = buildCharacterCardImportPlan(card, rewrite, {
+      targetFolder: this.targetFolder,
+      authorNoteFolder,
+      defaultTagsRaw: this.defaultTags,
+      lorebookNames: this.getNormalizedLorebooks(),
+      tagPrefix: this.plugin.settings.tagScoping.tagPrefix,
+      maxSummaryChars: this.plugin.settings.summaries.maxSummaryChars,
+      includeEmbeddedLorebook: this.includeEmbeddedLorebook,
+      sourceCardPath: abstract.path,
+      completionPresetId: this.selectedCompletionPresetId.trim()
+    });
+
+    const embeddedCount = Math.max(0, plan.pages.length - 2);
+    const rewriteNoteSuffix = rewrite.rewriteNotes.length > 0
+      ? ` | rewrite notes: ${rewrite.rewriteNotes.length}`
+      : '';
+    this.previewSummary = `Preview: story note + author note${embeddedCount > 0 ? ` + ${embeddedCount} embedded lorebook note(s)` : ''}${rewriteNoteSuffix}.`;
+    this.previewPaths = plan.pages.map(page => page.path);
+    this.previewWarnings = [
+      ...card.warnings,
+      ...plan.warnings
+    ];
+    return plan;
+  }
+
+  private async computePreviewPages(): Promise<ImportedWikiPage[]> {
+    if (this.importMode === 'lorebook_json') {
+      return this.buildLorebookImportPages();
+    }
+    const plan = await this.buildCharacterCardImportPlan();
+    return plan.pages;
+  }
+
   private async runPreview(): Promise<void> {
     if (this.running) {
-      return;
-    }
-    if (!this.lorebookJson.trim()) {
-      new Notice('Paste lorebook JSON to preview import results.');
       return;
     }
 
     this.running = true;
     this.runningMode = 'preview';
     this.clearOutput();
-    this.setProgress('Parsing lorebook JSON...', `Profile: ${this.resolveCompletionProfileLabel()}`);
+    this.setProgress(
+      this.importMode === 'character_card' ? 'Preparing character-card preview...' : 'Parsing lorebook JSON...',
+      `Profile: ${this.resolveCompletionProfileLabel()}`
+    );
 
     try {
-      const parsed = parseSillyTavernLorebookJson(this.lorebookJson);
-      const entries = this.skipDisabled
-        ? parsed.entries.filter(entry => !entry.disable)
-        : parsed.entries;
-      this.setProgress('Building import plan...', `${entries.length} entries`);
-      const pages = buildImportedWikiPages(entries, {
-        targetFolder: this.targetFolder,
-        defaultTagsRaw: this.defaultTags,
-        lorebookName: '',
-        lorebookNames: this.getNormalizedLorebooks(),
-        tagPrefix: this.plugin.settings.tagScoping.tagPrefix,
-        maxSummaryChars: this.plugin.settings.summaries.maxSummaryChars
-      });
-
-      this.previewSummary = `Preview: ${entries.length} entries -> ${pages.length} wiki note(s).`;
-      this.previewWarnings = parsed.warnings;
-      this.previewPaths = pages.map(page => page.path);
+      const pages = await this.computePreviewPages();
+      this.preparedPages = pages;
+      this.preparedKey = this.getPreparedKey();
+      this.syncPreviewPathsFromPreparedPages();
       this.setProgress('Preview complete', `${pages.length} note(s)`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -309,36 +688,35 @@ export class LorevaultImportView extends ItemView {
     if (this.running) {
       return;
     }
-    if (!this.lorebookJson.trim()) {
-      new Notice('Paste lorebook JSON before importing.');
-      return;
-    }
 
     this.running = true;
     this.runningMode = 'import';
     this.clearOutput();
-    this.setProgress('Parsing lorebook JSON...', `Profile: ${this.resolveCompletionProfileLabel()}`);
+    this.setProgress(
+      this.importMode === 'character_card' ? 'Preparing character-card import...' : 'Parsing lorebook JSON...',
+      `Profile: ${this.resolveCompletionProfileLabel()}`
+    );
 
     try {
-      const parsed = parseSillyTavernLorebookJson(this.lorebookJson);
-      const entries = this.skipDisabled
-        ? parsed.entries.filter(entry => !entry.disable)
-        : parsed.entries;
-      if (entries.length === 0) {
-        new Notice('No importable entries found.');
-        this.importSummary = 'No importable entries found.';
-        return;
+      let pages: ImportedWikiPage[] = [];
+      const preparedKey = this.getPreparedKey();
+      if (this.preparedPages.length > 0 && this.preparedKey === preparedKey) {
+        pages = this.normalizePagesForApply(this.preparedPages);
+        this.preparedPages = pages;
+        this.syncPreviewPathsFromPreparedPages();
+        this.setProgress('Using preview plan...', `${pages.length} note(s)`);
+      } else {
+        pages = this.normalizePagesForApply(await this.computePreviewPages());
+        this.preparedPages = pages;
+        this.preparedKey = preparedKey;
+        this.syncPreviewPathsFromPreparedPages();
       }
 
-      this.setProgress('Building import write plan...', `${entries.length} entries`);
-      const pages = buildImportedWikiPages(entries, {
-        targetFolder: this.targetFolder,
-        defaultTagsRaw: this.defaultTags,
-        lorebookName: '',
-        lorebookNames: this.getNormalizedLorebooks(),
-        tagPrefix: this.plugin.settings.tagScoping.tagPrefix,
-        maxSummaryChars: this.plugin.settings.summaries.maxSummaryChars
-      });
+      if (pages.length === 0) {
+        this.importSummary = 'No importable entries found.';
+        new Notice('No importable entries found.');
+        return;
+      }
 
       this.setProgress('Applying imported notes...', `${pages.length} note(s)`);
       const applied = await applyImportedWikiPages(this.app, pages, {
@@ -351,15 +729,14 @@ export class LorevaultImportView extends ItemView {
       });
 
       this.importSummary = `Import finished: ${applied.created} created, ${applied.updated} updated (${pages.length} total).`;
-      this.previewWarnings = parsed.warnings;
       this.setProgress('Import complete', `${applied.created} created, ${applied.updated} updated`);
       new Notice(this.importSummary);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Lorebook import failed:', error);
+      console.error('LoreVault import failed:', error);
       this.lastError = `Import failed: ${message}`;
       this.setProgress('Import failed', message);
-      new Notice(`Lorebook import failed: ${message}`);
+      new Notice(`LoreVault import failed: ${message}`);
     } finally {
       this.running = false;
       this.runningMode = null;
@@ -403,7 +780,9 @@ export class LorevaultImportView extends ItemView {
       }
     }
 
-    if (this.previewPaths.length > 0) {
+    if (this.importMode === 'character_card' && this.preparedPages.length > 0) {
+      this.renderEditablePlannedWrites(container);
+    } else if (this.previewPaths.length > 0) {
       const details = container.createEl('details');
       details.createEl('summary', { text: `Planned File Paths (${this.previewPaths.length})` });
       const list = details.createEl('ul');
@@ -416,7 +795,52 @@ export class LorevaultImportView extends ItemView {
     }
 
     if (!this.previewSummary && !this.importSummary && !this.running) {
-      container.createEl('p', { text: 'Paste lorebook JSON, then run Preview or Import.' });
+      container.createEl('p', {
+        text: this.importMode === 'character_card'
+          ? 'Choose a character-card file, then run Preview or Import.'
+          : 'Paste lorebook JSON, then run Preview or Import.'
+      });
+    }
+  }
+
+  private renderEditablePlannedWrites(container: HTMLElement): void {
+    const details = container.createEl('details', { cls: 'lorevault-import-planned-writes' });
+    details.open = true;
+    details.createEl('summary', { text: `Planned Writes (Editable) (${this.preparedPages.length})` });
+    details.createEl('p', {
+      cls: 'lorevault-import-planned-writes-note',
+      text: 'Adjust paths/content before Import. Edited values are written as-is.'
+    });
+
+    for (let index = 0; index < this.preparedPages.length; index += 1) {
+      const page = this.preparedPages[index];
+      const card = details.createDiv({ cls: 'lorevault-import-page-editor' });
+      card.createEl('p', {
+        cls: 'lorevault-import-page-editor-title',
+        text: `File ${index + 1}`
+      });
+
+      const pathInput = card.createEl('input', {
+        cls: 'lorevault-import-page-path',
+        type: 'text'
+      });
+      pathInput.value = page.path;
+      pathInput.disabled = this.running;
+      pathInput.addEventListener('input', () => {
+        page.path = pathInput.value;
+        this.syncPreviewPathsFromPreparedPages();
+      });
+
+      const contentInput = card.createEl('textarea', {
+        cls: 'lorevault-import-page-content'
+      });
+      const lineCount = page.content ? page.content.split('\n').length : 0;
+      contentInput.rows = Math.max(8, Math.min(18, lineCount + 1));
+      contentInput.value = page.content;
+      contentInput.disabled = this.running;
+      contentInput.addEventListener('input', () => {
+        page.content = contentInput.value;
+      });
     }
   }
 
@@ -424,31 +848,18 @@ export class LorevaultImportView extends ItemView {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('lorevault-import-view');
-    contentEl.createEl('h2', { text: 'Import SillyTavern Lorebook' });
+    contentEl.createEl('h2', {
+      text: this.importMode === 'character_card'
+        ? 'Import SillyTavern Character Card'
+        : 'Import SillyTavern Lorebook'
+    });
 
     this.buildSharedInputs(contentEl);
-
-    new Setting(contentEl)
-      .setName('Skip Disabled Entries')
-      .setDesc('Ignore entries with disable=true in imported lorebook JSON.')
-      .addToggle(toggle => toggle
-        .setValue(this.skipDisabled)
-        .onChange(value => {
-          this.skipDisabled = value;
-        }));
-
-    new Setting(contentEl)
-      .setName('Lorebook JSON')
-      .setDesc('Paste the full SillyTavern lorebook JSON payload.')
-      .addTextArea(text => {
-        text.inputEl.rows = 12;
-        text
-          .setPlaceholder('{"entries": {...}}')
-          .setValue(this.lorebookJson)
-          .onChange(value => {
-            this.lorebookJson = value;
-          });
-      });
+    if (this.importMode === 'character_card') {
+      this.buildCharacterCardInputs(contentEl);
+    } else {
+      this.buildLorebookJsonInputs(contentEl);
+    }
 
     const actions = contentEl.createDiv({ cls: 'lorevault-import-actions' });
     const output = contentEl.createDiv({ cls: 'lorevault-import-output' });
@@ -470,10 +881,17 @@ export class LorevaultImportView extends ItemView {
       void this.runImport();
     });
 
-    const clearButton = actions.createEl('button', { text: 'Clear JSON' });
+    const clearButton = actions.createEl('button', {
+      text: this.importMode === 'character_card' ? 'Clear Card' : 'Clear JSON'
+    });
     clearButton.disabled = this.running;
     clearButton.addEventListener('click', () => {
-      this.lorebookJson = '';
+      if (this.importMode === 'character_card') {
+        this.characterCardPath = '';
+      } else {
+        this.lorebookJson = '';
+      }
+      this.invalidatePreparedPages();
       this.render();
     });
 

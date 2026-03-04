@@ -1124,6 +1124,48 @@
   padding: 10px;
 }
 
+.lorevault-import-planned-writes {
+  margin-top: 10px;
+}
+
+.lorevault-import-planned-writes-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.lorevault-import-page-editor {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lorevault-import-page-editor-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lorevault-import-page-path {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 12px;
+}
+
+.lorevault-import-page-content {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .lorevault-story-delta-change-list {
   margin-top: 10px;
   display: flex;

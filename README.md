@@ -21,6 +21,8 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 - Provides a Story Chat panel with per-conversation context controls.
 - Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass` and `Scene Consistency Pass`.
 - Adds `Fork Active Lorebook` to clone a lorebook into a new lorebook/folder while rewriting internal links.
+- Story extraction/update keeps one best summary candidate per page (instead of concatenating multiple summary strings).
+- World-info summary output capping is optional (`Summary Max Output Chars`; default `0` means no hard truncation).
 - Keeps retrieval/debug behavior deterministic and inspectable.
 
 ## Quick Start
@@ -199,6 +201,7 @@ Quality and utility:
 Import and updates:
 
 - `Import SillyTavern Lorebook`
+- `Import SillyTavern Character Card`
 - `Extract Wiki Pages from Story`
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki`
@@ -207,9 +210,15 @@ Import and updates:
 Import/extraction/update panel behavior:
 
 - each panel has a completion-profile selector
+- import panel supports two modes:
+  - lorebook JSON import (`Import SillyTavern Lorebook`)
+  - character-card import (`Import SillyTavern Character Card`) for `.png`/`.json` cards with LLM rewrite into story note + author note
 - extraction and lorebook-update previews report chunk-stage progress while running
 - import and apply flows report live write progress while files are being created/updated
 - lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
+- character-card import can optionally import embedded card lorebooks into generated wiki notes
+- character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
+- character-card preview exposes editable planned writes (path + content) before import apply
 - default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)
 - story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions
 

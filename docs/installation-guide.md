@@ -61,6 +61,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Export Usage Report (JSON)"
      - "Export Usage Report (CSV)"
      - "Import SillyTavern Lorebook"
+     - "Import SillyTavern Character Card"
      - "Extract Wiki Pages from Story"
      - "Fork Active Lorebook"
      - "Apply Story Delta to Existing Wiki"
@@ -121,7 +122,7 @@ If you prefer to build the plugin from source:
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
    - Optional: set `Story Continuity Aggressiveness` (`Balanced` or `Aggressive`) to control how much prior chapter memory/style carryover is injected
    - Optional: configure `Semantic Chapter Recall` (under Writing Completion) to toggle/tune embedding-based related prior-scene recall (`Related Past Scenes`) with controls for chapter/chunk limits, chunk sizing, similarity threshold, recency blend, and budget share (enabled by default with a large-context tuned profile)
-   - Optional: configure Auto Summaries (summary input cap + world_info output cap)
+   - Optional: configure Auto Summaries (summary input cap + optional world_info output cap; default output cap is `0` to disable truncation)
    - Optional: enable Cost Tracking, set fallback USD-per-1M token rates, optional model pricing overrides, report output directory, and optional budget warnings (daily/session/operation/model/lorebook) per selected `Budget Cost Profile`
    - Optional: configure embeddings backend/cache/chunking for semantic fallback retrieval
    - Adjust priority weights if needed
@@ -224,7 +225,7 @@ If you prefer to build the plugin from source:
    - Assistant context metadata in saved notes is kept in collapsed `Context Meta` callouts (fenced `yaml`) plus expanded Message Info table rows
    - Expand per-turn context inspector blocks to see selected lorebooks, resolved notes, pulled items, retrieval tool-hook traces, and chat agent tool call/write traces
 
-9. **Import Existing Lorebook JSON (Phase 14)**
+9. **Import Existing SillyTavern Assets (Phase 14)**
   - Run command `Import SillyTavern Lorebook`
   - Set target folder (prefilled from `Default Lorebook Import Location`, manual path or `Browse`) and default tags
   - Select lorebooks in the list UI (delete per item, add interactively, or add custom lorebook with Enter in the inline text field)
@@ -234,6 +235,14 @@ If you prefer to build the plugin from source:
   - Watch staged progress updates (parse/build/apply) and per-file write progress during import
   - Imported summaries are written to note `## Summary` sections
   - Click `Import` to create/update generated wiki notes deterministically
+  - For character cards:
+    - Run command `Import SillyTavern Character Card` (or switch import type in the same panel)
+    - Pick a `.png`/`.json` card file from the vault
+    - Keep/adjust completion profile for rewrite
+    - Optional: enable/disable embedded lorebook import
+    - Rewrite output uses freeform `authorNoteMarkdown` (no enforced section template in plugin post-processing)
+    - In preview, review and edit planned write paths/content before apply
+    - Preview and import generated story note + linked author note (+ optional embedded lorebook notes)
 
 10. **Extract Wiki Pages from Story (Phase 14)**
    - Run command `Extract Wiki Pages from Story`
@@ -254,7 +263,7 @@ If you prefer to build the plugin from source:
    - Set `New Note Target Folder` (manual path or `Browse`) for create operations
    - Choose update policy:
      - `safe_append` (default): preserve existing metadata on existing pages
-     - `structured_merge`: merge summary-section/keywords/aliases where confidence is high
+     - `structured_merge`: update summary-section/keywords/aliases (summary uses single-candidate replacement, not concatenation)
    - Set low-confidence threshold (operations below threshold are skipped in preview)
    - Click `Preview Story Delta` to inspect planned create/update writes
    - Monitor live chunk-stage progress while preview runs

@@ -11,6 +11,7 @@ Reference design: `docs/planning.md`.
 - Phase 9 auto-summary workflows are complete.
 - Phase 13 cost tracking is complete (usage hooks + ledger + Story Writing/Cost Analyzer UI + JSON/CSV export + aggregation tests).
 - Phase 14 import/extraction is complete (import panel + story extraction pipeline + deterministic preview/apply workflows).
+- Phase 14 import now also includes SillyTavern character-card import (`.png`/`.json`) with model rewrite into story+author-note notes and optional embedded-lorebook import.
 - Added lorebook forking utility (`Fork Active Lorebook`) with deterministic scoped-copy, link rewrite, and retagging workflow.
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
@@ -118,6 +119,7 @@ Reference design: `docs/planning.md`.
 ## Phase 14: Inbound Wiki Import and Story Extraction
 
 - [x] Add command + panel: `Import SillyTavern Lorebook`.
+- [x] Add command + panel: `Import SillyTavern Character Card` (shared import panel mode).
 - [x] Add command + panel: `Extract Wiki Pages from Story`.
 - [x] Add shared panel inputs:
   - target folder for generated wiki pages
@@ -138,6 +140,11 @@ Reference design: `docs/planning.md`.
 - [x] Add staged progress telemetry in import/extraction panels (chunk/apply status updates).
 - [x] Upgrade import lorebook selection to list-based add/remove UX (interactive picker + Enter-to-add).
 - [x] Add per-panel completion profile selector wiring for import/extraction/update workflows.
+- [x] Add character-card parser coverage for `.png` metadata (`ccv3`/`chara`) and `.json` payloads, plus deterministic v1/v2/v3 field normalization.
+- [x] Add model rewrite pipeline for character cards (freeform story note + author note output schema).
+- [x] Remove enforced author-note section normalization/caps; keep author-note shaping prompt-driven via `authorNoteMarkdown`.
+- [x] Add editable planned-write preview for character-card import (path + content adjustments before apply).
+- [x] Add optional conversion of embedded card lorebooks (`character_book`) into imported wiki notes.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 
@@ -158,6 +165,7 @@ Reference design: `docs/planning.md`.
 - [x] Add fixtures/tests for deterministic merge/update behavior on existing pages.
 - [x] Add lorebook-update command alias: `Open Lorebook Update`.
 - [x] Add staged progress telemetry in story-delta preview/apply UI.
+- [x] Simplify structured-merge summary handling to deterministic single-candidate replacement (no summary concatenation).
 
 ## Phase 16: Selection Text Commands
 

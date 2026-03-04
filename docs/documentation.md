@@ -499,7 +499,7 @@ Precedence:
 Settings (LoreVault -> Auto Summaries):
 
 - `Summary Max Input Chars`
-- `Summary Max Output Chars`
+- `Summary Max Output Chars` (world_info only; default `0` = no hard truncation)
 
 ## Long-Form Chapter Utilities
 
@@ -655,6 +655,7 @@ Capabilities:
 Commands:
 
 - `Import SillyTavern Lorebook`
+- `Import SillyTavern Character Card`
 - `Extract Wiki Pages from Story`
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
@@ -670,6 +671,13 @@ Shared panel inputs:
   - default tags
   - lorebook selection list with per-item delete, interactive add picker, and Enter-to-add custom input
   - completion profile selector (for import workflow profile consistency)
+- `Import SillyTavern Character Card`:
+  - target folder (story note output)
+  - character-card file picker (`.png` and `.json`)
+  - default tags
+  - lorebook selection list with per-item delete, interactive add picker, and Enter-to-add custom input
+  - completion profile selector (used for LLM rewrite into freeform story format)
+  - optional `Import Embedded Lorebook` toggle for card `character_book` payloads
 - `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)
   - default tags
@@ -693,6 +701,7 @@ Shared panel inputs:
 Implemented now:
 
 - SillyTavern lorebook JSON paste-import panel
+- SillyTavern character-card import flow (`.png` / `.json`) with LLM rewrite to story note + author note
 - deterministic parse and entry normalization
 - preview mode (entry count + planned file paths)
 - deterministic wiki page generation + create/update writes
@@ -726,14 +735,33 @@ Current mapping for imported notes:
 - tags from defaults + lorebook tag
 - note body from ST `content`
 
+Current mapping for imported character cards:
+
+- story note + author note are generated deterministically from rewritten output
+- story note frontmatter includes:
+  - `authorNote: [[...]]`
+  - `sourceType: "sillytavern_character_card_import"`
+  - card metadata (`characterCardName`, optional creator/spec/path, tag list)
+  - selected lorebooks
+- author note frontmatter includes:
+  - `lvDocType: "authorNote"`
+  - selected lorebooks
+  - optional `completionProfile` override when a profile is selected in import panel
+- author note body is taken directly from model-provided `authorNoteMarkdown`
+  - no hardcoded section template, caps, or structural post-processing
+  - steering is prompt-driven; model chooses the most relevant markdown structure
+- character-card preview allows editing planned writes (target path + markdown content) before apply
+- optional embedded lorebook import:
+  - card `character_book` entries are converted to wiki notes using the same deterministic lorebook-import path/materialization pipeline
+
 Current merge policy (default):
 
-- summary: merge into compact combined summary, persisted in `## Summary` section
+- summary: keep a single best summary candidate (recency-biased, confidence-aware replacement; no `existing | incoming` concatenation)
 - keywords/aliases: deterministic union with case-insensitive dedupe
 - content: append unique blocks only (normalized-text dedupe)
 - story delta update policy:
   - `safe_append`: keep existing metadata for existing notes, append unique updates
-  - `structured_merge`: merge summary/keywords/aliases and append unique updates
+  - `structured_merge`: update summary/keywords/aliases and append unique updates
 - low-confidence story-delta operations are skipped by default using configurable threshold
 - story delta note matching order:
   - explicit/normalized `pageKey`

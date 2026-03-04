@@ -155,6 +155,8 @@ test('buildCharacterCardImportPlan creates story + author note + embedded lorebo
   assert.ok(authorPage);
   assert.match(storyPage.content, /authorNote: "\[\[LoreVault\/author-notes\/captain-sol-first-draft-author-note\]\]"/);
   assert.match(storyPage.content, /sourceType: "sillytavern_character_card_import"/);
+  assert.match(storyPage.content, /characterCardAvatar: "\[\[cards\/captain-sol\.png\]\]"/);
+  assert.match(storyPage.content, /!\[\[cards\/captain-sol\.png\]\]/);
   assert.match(authorPage.content, /lvDocType: "authorNote"/);
   assert.match(authorPage.content, /completionProfile: "openrouter-default"/);
 });

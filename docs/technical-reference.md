@@ -124,6 +124,7 @@ This document is the implementation-level reference for core architecture and ru
   - deterministic card-field normalization (v1/v2/v3 shapes)
   - rewrite prompt/response schema helpers
   - freeform author-note markdown passthrough (`authorNoteMarkdown`) with prompt-driven guidance
+  - image-card avatar propagation into generated story notes (`characterCardAvatar` frontmatter + `![[...]]` embed)
   - story+author-note import plan builder with optional embedded-lorebook conversion
 - `src/lorevault-import-view.ts`
   - import panel UI (`Import SillyTavern Lorebook` + `Import SillyTavern Character Card`)

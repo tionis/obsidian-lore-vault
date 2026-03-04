@@ -187,6 +187,7 @@ export class LorevaultHelpView extends ItemView {
         '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
         'Character-card preview includes editable planned writes so you can adjust file paths and markdown content before import.',
+        'When the source card is image-based, generated story notes keep a linked avatar reference in frontmatter and embed the image in the note body.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
         '`Fork Active Lorebook`: clone one lorebook into a new lorebook/folder and rewrite internal links to the forked pages.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',

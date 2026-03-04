@@ -742,7 +742,9 @@ Current mapping for imported character cards:
   - `authorNote: [[...]]`
   - `sourceType: "sillytavern_character_card_import"`
   - card metadata (`characterCardName`, optional creator/spec/path, tag list)
+  - `characterCardAvatar` when source card is an image file (wikilink to source image)
   - selected lorebooks
+- story note body includes an embedded avatar image reference (`![[...]]`) when the source card is image-based
 - author note frontmatter includes:
   - `lvDocType: "authorNote"`
   - selected lorebooks

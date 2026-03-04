@@ -219,6 +219,7 @@ Import/extraction/update panel behavior:
 - character-card import can optionally import embedded card lorebooks into generated wiki notes
 - character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
 - character-card preview exposes editable planned writes (path + content) before import apply
+- story notes generated from image-based character cards include linked avatar metadata and an embedded image reference for visual vibe anchoring
 - default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)
 - story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions
 

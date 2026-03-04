@@ -188,6 +188,19 @@ function ensureHeading(markdown: string, heading: string): string {
   return `# ${heading}\n\n${normalized}\n`;
 }
 
+function resolveCharacterCardAvatarLink(sourceCardPath: string): string {
+  const normalizedPath = normalizeVaultPath(sourceCardPath.trim());
+  if (!normalizedPath) {
+    return '';
+  }
+  const extension = normalizedPath.split('.').pop()?.toLowerCase() ?? '';
+  const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'avif']);
+  if (!imageExtensions.has(extension)) {
+    return '';
+  }
+  return `[[${normalizeLinkTarget(normalizedPath)}]]`;
+}
+
 function toAscii(bytes: Uint8Array): string {
   let result = '';
   for (const byte of bytes) {
@@ -500,6 +513,7 @@ function buildStoryPageContent(
   sourceCardPath: string
 ): string {
   const heading = rewrite.title || card.name || 'Imported Story';
+  const avatarLink = resolveCharacterCardAvatarLink(sourceCardPath);
   const lines: string[] = ['---'];
   lines.push(`title: ${yamlQuote(heading)}`);
   lines.push(`authorNote: ${yamlQuote(`[[${normalizeLinkTarget(authorNotePath)}]]`)}`);
@@ -516,9 +530,16 @@ function buildStoryPageContent(
   if (sourceCardPath) {
     lines.push(`characterCardPath: ${yamlQuote(sourceCardPath)}`);
   }
+  if (avatarLink) {
+    lines.push(`characterCardAvatar: ${yamlQuote(avatarLink)}`);
+  }
   lines.push(...yamlArrayBlock('characterCardTags', card.tags));
   lines.push('---');
   lines.push('');
+  if (avatarLink) {
+    lines.push(`!${avatarLink}`);
+    lines.push('');
+  }
   lines.push(ensureHeading(rewrite.storyMarkdown, heading).trimEnd());
   lines.push('');
   return lines.join('\n');

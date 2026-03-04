@@ -148,6 +148,7 @@ Reference design: `docs/planning.md`.
 - [x] Add character-card library sync workflow (source folder + meta folder + `Sync Character Card Library` command + story backlink via `characterCardMeta`).
 - [x] Add optional conversion of embedded card lorebooks (`character_book`) into imported wiki notes.
 - [x] Add custom Bases renderer (`LoreVault Characters`) for character libraries with avatar cards and markdown-rendered personality/description/scenario.
+- [x] Add optional LLM-generated character-card catalog summaries during sync with hash-aware stale detection and non-destructive overwrite behavior.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 

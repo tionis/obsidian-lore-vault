@@ -187,6 +187,7 @@ export class LorevaultHelpView extends ItemView {
         '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
         '`Sync Character Card Library`: scan Character Card Source Folder and create/update one `lvDocType: characterCard` meta note per card.',
         'Synced character-card meta notes expose card metadata in frontmatter for Bases usage (name/tags/description/personality/scenario/messages/prompts).',
+        'Optional `Auto-Generate Card Summaries on Sync` adds concise summary/themes/tone fields and marks stale summaries by card hash without overwriting manual summaries.',
         'Bases integration: use view type `LoreVault Characters` in a Base filtered to character-card notes for avatar-card rendering and markdown/HTML field display.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
         'Optional `Extract Character Wiki Page` runs a character-only pass and adds one lorebook-ready character page derived from the card scenario/context.',

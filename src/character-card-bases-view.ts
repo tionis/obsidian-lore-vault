@@ -36,6 +36,12 @@ interface CharacterCardRenderData {
   title: string;
   creator: string;
   tags: string[];
+  summary: string;
+  summaryThemes: string[];
+  summaryTone: string[];
+  summaryScenarioFocus: string;
+  summaryHook: string;
+  summaryStale: boolean;
   personality: string;
   description: string;
   scenario: string;
@@ -46,6 +52,7 @@ interface CharacterCardRenderData {
 interface CharacterCardPropertyVisibility {
   showCreator: boolean;
   showTags: boolean;
+  showSummary: boolean;
   showPersonality: boolean;
   showDescription: boolean;
   showScenario: boolean;
@@ -207,6 +214,12 @@ export class LorevaultCharacterBasesView extends BasesView {
     const title = asString(getFrontmatterValue(frontmatter, 'characterName', 'characterCardName', 'title')) ?? file.basename;
     const creator = asString(getFrontmatterValue(frontmatter, 'creator', 'characterCardCreator')) ?? '';
     const tags = asStringArray(getFrontmatterValue(frontmatter, 'cardTags', 'characterCardTags'));
+    const summary = asString(getFrontmatterValue(frontmatter, 'cardSummary')) ?? '';
+    const summaryThemes = asStringArray(getFrontmatterValue(frontmatter, 'cardSummaryThemes'));
+    const summaryTone = asStringArray(getFrontmatterValue(frontmatter, 'cardSummaryTone'));
+    const summaryScenarioFocus = asString(getFrontmatterValue(frontmatter, 'cardSummaryScenarioFocus')) ?? '';
+    const summaryHook = asString(getFrontmatterValue(frontmatter, 'cardSummaryHook')) ?? '';
+    const summaryStale = Boolean(getFrontmatterValue(frontmatter, 'cardSummaryStale'));
     const personality = asString(getFrontmatterValue(frontmatter, 'cardPersonality', 'personality')) ?? '';
     const description = asString(getFrontmatterValue(frontmatter, 'cardDescription', 'description')) ?? '';
     const scenario = asString(getFrontmatterValue(frontmatter, 'cardScenario', 'scenario')) ?? '';
@@ -216,6 +229,12 @@ export class LorevaultCharacterBasesView extends BasesView {
       title,
       creator,
       tags,
+      summary,
+      summaryThemes,
+      summaryTone,
+      summaryScenarioFocus,
+      summaryHook,
+      summaryStale,
       personality,
       description,
       scenario,
@@ -276,6 +295,53 @@ export class LorevaultCharacterBasesView extends BasesView {
     }
   }
 
+  private renderSummaryMetaLine(parentEl: HTMLElement, label: string, value: string): void {
+    const normalized = value.trim();
+    if (!normalized) {
+      return;
+    }
+    const line = parentEl.createDiv({ cls: 'lorevault-bases-character-summary-line' });
+    line.createSpan({ cls: 'lorevault-bases-character-summary-line-label', text: `${label}:` });
+    line.createSpan({ cls: 'lorevault-bases-character-summary-line-value', text: normalized });
+  }
+
+  private renderSummaryChips(parentEl: HTMLElement, title: string, values: string[], modifierClass: string): void {
+    if (values.length === 0) {
+      return;
+    }
+    const wrap = parentEl.createDiv({ cls: `lorevault-bases-character-summary-chip-wrap ${modifierClass}` });
+    wrap.createEl('h6', { text: title });
+    const chips = wrap.createDiv({ cls: 'lorevault-bases-character-summary-chips' });
+    for (const value of values) {
+      chips.createSpan({ cls: 'lorevault-bases-character-summary-chip', text: value });
+    }
+  }
+
+  private renderSummaryBlock(
+    markdownParent: Component,
+    parentEl: HTMLElement,
+    sourcePath: string,
+    data: CharacterCardRenderData
+  ): void {
+    if (!data.summary.trim()) {
+      return;
+    }
+
+    const block = parentEl.createDiv({ cls: 'lorevault-bases-character-summary-block' });
+    const titleRow = block.createDiv({ cls: 'lorevault-bases-character-summary-title-row' });
+    titleRow.createEl('h5', { text: 'Summary' });
+    if (data.summaryStale) {
+      titleRow.createSpan({ cls: 'lorevault-bases-character-summary-stale', text: 'stale' });
+    }
+    const body = block.createDiv({ cls: 'lorevault-bases-character-summary-body markdown-rendered' });
+    void MarkdownRenderer.render(this.app, data.summary, body, sourcePath, markdownParent);
+
+    this.renderSummaryMetaLine(block, 'Scenario Focus', data.summaryScenarioFocus);
+    this.renderSummaryMetaLine(block, 'Hook', data.summaryHook);
+    this.renderSummaryChips(block, 'Themes', data.summaryThemes, 'lorevault-bases-character-summary-chip-wrap-themes');
+    this.renderSummaryChips(block, 'Tone', data.summaryTone, 'lorevault-bases-character-summary-chip-wrap-tone');
+  }
+
   private renderCardActions(parentEl: HTMLElement, entry: BasesEntry, sourceCardPath: string): void {
     const actionsEl = parentEl.createDiv({ cls: 'lorevault-bases-character-actions' });
 
@@ -297,6 +363,7 @@ export class LorevaultCharacterBasesView extends BasesView {
   }
 
   private createPropertyVisibility(
+    showSummaryOption: boolean,
     showDescriptionOption: boolean,
     showScenarioOption: boolean,
     showMetadataOption: boolean
@@ -317,6 +384,13 @@ export class LorevaultCharacterBasesView extends BasesView {
     return {
       showCreator: hasVisibleProperty('note.creator', 'note.charactercardcreator'),
       showTags: hasVisibleProperty('note.cardtags', 'note.charactercardtags'),
+      showSummary: showSummaryOption && hasVisibleProperty(
+        'note.cardsummary',
+        'note.cardsummarythemes',
+        'note.cardsummarytone',
+        'note.cardsummaryscenariofocus',
+        'note.cardsummaryhook'
+      ),
       showPersonality: hasVisibleProperty('note.cardpersonality', 'note.personality'),
       showDescription: showDescriptionOption && hasVisibleProperty('note.carddescription', 'note.description'),
       showScenario: showScenarioOption && hasVisibleProperty('note.cardscenario', 'note.scenario'),
@@ -384,6 +458,9 @@ export class LorevaultCharacterBasesView extends BasesView {
     if (visibility.showTags) {
       this.renderTagList(cardEl, cardData.tags);
     }
+    if (visibility.showSummary) {
+      this.renderSummaryBlock(markdownParent, cardEl, entry.file.path, cardData);
+    }
     if (visibility.showPersonality) {
       await this.renderMarkdownField(markdownParent, cardEl, 'Personality', cardData.personality, entry.file.path);
     }
@@ -405,9 +482,10 @@ export class LorevaultCharacterBasesView extends BasesView {
     const showDescription = normalizeBoolean(this.config.get('showDescription'), true);
     const showScenario = normalizeBoolean(this.config.get('showScenario'), false);
     const showMetadata = normalizeBoolean(this.config.get('showMetadata'), true);
+    const showSummary = normalizeBoolean(this.config.get('showSummary'), true);
     const largeAvatars = normalizeBoolean(this.config.get('largeAvatars'), true);
     const maxCards = normalizeNumber(this.config.get('maxCards'), 300, 20, 5000);
-    const visibility = this.createPropertyVisibility(showDescription, showScenario, showMetadata);
+    const visibility = this.createPropertyVisibility(showSummary, showDescription, showScenario, showMetadata);
 
     const groups = this.data?.groupedData ?? [];
     const allEntries = this.data?.data ?? [];
@@ -477,6 +555,12 @@ export function createLorevaultCharacterBasesViewRegistration(): BasesViewRegist
         key: 'largeAvatars',
         type: 'toggle',
         displayName: 'Large Avatars',
+        default: true
+      },
+      {
+        key: 'showSummary',
+        type: 'toggle',
+        displayName: 'Show Summary',
         default: true
       },
       {

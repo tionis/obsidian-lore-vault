@@ -1571,6 +1571,103 @@
   color: var(--text-muted);
 }
 
+.lorevault-bases-character-summary-block {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lorevault-bases-character-summary-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lorevault-bases-character-summary-title-row h5 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.lorevault-bases-character-summary-stale {
+  color: var(--text-warning);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lorevault-bases-character-summary-body {
+  font-size: 13px;
+}
+
+.lorevault-bases-character-summary-body > *:first-child {
+  margin-top: 0;
+}
+
+.lorevault-bases-character-summary-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.lorevault-bases-character-summary-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.lorevault-bases-character-summary-line-label {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.lorevault-bases-character-summary-line-value {
+  overflow-wrap: anywhere;
+}
+
+.lorevault-bases-character-summary-chip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lorevault-bases-character-summary-chip-wrap h6 {
+  margin: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.lorevault-bases-character-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lorevault-bases-character-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.lorevault-bases-character-summary-chip-wrap-themes .lorevault-bases-character-summary-chip {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.lorevault-bases-character-summary-chip-wrap-tone .lorevault-bases-character-summary-chip {
+  background: rgba(249, 115, 22, 0.12);
+}
+
 .lorevault-bases-character-field-body {
   font-size: 13px;
 }

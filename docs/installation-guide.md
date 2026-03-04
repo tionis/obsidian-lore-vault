@@ -239,6 +239,7 @@ If you prefer to build the plugin from source:
   - Click `Import` to create/update generated wiki notes deterministically
   - For character cards:
     - Optional setup: configure `Character Card Source Folder` and `Character Card Meta Folder` in settings
+    - Optional setup: enable `Auto-Generate Card Summaries on Sync` (and choose a summary completion profile if desired)
     - Optional setup: run `Sync Character Card Library` to create/update `lvDocType: characterCard` meta notes for source cards
     - Run command `Import SillyTavern Character Card` (or switch import type in the same panel)
     - Pick a `.png`/`.json` card file from the vault

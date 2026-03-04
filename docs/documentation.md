@@ -686,6 +686,9 @@ Shared panel inputs:
 - character-card library settings:
   - `Character Card Source Folder` (raw `.png`/`.json` cards, default `LoreVault/character-cards/source`)
   - `Character Card Meta Folder` (`lvDocType: characterCard` notes, default `LoreVault/character-cards/library`)
+  - `Auto-Generate Card Summaries on Sync` (optional LLM summary generation)
+  - `Card Summary Completion Profile` (optional profile override; empty = active device/default profile)
+  - `Regenerate Auto Summaries on Card Changes` (hash-aware regeneration for LoreVault-generated summaries)
   - used to prefill target folder in import, extraction, and lorebook-fork flows
 
 - `Import SillyTavern Lorebook`:
@@ -705,6 +708,8 @@ Shared panel inputs:
   - scans source folder for `.png`/`.json` cards
   - ensures one meta note exists per source card in meta folder
   - updates parsed card metadata for Bases-friendly frontmatter usage (`characterName`, `cardTags`, description/personality/scenario, greetings/messages/prompts, embedded-lorebook stats)
+  - optional auto-summary mode generates concise card catalog fields (`cardSummary`, themes/tone, scenario focus, hook) via completion profile selection
+  - auto-summary updates are hash-aware (`cardSummaryForHash`); manual summaries are preserved and stale summaries are flagged instead of silently overwritten
   - marks notes `status: missing_source` when source cards are removed (no automatic deletion)
 - `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)

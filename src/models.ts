@@ -487,6 +487,9 @@ export interface ConverterSettings {
   characterCards: {
     sourceFolder: string;
     metaFolder: string;
+    autoSummaryEnabled?: boolean;
+    summaryCompletionPresetId?: string;
+    summaryRegenerateOnHashChange?: boolean;
   };
   textCommands: {
     autoAcceptEdits: boolean;
@@ -656,7 +659,10 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
   },
   characterCards: {
     sourceFolder: 'LoreVault/character-cards/source',
-    metaFolder: 'LoreVault/character-cards/library'
+    metaFolder: 'LoreVault/character-cards/library',
+    autoSummaryEnabled: false,
+    summaryCompletionPresetId: '',
+    summaryRegenerateOnHashChange: false
   },
   textCommands: {
     autoAcceptEdits: false,

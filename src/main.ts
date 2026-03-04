@@ -193,6 +193,12 @@ import {
   parseSillyTavernCharacterCardPngBytes
 } from './sillytavern-character-card';
 import {
+  buildCharacterCardSummarySystemPrompt,
+  buildCharacterCardSummaryUserPrompt,
+  CharacterCardSummaryPayload,
+  parseCharacterCardSummaryResponse
+} from './character-card-summary';
+import {
   buildChapterFileStem,
   buildStoryChapterNoteMarkdown,
   formatStoryChapterRef,
@@ -2602,6 +2608,91 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private resolveCharacterCardSummaryCompletion(): {
+    completion: ConverterSettings['completion'];
+    source: string;
+    presetId: string;
+    presetName: string;
+    error: string;
+  } {
+    const configuredPresetId = (this.settings.characterCards.summaryCompletionPresetId ?? '').trim();
+    if (configuredPresetId && !this.getCompletionPresetById(configuredPresetId)) {
+      return {
+        completion: this.cloneCompletionConfig(this.settings.completion),
+        source: 'base',
+        presetId: '',
+        presetName: '',
+        error: `Configured card summary completion profile is missing: ${configuredPresetId}`
+      };
+    }
+
+    const resolution = this.resolveEffectiveCompletionForStoryChat(configuredPresetId);
+    const completion = resolution.completion;
+    if (!completion.enabled) {
+      return {
+        completion,
+        source: resolution.source,
+        presetId: resolution.presetId,
+        presetName: resolution.presetName,
+        error: 'Writing completion is disabled.'
+      };
+    }
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
+      return {
+        completion,
+        source: resolution.source,
+        presetId: resolution.presetId,
+        presetName: resolution.presetName,
+        error: 'Missing completion API key.'
+      };
+    }
+
+    return {
+      completion,
+      source: resolution.source,
+      presetId: resolution.presetId,
+      presetName: resolution.presetName,
+      error: ''
+    };
+  }
+
+  private async generateCharacterCardSummary(
+    sourceFile: TFile,
+    parsedCard: ParsedCharacterCard,
+    completionResolution: {
+      completion: ConverterSettings['completion'];
+      source: string;
+      presetId: string;
+      presetName: string;
+    }
+  ): Promise<CharacterCardSummaryPayload> {
+    const completion = completionResolution.completion;
+    let usageReport: CompletionUsageReport | null = null;
+    const rawResponse = await requestStoryContinuation(completion, {
+      systemPrompt: buildCharacterCardSummarySystemPrompt(),
+      userPrompt: buildCharacterCardSummaryUserPrompt(parsedCard),
+      operationName: 'character_card_summary',
+      onOperationLog: record => this.appendCompletionOperationLog(record, {
+        costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+      }),
+      onUsage: usage => {
+        usageReport = usage;
+      }
+    });
+
+    if (usageReport) {
+      await this.recordCompletionUsage('character_card_summary', usageReport, {
+        notePath: sourceFile.path,
+        completionProfileSource: completionResolution.source,
+        completionProfileId: completionResolution.presetId,
+        completionProfileName: completionResolution.presetName,
+        autoCostProfile: this.buildAutoCostProfileLabel(completion.apiKey)
+      });
+    }
+
+    return parseCharacterCardSummaryResponse(rawResponse);
+  }
+
   public async syncCharacterCardLibrary(): Promise<void> {
     const metaFolder = this.getCharacterCardMetaFolderPath();
     const sourceFiles = this.getCharacterCardSourceFiles();
@@ -2629,8 +2720,22 @@ export default class LoreBookConverterPlugin extends Plugin {
     let markedMissing = 0;
     let parseErrors = 0;
     let failures = 0;
+    let summaryGenerated = 0;
+    let summaryFailed = 0;
+    let summaryStale = 0;
+    let summarySkipped = 0;
+    let summaryConfigErrorCount = 0;
     const nowIso = new Date().toISOString();
     const seenCardPaths = new Set<string>();
+    const autoSummaryEnabled = Boolean(this.settings.characterCards.autoSummaryEnabled);
+    const autoSummaryRegenerate = Boolean(this.settings.characterCards.summaryRegenerateOnHashChange);
+    const summaryCompletionResolution = autoSummaryEnabled
+      ? this.resolveCharacterCardSummaryCompletion()
+      : null;
+    if (autoSummaryEnabled && summaryCompletionResolution?.error) {
+      summaryConfigErrorCount += 1;
+      new Notice(`Card summary generation disabled: ${summaryCompletionResolution.error}`);
+    }
 
     for (const sourceFile of sourceFiles) {
       const normalizedSourcePath = normalizeVaultPath(sourceFile.path);
@@ -2668,6 +2773,45 @@ export default class LoreBookConverterPlugin extends Plugin {
         const existingStatus = (asString(getFrontmatterValue(existingFrontmatter, 'status')) ?? '').toLowerCase();
         const existingLorebooks = asStringArray(getFrontmatterValue(existingFrontmatter, 'lorebooks'));
         const existingCompletionProfile = asString(getFrontmatterValue(existingFrontmatter, 'completionProfile'));
+        const existingCardSummary = asString(getFrontmatterValue(existingFrontmatter, 'cardSummary')) ?? '';
+        const existingCardSummaryForHash = asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryForHash')) ?? '';
+        const existingCardSummarySource = (asString(getFrontmatterValue(existingFrontmatter, 'cardSummarySource')) ?? '').trim().toLowerCase();
+        const existingCardSummaryHasContent = Boolean(existingCardSummary.trim());
+        const existingCardSummaryHashMismatch = Boolean(existingCardSummaryForHash) && existingCardSummaryForHash !== parsed.cardHash;
+
+        let generatedSummary: CharacterCardSummaryPayload | null = null;
+        let summarySyncError = '';
+        const shouldGenerateSummary = Boolean(
+          autoSummaryEnabled
+          && parsedCard
+          && summaryCompletionResolution
+          && !summaryCompletionResolution.error
+          && (
+            !existingCardSummaryHasContent
+            || (
+              autoSummaryRegenerate
+              && existingCardSummaryHashMismatch
+              && existingCardSummarySource === 'llm_auto'
+            )
+          )
+        );
+
+        if (shouldGenerateSummary && parsedCard && summaryCompletionResolution && !summaryCompletionResolution.error) {
+          try {
+            generatedSummary = await this.generateCharacterCardSummary(sourceFile, parsedCard, summaryCompletionResolution);
+            summaryGenerated += 1;
+          } catch (error) {
+            summaryFailed += 1;
+            summarySyncError = error instanceof Error ? error.message : String(error);
+          }
+        } else if (autoSummaryEnabled && parsedCard) {
+          summarySkipped += 1;
+        }
+
+        if (!generatedSummary && existingCardSummaryHasContent && existingCardSummaryHashMismatch) {
+          summaryStale += 1;
+        }
+
         await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
           frontmatter.lvDocType = CHARACTER_CARD_META_DOC_TYPE;
           frontmatter.title = docTitle;
@@ -2724,6 +2868,30 @@ export default class LoreBookConverterPlugin extends Plugin {
           } else {
             delete frontmatter.syncWarnings;
           }
+          if (generatedSummary) {
+            frontmatter.cardSummary = generatedSummary.summary;
+            frontmatter.cardSummaryThemes = generatedSummary.themes;
+            frontmatter.cardSummaryTone = generatedSummary.tone;
+            frontmatter.cardSummaryScenarioFocus = generatedSummary.scenarioFocus;
+            frontmatter.cardSummaryHook = generatedSummary.hook;
+            frontmatter.cardSummaryForHash = parsed.cardHash;
+            frontmatter.cardSummaryUpdatedAt = nowIso;
+            frontmatter.cardSummarySource = 'llm_auto';
+            frontmatter.cardSummaryStale = false;
+            delete frontmatter.cardSummarySyncError;
+          } else if (existingCardSummaryHasContent) {
+            frontmatter.cardSummaryStale = existingCardSummaryHashMismatch;
+            if (summarySyncError) {
+              frontmatter.cardSummarySyncError = summarySyncError;
+            } else {
+              delete frontmatter.cardSummarySyncError;
+            }
+          } else if (summarySyncError) {
+            frontmatter.cardSummarySyncError = summarySyncError;
+          } else {
+            delete frontmatter.cardSummarySyncError;
+            delete frontmatter.cardSummaryStale;
+          }
           delete frontmatter.missingSourceSince;
         });
       } catch (error) {
@@ -2757,6 +2925,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       `${updated} updated`,
       `${markedMissing} missing-source`,
       `${parseErrors} parse errors`,
+      `${summaryGenerated} summaries`,
+      `${summaryStale} stale summaries`,
+      `${summaryFailed} summary failures`,
+      `${summarySkipped} summary skipped`,
+      `${summaryConfigErrorCount} summary config errors`,
       `${failures} failures`
     ].join(' | ');
     new Notice(summary);
@@ -6900,6 +7073,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       console.warn(`Invalid character card meta folder "${merged.characterCards.metaFolder}". Falling back to default.`);
       merged.characterCards.metaFolder = DEFAULT_SETTINGS.characterCards.metaFolder;
     }
+    merged.characterCards.autoSummaryEnabled = Boolean(merged.characterCards.autoSummaryEnabled);
+    merged.characterCards.summaryRegenerateOnHashChange = Boolean(merged.characterCards.summaryRegenerateOnHashChange);
+    merged.characterCards.summaryCompletionPresetId = (merged.characterCards.summaryCompletionPresetId ?? '')
+      .toString()
+      .trim();
 
     merged.textCommands.autoAcceptEdits = Boolean(merged.textCommands.autoAcceptEdits);
     merged.textCommands.defaultIncludeLorebookContext = Boolean(merged.textCommands.defaultIncludeLorebookContext);

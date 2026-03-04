@@ -141,12 +141,18 @@ This document is the implementation-level reference for core architecture and ru
   - avatar resolution from wikilink/markdown-link/image URL sources
   - click-to-preview avatar modal for larger image inspection
   - field visibility integrates Bases property-order visibility with view-level toggles
+  - summary-focused rendering for generated catalog fields (`cardSummary`, themes/tone, scenario focus, hook, stale marker)
   - markdown-rendered long fields (`cardPersonality`, `cardDescription`, `cardScenario`) using Obsidian renderer
   - per-view options (`maxCards`, `largeAvatars`, visibility toggles)
+- `src/character-card-summary.ts`
+  - prompt contract + response parsing for strict JSON character-card catalog summaries
+  - structured fields: summary paragraph, themes, tone, scenario focus, writer hook
 - `src/main.ts`
   - `Sync Character Card Library` command: source-folder scan -> meta-note upsert (`lvDocType: characterCard`)
   - meta-note lifecycle: create/update by `cardPath`, mark `status: missing_source` when source disappears (no delete)
   - synced meta frontmatter carries parsed card fields for Bases workflows (identity, tags, prose fields, prompts, greeting variants, and embedded-lorebook counts)
+  - optional summary generation pipeline with operation-log + usage-ledger tracking (`character_card_summary`)
+  - hash-aware summary persistence (`cardSummaryForHash`) and stale markers (`cardSummaryStale`) to avoid accidental overwrite during sync
   - Bases integration: `registerBasesView` hooks `LoreVault Characters` custom renderer when Bases core plugin is enabled
   - helper lookup used by character-card import to inject story frontmatter backlink (`characterCardMeta: [[...]]`)
 - `src/lorevault-story-extract-view.ts`

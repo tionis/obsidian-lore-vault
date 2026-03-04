@@ -917,7 +917,15 @@
   padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+
+.lorevault-help-section li {
+  margin: 0;
+}
+
+.lorevault-help-section li p {
+  margin: 0;
 }
 
 .lorevault-help-note {

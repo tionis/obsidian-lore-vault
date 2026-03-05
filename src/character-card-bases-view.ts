@@ -18,6 +18,7 @@ import {
   normalizeFrontmatter
 } from './frontmatter-utils';
 import { normalizeVaultPath } from './vault-path-utils';
+import { parseCharacterCardDetailsContentFromMarkdown } from './character-card-details';
 
 export const LOREVAULT_CHARACTER_BASES_VIEW_ID = 'lorevault-character-bases-view';
 
@@ -208,7 +209,7 @@ export class LorevaultCharacterBasesView extends BasesView {
     return normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
   }
 
-  private readCharacterCardRenderData(entry: BasesEntry): CharacterCardRenderData {
+  private async readCharacterCardRenderData(entry: BasesEntry, includeLongFields: boolean): Promise<CharacterCardRenderData> {
     const file = entry.file;
     const frontmatter = this.readFrontmatter(file);
     const title = asString(getFrontmatterValue(frontmatter, 'characterName', 'characterCardName', 'title')) ?? file.basename;
@@ -220,9 +221,16 @@ export class LorevaultCharacterBasesView extends BasesView {
     const summaryScenarioFocus = asString(getFrontmatterValue(frontmatter, 'cardSummaryScenarioFocus')) ?? '';
     const summaryHook = asString(getFrontmatterValue(frontmatter, 'cardSummaryHook')) ?? '';
     const summaryStale = Boolean(getFrontmatterValue(frontmatter, 'cardSummaryStale'));
-    const personality = asString(getFrontmatterValue(frontmatter, 'cardPersonality', 'personality')) ?? '';
-    const description = asString(getFrontmatterValue(frontmatter, 'cardDescription', 'description')) ?? '';
-    const scenario = asString(getFrontmatterValue(frontmatter, 'cardScenario', 'scenario')) ?? '';
+    let personality = asString(getFrontmatterValue(frontmatter, 'cardPersonality', 'personality')) ?? '';
+    let description = asString(getFrontmatterValue(frontmatter, 'cardDescription', 'description')) ?? '';
+    let scenario = asString(getFrontmatterValue(frontmatter, 'cardScenario', 'scenario')) ?? '';
+    if (includeLongFields) {
+      const markdown = await this.app.vault.cachedRead(file);
+      const details = parseCharacterCardDetailsContentFromMarkdown(markdown);
+      personality = details.cardPersonality || personality;
+      description = details.cardDescription || description;
+      scenario = details.cardScenario || scenario;
+    }
     const sourceCardPath = asString(getFrontmatterValue(frontmatter, 'cardPath', 'characterCardPath')) ?? '';
     const avatarSource = asString(getFrontmatterValue(frontmatter, 'avatar', 'characterCardAvatar', 'cardFile')) ?? '';
     return {
@@ -413,7 +421,10 @@ export class LorevaultCharacterBasesView extends BasesView {
     visibility: CharacterCardPropertyVisibility,
     largeAvatars: boolean
   ): Promise<void> {
-    const cardData = this.readCharacterCardRenderData(entry);
+    const cardData = await this.readCharacterCardRenderData(
+      entry,
+      visibility.showPersonality || visibility.showDescription || visibility.showScenario
+    );
     const cardEl = cardsEl.createDiv({ cls: 'lorevault-bases-character-card' });
     if (largeAvatars) {
       cardEl.addClass('lorevault-bases-character-card-large-avatar');

@@ -197,6 +197,14 @@ import {
   upsertSillyTavernCharacterCardPngPayload
 } from './sillytavern-character-card';
 import {
+  CharacterCardDetailsContent,
+  CHARACTER_CARD_DETAILS_BLOCK_BEGIN,
+  CHARACTER_CARD_DETAILS_BLOCK_END,
+  CHARACTER_CARD_DETAILS_BLOCK_VERSION,
+  CHARACTER_CARD_DETAILS_BLOCK_VERSION_PREFIX,
+  parseCharacterCardDetailsContentFromMarkdown
+} from './character-card-details';
+import {
   buildCharacterCardSummarySystemPrompt,
   buildCharacterCardSummaryUserPrompt,
   CharacterCardSummaryPayload,
@@ -632,10 +640,6 @@ const AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY = 'completionProfile';
 const COMPLETION_PRESET_SECRET_PREFIX = 'lorevault-completion-';
 const CHARACTER_CARD_META_DOC_TYPE = 'characterCard';
 const CHARACTER_CARD_SOURCE_EXTENSIONS = new Set(['png', 'json']);
-const CHARACTER_CARD_DETAILS_BLOCK_BEGIN = '<!-- LV_BEGIN_CHARACTER_CARD_DETAILS -->';
-const CHARACTER_CARD_DETAILS_BLOCK_END = '<!-- LV_END_CHARACTER_CARD_DETAILS -->';
-const CHARACTER_CARD_DETAILS_BLOCK_VERSION = 2;
-const CHARACTER_CARD_DETAILS_BLOCK_VERSION_PREFIX = '<!-- LV_CHARACTER_CARD_DETAILS_VERSION:';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
@@ -2967,10 +2971,25 @@ export default class LoreBookConverterPlugin extends Plugin {
           const docTitle = parsedCard?.name || sourceFile.basename || 'Character Card';
           const existingCache = this.app.metadataCache.getFileCache(metaFile);
           const existingFrontmatter = normalizeFrontmatter((existingCache?.frontmatter ?? {}) as FrontmatterData);
+          const currentMetaMarkdown = await this.app.vault.cachedRead(metaFile);
+          const existingDetails = parseCharacterCardDetailsContentFromMarkdown(currentMetaMarkdown);
           const existingStatus = (asString(getFrontmatterValue(existingFrontmatter, 'status')) ?? '').toLowerCase();
           const existingLorebooks = asStringArray(getFrontmatterValue(existingFrontmatter, 'lorebooks'));
           const existingCompletionProfile = asString(getFrontmatterValue(existingFrontmatter, 'completionProfile'));
-          const existingCardSummary = asString(getFrontmatterValue(existingFrontmatter, 'cardSummary')) ?? '';
+          const existingCardSummary = (
+            asString(getFrontmatterValue(existingFrontmatter, 'cardSummary'))
+            ?? existingDetails.cardSummary
+          );
+          const existingCardSummaryScenarioFocus = (
+            asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryScenarioFocus'))
+            ?? existingDetails.cardSummaryScenarioFocus
+          );
+          const existingCardSummaryHook = (
+            asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryHook'))
+            ?? existingDetails.cardSummaryHook
+          );
+          const existingCardSummaryTone = asStringArray(getFrontmatterValue(existingFrontmatter, 'cardSummaryTone'));
+          const existingCardSummaryThemes = asStringArray(getFrontmatterValue(existingFrontmatter, 'cardSummaryThemes'));
           const existingCardSummaryForHash = asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryForHash')) ?? '';
           const existingCardSummarySource = (asString(getFrontmatterValue(existingFrontmatter, 'cardSummarySource')) ?? '').trim().toLowerCase();
           const existingCardSummaryHasContent = Boolean(existingCardSummary.trim());
@@ -3016,6 +3035,20 @@ export default class LoreBookConverterPlugin extends Plugin {
             summaryStale += 1;
           }
 
+          const effectiveSummary = generatedSummary?.summary
+            ?? existingCardSummary
+            ?? '';
+          const effectiveSummaryScenarioFocus = generatedSummary?.scenarioFocus
+            ?? existingCardSummaryScenarioFocus;
+          const effectiveSummaryHook = generatedSummary?.hook
+            ?? existingCardSummaryHook;
+          const effectiveSummaryTone = generatedSummary?.tone
+            ?? existingCardSummaryTone
+            ?? existingDetails.cardSummaryTone;
+          const effectiveSummaryThemes = generatedSummary?.themes
+            ?? existingCardSummaryThemes
+            ?? existingDetails.cardSummaryThemes;
+
           await this.app.fileManager.processFrontMatter(metaFile, frontmatter => {
             frontmatter.lvDocType = CHARACTER_CARD_META_DOC_TYPE;
             frontmatter.title = docTitle;
@@ -3027,17 +3060,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             frontmatter.cardSpec = parsedCard?.spec ?? '';
             frontmatter.cardSpecVersion = parsedCard?.specVersion ?? '';
             frontmatter.creator = parsedCard?.creator ?? '';
-            frontmatter.creatorNotes = parsedCard?.creatorNotes ?? '';
             frontmatter.cardTags = parsedCard?.tags ?? [];
-            frontmatter.cardDescription = parsedCard?.description ?? '';
-            frontmatter.cardPersonality = parsedCard?.personality ?? '';
-            frontmatter.cardScenario = parsedCard?.scenario ?? '';
-            frontmatter.cardFirstMessage = parsedCard?.firstMessage ?? '';
-            frontmatter.cardMessageExample = parsedCard?.messageExample ?? '';
-            frontmatter.cardAlternateGreetings = parsedCard?.alternateGreetings ?? [];
-            frontmatter.cardGroupOnlyGreetings = parsedCard?.groupOnlyGreetings ?? [];
-            frontmatter.cardSystemPrompt = parsedCard?.systemPrompt ?? '';
-            frontmatter.cardPostHistoryInstructions = parsedCard?.postHistoryInstructions ?? '';
             frontmatter.embeddedLorebookName = parsedCard?.embeddedLorebookName ?? '';
             frontmatter.embeddedLorebookEntryCount = parsedCard?.embeddedLorebookEntries.length ?? 0;
             frontmatter.cardMtime = new Date(sourceFile.stat.mtime).toISOString();
@@ -3085,6 +3108,11 @@ export default class LoreBookConverterPlugin extends Plugin {
               frontmatter.cardSummaryStale = false;
               delete frontmatter.cardSummarySyncError;
             } else if (existingCardSummaryHasContent) {
+              frontmatter.cardSummary = effectiveSummary;
+              frontmatter.cardSummaryThemes = effectiveSummaryThemes;
+              frontmatter.cardSummaryTone = effectiveSummaryTone;
+              frontmatter.cardSummaryScenarioFocus = effectiveSummaryScenarioFocus;
+              frontmatter.cardSummaryHook = effectiveSummaryHook;
               frontmatter.cardSummaryStale = existingCardSummaryHashMismatch;
               if (summarySyncError) {
                 frontmatter.cardSummarySyncError = summarySyncError;
@@ -3097,20 +3125,18 @@ export default class LoreBookConverterPlugin extends Plugin {
               delete frontmatter.cardSummarySyncError;
               delete frontmatter.cardSummaryStale;
             }
+            delete frontmatter.creatorNotes;
+            delete frontmatter.cardDescription;
+            delete frontmatter.cardPersonality;
+            delete frontmatter.cardScenario;
+            delete frontmatter.cardFirstMessage;
+            delete frontmatter.cardMessageExample;
+            delete frontmatter.cardAlternateGreetings;
+            delete frontmatter.cardGroupOnlyGreetings;
+            delete frontmatter.cardSystemPrompt;
+            delete frontmatter.cardPostHistoryInstructions;
             delete frontmatter.missingSourceSince;
           });
-
-          const effectiveSummary = generatedSummary?.summary
-            ?? existingCardSummary
-            ?? '';
-          const effectiveSummaryScenarioFocus = generatedSummary?.scenarioFocus
-            ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryScenarioFocus')) ?? '');
-          const effectiveSummaryHook = generatedSummary?.hook
-            ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryHook')) ?? '');
-          const effectiveSummaryTone = generatedSummary?.tone
-            ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardSummaryTone'));
-          const effectiveSummaryThemes = generatedSummary?.themes
-            ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardSummaryThemes'));
 
           const detailsBlock = this.buildCharacterCardDetailsBlock({
             sourcePath: sourceFile.path,
@@ -3118,25 +3144,25 @@ export default class LoreBookConverterPlugin extends Plugin {
               parsed.avatarLink || (asString(getFrontmatterValue(existingFrontmatter, 'avatar', 'characterCardAvatar')) ?? ''),
               sourceFile.path
             ),
-            creatorNotes: parsedCard?.creatorNotes ?? (asString(getFrontmatterValue(existingFrontmatter, 'creatorNotes')) ?? ''),
+            creatorNotes: parsedCard?.creatorNotes ?? existingDetails.creatorNotes,
             cardSummary: effectiveSummary,
             cardSummaryScenarioFocus: effectiveSummaryScenarioFocus,
             cardSummaryHook: effectiveSummaryHook,
             cardSummaryTone: effectiveSummaryTone,
             cardSummaryThemes: effectiveSummaryThemes,
-            cardDescription: parsedCard?.description ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardDescription')) ?? ''),
-            cardPersonality: parsedCard?.personality ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardPersonality')) ?? ''),
-            cardScenario: parsedCard?.scenario ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardScenario')) ?? ''),
-            cardFirstMessage: parsedCard?.firstMessage ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardFirstMessage')) ?? ''),
-            cardMessageExample: parsedCard?.messageExample ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardMessageExample')) ?? ''),
-            cardSystemPrompt: parsedCard?.systemPrompt ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardSystemPrompt')) ?? ''),
-            cardPostHistoryInstructions: parsedCard?.postHistoryInstructions ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardPostHistoryInstructions')) ?? ''),
-            cardAlternateGreetings: parsedCard?.alternateGreetings ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardAlternateGreetings')),
-            cardGroupOnlyGreetings: parsedCard?.groupOnlyGreetings ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardGroupOnlyGreetings'))
+            cardDescription: parsedCard?.description ?? existingDetails.cardDescription,
+            cardPersonality: parsedCard?.personality ?? existingDetails.cardPersonality,
+            cardScenario: parsedCard?.scenario ?? existingDetails.cardScenario,
+            cardFirstMessage: parsedCard?.firstMessage ?? existingDetails.cardFirstMessage,
+            cardMessageExample: parsedCard?.messageExample ?? existingDetails.cardMessageExample,
+            cardSystemPrompt: parsedCard?.systemPrompt ?? existingDetails.cardSystemPrompt,
+            cardPostHistoryInstructions: parsedCard?.postHistoryInstructions ?? existingDetails.cardPostHistoryInstructions,
+            cardAlternateGreetings: parsedCard?.alternateGreetings ?? existingDetails.cardAlternateGreetings,
+            cardGroupOnlyGreetings: parsedCard?.groupOnlyGreetings ?? existingDetails.cardGroupOnlyGreetings
           });
-          const currentMetaMarkdown = await this.app.vault.cachedRead(metaFile);
-          const withDetailsBlock = this.upsertCharacterCardDetailsBlockInMarkdown(currentMetaMarkdown, detailsBlock);
-          if (withDetailsBlock !== currentMetaMarkdown) {
+          const latestMetaMarkdown = await this.app.vault.cachedRead(metaFile);
+          const withDetailsBlock = this.upsertCharacterCardDetailsBlockInMarkdown(latestMetaMarkdown, detailsBlock);
+          if (withDetailsBlock !== latestMetaMarkdown) {
             await this.app.vault.modify(metaFile, withDetailsBlock);
           }
         } catch (error) {
@@ -8418,22 +8444,29 @@ export default class LoreBookConverterPlugin extends Plugin {
     return normalizedDocType === CHARACTER_CARD_META_DOC_TYPE.toLowerCase();
   }
 
-  private buildCharacterCardWriteBackFields(frontmatter: FrontmatterData): CharacterCardWriteBackFields {
+  private buildCharacterCardWriteBackFields(
+    frontmatter: FrontmatterData,
+    details: CharacterCardDetailsContent
+  ): CharacterCardWriteBackFields {
     const name = asString(getFrontmatterValue(frontmatter, 'characterName', 'characterCardName', 'title')) ?? '';
     return {
       name: name || 'Character',
       tags: asStringArray(getFrontmatterValue(frontmatter, 'cardTags')),
       creator: asString(getFrontmatterValue(frontmatter, 'creator', 'characterCardCreator')) ?? '',
-      creatorNotes: asString(getFrontmatterValue(frontmatter, 'creatorNotes')) ?? '',
-      description: asString(getFrontmatterValue(frontmatter, 'cardDescription')) ?? '',
-      personality: asString(getFrontmatterValue(frontmatter, 'cardPersonality')) ?? '',
-      scenario: asString(getFrontmatterValue(frontmatter, 'cardScenario')) ?? '',
-      firstMessage: asString(getFrontmatterValue(frontmatter, 'cardFirstMessage')) ?? '',
-      messageExample: asString(getFrontmatterValue(frontmatter, 'cardMessageExample')) ?? '',
-      alternateGreetings: asStringArray(getFrontmatterValue(frontmatter, 'cardAlternateGreetings')),
-      groupOnlyGreetings: asStringArray(getFrontmatterValue(frontmatter, 'cardGroupOnlyGreetings')),
-      systemPrompt: asString(getFrontmatterValue(frontmatter, 'cardSystemPrompt')) ?? '',
-      postHistoryInstructions: asString(getFrontmatterValue(frontmatter, 'cardPostHistoryInstructions')) ?? ''
+      creatorNotes: details.creatorNotes || (asString(getFrontmatterValue(frontmatter, 'creatorNotes')) ?? ''),
+      description: details.cardDescription || (asString(getFrontmatterValue(frontmatter, 'cardDescription')) ?? ''),
+      personality: details.cardPersonality || (asString(getFrontmatterValue(frontmatter, 'cardPersonality')) ?? ''),
+      scenario: details.cardScenario || (asString(getFrontmatterValue(frontmatter, 'cardScenario')) ?? ''),
+      firstMessage: details.cardFirstMessage || (asString(getFrontmatterValue(frontmatter, 'cardFirstMessage')) ?? ''),
+      messageExample: details.cardMessageExample || (asString(getFrontmatterValue(frontmatter, 'cardMessageExample')) ?? ''),
+      alternateGreetings: details.cardAlternateGreetings.length > 0
+        ? details.cardAlternateGreetings
+        : asStringArray(getFrontmatterValue(frontmatter, 'cardAlternateGreetings')),
+      groupOnlyGreetings: details.cardGroupOnlyGreetings.length > 0
+        ? details.cardGroupOnlyGreetings
+        : asStringArray(getFrontmatterValue(frontmatter, 'cardGroupOnlyGreetings')),
+      systemPrompt: details.cardSystemPrompt || (asString(getFrontmatterValue(frontmatter, 'cardSystemPrompt')) ?? ''),
+      postHistoryInstructions: details.cardPostHistoryInstructions || (asString(getFrontmatterValue(frontmatter, 'cardPostHistoryInstructions')) ?? '')
     };
   }
 
@@ -8485,7 +8518,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const writeBackFields = this.buildCharacterCardWriteBackFields(frontmatter);
+    const activeMarkdown = await this.app.vault.cachedRead(activeFile);
+    const details = parseCharacterCardDetailsContentFromMarkdown(activeMarkdown);
+    const writeBackFields = this.buildCharacterCardWriteBackFields(frontmatter, details);
     const updatedPayload = applyCharacterCardWriteBackToPayload(sourcePayload, writeBackFields);
     const updatedHash = `sha256:${stableJsonHash(updatedPayload)}`;
     if (updatedHash === currentHash) {

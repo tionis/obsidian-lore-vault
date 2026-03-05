@@ -711,7 +711,7 @@ Shared panel inputs:
 - `Sync Character Card Library`:
   - scans source folder for `.png`/`.json` cards
   - ensures one meta note exists per source card in meta folder
-  - updates parsed card metadata for Bases-friendly frontmatter usage (`characterName`, `cardTags`, description/personality/scenario, greetings/messages/prompts, embedded-lorebook stats)
+  - updates compact card metadata in frontmatter for Bases-friendly indexing (`characterName`, `cardTags`, source stats, embedded-lorebook stats) and keeps summary fields duplicated in frontmatter (`cardSummary`, themes/tone, scenario focus, hook)
   - upserts a managed, versioned markdown details block so long fields stay readable directly in the note body
   - details block includes top avatar embed (when image card/avatar is available) and summary-first ordering (`Card Summary`, `Summary Scenario Focus`, `Summary Hook`, tone/themes, then `Creator Notes`, `Personality`, and remaining fields)
   - block markers include a version comment and frontmatter tracks `characterCardDetailsVersion` for future migrations
@@ -721,7 +721,7 @@ Shared panel inputs:
   - marks notes `status: missing_source` when source cards are removed (no automatic deletion)
 - `Write Back Character Card Source`:
   - expects active note to be a synced `lvDocType: characterCard` meta note
-  - reads editable card fields from meta frontmatter (`name`, `tags`, `creator`, description/personality/scenario/messages/prompts, greeting arrays)
+  - reads editable identity fields from frontmatter (`name`, `tags`, `creator`) and long prose fields from the managed details block (`Creator Notes`, personality/description/scenario/messages/prompts/greetings)
   - writes those values back into the linked source card (`cardPath`) for both `.json` and `.png` (PNG metadata `ccv3/chara`)
   - hash-safe guard: aborts if source card payload hash differs from synced `cardHash` (run sync first)
 - `Extract Wiki Pages from Story`:

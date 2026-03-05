@@ -144,7 +144,7 @@ This document is the implementation-level reference for core architecture and ru
   - click-to-preview avatar modal for larger image inspection
   - field visibility integrates Bases property-order visibility with view-level toggles
   - summary-focused rendering for generated catalog fields (`cardSummary`, themes/tone, scenario focus, hook, stale marker)
-  - markdown-rendered long fields (`cardPersonality`, `cardDescription`, `cardScenario`) using Obsidian renderer
+  - markdown-rendered long fields (`Personality`, `Description`, `Scenario`) read from managed details-block markdown
   - per-view options (`maxCards`, `largeAvatars`, visibility toggles)
 - `src/character-card-summary.ts`
   - prompt contract + response parsing for strict JSON character-card catalog summaries
@@ -156,7 +156,7 @@ This document is the implementation-level reference for core architecture and ru
   - sync also maintains a managed markdown details block (`LV_BEGIN_CHARACTER_CARD_DETAILS`/`LV_END_CHARACTER_CARD_DETAILS`) for readable long-form card fields
   - details block is versioned (`LV_CHARACTER_CARD_DETAILS_VERSION`) and tracked in frontmatter (`characterCardDetailsVersion`)
   - details block layout is summary-first and includes avatar embed at top when available
-  - synced meta frontmatter carries parsed card fields for Bases workflows (identity, tags, prose fields, prompts, greeting variants, and embedded-lorebook counts)
+  - synced meta frontmatter carries compact indexing metadata (identity/tags/source/lorebook stats) and duplicated summary fields; long prose/message/prompt fields are stored in details markdown instead of frontmatter
   - optional summary generation pipeline with operation-log + usage-ledger tracking (`character_card_summary`)
   - hash-aware summary persistence (`cardSummaryForHash`) and stale markers (`cardSummaryStale`) to avoid accidental overwrite during sync
   - Bases integration: `registerBasesView` hooks `LoreVault Characters` custom renderer when Bases core plugin is enabled

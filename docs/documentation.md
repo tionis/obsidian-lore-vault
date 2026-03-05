@@ -675,6 +675,7 @@ Commands:
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
 - `Sync Character Card Library`
+- `Write Back Character Card Source`
 - `Extract Wiki Pages from Story`
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
@@ -712,6 +713,11 @@ Shared panel inputs:
   - auto-summary updates are hash-aware (`cardSummaryForHash`); manual summaries are preserved and stale summaries are flagged instead of silently overwritten
   - shows live sync progress notifications (phase, percent, elapsed time) while processing cards and missing-source checks
   - marks notes `status: missing_source` when source cards are removed (no automatic deletion)
+- `Write Back Character Card Source`:
+  - expects active note to be a synced `lvDocType: characterCard` meta note
+  - reads editable card fields from meta frontmatter (`name`, `tags`, `creator`, description/personality/scenario/messages/prompts, greeting arrays)
+  - writes those values back into the linked source card (`cardPath`) for both `.json` and `.png` (PNG metadata `ccv3/chara`)
+  - hash-safe guard: aborts if source card payload hash differs from synced `cardHash` (run sync first)
 - `Extract Wiki Pages from Story`:
   - target folder (manual path or Browse picker)
   - default tags

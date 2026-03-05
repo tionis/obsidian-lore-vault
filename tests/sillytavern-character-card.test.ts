@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  applyCharacterCardWriteBackToPayload,
   buildCharacterCardImportPlan,
   parseCharacterCardCharacterExtractResponse,
   parseCharacterCardRewriteResponse,
   parseSillyTavernCharacterCardJson,
-  parseSillyTavernCharacterCardPngBytes
+  parseSillyTavernCharacterCardPngBytes,
+  upsertSillyTavernCharacterCardPngPayload
 } from '../src/sillytavern-character-card';
 
 test('parseSillyTavernCharacterCardPngBytes reads ccv3/chara payload fields', () => {
@@ -236,4 +238,90 @@ test('buildCharacterCardImportPlan optionally includes extracted character wiki 
   assert.match(extractedPage.content, /## Summary/);
   assert.match(extractedPage.content, /Sentient AI entity bound to a prototype chip/);
   assert.match(extractedPage.content, /tags:\n {2}- "wiki"\n {2}- "imported"\n {2}- "lorebook\/universe\/yggdrasil\/characters"/);
+});
+
+test('applyCharacterCardWriteBackToPayload updates canonical card fields without dropping unknown payload fields', () => {
+  const originalPayload = {
+    spec: 'chara_card_v2',
+    data: {
+      name: 'Captain Sol',
+      description: 'Fleet commander',
+      personality: 'Strategic',
+      scenario: 'Third Fleet escalation',
+      first_mes: 'Status report.',
+      mes_example: 'Hold formation.',
+      creator: 'Archivist',
+      creator_notes: 'Original notes',
+      tags: ['fleet'],
+      metadata: {
+        creator_notes: 'Original metadata notes'
+      },
+      extensions: {
+        customFlag: true
+      }
+    }
+  };
+
+  const updated = applyCharacterCardWriteBackToPayload(originalPayload, {
+    name: 'Captain Sol Prime',
+    tags: ['fleet', 'command'],
+    creator: 'VaultAdmin',
+    creatorNotes: 'Rewritten in vault meta note',
+    description: 'Veteran command officer',
+    personality: 'Precise and uncompromising',
+    scenario: 'Orbit over Drila',
+    firstMessage: 'Report all batteries.',
+    messageExample: 'Keep hard formation.',
+    alternateGreetings: ['Ready check.'],
+    groupOnlyGreetings: ['Squad briefing online.'],
+    systemPrompt: 'Stay consistent with military tone.',
+    postHistoryInstructions: 'Prefer concise command dialogue.'
+  }) as {data: Record<string, unknown>};
+
+  const updatedRoot = updated.data;
+  assert.equal(updatedRoot.name, 'Captain Sol Prime');
+  assert.deepEqual(updatedRoot.tags, ['fleet', 'command']);
+  assert.equal(updatedRoot.creator, 'VaultAdmin');
+  assert.equal(updatedRoot.creator_notes, 'Rewritten in vault meta note');
+  assert.equal(updatedRoot.description, 'Veteran command officer');
+  assert.equal(updatedRoot.personality, 'Precise and uncompromising');
+  assert.equal(updatedRoot.scenario, 'Orbit over Drila');
+  assert.equal(updatedRoot.first_mes, 'Report all batteries.');
+  assert.equal(updatedRoot.mes_example, 'Keep hard formation.');
+  assert.deepEqual(updatedRoot.alternate_greetings, ['Ready check.']);
+  assert.deepEqual(updatedRoot.group_only_greetings, ['Squad briefing online.']);
+  assert.equal(updatedRoot.system_prompt, 'Stay consistent with military tone.');
+  assert.equal(updatedRoot.post_history_instructions, 'Prefer concise command dialogue.');
+  assert.equal((updatedRoot.metadata as {creator_notes: string}).creator_notes, 'Rewritten in vault meta note');
+  assert.deepEqual(updatedRoot.extensions, { customFlag: true });
+});
+
+test('upsertSillyTavernCharacterCardPngPayload rewrites card metadata while preserving PNG readability', () => {
+  const originalBytes = new Uint8Array(readFileSync('references/default_Seraphina.png'));
+  const originalCard = parseSillyTavernCharacterCardPngBytes(originalBytes);
+  const updatedPayload = applyCharacterCardWriteBackToPayload(originalCard.rawPayload, {
+    name: 'Seraphina Prime',
+    tags: [...originalCard.tags, 'vault-updated'],
+    creator: 'LoreVault',
+    creatorNotes: 'Updated from character-card meta note.',
+    description: `${originalCard.description} Updated.`,
+    personality: originalCard.personality,
+    scenario: `${originalCard.scenario} (updated)`,
+    firstMessage: originalCard.firstMessage,
+    messageExample: originalCard.messageExample,
+    alternateGreetings: originalCard.alternateGreetings,
+    groupOnlyGreetings: originalCard.groupOnlyGreetings,
+    systemPrompt: originalCard.systemPrompt,
+    postHistoryInstructions: originalCard.postHistoryInstructions
+  });
+
+  const rewrittenBytes = upsertSillyTavernCharacterCardPngPayload(originalBytes, updatedPayload);
+  const reparsed = parseSillyTavernCharacterCardPngBytes(rewrittenBytes);
+
+  assert.equal(reparsed.name, 'Seraphina Prime');
+  assert.equal(reparsed.creator, 'LoreVault');
+  assert.equal(reparsed.tags.includes('vault-updated'), true);
+  assert.equal(reparsed.description.endsWith('Updated.'), true);
+  assert.equal(reparsed.scenario.endsWith('(updated)'), true);
+  assert.equal(reparsed.embeddedLorebookEntries.length > 0, true);
 });

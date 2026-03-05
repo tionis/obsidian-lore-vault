@@ -187,6 +187,7 @@ export class LorevaultHelpView extends ItemView {
         '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
         '`Sync Character Card Library`: scan Character Card Source Folder and create/update one `lvDocType: characterCard` meta note per card.',
         'Synced character-card meta notes expose card metadata in frontmatter for Bases usage (name/tags/description/personality/scenario/messages/prompts).',
+        '`Write Back Character Card Source`: when a `characterCard` meta note is active, push edited card frontmatter fields back into the source `.png`/`.json` card file.',
         'Optional `Auto-Generate Card Summaries on Sync` adds concise summary/themes/tone fields and marks stale summaries by card hash without overwriting manual summaries.',
         'Bases integration: use view type `LoreVault Characters` in a Base filtered to character-card notes for avatar-card rendering and markdown/HTML field display.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
@@ -205,6 +206,7 @@ export class LorevaultHelpView extends ItemView {
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
         { label: 'Open Character Card Import', onClick: () => void this.plugin.openImportLorebookView('character_card') },
         { label: 'Sync Character Cards', onClick: () => void this.plugin.syncCharacterCardLibrary() },
+        { label: 'Write Back Character Card', onClick: () => void this.plugin.writeBackCharacterCardSourceFromActiveNote() },
         { label: 'Open Story Extraction', onClick: () => void this.plugin.openStoryExtractionView() },
         { label: 'Open Lorebook Update', onClick: () => void this.plugin.openStoryDeltaView() }
       ]

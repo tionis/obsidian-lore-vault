@@ -146,6 +146,7 @@ Reference design: `docs/planning.md`.
 - [x] Add editable planned-write preview for character-card import (path + content adjustments before apply).
 - [x] Add optional character-only extraction pass for character cards (`Extract Character Wiki Page`) with deterministic single-page wiki output.
 - [x] Add character-card library sync workflow (source folder + meta folder + `Sync Character Card Library` command + story backlink via `characterCardMeta`).
+- [x] Add `Write Back Character Card Source` command to push edited `characterCard` meta frontmatter fields back into source `.png`/`.json` cards with hash-staleness guard.
 - [x] Add optional conversion of embedded card lorebooks (`character_book`) into imported wiki notes.
 - [x] Add custom Bases renderer (`LoreVault Characters`) for character libraries with avatar cards and markdown-rendered personality/description/scenario.
 - [x] Add optional LLM-generated character-card catalog summaries during sync with hash-aware stale detection and non-destructive overwrite behavior.

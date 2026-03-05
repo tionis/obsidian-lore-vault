@@ -122,6 +122,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/sillytavern-character-card.ts`
   - ST character-card parser (`.png` `ccv3/chara` metadata + `.json` payloads)
   - deterministic card-field normalization (v1/v2/v3 shapes)
+  - deterministic source write-back helpers (payload patch + `.png` metadata upsert with CRC-safe chunk re-encode)
   - rewrite prompt/response schema helpers (story/author-note + character-only wiki extraction)
   - freeform author-note markdown passthrough (`authorNoteMarkdown`) with prompt-driven guidance
   - image-card avatar propagation into generated story notes (`characterCardAvatar` frontmatter + `![[...]]` embed)
@@ -149,6 +150,7 @@ This document is the implementation-level reference for core architecture and ru
   - structured fields: summary paragraph, themes, tone, scenario focus, writer hook
 - `src/main.ts`
   - `Sync Character Card Library` command: source-folder scan -> meta-note upsert (`lvDocType: characterCard`)
+  - `Write Back Character Card Source` command: active `characterCard` meta note -> source `.png`/`.json` payload update with hash staleness guard
   - meta-note lifecycle: create/update by `cardPath`, mark `status: missing_source` when source disappears (no delete)
   - synced meta frontmatter carries parsed card fields for Bases workflows (identity, tags, prose fields, prompts, greeting variants, and embedded-lorebook counts)
   - optional summary generation pipeline with operation-log + usage-ledger tracking (`character_card_summary`)
@@ -678,6 +680,7 @@ Implemented:
 - inbound SillyTavern lorebook JSON import command/view
 - inbound SillyTavern character-card import command/view (`.png` + `.json`)
 - character-card library sync command/view model (`Sync Character Card Library`)
+- character-card source write-back command (`Write Back Character Card Source`) with hash-staleness guard against unsynced source edits
 - deterministic entry normalization and sorting
 - deterministic character-card field normalization across v1/v2/v3 shapes
 - deterministic file naming/path allocation

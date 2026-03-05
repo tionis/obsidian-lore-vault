@@ -70,6 +70,22 @@ export interface CharacterCardImportPlan {
   effectiveLorebooks: string[];
 }
 
+export interface CharacterCardWriteBackFields {
+  name: string;
+  tags: string[];
+  creator: string;
+  creatorNotes: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  messageExample: string;
+  alternateGreetings: string[];
+  groupOnlyGreetings: string[];
+  systemPrompt: string;
+  postHistoryInstructions: string;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -305,6 +321,14 @@ function toLatin1(bytes: Uint8Array): string {
   return result;
 }
 
+function fromAscii(value: string): Uint8Array {
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    bytes[index] = value.charCodeAt(index) & 0xff;
+  }
+  return bytes;
+}
+
 function readUint32Be(bytes: Uint8Array, offset: number): number {
   return (
     (bytes[offset] << 24)
@@ -312,6 +336,13 @@ function readUint32Be(bytes: Uint8Array, offset: number): number {
     | (bytes[offset + 2] << 8)
     | bytes[offset + 3]
   ) >>> 0;
+}
+
+function writeUint32Be(bytes: Uint8Array, offset: number, value: number): void {
+  bytes[offset] = (value >>> 24) & 0xff;
+  bytes[offset + 1] = (value >>> 16) & 0xff;
+  bytes[offset + 2] = (value >>> 8) & 0xff;
+  bytes[offset + 3] = value & 0xff;
 }
 
 function decodeBase64ToUtf8(value: string): string {
@@ -332,48 +363,173 @@ function decodeBase64ToUtf8(value: string): string {
   throw new Error('Base64 decoding is unavailable in this runtime.');
 }
 
-function parsePngCardPayload(bytes: Uint8Array): unknown {
-  const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-  for (let index = 0; index < signature.length; index += 1) {
-    if (bytes[index] !== signature[index]) {
+function encodeUtf8ToBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  if (bytes.length === 0) {
+    return '';
+  }
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let result = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const a = bytes[index];
+    const b = index + 1 < bytes.length ? bytes[index + 1] : 0;
+    const c = index + 2 < bytes.length ? bytes[index + 2] : 0;
+    const block = (a << 16) | (b << 8) | c;
+    result += alphabet[(block >> 18) & 0x3f];
+    result += alphabet[(block >> 12) & 0x3f];
+    result += index + 1 < bytes.length ? alphabet[(block >> 6) & 0x3f] : '=';
+    result += index + 2 < bytes.length ? alphabet[block & 0x3f] : '=';
+  }
+  return result;
+}
+
+interface PngChunk {
+  type: string;
+  data: Uint8Array;
+}
+
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let round = 0; round < 8; round += 1) {
+      if ((value & 1) === 1) {
+        value = 0xedb88320 ^ (value >>> 1);
+      } else {
+        value >>>= 1;
+      }
+    }
+    table[index] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes: Uint8Array): number {
+  let value = 0xffffffff;
+  for (const byte of bytes) {
+    value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  }
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+function parsePngChunks(bytes: Uint8Array): PngChunk[] {
+  if (bytes.length < PNG_SIGNATURE.length) {
+    throw new Error('File is not a valid PNG character card.');
+  }
+  for (let index = 0; index < PNG_SIGNATURE.length; index += 1) {
+    if (bytes[index] !== PNG_SIGNATURE[index]) {
       throw new Error('File is not a valid PNG character card.');
     }
   }
 
-  let offset = 8;
-  let ccv3Chunk = '';
-  let charaChunk = '';
-
+  const chunks: PngChunk[] = [];
+  let offset = PNG_SIGNATURE.length;
   while (offset + 8 <= bytes.length) {
     const chunkLength = readUint32Be(bytes, offset);
     offset += 4;
     if (offset + 4 > bytes.length) {
-      break;
+      throw new Error('PNG chunk stream is truncated.');
     }
     const chunkType = toAscii(bytes.subarray(offset, offset + 4));
     offset += 4;
     if (offset + chunkLength + 4 > bytes.length) {
-      break;
+      throw new Error('PNG chunk payload is truncated.');
     }
-
-    if (chunkType === 'tEXt') {
-      const chunkData = bytes.subarray(offset, offset + chunkLength);
-      const nullIndex = chunkData.indexOf(0);
-      if (nullIndex > 0 && nullIndex < chunkData.length - 1) {
-        const keyword = toAscii(chunkData.subarray(0, nullIndex)).toLowerCase();
-        const text = toLatin1(chunkData.subarray(nullIndex + 1));
-        if (keyword === 'ccv3') {
-          ccv3Chunk = text;
-        } else if (keyword === 'chara') {
-          charaChunk = text;
-        }
-      }
-    }
-
+    const data = new Uint8Array(bytes.subarray(offset, offset + chunkLength));
+    offset += chunkLength;
+    offset += 4; // Skip CRC from input; we recompute on encode.
+    chunks.push({
+      type: chunkType,
+      data
+    });
     if (chunkType === 'IEND') {
       break;
     }
-    offset += chunkLength + 4;
+  }
+
+  if (!chunks.some(chunk => chunk.type === 'IEND')) {
+    throw new Error('PNG did not contain an IEND chunk.');
+  }
+  return chunks;
+}
+
+function encodePngChunks(chunks: PngChunk[]): Uint8Array {
+  let totalBytes = PNG_SIGNATURE.length;
+  for (const chunk of chunks) {
+    totalBytes += 4 + 4 + chunk.data.length + 4;
+  }
+
+  const output = new Uint8Array(totalBytes);
+  output.set(PNG_SIGNATURE, 0);
+  let offset = PNG_SIGNATURE.length;
+
+  for (const chunk of chunks) {
+    writeUint32Be(output, offset, chunk.data.length >>> 0);
+    offset += 4;
+
+    const typeBytes = fromAscii(chunk.type);
+    if (typeBytes.length !== 4) {
+      throw new Error(`Invalid PNG chunk type "${chunk.type}".`);
+    }
+    output.set(typeBytes, offset);
+    offset += 4;
+
+    output.set(chunk.data, offset);
+    offset += chunk.data.length;
+
+    const crcInput = new Uint8Array(typeBytes.length + chunk.data.length);
+    crcInput.set(typeBytes, 0);
+    crcInput.set(chunk.data, typeBytes.length);
+    writeUint32Be(output, offset, crc32(crcInput));
+    offset += 4;
+  }
+
+  return output;
+}
+
+function splitPngTextChunkData(data: Uint8Array): {keyword: string; value: string} | null {
+  const nullIndex = data.indexOf(0);
+  if (nullIndex <= 0 || nullIndex >= data.length - 1) {
+    return null;
+  }
+  const keyword = toAscii(data.subarray(0, nullIndex));
+  const value = toLatin1(data.subarray(nullIndex + 1));
+  return {
+    keyword,
+    value
+  };
+}
+
+function buildPngTextChunkData(keyword: string, value: string): Uint8Array {
+  const keywordBytes = fromAscii(keyword);
+  const valueBytes = fromAscii(value);
+  const data = new Uint8Array(keywordBytes.length + 1 + valueBytes.length);
+  data.set(keywordBytes, 0);
+  data[keywordBytes.length] = 0;
+  data.set(valueBytes, keywordBytes.length + 1);
+  return data;
+}
+
+function parsePngCardPayload(bytes: Uint8Array): unknown {
+  const chunks = parsePngChunks(bytes);
+  let ccv3Chunk = '';
+  let charaChunk = '';
+
+  for (const chunk of chunks) {
+    if (chunk.type !== 'tEXt') {
+      continue;
+    }
+    const parsedText = splitPngTextChunkData(chunk.data);
+    if (!parsedText) {
+      continue;
+    }
+    const keyword = parsedText.keyword.toLowerCase();
+    if (keyword === 'ccv3') {
+      ccv3Chunk = parsedText.value;
+    } else if (keyword === 'chara') {
+      charaChunk = parsedText.value;
+    }
   }
 
   const rawChunk = ccv3Chunk || charaChunk;
@@ -483,6 +639,140 @@ export function parseSillyTavernCharacterCardJson(rawJson: string): ParsedCharac
 export function parseSillyTavernCharacterCardPngBytes(bytes: Uint8Array): ParsedCharacterCard {
   const payload = parsePngCardPayload(bytes);
   return parseSillyTavernCharacterCardPayload(payload, 'png');
+}
+
+function cloneJsonValue(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function ensureObjectField(
+  target: Record<string, unknown>,
+  key: string
+): Record<string, unknown> {
+  const existing = asRecord(target[key]);
+  if (existing) {
+    return existing;
+  }
+  const created: Record<string, unknown> = {};
+  target[key] = created;
+  return created;
+}
+
+export function applyCharacterCardWriteBackToPayload(
+  payload: unknown,
+  fields: CharacterCardWriteBackFields
+): unknown {
+  const payloadObject = asRecord(payload);
+  if (!payloadObject) {
+    throw new Error('Character-card payload must be an object.');
+  }
+  const cloned = asRecord(cloneJsonValue(payloadObject));
+  if (!cloned) {
+    throw new Error('Character-card payload clone failed.');
+  }
+  const root = resolveCardRoot(cloned);
+
+  root.name = fields.name;
+  root.tags = uniqueStrings(fields.tags);
+  root.creator = fields.creator;
+  root.description = fields.description;
+  root.personality = fields.personality;
+  root.scenario = fields.scenario;
+
+  if (Object.prototype.hasOwnProperty.call(root, 'first_mes')) {
+    root.first_mes = fields.firstMessage;
+  }
+  if (Object.prototype.hasOwnProperty.call(root, 'firstMessage')) {
+    root.firstMessage = fields.firstMessage;
+  } else if (!Object.prototype.hasOwnProperty.call(root, 'first_mes')) {
+    root.first_mes = fields.firstMessage;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(root, 'mes_example')) {
+    root.mes_example = fields.messageExample;
+  }
+  if (Object.prototype.hasOwnProperty.call(root, 'messageExample')) {
+    root.messageExample = fields.messageExample;
+  } else if (!Object.prototype.hasOwnProperty.call(root, 'mes_example')) {
+    root.mes_example = fields.messageExample;
+  }
+
+  root.alternate_greetings = uniqueStrings(fields.alternateGreetings);
+  root.group_only_greetings = uniqueStrings(fields.groupOnlyGreetings);
+  root.system_prompt = fields.systemPrompt;
+  root.post_history_instructions = fields.postHistoryInstructions;
+
+  if (
+    Object.prototype.hasOwnProperty.call(root, 'creatorcomment')
+    && !Object.prototype.hasOwnProperty.call(root, 'creator_notes')
+  ) {
+    root.creatorcomment = fields.creatorNotes;
+  } else {
+    root.creator_notes = fields.creatorNotes;
+    if (Object.prototype.hasOwnProperty.call(root, 'creatorcomment')) {
+      root.creatorcomment = fields.creatorNotes;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(root, 'metadata')) {
+    const metadata = ensureObjectField(root, 'metadata');
+    if (
+      Object.prototype.hasOwnProperty.call(metadata, 'creator_notes')
+      || !Object.prototype.hasOwnProperty.call(root, 'creator_notes')
+    ) {
+      metadata.creator_notes = fields.creatorNotes;
+    }
+    if (Object.prototype.hasOwnProperty.call(metadata, 'creator')) {
+      metadata.creator = fields.creator;
+    }
+    if (Object.prototype.hasOwnProperty.call(metadata, 'tags')) {
+      metadata.tags = uniqueStrings(fields.tags);
+    }
+  }
+
+  return cloned;
+}
+
+export function serializeCharacterCardJsonPayload(payload: unknown): string {
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+export function upsertSillyTavernCharacterCardPngPayload(
+  pngBytes: Uint8Array,
+  payload: unknown
+): Uint8Array {
+  const chunks = parsePngChunks(pngBytes);
+  const serializedPayload = JSON.stringify(payload);
+  const encodedPayload = encodeUtf8ToBase64(serializedPayload);
+
+  let replaced = false;
+  for (const chunk of chunks) {
+    if (chunk.type !== 'tEXt') {
+      continue;
+    }
+    const parsed = splitPngTextChunkData(chunk.data);
+    if (!parsed) {
+      continue;
+    }
+    const keyword = parsed.keyword.toLowerCase();
+    if (keyword === 'ccv3' || keyword === 'chara') {
+      chunk.data = buildPngTextChunkData(parsed.keyword, encodedPayload);
+      replaced = true;
+    }
+  }
+
+  if (!replaced) {
+    const iendIndex = chunks.findIndex(chunk => chunk.type === 'IEND');
+    if (iendIndex < 0) {
+      throw new Error('PNG did not contain an IEND chunk.');
+    }
+    chunks.splice(iendIndex, 0, {
+      type: 'tEXt',
+      data: buildPngTextChunkData('ccv3', encodedPayload)
+    });
+  }
+
+  return encodePngChunks(chunks);
 }
 
 export function buildCharacterCardRewriteSystemPrompt(): string {

@@ -148,7 +148,7 @@ import {
   normalizeVaultPath,
   normalizeVaultRelativePath
 } from './vault-path-utils';
-import { readVaultBinary } from './vault-binary-io';
+import { readVaultBinary, writeVaultBinary } from './vault-binary-io';
 import {
   ChapterMemoryAggressiveness,
   estimateChapterMemoryExcerptChapterWindow,
@@ -188,9 +188,13 @@ import {
 } from './prompt-staging';
 import { LorebookScopeCache } from './lorebook-scope-cache';
 import {
+  applyCharacterCardWriteBackToPayload,
+  CharacterCardWriteBackFields,
   ParsedCharacterCard,
   parseSillyTavernCharacterCardJson,
-  parseSillyTavernCharacterCardPngBytes
+  parseSillyTavernCharacterCardPngBytes,
+  serializeCharacterCardJsonPayload,
+  upsertSillyTavernCharacterCardPngPayload
 } from './sillytavern-character-card';
 import {
   buildCharacterCardSummarySystemPrompt,
@@ -7691,6 +7695,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'write-back-character-card-source',
+      name: 'Write Back Character Card Source',
+      callback: () => {
+        void this.writeBackCharacterCardSourceFromActiveNote().catch(error => {
+          console.error('LoreVault: Failed to write back character card source:', error);
+          new Notice(`Failed to write back character card source: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
       id: 'extract-wiki-pages-from-story',
       name: 'Extract Wiki Pages from Story',
       callback: () => {
@@ -7867,6 +7882,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       const isLorebookNote = targetFile ? this.noteBelongsToLorebookScope(targetFile) : false;
       const isChapterNote = targetFile ? this.noteHasChapterFrontmatter(targetFile) : false;
       const isAuthorNote = targetFile ? this.noteIsAuthorNote(targetFile) : false;
+      const isCharacterCardMeta = targetFile ? this.noteIsCharacterCardMeta(targetFile) : false;
       const hasSelection = editor.somethingSelected() && Boolean(editor.getSelection().trim());
 
       menu.addSeparator();
@@ -7936,6 +7952,20 @@ export default class LoreBookConverterPlugin extends Plugin {
               void this.rewriteAuthorNoteFromActiveNote().catch(error => {
                 console.error('LoreVault: Failed to rewrite author note:', error);
                 new Notice(`Failed to rewrite author note: ${error instanceof Error ? error.message : String(error)}`);
+              });
+            });
+        });
+      }
+
+      if (targetFile && isCharacterCardMeta) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Write Back Character Card Source')
+            .setIcon('upload')
+            .onClick(() => {
+              void this.writeBackCharacterCardSourceFromActiveNote().catch(error => {
+                console.error('LoreVault: Failed to write back character card source:', error);
+                new Notice(`Failed to write back character card source: ${error instanceof Error ? error.message : String(error)}`);
               });
             });
         });
@@ -8161,6 +8191,118 @@ export default class LoreBookConverterPlugin extends Plugin {
       .toLowerCase()
       .replace(/[\s_-]/g, '');
     return normalizedDocType === 'authornote';
+  }
+
+  private noteIsCharacterCardMeta(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const rawDocType = asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '';
+    const normalizedDocType = rawDocType
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, '');
+    return normalizedDocType === CHARACTER_CARD_META_DOC_TYPE.toLowerCase();
+  }
+
+  private buildCharacterCardWriteBackFields(frontmatter: FrontmatterData): CharacterCardWriteBackFields {
+    const name = asString(getFrontmatterValue(frontmatter, 'characterName', 'characterCardName', 'title')) ?? '';
+    return {
+      name: name || 'Character',
+      tags: asStringArray(getFrontmatterValue(frontmatter, 'cardTags')),
+      creator: asString(getFrontmatterValue(frontmatter, 'creator', 'characterCardCreator')) ?? '',
+      creatorNotes: asString(getFrontmatterValue(frontmatter, 'creatorNotes')) ?? '',
+      description: asString(getFrontmatterValue(frontmatter, 'cardDescription')) ?? '',
+      personality: asString(getFrontmatterValue(frontmatter, 'cardPersonality')) ?? '',
+      scenario: asString(getFrontmatterValue(frontmatter, 'cardScenario')) ?? '',
+      firstMessage: asString(getFrontmatterValue(frontmatter, 'cardFirstMessage')) ?? '',
+      messageExample: asString(getFrontmatterValue(frontmatter, 'cardMessageExample')) ?? '',
+      alternateGreetings: asStringArray(getFrontmatterValue(frontmatter, 'cardAlternateGreetings')),
+      groupOnlyGreetings: asStringArray(getFrontmatterValue(frontmatter, 'cardGroupOnlyGreetings')),
+      systemPrompt: asString(getFrontmatterValue(frontmatter, 'cardSystemPrompt')) ?? '',
+      postHistoryInstructions: asString(getFrontmatterValue(frontmatter, 'cardPostHistoryInstructions')) ?? ''
+    };
+  }
+
+  public async writeBackCharacterCardSourceFromActiveNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      new Notice('Open a character-card meta note before writing back.');
+      return;
+    }
+    if (!this.noteIsCharacterCardMeta(activeFile)) {
+      new Notice('Active note is not a character-card meta note.');
+      return;
+    }
+
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const sourcePathRaw = asString(getFrontmatterValue(frontmatter, 'cardPath', 'characterCardPath')) ?? '';
+    const sourcePath = normalizeVaultPath(sourcePathRaw);
+    if (!sourcePath) {
+      new Notice('This meta note does not define `cardPath`.');
+      return;
+    }
+
+    const sourceAbstract = this.app.vault.getAbstractFileByPath(sourcePath);
+    if (!(sourceAbstract instanceof TFile)) {
+      new Notice(`Character card source file not found: ${sourcePath}`);
+      return;
+    }
+
+    const extension = sourceAbstract.extension.toLowerCase();
+    if (extension !== 'json' && extension !== 'png') {
+      new Notice(`Unsupported character-card source extension: .${extension}`);
+      return;
+    }
+
+    const expectedHash = (asString(getFrontmatterValue(frontmatter, 'cardHash')) ?? '').trim();
+    let sourcePayload: unknown;
+    let sourcePngBytes: Uint8Array | null = null;
+    if (extension === 'json') {
+      sourcePayload = JSON.parse(await this.app.vault.read(sourceAbstract));
+    } else {
+      sourcePngBytes = await readVaultBinary(this.app, sourceAbstract.path);
+      sourcePayload = parseSillyTavernCharacterCardPngBytes(sourcePngBytes).rawPayload;
+    }
+
+    const currentHash = `sha256:${stableJsonHash(sourcePayload)}`;
+    if (expectedHash && expectedHash !== currentHash) {
+      new Notice('Source card changed since last sync. Run Sync Character Card Library before write-back.');
+      return;
+    }
+
+    const writeBackFields = this.buildCharacterCardWriteBackFields(frontmatter);
+    const updatedPayload = applyCharacterCardWriteBackToPayload(sourcePayload, writeBackFields);
+    const updatedHash = `sha256:${stableJsonHash(updatedPayload)}`;
+    if (updatedHash === currentHash) {
+      new Notice('No source-card changes detected in the meta note.');
+      return;
+    }
+
+    if (extension === 'json') {
+      await this.app.vault.adapter.write(sourceAbstract.path, serializeCharacterCardJsonPayload(updatedPayload));
+    } else {
+      if (!sourcePngBytes) {
+        throw new Error('Missing source PNG bytes for write-back.');
+      }
+      const updatedPngBytes = upsertSillyTavernCharacterCardPngPayload(sourcePngBytes, updatedPayload);
+      await writeVaultBinary(this.app, sourceAbstract.path, updatedPngBytes);
+    }
+
+    const nowIso = new Date().toISOString();
+    const refreshedSource = this.app.vault.getAbstractFileByPath(sourceAbstract.path);
+    await this.app.fileManager.processFrontMatter(activeFile, mutableFrontmatter => {
+      mutableFrontmatter.cardHash = updatedHash;
+      mutableFrontmatter.lastSynced = nowIso;
+      if (refreshedSource instanceof TFile) {
+        mutableFrontmatter.cardMtime = new Date(refreshedSource.stat.mtime).toISOString();
+        mutableFrontmatter.cardSizeBytes = refreshedSource.stat.size;
+      }
+      delete mutableFrontmatter.parseError;
+      delete mutableFrontmatter.syncWarnings;
+    });
+
+    new Notice(`Character card source updated from meta note: ${sourceAbstract.path}`);
   }
 
   public canCreateNextStoryChapterForActiveNote(): boolean {

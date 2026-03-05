@@ -63,6 +63,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Import SillyTavern Lorebook"
      - "Import SillyTavern Character Card"
      - "Sync Character Card Library"
+     - "Write Back Character Card Source"
      - Bases view type "LoreVault Characters" available in Bases view selector
      - "Extract Wiki Pages from Story"
      - "Fork Active Lorebook"
@@ -241,6 +242,8 @@ If you prefer to build the plugin from source:
     - Optional setup: configure `Character Card Source Folder` and `Character Card Meta Folder` in settings
     - Optional setup: enable `Auto-Generate Card Summaries on Sync` (and choose a summary completion profile if desired)
     - Optional setup: run `Sync Character Card Library` to create/update `lvDocType: characterCard` meta notes for source cards
+    - Optional: edit card fields in a synced `characterCard` meta note and run `Write Back Character Card Source` to push them into the source `.png`/`.json` card
+    - If write-back reports stale source hash, run `Sync Character Card Library` first, then retry write-back
     - Run command `Import SillyTavern Character Card` (or switch import type in the same panel)
     - Pick a `.png`/`.json` card file from the vault
     - Keep/adjust completion profile for rewrite

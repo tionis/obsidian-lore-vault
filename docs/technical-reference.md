@@ -152,6 +152,9 @@ This document is the implementation-level reference for core architecture and ru
   - `Sync Character Card Library` command: source-folder scan -> meta-note upsert (`lvDocType: characterCard`)
   - `Write Back Character Card Source` command: active `characterCard` meta note -> source `.png`/`.json` payload update with hash staleness guard
   - meta-note lifecycle: create/update by `cardPath`, mark `status: missing_source` when source disappears (no delete)
+  - sync also maintains a managed markdown details block (`LV_BEGIN_CHARACTER_CARD_DETAILS`/`LV_END_CHARACTER_CARD_DETAILS`) for readable long-form card fields
+  - details block is versioned (`LV_CHARACTER_CARD_DETAILS_VERSION`) and tracked in frontmatter (`characterCardDetailsVersion`)
+  - details block layout is summary-first and includes avatar embed at top when available
   - synced meta frontmatter carries parsed card fields for Bases workflows (identity, tags, prose fields, prompts, greeting variants, and embedded-lorebook counts)
   - optional summary generation pipeline with operation-log + usage-ledger tracking (`character_card_summary`)
   - hash-aware summary persistence (`cardSummaryForHash`) and stale markers (`cardSummaryStale`) to avoid accidental overwrite during sync

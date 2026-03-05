@@ -244,6 +244,7 @@ If you prefer to build the plugin from source:
     - Optional setup: run `Sync Character Card Library` to create/update `lvDocType: characterCard` meta notes for source cards
     - Optional: edit card fields in a synced `characterCard` meta note and run `Write Back Character Card Source` to push them into the source `.png`/`.json` card
     - If write-back reports stale source hash, run `Sync Character Card Library` first, then retry write-back
+    - Synced card meta notes include a readable `Character Card Details` markdown section block for long fields
     - Run command `Import SillyTavern Character Card` (or switch import type in the same panel)
     - Pick a `.png`/`.json` card file from the vault
     - Keep/adjust completion profile for rewrite

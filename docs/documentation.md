@@ -709,6 +709,9 @@ Shared panel inputs:
   - scans source folder for `.png`/`.json` cards
   - ensures one meta note exists per source card in meta folder
   - updates parsed card metadata for Bases-friendly frontmatter usage (`characterName`, `cardTags`, description/personality/scenario, greetings/messages/prompts, embedded-lorebook stats)
+  - upserts a managed, versioned markdown details block so long fields stay readable directly in the note body
+  - details block includes top avatar embed (when image card/avatar is available) and summary-first ordering (`Card Summary`, `Summary Scenario Focus`, `Summary Hook`, tone/themes, then `Creator Notes`, `Personality`, and remaining fields)
+  - block markers include a version comment and frontmatter tracks `characterCardDetailsVersion` for future migrations
   - optional auto-summary mode generates concise card catalog fields (`cardSummary`, themes/tone, scenario focus, hook) via completion profile selection
   - auto-summary updates are hash-aware (`cardSummaryForHash`); manual summaries are preserved and stale summaries are flagged instead of silently overwritten
   - shows live sync progress notifications (phase, percent, elapsed time) while processing cards and missing-source checks

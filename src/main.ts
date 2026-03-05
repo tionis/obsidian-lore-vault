@@ -632,6 +632,10 @@ const AUTHOR_NOTE_COMPLETION_PROFILE_FRONTMATTER_KEY = 'completionProfile';
 const COMPLETION_PRESET_SECRET_PREFIX = 'lorevault-completion-';
 const CHARACTER_CARD_META_DOC_TYPE = 'characterCard';
 const CHARACTER_CARD_SOURCE_EXTENSIONS = new Set(['png', 'json']);
+const CHARACTER_CARD_DETAILS_BLOCK_BEGIN = '<!-- LV_BEGIN_CHARACTER_CARD_DETAILS -->';
+const CHARACTER_CARD_DETAILS_BLOCK_END = '<!-- LV_END_CHARACTER_CARD_DETAILS -->';
+const CHARACTER_CARD_DETAILS_BLOCK_VERSION = 2;
+const CHARACTER_CARD_DETAILS_BLOCK_VERSION_PREFIX = '<!-- LV_CHARACTER_CARD_DETAILS_VERSION:';
 
 export default class LoreBookConverterPlugin extends Plugin {
   settings: ConverterSettings;
@@ -2558,6 +2562,151 @@ export default class LoreBookConverterPlugin extends Plugin {
     ].join('\n');
   }
 
+  private normalizeMarkdownSectionText(value: string): string {
+    return value
+      .replace(/\r\n?/g, '\n')
+      .trim();
+  }
+
+  private pushCharacterCardTextSection(lines: string[], heading: string, value: string): void {
+    const normalized = this.normalizeMarkdownSectionText(value);
+    if (!normalized) {
+      return;
+    }
+    lines.push(`### ${heading}`);
+    lines.push('');
+    lines.push(normalized);
+    lines.push('');
+  }
+
+  private pushCharacterCardListSection(lines: string[], heading: string, values: string[]): void {
+    const normalized = uniqueStrings(
+      values
+        .map(value => this.normalizeMarkdownSectionText(value))
+        .filter(Boolean)
+    );
+    if (normalized.length === 0) {
+      return;
+    }
+    lines.push(`### ${heading}`);
+    lines.push('');
+    for (const value of normalized) {
+      lines.push(`- ${value}`);
+    }
+    lines.push('');
+  }
+
+  private buildCharacterCardAvatarEmbedMarkdown(avatarRaw: string, sourcePath: string): string {
+    const normalizedAvatar = avatarRaw.trim();
+    if (normalizedAvatar) {
+      if (normalizedAvatar.startsWith('![[') || /^!\[[^\]]*]\([^)]+\)$/.test(normalizedAvatar)) {
+        return normalizedAvatar;
+      }
+      if (normalizedAvatar.startsWith('[[') && normalizedAvatar.endsWith(']]')) {
+        return `!${normalizedAvatar}`;
+      }
+      if (/^https?:\/\//i.test(normalizedAvatar)) {
+        return `![](${normalizedAvatar})`;
+      }
+      const avatarExt = getVaultExtname(normalizedAvatar).toLowerCase();
+      if (avatarExt && ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.svg', '.avif'].includes(avatarExt)) {
+        const normalizedAvatarPath = normalizeVaultPath(normalizedAvatar);
+        if (normalizedAvatarPath) {
+          return `![[${normalizeLinkTarget(normalizedAvatarPath)}]]`;
+        }
+      }
+    }
+
+    const sourceExt = getVaultExtname(sourcePath).toLowerCase();
+    if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.svg', '.avif'].includes(sourceExt)) {
+      return `![[${normalizeLinkTarget(sourcePath)}]]`;
+    }
+    return '';
+  }
+
+  private buildCharacterCardDetailsBlock(params: {
+    sourcePath: string;
+    avatarEmbedMarkdown: string;
+    creatorNotes: string;
+    cardSummary: string;
+    cardSummaryScenarioFocus: string;
+    cardSummaryHook: string;
+    cardSummaryTone: string[];
+    cardSummaryThemes: string[];
+    cardDescription: string;
+    cardPersonality: string;
+    cardScenario: string;
+    cardFirstMessage: string;
+    cardMessageExample: string;
+    cardSystemPrompt: string;
+    cardPostHistoryInstructions: string;
+    cardAlternateGreetings: string[];
+    cardGroupOnlyGreetings: string[];
+  }): string {
+    const lines: string[] = [];
+    lines.push('## Character Card Details');
+    lines.push('');
+    if (params.avatarEmbedMarkdown) {
+      lines.push(params.avatarEmbedMarkdown);
+      lines.push('');
+    }
+    lines.push(`Source Card: [[${normalizeLinkTarget(params.sourcePath)}]]`);
+    lines.push('');
+
+    this.pushCharacterCardTextSection(lines, 'Card Summary', params.cardSummary);
+    this.pushCharacterCardTextSection(lines, 'Summary Scenario Focus', params.cardSummaryScenarioFocus);
+    this.pushCharacterCardTextSection(lines, 'Summary Hook', params.cardSummaryHook);
+    this.pushCharacterCardListSection(lines, 'Summary Tone', params.cardSummaryTone);
+    this.pushCharacterCardListSection(lines, 'Summary Themes', params.cardSummaryThemes);
+    this.pushCharacterCardTextSection(lines, 'Creator Notes', params.creatorNotes);
+    this.pushCharacterCardTextSection(lines, 'Personality', params.cardPersonality);
+    this.pushCharacterCardTextSection(lines, 'Description', params.cardDescription);
+    this.pushCharacterCardTextSection(lines, 'Scenario', params.cardScenario);
+    this.pushCharacterCardTextSection(lines, 'First Message', params.cardFirstMessage);
+    this.pushCharacterCardTextSection(lines, 'Message Example', params.cardMessageExample);
+    this.pushCharacterCardTextSection(lines, 'System Prompt', params.cardSystemPrompt);
+    this.pushCharacterCardTextSection(lines, 'Post History Instructions', params.cardPostHistoryInstructions);
+    this.pushCharacterCardListSection(lines, 'Alternate Greetings', params.cardAlternateGreetings);
+    this.pushCharacterCardListSection(lines, 'Group-Only Greetings', params.cardGroupOnlyGreetings);
+
+    return lines.join('\n').trimEnd();
+  }
+
+  private upsertCharacterCardDetailsBlockInMarkdown(markdown: string, detailsBlock: string): string {
+    const normalized = markdown.replace(/\r\n?/g, '\n');
+    const versionLine = `${CHARACTER_CARD_DETAILS_BLOCK_VERSION_PREFIX} ${CHARACTER_CARD_DETAILS_BLOCK_VERSION} -->`;
+    const payload = [
+      CHARACTER_CARD_DETAILS_BLOCK_BEGIN,
+      versionLine,
+      detailsBlock.trimEnd(),
+      CHARACTER_CARD_DETAILS_BLOCK_END
+    ].join('\n');
+
+    const beginIndex = normalized.indexOf(CHARACTER_CARD_DETAILS_BLOCK_BEGIN);
+    const endIndex = normalized.indexOf(CHARACTER_CARD_DETAILS_BLOCK_END);
+    if (beginIndex >= 0 && endIndex > beginIndex) {
+      const endOffset = endIndex + CHARACTER_CARD_DETAILS_BLOCK_END.length;
+      const before = normalized.slice(0, beginIndex).replace(/\s*$/g, '');
+      const after = normalized.slice(endOffset).replace(/^\s*/g, '');
+      if (before && after) {
+        return `${before}\n\n${payload}\n\n${after}\n`;
+      }
+      if (before) {
+        return `${before}\n\n${payload}\n`;
+      }
+      if (after) {
+        return `${payload}\n\n${after}\n`;
+      }
+      return `${payload}\n`;
+    }
+
+    const base = normalized.trimEnd();
+    if (!base) {
+      return `${payload}\n`;
+    }
+    return `${base}\n\n${payload}\n`;
+  }
+
   private async parseCharacterCardSourceFile(sourceFile: TFile): Promise<{
     parsedCard: ParsedCharacterCard | null;
     parseError: string;
@@ -2892,6 +3041,7 @@ export default class LoreBookConverterPlugin extends Plugin {
             frontmatter.cardMtime = new Date(sourceFile.stat.mtime).toISOString();
             frontmatter.cardSizeBytes = sourceFile.stat.size;
             frontmatter.sourceType = 'sillytavern_character_card_library';
+            frontmatter.characterCardDetailsVersion = CHARACTER_CARD_DETAILS_BLOCK_VERSION;
             frontmatter.lastSynced = nowIso;
             if (existingLorebooks.length > 0) {
               frontmatter.lorebooks = existingLorebooks;
@@ -2947,6 +3097,46 @@ export default class LoreBookConverterPlugin extends Plugin {
             }
             delete frontmatter.missingSourceSince;
           });
+
+          const effectiveSummary = generatedSummary?.summary
+            ?? existingCardSummary
+            ?? '';
+          const effectiveSummaryScenarioFocus = generatedSummary?.scenarioFocus
+            ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryScenarioFocus')) ?? '');
+          const effectiveSummaryHook = generatedSummary?.hook
+            ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardSummaryHook')) ?? '');
+          const effectiveSummaryTone = generatedSummary?.tone
+            ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardSummaryTone'));
+          const effectiveSummaryThemes = generatedSummary?.themes
+            ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardSummaryThemes'));
+
+          const detailsBlock = this.buildCharacterCardDetailsBlock({
+            sourcePath: sourceFile.path,
+            avatarEmbedMarkdown: this.buildCharacterCardAvatarEmbedMarkdown(
+              parsed.avatarLink || (asString(getFrontmatterValue(existingFrontmatter, 'avatar', 'characterCardAvatar')) ?? ''),
+              sourceFile.path
+            ),
+            creatorNotes: parsedCard?.creatorNotes ?? (asString(getFrontmatterValue(existingFrontmatter, 'creatorNotes')) ?? ''),
+            cardSummary: effectiveSummary,
+            cardSummaryScenarioFocus: effectiveSummaryScenarioFocus,
+            cardSummaryHook: effectiveSummaryHook,
+            cardSummaryTone: effectiveSummaryTone,
+            cardSummaryThemes: effectiveSummaryThemes,
+            cardDescription: parsedCard?.description ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardDescription')) ?? ''),
+            cardPersonality: parsedCard?.personality ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardPersonality')) ?? ''),
+            cardScenario: parsedCard?.scenario ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardScenario')) ?? ''),
+            cardFirstMessage: parsedCard?.firstMessage ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardFirstMessage')) ?? ''),
+            cardMessageExample: parsedCard?.messageExample ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardMessageExample')) ?? ''),
+            cardSystemPrompt: parsedCard?.systemPrompt ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardSystemPrompt')) ?? ''),
+            cardPostHistoryInstructions: parsedCard?.postHistoryInstructions ?? (asString(getFrontmatterValue(existingFrontmatter, 'cardPostHistoryInstructions')) ?? ''),
+            cardAlternateGreetings: parsedCard?.alternateGreetings ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardAlternateGreetings')),
+            cardGroupOnlyGreetings: parsedCard?.groupOnlyGreetings ?? asStringArray(getFrontmatterValue(existingFrontmatter, 'cardGroupOnlyGreetings'))
+          });
+          const currentMetaMarkdown = await this.app.vault.cachedRead(metaFile);
+          const withDetailsBlock = this.upsertCharacterCardDetailsBlockInMarkdown(currentMetaMarkdown, detailsBlock);
+          if (withDetailsBlock !== currentMetaMarkdown) {
+            await this.app.vault.modify(metaFile, withDetailsBlock);
+          }
         } catch (error) {
           failures += 1;
           console.warn('LoreVault: Failed syncing character-card meta note:', sourceFile.path, error);

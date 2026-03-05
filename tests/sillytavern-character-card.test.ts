@@ -15,7 +15,7 @@ import {
 } from '../src/sillytavern-character-card';
 
 test('parseSillyTavernCharacterCardPngBytes reads ccv3/chara payload fields', () => {
-  const bytes = new Uint8Array(readFileSync('references/default_Seraphina.png'));
+  const bytes = new Uint8Array(readFileSync('fixtures/cards/default_Seraphina.png'));
   const parsed = parseSillyTavernCharacterCardPngBytes(bytes);
 
   assert.equal(parsed.sourceFormat, 'png');
@@ -300,7 +300,7 @@ test('applyCharacterCardWriteBackToPayload updates canonical card fields without
 });
 
 test('upsertSillyTavernCharacterCardPngPayload rewrites card metadata while preserving PNG readability', () => {
-  const originalBytes = new Uint8Array(readFileSync('references/default_Seraphina.png'));
+  const originalBytes = new Uint8Array(readFileSync('fixtures/cards/default_Seraphina.png'));
   const originalCard = parseSillyTavernCharacterCardPngBytes(originalBytes);
   const updatedPayload = applyCharacterCardWriteBackToPayload(originalCard.rawPayload, {
     name: 'Seraphina Prime',

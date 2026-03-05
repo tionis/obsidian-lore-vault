@@ -14,6 +14,10 @@ test('parseCharacterCardDetailsContentFromMarkdown extracts text and list sectio
     '<!-- LV_CHARACTER_CARD_DETAILS_VERSION: 2 -->',
     '## Character Card Details',
     '',
+    '![[LoreVault/attachments/avatar-local.png]]',
+    '',
+    'Source Card: [[cards/demo.png]]',
+    '',
     '### Card Summary',
     '',
     'Short, focused summary.',
@@ -40,6 +44,7 @@ test('parseCharacterCardDetailsContentFromMarkdown extracts text and list sectio
   ].join('\n');
 
   const parsed = parseCharacterCardDetailsContentFromMarkdown(markdown);
+  assert.equal(parsed.avatarEmbedMarkdown, '![[LoreVault/attachments/avatar-local.png]]');
   assert.equal(parsed.cardSummary, 'Short, focused summary.');
   assert.deepEqual(parsed.cardSummaryTone, ['dark', 'intimate']);
   assert.equal(parsed.creatorNotes, 'Use present tense.');

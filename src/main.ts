@@ -2630,6 +2630,60 @@ export default class LoreBookConverterPlugin extends Plugin {
     return '';
   }
 
+  private extractImageTargetFromEmbed(markdown: string): string {
+    const value = markdown.trim();
+    if (!value) {
+      return '';
+    }
+
+    const wikiEmbedMatch = value.match(/^!\[\[([\s\S]+?)\]\]$/);
+    if (wikiEmbedMatch) {
+      const normalized = wikiEmbedMatch[1].trim();
+      const pipeIndex = normalized.indexOf('|');
+      return pipeIndex >= 0 ? normalized.slice(0, pipeIndex).trim() : normalized;
+    }
+
+    const markdownEmbedMatch = value.match(/^!\[[^\]]*]\(([^)]+)\)$/);
+    if (markdownEmbedMatch) {
+      return markdownEmbedMatch[1].trim();
+    }
+
+    return '';
+  }
+
+  private isExternalImageTarget(target: string): boolean {
+    const normalized = target.trim().toLowerCase();
+    return normalized.startsWith('http://')
+      || normalized.startsWith('https://')
+      || normalized.startsWith('data:image/');
+  }
+
+  private isLocalAvatarEmbed(markdown: string): boolean {
+    const target = this.extractImageTargetFromEmbed(markdown);
+    if (!target) {
+      return false;
+    }
+    return !this.isExternalImageTarget(target);
+  }
+
+  private resolveCharacterCardAvatarEmbedForSync(defaultAvatarEmbed: string, existingAvatarEmbed: string): string {
+    const normalizedDefault = defaultAvatarEmbed.trim();
+    const normalizedExisting = existingAvatarEmbed.trim();
+    if (!normalizedExisting) {
+      return normalizedDefault;
+    }
+    if (!normalizedDefault) {
+      return normalizedExisting;
+    }
+    if (normalizedExisting === normalizedDefault) {
+      return normalizedDefault;
+    }
+    if (this.isLocalAvatarEmbed(normalizedExisting)) {
+      return normalizedExisting;
+    }
+    return normalizedDefault;
+  }
+
   private buildCharacterCardDetailsBlock(params: {
     sourcePath: string;
     avatarEmbedMarkdown: string;
@@ -3140,9 +3194,12 @@ export default class LoreBookConverterPlugin extends Plugin {
 
           const detailsBlock = this.buildCharacterCardDetailsBlock({
             sourcePath: sourceFile.path,
-            avatarEmbedMarkdown: this.buildCharacterCardAvatarEmbedMarkdown(
-              parsed.avatarLink || (asString(getFrontmatterValue(existingFrontmatter, 'avatar', 'characterCardAvatar')) ?? ''),
-              sourceFile.path
+            avatarEmbedMarkdown: this.resolveCharacterCardAvatarEmbedForSync(
+              this.buildCharacterCardAvatarEmbedMarkdown(
+                parsed.avatarLink || (asString(getFrontmatterValue(existingFrontmatter, 'avatar', 'characterCardAvatar')) ?? ''),
+                sourceFile.path
+              ),
+              existingDetails.avatarEmbedMarkdown
             ),
             creatorNotes: parsedCard?.creatorNotes ?? existingDetails.creatorNotes,
             cardSummary: effectiveSummary,

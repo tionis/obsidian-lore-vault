@@ -10,6 +10,7 @@ interface ParsedSectionMap {
 }
 
 export interface CharacterCardDetailsContent {
+  avatarEmbedMarkdown: string;
   cardSummary: string;
   cardSummaryScenarioFocus: string;
   cardSummaryHook: string;
@@ -29,6 +30,7 @@ export interface CharacterCardDetailsContent {
 
 function getEmptyCharacterCardDetailsContent(): CharacterCardDetailsContent {
   return {
+    avatarEmbedMarkdown: '',
     cardSummary: '',
     cardSummaryScenarioFocus: '',
     cardSummaryHook: '',
@@ -101,6 +103,32 @@ function parseTextSections(markdown: string): ParsedSectionMap {
   return sections;
 }
 
+function extractAvatarEmbedFromPayload(payload: string): string {
+  const lines = normalizeMarkdown(payload).split('\n');
+  let insideDetailsHeading = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    if (!insideDetailsHeading) {
+      if (/^##\s+Character Card Details\s*$/i.test(line)) {
+        insideDetailsHeading = true;
+      }
+      continue;
+    }
+    if (line.startsWith('Source Card:')) {
+      break;
+    }
+    if (line.startsWith('![[') || /^!\[[^\]]*]\([^)]+\)$/.test(line)) {
+      return line;
+    }
+  }
+
+  return '';
+}
+
 function extractManagedDetailsPayload(markdown: string): string {
   const normalized = normalizeMarkdown(markdown);
   const beginIndex = normalized.indexOf(CHARACTER_CARD_DETAILS_BLOCK_BEGIN);
@@ -129,6 +157,7 @@ export function parseCharacterCardDetailsContentFromMarkdown(markdown: string): 
 
   const sections = parseTextSections(payload);
   const details = getEmptyCharacterCardDetailsContent();
+  details.avatarEmbedMarkdown = extractAvatarEmbedFromPayload(payload);
   details.cardSummary = sections['card summary'] ?? '';
   details.cardSummaryScenarioFocus = sections['summary scenario focus'] ?? '';
   details.cardSummaryHook = sections['summary hook'] ?? '';

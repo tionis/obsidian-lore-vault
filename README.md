@@ -241,6 +241,7 @@ Import/extraction/update panel behavior:
 - `Sync Character Card Library` scans `Character Card Source Folder` and creates/updates one `lvDocType: characterCard` meta note per source card in `Character Card Meta Folder`
 - synced character-card meta notes keep compact metadata in frontmatter (identity/tags/source/lorebook stats) plus duplicated summary fields for Bases usage (`cardSummary`, themes/tone, scenario focus, hook)
 - all long card prose fields live in a managed, versioned markdown details block (`Character Card Details`) with avatar embed at top; block metadata is tracked by `characterCardDetailsVersion`
+- sync preserves existing local avatar embeds in the details block (for plugins like Local Images Plus) instead of reverting to source-card image links
 - `Write Back Character Card Source` pushes edited long fields from the managed details block (plus identity/tags/creator from frontmatter) back into the linked source `.png`/`.json` card
 - write-back is hash-safe: if the source card changed since last sync, run `Sync Character Card Library` first
 - optional `Auto-Generate Card Summaries on Sync` adds concise LLM-generated catalog fields (`cardSummary`, themes/tone, scenario focus, hook) and tracks stale summaries by card hash without overwriting manual summaries

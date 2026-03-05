@@ -154,6 +154,7 @@ This document is the implementation-level reference for core architecture and ru
   - `Write Back Character Card Source` command: active `characterCard` meta note -> source `.png`/`.json` payload update with hash staleness guard
   - meta-note lifecycle: create/update by `cardPath`, mark `status: missing_source` when source disappears (no delete)
   - sync also maintains a managed markdown details block (`LV_BEGIN_CHARACTER_CARD_DETAILS`/`LV_END_CHARACTER_CARD_DETAILS`) for readable long-form card fields
+  - sync preserves existing local avatar embeds in details markdown (for localized image workflows) and otherwise uses canonical source-card avatar links
   - details block is versioned (`LV_CHARACTER_CARD_DETAILS_VERSION`) and tracked in frontmatter (`characterCardDetailsVersion`)
   - details block layout is summary-first and includes avatar embed at top when available
   - synced meta frontmatter carries compact indexing metadata (identity/tags/source/lorebook stats) and duplicated summary fields; long prose/message/prompt fields are stored in details markdown instead of frontmatter

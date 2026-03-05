@@ -1555,8 +1555,10 @@ export default class LoreBookConverterPlugin extends Plugin {
     ];
 
     return layerSpecs.map(spec => {
-      const reservedTokens = Math.max(48, Math.floor(steeringReserve * spec.reserveFraction));
       const normalizedText = spec.text.trim();
+      const reservedTokens = normalizedText
+        ? Math.max(48, Math.floor(steeringReserve * spec.reserveFraction))
+        : 0;
       const trimmedText = trimTextForTokenBudget(normalizedText, reservedTokens, 'head');
       const rawTokens = estimateTextTokens(normalizedText);
       const usedTokens = estimateTextTokens(trimmedText);
@@ -4152,7 +4154,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.trimTextToTokenBudget(rendered, normalizedBudget);
   }
 
-  private normalizeNoteContextRef(rawRef: string): string {
+  private normalizeLinkLikeContextRef(rawRef: string): string {
     let normalized = rawRef.trim();
     if (!normalized) {
       return '';
@@ -4167,17 +4169,35 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     }
 
+    const markdownLinkMatch = normalized.match(/^\[[^\]]*\]\(([^)]+)\)$/);
+    if (markdownLinkMatch) {
+      normalized = markdownLinkMatch[1].trim();
+    }
+
+    const angleBracketMatch = normalized.match(/^<([\s\S]+)>$/);
+    if (angleBracketMatch) {
+      normalized = angleBracketMatch[1].trim();
+    }
+
+    const pipeIndex = normalized.indexOf('|');
+    if (pipeIndex >= 0) {
+      normalized = normalized.slice(0, pipeIndex).trim();
+    }
+
     return normalizeLinkTarget(normalized);
   }
 
-  private resolveNoteContextFile(ref: string): TFile | null {
-    const normalizedRef = this.normalizeNoteContextRef(ref);
+  private normalizeNoteContextRef(rawRef: string): string {
+    return this.normalizeLinkLikeContextRef(rawRef);
+  }
+
+  private resolveNoteContextFileFromRef(ref: string, sourcePath = ''): TFile | null {
+    const normalizedRef = this.normalizeLinkLikeContextRef(ref);
     if (!normalizedRef) {
       return null;
     }
 
-    const activePath = this.app.workspace.getActiveFile()?.path ?? '';
-    const resolvedFromLink = this.app.metadataCache.getFirstLinkpathDest(normalizedRef, activePath);
+    const resolvedFromLink = this.app.metadataCache.getFirstLinkpathDest(normalizedRef, sourcePath);
     if (resolvedFromLink instanceof TFile) {
       return resolvedFromLink;
     }
@@ -4199,6 +4219,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     return null;
+  }
+
+  private resolveNoteContextFile(ref: string): TFile | null {
+    const activePath = this.app.workspace.getActiveFile()?.path ?? '';
+    return this.resolveNoteContextFileFromRef(ref, activePath);
   }
 
   public previewNoteContextRefs(refs: string[]): {
@@ -5966,7 +5991,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       ? requestedScopes
       : (await this.resolveStoryScopeSelection(activeStoryFile)).scopes;
     const scopeLabels = selectedScopes.length > 0 ? selectedScopes : ['(none)'];
-    const mergedAuthorNote = mergedScopedSteering.authorNote;
     const continuityPlotThreads = this.mergeSteeringList(
       this.normalizeContinuityItems(request.continuityPlotThreads ?? [])
     );
@@ -5991,7 +6015,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const continuityAggressiveness = this.resolveContinuityAggressiveness();
     const steeringSections = this.createSteeringSections({
       maxInputTokens,
-      authorNote: mergedAuthorNote
+      authorNote: mergedScopedSteering.authorNote
     });
     const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
     const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');
@@ -10446,7 +10470,6 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
       const continuityAggressiveness = this.resolveContinuityAggressiveness();
-      const mergedAuthorNote = scopedSteering.merged.authorNote;
       const continuityFromFrontmatter = this.resolveContinuityFromFrontmatter(resolvedActiveFile);
       const mergedContinuity = {
         plotThreads: this.mergeSteeringList(
@@ -10468,7 +10491,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       });
       const steeringSections = this.createSteeringSections({
         maxInputTokens,
-        authorNote: mergedAuthorNote
+        authorNote: scopedSteering.merged.authorNote
       });
       const systemSteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'system');
       const preHistorySteeringMarkdown = this.renderSteeringPlacement(steeringSections, 'pre_history');

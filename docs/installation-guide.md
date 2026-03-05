@@ -160,6 +160,7 @@ If you prefer to build the plugin from source:
    - Optional semantic chapter recall can inject `Related Past Scenes` from prior chapter chunks when enabled in settings
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
+   - Optional (character-card import only): set `Persona Note` in the import panel to bake protagonist/user context into generated story + author note output
    - Author Note content is edited directly in the linked note (native Obsidian editor)
    - Optional: set `completionProfile: <preset-id>` in Author Note frontmatter (or via command `Set Author Note Completion Profile`) to override the completion profile for linked story operations
    - `Rewrite Author Note` supports an optional change prompt and shows a side-by-side source diff review before apply

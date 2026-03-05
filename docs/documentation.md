@@ -700,11 +700,14 @@ Shared panel inputs:
 - `Import SillyTavern Character Card`:
   - target folder (story note output)
   - character-card file picker (`.png` and `.json`)
+  - optional `Persona Note` picker (`.md`) used only at import time to bake protagonist/user context into generated story + author note
   - default tags
   - lorebook selection list with per-item delete, interactive add picker, and Enter-to-add custom input
   - completion profile selector (used for LLM rewrite into freeform story format)
   - optional `Extract Character Wiki Page` toggle for one character-only wiki page from scenario/card context
   - optional `Import Embedded Lorebook` toggle for card `character_book` payloads
+  - when `Persona Note` is set, rewrite/extract prompts include persona markdown and explicit placeholder guidance
+  - generated preview warns when unresolved `{{...}}` placeholders remain in rewrite/extract outputs
 - `Sync Character Card Library`:
   - scans source folder for `.png`/`.json` cards
   - ensures one meta note exists per source card in meta folder

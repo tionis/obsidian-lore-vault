@@ -111,6 +111,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Use one note per chapter/scene for long-form stories.',
         'Link a shared author note with `authorNote: [[...]]`.',
+        'Optional persona context is set in Character Card Import (`Persona Note`) and baked into generated outputs at import time.',
         'Use `chapter`, `previousChapter`, and `nextChapter` for ordering.',
         'Add a `## Summary` section near the top for better memory injection.'
       ],
@@ -192,6 +193,7 @@ export class LorevaultHelpView extends ItemView {
         'Optional `Auto-Generate Card Summaries on Sync` adds concise summary/themes/tone fields and marks stale summaries by card hash without overwriting manual summaries.',
         'Bases integration: use view type `LoreVault Characters` in a Base filtered to character-card notes for avatar-card rendering and markdown/HTML field display.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
+        'Character-card rewrite/extract now includes broader SillyTavern placeholder handling (`{{char}}`, `{{user}}`, `{{persona}}`, `{{random_user_1}}`, etc.) and warns when unresolved placeholders remain.',
         'Optional `Extract Character Wiki Page` runs a character-only pass and adds one lorebook-ready character page derived from the card scenario/context.',
         'Character-card preview includes editable planned writes so you can adjust file paths and markdown content before import.',
         'When a synced card meta note exists, generated story notes store `characterCardMeta: [[...]]` for backlink-based related-story tracking.',

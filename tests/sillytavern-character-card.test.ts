@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   applyCharacterCardWriteBackToPayload,
+  buildCharacterCardCharacterExtractUserPrompt,
+  buildCharacterCardRewriteUserPrompt,
   buildCharacterCardImportPlan,
+  collectCharacterCardTemplatePlaceholders,
   parseCharacterCardCharacterExtractResponse,
   parseCharacterCardRewriteResponse,
   parseSillyTavernCharacterCardJson,
@@ -324,4 +327,47 @@ test('upsertSillyTavernCharacterCardPngPayload rewrites card metadata while pres
   assert.equal(reparsed.description.endsWith('Updated.'), true);
   assert.equal(reparsed.scenario.endsWith('(updated)'), true);
   assert.equal(reparsed.embeddedLorebookEntries.length > 0, true);
+});
+
+test('collectCharacterCardTemplatePlaceholders detects common template placeholders', () => {
+  const card = parseSillyTavernCharacterCardJson(JSON.stringify({
+    name: 'Lena',
+    description: 'A fixer who trusts {{user}} only in private.',
+    scenario: '{{char}} and {{user}} prepare the heist.',
+    first_mes: 'Hello {{USER}}.',
+    mes_example: 'Coordinate with {{random_user_1}} and {{random_char}}.',
+    post_history_instructions: 'Avoid raw {{group}} macros.'
+  }));
+
+  const placeholders = collectCharacterCardTemplatePlaceholders(card);
+  assert.deepEqual(
+    [...placeholders].sort((left, right) => left.localeCompare(right)),
+    ['{{char}}', '{{group}}', '{{random_char}}', '{{random_user_1}}', '{{user}}']
+  );
+});
+
+test('rewrite and extract prompts include persona context and placeholder guidance', () => {
+  const card = parseSillyTavernCharacterCardJson(JSON.stringify({
+    name: 'Lena',
+    description: 'A fixer.',
+    scenario: '{{char}} and {{user}} in Night City.'
+  }));
+  const context = {
+    personaName: 'Morgan Vale',
+    personaPath: 'LoreVault/personas/morgan-vale.md',
+    personaMarkdown: 'Morgan is a former Arasaka operative turned freelance broker.'
+  };
+
+  const rewritePrompt = buildCharacterCardRewriteUserPrompt(card, context);
+  const extractPrompt = buildCharacterCardCharacterExtractUserPrompt(card, context);
+
+  assert.match(rewritePrompt, /"persona": \{/);
+  assert.match(rewritePrompt, /"Morgan Vale"/);
+  assert.match(rewritePrompt, /"placeholderGuidance": \{/);
+  assert.match(rewritePrompt, /"\{\{char\}\}"/);
+  assert.match(rewritePrompt, /"\{\{user\}\}"/);
+
+  assert.match(extractPrompt, /"persona": \{/);
+  assert.match(extractPrompt, /"placeholderGuidance": \{/);
+  assert.match(extractPrompt, /"Morgan Vale"/);
 });

@@ -234,7 +234,9 @@ Import/extraction/update panel behavior:
 - lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
 - character-card import can optionally import embedded card lorebooks into generated wiki notes
 - character-card import can optionally run `Extract Character Wiki Page` to create one character-only lorebook page from scenario/card context
+- character-card import accepts an optional `Persona Note` input and bakes it into generated story/author-note content at import time
 - character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
+- character-card rewrite/extract resolves common SillyTavern placeholders (`{{char}}`, `{{user}}`, `{{persona}}`, `{{random_user_1}}`, etc.) and warns if unresolved `{{...}}` placeholders remain in generated output
 - character-card preview exposes editable planned writes (path + content) before import apply
 - `Sync Character Card Library` scans `Character Card Source Folder` and creates/updates one `lvDocType: characterCard` meta note per source card in `Character Card Meta Folder`
 - synced character-card meta notes expose parsed card fields in frontmatter (name/creator/tags/description/personality/scenario/messages/prompts/lorebook stats) for Bases-friendly filtering/grouping

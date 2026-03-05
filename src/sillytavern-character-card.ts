@@ -70,6 +70,13 @@ export interface CharacterCardImportPlan {
   effectiveLorebooks: string[];
 }
 
+export interface CharacterCardPromptContext {
+  personaName?: string;
+  personaPath?: string;
+  personaMarkdown?: string;
+  detectedPlaceholders?: string[];
+}
+
 export interface CharacterCardWriteBackFields {
   name: string;
   tags: string[];
@@ -559,6 +566,41 @@ function trimTo(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }
 
+function extractTemplatePlaceholders(value: string): string[] {
+  if (!value) {
+    return [];
+  }
+  const matches = value.match(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g) ?? [];
+  return uniqueStrings(
+    matches.map(item => {
+      const token = item
+        .replace(/^\{\{\s*/, '')
+        .replace(/\s*\}\}$/, '')
+        .trim()
+        .toLowerCase();
+      return token ? `{{${token}}}` : '';
+    }).filter(Boolean)
+  );
+}
+
+export function collectCharacterCardTemplatePlaceholders(card: ParsedCharacterCard): string[] {
+  const fields: string[] = [
+    card.name,
+    card.creator,
+    card.creatorNotes,
+    card.description,
+    card.personality,
+    card.scenario,
+    card.firstMessage,
+    card.messageExample,
+    card.systemPrompt,
+    card.postHistoryInstructions,
+    ...card.alternateGreetings,
+    ...card.groupOnlyGreetings
+  ];
+  return uniqueStrings(fields.flatMap(field => extractTemplatePlaceholders(field)));
+}
+
 function resolveCardRoot(payload: Record<string, unknown>): Record<string, unknown> {
   const data = asRecord(payload.data);
   if (data) {
@@ -789,7 +831,8 @@ export function buildCharacterCardRewriteSystemPrompt(): string {
     '}',
     'Rules:',
     '- Preserve canon facts and constraints from the card.',
-    '- Rewrite roleplay placeholders (for example {{char}}, {{user}}, <START>) into natural freeform-story framing.',
+    '- Rewrite roleplay placeholders (for example {{char}}, {{user}}, {{persona}}, {{chara}}, {{random_user_1}}, {{random_user_2}}, {{random_char}}, {{group}}, {{original}}, <START>) into natural freeform-story framing.',
+    '- Resolve placeholders into explicit prose. Do not leave unresolved `{{...}}` placeholders in output.',
     '- storyMarkdown should be setup text suitable for starting or continuing a prose chapter.',
     '- authorNoteMarkdown should be practical writing guidance in markdown format.',
     '- Choose structure and emphasis based on relevance; do not force template sections.',
@@ -800,7 +843,15 @@ export function buildCharacterCardRewriteSystemPrompt(): string {
   ].join('\n');
 }
 
-export function buildCharacterCardRewriteUserPrompt(card: ParsedCharacterCard): string {
+export function buildCharacterCardRewriteUserPrompt(card: ParsedCharacterCard, context: CharacterCardPromptContext = {}): string {
+  const normalizedDetectedPlaceholders = uniqueStrings([
+    ...collectCharacterCardTemplatePlaceholders(card),
+    ...(context.detectedPlaceholders ?? [])
+  ]);
+  const personaName = (context.personaName ?? '').trim();
+  const personaPath = (context.personaPath ?? '').trim();
+  const personaMarkdown = (context.personaMarkdown ?? '').trim();
+
   const lorebookPreview = card.embeddedLorebookEntries
     .slice(0, 24)
     .map(entry => ({
@@ -834,8 +885,22 @@ export function buildCharacterCardRewriteUserPrompt(card: ParsedCharacterCard): 
       name: card.embeddedLorebookName,
       totalEntries: card.embeddedLorebookEntries.length,
       entries: lorebookPreview
+    },
+    placeholderGuidance: {
+      char: card.name || 'the character',
+      user: personaName || 'the protagonist',
+      unresolvedPolicy: 'replace with natural prose; no raw {{...}} left in output',
+      detected: normalizedDetectedPlaceholders
     }
   };
+
+  if (personaName || personaPath || personaMarkdown) {
+    (promptPayload as Record<string, unknown>).persona = {
+      name: personaName || 'Protagonist',
+      path: personaPath || '',
+      markdown: personaMarkdown ? trimTo(personaMarkdown, 5000) : ''
+    };
+  }
 
   return [
     'Rewrite this character card for freeform-story usage.',
@@ -864,13 +929,22 @@ export function buildCharacterCardCharacterExtractSystemPrompt(): string {
     'Rules:',
     '- Focus only on durable character facts and constraints (identity, traits, capabilities, limits, motivations, key relationships).',
     '- Exclude scene planning, writing instructions, meta commentary, and conversion notes.',
-    '- Rewrite roleplay placeholders (for example {{char}}, {{user}}, <START>) into neutral lore wording when needed.',
+    '- Rewrite roleplay placeholders (for example {{char}}, {{user}}, {{persona}}, {{chara}}, {{random_user_1}}, {{random_user_2}}, {{random_char}}, {{group}}, {{original}}, <START>) into neutral lore wording when needed.',
+    '- Resolve placeholders into explicit wording and do not leave unresolved `{{...}}` placeholders in output.',
     '- Keep output concise, specific, and canon-consistent with the card payload.',
     '- markdown should be wiki-style character content body (no YAML frontmatter).'
   ].join('\n');
 }
 
-export function buildCharacterCardCharacterExtractUserPrompt(card: ParsedCharacterCard): string {
+export function buildCharacterCardCharacterExtractUserPrompt(card: ParsedCharacterCard, context: CharacterCardPromptContext = {}): string {
+  const normalizedDetectedPlaceholders = uniqueStrings([
+    ...collectCharacterCardTemplatePlaceholders(card),
+    ...(context.detectedPlaceholders ?? [])
+  ]);
+  const personaName = (context.personaName ?? '').trim();
+  const personaPath = (context.personaPath ?? '').trim();
+  const personaMarkdown = (context.personaMarkdown ?? '').trim();
+
   const promptPayload = {
     card: {
       sourceFormat: card.sourceFormat,
@@ -889,8 +963,22 @@ export function buildCharacterCardCharacterExtractUserPrompt(card: ParsedCharact
       groupOnlyGreetings: card.groupOnlyGreetings,
       systemPrompt: card.systemPrompt,
       postHistoryInstructions: card.postHistoryInstructions
+    },
+    placeholderGuidance: {
+      char: card.name || 'the character',
+      user: personaName || 'the protagonist',
+      unresolvedPolicy: 'replace with neutral lore wording; no raw {{...}} left in output',
+      detected: normalizedDetectedPlaceholders
     }
   };
+
+  if (personaName || personaPath || personaMarkdown) {
+    (promptPayload as Record<string, unknown>).persona = {
+      name: personaName || 'Protagonist',
+      path: personaPath || '',
+      markdown: personaMarkdown ? trimTo(personaMarkdown, 3500) : ''
+    };
+  }
 
   return [
     'Extract a single character wiki page payload from this card.',

@@ -15,6 +15,7 @@ import {
   buildCharacterCardCharacterExtractUserPrompt,
   buildCharacterCardImportPlan,
   CharacterCardCharacterExtractResult,
+  collectCharacterCardTemplatePlaceholders,
   buildCharacterCardRewriteSystemPrompt,
   buildCharacterCardRewriteUserPrompt,
   CharacterCardImportPlan,
@@ -23,6 +24,7 @@ import {
   parseSillyTavernCharacterCardJson,
   parseSillyTavernCharacterCardPngBytes
 } from './sillytavern-character-card';
+import { stripFrontmatter } from './frontmatter-utils';
 import { normalizeVaultPath } from './vault-path-utils';
 import { ConverterSettings } from './models';
 
@@ -38,6 +40,20 @@ interface ImportCompletionResolution {
   profileName: string;
   costProfile: string;
   autoCostProfile: string;
+}
+
+function collectUnresolvedTemplatePlaceholders(value: string): string[] {
+  const matches = value.match(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g) ?? [];
+  const unique = new Set<string>();
+  for (const match of matches) {
+    const normalized = match
+      .replace(/\s+/g, '')
+      .toLowerCase();
+    if (normalized) {
+      unique.add(normalized);
+    }
+  }
+  return [...unique].sort((left, right) => left.localeCompare(right));
 }
 
 class CharacterCardFileSuggestModal extends FuzzySuggestModal<TFile> {
@@ -102,6 +118,7 @@ export class LorevaultImportView extends ItemView {
   private skipDisabled = true;
 
   private characterCardPath = '';
+  private personaNotePath = '';
   private includeEmbeddedLorebook = true;
   private includeCharacterWikiPage = false;
 
@@ -184,6 +201,7 @@ export class LorevaultImportView extends ItemView {
       this.targetFolder.trim(),
       this.defaultTags,
       this.characterCardPath.trim(),
+      this.personaNotePath.trim(),
       String(this.includeEmbeddedLorebook),
       String(this.includeCharacterWikiPage),
       this.selectedCompletionPresetId.trim(),
@@ -354,6 +372,101 @@ export class LorevaultImportView extends ItemView {
     modal.open();
     const selected = await resultPromise;
     return selected?.path ?? null;
+  }
+
+  private async pickMarkdownNoteFile(placeholder: string): Promise<string | null> {
+    const files = this.app.vault.getMarkdownFiles();
+    if (files.length === 0) {
+      new Notice('No markdown notes found in vault.');
+      return null;
+    }
+    const modal = new CharacterCardFileSuggestModal(this.app, files, placeholder);
+    const resultPromise = modal.waitForSelection();
+    modal.open();
+    const selected = await resultPromise;
+    return selected?.path ?? null;
+  }
+
+  private normalizeNotePathInput(rawValue: string): string {
+    let value = rawValue.trim();
+    if (!value) {
+      return '';
+    }
+
+    const wikiMatch = value.match(/^!?\[\[([\s\S]+?)\]\]$/);
+    if (wikiMatch) {
+      value = wikiMatch[1].trim();
+      const pipeIndex = value.indexOf('|');
+      if (pipeIndex >= 0) {
+        value = value.slice(0, pipeIndex).trim();
+      }
+      return normalizeVaultPath(value);
+    }
+
+    const markdownMatch = value.match(/^!?\[[^\]]*\]\(([^)]+)\)$/);
+    if (markdownMatch) {
+      value = markdownMatch[1].trim();
+      return normalizeVaultPath(value);
+    }
+
+    return normalizeVaultPath(value);
+  }
+
+  private resolveMarkdownFileFromRef(ref: string, sourcePath = ''): TFile | null {
+    const normalizedRef = this.normalizeNotePathInput(ref);
+    if (!normalizedRef) {
+      return null;
+    }
+
+    const resolvedFromLink = this.app.metadataCache.getFirstLinkpathDest(normalizedRef, sourcePath);
+    if (resolvedFromLink instanceof TFile) {
+      return resolvedFromLink;
+    }
+
+    const directCandidates = [normalizedRef, `${normalizedRef}.md`];
+    for (const candidate of directCandidates) {
+      const found = this.app.vault.getAbstractFileByPath(candidate);
+      if (found instanceof TFile) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
+  private async resolvePersonaContextForImport(sourceFile: TFile): Promise<{
+    personaPath: string;
+    personaName: string;
+    personaMarkdown: string;
+    unresolvedRef: string;
+  }> {
+    const ref = this.personaNotePath.trim();
+    if (!ref) {
+      return {
+        personaPath: '',
+        personaName: '',
+        personaMarkdown: '',
+        unresolvedRef: ''
+      };
+    }
+
+    const resolvedPersonaFile = this.resolveMarkdownFileFromRef(ref, sourceFile.path);
+    if (!(resolvedPersonaFile instanceof TFile)) {
+      return {
+        personaPath: '',
+        personaName: '',
+        personaMarkdown: '',
+        unresolvedRef: this.normalizeNotePathInput(ref) || ref
+      };
+    }
+
+    const markdown = stripFrontmatter(await this.app.vault.cachedRead(resolvedPersonaFile)).trim();
+    return {
+      personaPath: resolvedPersonaFile.path,
+      personaName: resolvedPersonaFile.basename,
+      personaMarkdown: markdown,
+      unresolvedRef: ''
+    };
   }
 
   private buildSharedInputs(container: HTMLElement): void {
@@ -541,6 +654,34 @@ export class LorevaultImportView extends ItemView {
           })();
         }));
 
+    let personaInput: { setValue: (value: string) => void } | null = null;
+    new Setting(container)
+      .setName('Persona Note (Optional)')
+      .setDesc('Optional markdown note that describes the protagonist/user persona. Included only during story + author-note generation.')
+      .addText(text => {
+        personaInput = text;
+        text
+          .setPlaceholder('LoreVault/personas/morgan-vale.md')
+          .setValue(this.personaNotePath)
+          .onChange(value => {
+            this.personaNotePath = value.trim();
+            this.invalidatePreparedPages();
+          });
+      })
+      .addButton(button => button
+        .setButtonText('Browse')
+        .onClick(() => {
+          void (async () => {
+            const selectedPath = await this.pickMarkdownNoteFile('Pick a persona note...');
+            if (!selectedPath) {
+              return;
+            }
+            this.personaNotePath = selectedPath;
+            this.invalidatePreparedPages();
+            personaInput?.setValue(selectedPath);
+          })();
+        }));
+
     new Setting(container)
       .setName('Import Embedded Lorebook')
       .setDesc('When the card contains an embedded lorebook, import it into wiki notes too.')
@@ -608,14 +749,24 @@ export class LorevaultImportView extends ItemView {
     const card = extension === 'json'
       ? parseSillyTavernCharacterCardJson(await this.app.vault.read(abstract))
       : parseSillyTavernCharacterCardPngBytes(await readVaultBinary(this.app, abstract.path));
+    const personaContext = await this.resolvePersonaContextForImport(abstract);
+    const promptContext = {
+      personaName: personaContext.personaName,
+      personaPath: personaContext.personaPath,
+      personaMarkdown: personaContext.personaMarkdown,
+      detectedPlaceholders: collectCharacterCardTemplatePlaceholders(card)
+    };
+    const personaLabel = personaContext.personaPath
+      ? ` | persona: ${personaContext.personaName || personaContext.personaPath}`
+      : '';
 
     this.setProgress(
       'Rewriting card into freeform story format...',
-      card.name || abstract.basename
+      `${card.name || abstract.basename}${personaLabel}`
     );
     const response = await requestStoryContinuation(completionResolution.completion, {
       systemPrompt: buildCharacterCardRewriteSystemPrompt(),
-      userPrompt: buildCharacterCardRewriteUserPrompt(card),
+      userPrompt: buildCharacterCardRewriteUserPrompt(card, promptContext),
       operationName: 'character_card_rewrite',
       onOperationLog: record => this.plugin.appendCompletionOperationLog(record, {
         costProfile: completionResolution.costProfile
@@ -632,15 +783,19 @@ export class LorevaultImportView extends ItemView {
     });
 
     const rewrite = parseCharacterCardRewriteResponse(response);
+    const unresolvedRewritePlaceholders = new Set<string>([
+      ...collectUnresolvedTemplatePlaceholders(rewrite.storyMarkdown),
+      ...collectUnresolvedTemplatePlaceholders(rewrite.authorNoteMarkdown)
+    ]);
     let characterPage: CharacterCardCharacterExtractResult | null = null;
     if (this.includeCharacterWikiPage) {
       this.setProgress(
         'Extracting character wiki page...',
-        card.name || abstract.basename
+        `${card.name || abstract.basename}${personaLabel}`
       );
       const characterPageResponse = await requestStoryContinuation(completionResolution.completion, {
         systemPrompt: buildCharacterCardCharacterExtractSystemPrompt(),
-        userPrompt: buildCharacterCardCharacterExtractUserPrompt(card),
+        userPrompt: buildCharacterCardCharacterExtractUserPrompt(card, promptContext),
         operationName: 'character_card_character_extract',
         onOperationLog: record => this.plugin.appendCompletionOperationLog(record, {
           costProfile: completionResolution.costProfile
@@ -656,6 +811,12 @@ export class LorevaultImportView extends ItemView {
         }
       });
       characterPage = parseCharacterCardCharacterExtractResponse(characterPageResponse);
+      for (const token of collectUnresolvedTemplatePlaceholders(characterPage.markdown)) {
+        unresolvedRewritePlaceholders.add(token);
+      }
+      for (const token of collectUnresolvedTemplatePlaceholders(characterPage.summary)) {
+        unresolvedRewritePlaceholders.add(token);
+      }
     }
 
     const authorNoteFolder = this.plugin.getStorySteeringFolderPath();
@@ -688,6 +849,10 @@ export class LorevaultImportView extends ItemView {
     this.previewPaths = plan.pages.map(page => page.path);
     this.previewWarnings = [
       ...card.warnings,
+      ...(personaContext.unresolvedRef ? [`Persona note reference could not be resolved: ${personaContext.unresolvedRef}`] : []),
+      ...(unresolvedRewritePlaceholders.size > 0
+        ? [`Generated output still contains unresolved placeholders: ${[...unresolvedRewritePlaceholders].join(', ')}`]
+        : []),
       ...plan.warnings
     ];
     return plan;
@@ -935,6 +1100,7 @@ export class LorevaultImportView extends ItemView {
     clearButton.addEventListener('click', () => {
       if (this.importMode === 'character_card') {
         this.characterCardPath = '';
+        this.personaNotePath = '';
       } else {
         this.lorebookJson = '';
       }

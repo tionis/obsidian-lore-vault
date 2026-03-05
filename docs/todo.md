@@ -150,6 +150,7 @@ Reference design: `docs/planning.md`.
 - [x] Add optional conversion of embedded card lorebooks (`character_book`) into imported wiki notes.
 - [x] Add custom Bases renderer (`LoreVault Characters`) for character libraries with avatar cards and markdown-rendered personality/description/scenario.
 - [x] Add optional LLM-generated character-card catalog summaries during sync with hash-aware stale detection and non-destructive overwrite behavior.
+- [x] Add persona-aware character-card rewrite/extract prompting (import-panel `Persona Note` context) and broaden placeholder handling/warnings for unresolved `{{...}}` macros.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 

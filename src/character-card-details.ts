@@ -103,6 +103,17 @@ function parseTextSections(markdown: string): ParsedSectionMap {
   return sections;
 }
 
+function isImageEmbedLine(line: string): boolean {
+  if (line.startsWith('![[')) {
+    return true;
+  }
+  if (!line.startsWith('![')) {
+    return false;
+  }
+  const openParenIndex = line.indexOf('](');
+  return openParenIndex > 1 && line.endsWith(')');
+}
+
 function extractAvatarEmbedFromPayload(payload: string): string {
   const lines = normalizeMarkdown(payload).split('\n');
   let insideDetailsHeading = false;
@@ -121,7 +132,18 @@ function extractAvatarEmbedFromPayload(payload: string): string {
     if (line.startsWith('Source Card:')) {
       break;
     }
-    if (line.startsWith('![[') || /^!\[[^\]]*]\([^)]+\)$/.test(line)) {
+    if (isImageEmbedLine(line)) {
+      return line;
+    }
+  }
+
+  // Fallback: keep any image embed found inside the managed block.
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    if (isImageEmbedLine(line)) {
       return line;
     }
   }

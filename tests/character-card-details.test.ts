@@ -60,3 +60,24 @@ test('parseCharacterCardDetailsContentFromMarkdown returns empty values when no 
   assert.deepEqual(parsed.cardSummaryThemes, []);
   assert.deepEqual(parsed.cardAlternateGreetings, []);
 });
+
+test('parseCharacterCardDetailsContentFromMarkdown detects avatar embed even when moved below source line', () => {
+  const markdown = [
+    '<!-- LV_BEGIN_CHARACTER_CARD_DETAILS -->',
+    '<!-- LV_CHARACTER_CARD_DETAILS_VERSION: 2 -->',
+    '## Character Card Details',
+    '',
+    'Source Card: [[cards/demo.png]]',
+    '',
+    '![](LoreVault/attachments/avatar-local.png "Localized")',
+    '',
+    '### Card Summary',
+    '',
+    'Summary body.',
+    '',
+    '<!-- LV_END_CHARACTER_CARD_DETAILS -->'
+  ].join('\n');
+
+  const parsed = parseCharacterCardDetailsContentFromMarkdown(markdown);
+  assert.equal(parsed.avatarEmbedMarkdown, '![](LoreVault/attachments/avatar-local.png "Localized")');
+});

@@ -2643,9 +2643,18 @@ export default class LoreBookConverterPlugin extends Plugin {
       return pipeIndex >= 0 ? normalized.slice(0, pipeIndex).trim() : normalized;
     }
 
-    const markdownEmbedMatch = value.match(/^!\[[^\]]*]\(([^)]+)\)$/);
-    if (markdownEmbedMatch) {
-      return markdownEmbedMatch[1].trim();
+    const markdownStart = value.indexOf('](');
+    if (value.startsWith('![') && markdownStart > 1 && value.endsWith(')')) {
+      let body = value.slice(markdownStart + 2, -1).trim();
+      if (body.startsWith('<') && body.endsWith('>')) {
+        body = body.slice(1, -1).trim();
+      }
+      // Handle optional markdown image title: ![](path "title")
+      const titleMatch = body.match(/^(.+?)\s+"[^"]*"$/);
+      if (titleMatch) {
+        body = titleMatch[1].trim();
+      }
+      return body;
     }
 
     return '';
@@ -2677,6 +2686,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     if (normalizedExisting === normalizedDefault) {
       return normalizedDefault;
+    }
+    // Respect any explicit avatar embed already in the managed details block.
+    const existingTarget = this.extractImageTargetFromEmbed(normalizedExisting);
+    if (existingTarget) {
+      return normalizedExisting;
     }
     if (this.isLocalAvatarEmbed(normalizedExisting)) {
       return normalizedExisting;

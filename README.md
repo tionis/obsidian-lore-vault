@@ -237,6 +237,7 @@ Import/extraction/update panel behavior:
 - character-card import accepts an optional `Persona Note` input and bakes it into generated story/author-note content at import time
 - character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
 - character-card rewrite/extract resolves common SillyTavern placeholders (`{{char}}`, `{{user}}`, `{{persona}}`, `{{random_user_1}}`, etc.) and warns if unresolved `{{...}}` placeholders remain in generated output
+- known limitation: character-card import rewrite/extract currently runs as a single request (no chunked map-reduce path yet), so very large cards can exceed model context limits and fail
 - character-card preview exposes editable planned writes (path + content) before import apply
 - `Sync Character Card Library` scans `Character Card Source Folder` and creates/updates one `lvDocType: characterCard` meta note per source card in `Character Card Meta Folder`
 - synced character-card meta notes keep compact metadata in frontmatter (identity/tags/source/lorebook stats) plus duplicated summary fields for Bases usage (`cardSummary`, themes/tone, scenario focus, hook)

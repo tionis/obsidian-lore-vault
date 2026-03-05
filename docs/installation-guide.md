@@ -294,6 +294,9 @@ If you prefer to build the plugin from source:
 - **Plugin doesn't appear in settings**: Make sure all files are in the correct location and properly named
 - **Command palette commands don't appear**: Try restarting Obsidian
 - **Conversion fails**: Check the console (Ctrl+Shift+I) for error messages
+- **Character-card import fails on very large cards**:
+  - current rewrite/extract flow is single-request (not chunked), so oversized card payloads can exceed model context limits
+  - use a larger-context completion profile or trim card fields before import
 - **Plugin doesn't recognize files**:
   - Ensure notes are tagged under your configured lorebook tag prefix (default `#lorebook/...`)
   - Check active lorebook and membership mode settings

@@ -195,6 +195,7 @@ export class LorevaultHelpView extends ItemView {
         'Bases integration: use view type `LoreVault Characters` in a Base filtered to character-card notes for avatar-card rendering and markdown/HTML field display.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
         'Character-card rewrite/extract now includes broader SillyTavern placeholder handling (`{{char}}`, `{{user}}`, `{{persona}}`, `{{random_user_1}}`, etc.) and warns when unresolved placeholders remain.',
+        'Known limitation: character-card rewrite/extract currently runs as one request per stage (no chunked fallback), so very large cards can exceed model context limits.',
         'Optional `Extract Character Wiki Page` runs a character-only pass and adds one lorebook-ready character page derived from the card scenario/context.',
         'Character-card preview includes editable planned writes so you can adjust file paths and markdown content before import.',
         'When a synced card meta note exists, generated story notes store `characterCardMeta: [[...]]` for backlink-based related-story tracking.',

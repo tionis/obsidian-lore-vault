@@ -135,6 +135,7 @@ This document is the implementation-level reference for core architecture and ru
   - optional embedded-lorebook/character-page extraction toggles
   - character-card planned-write editor (editable path + content before apply)
   - model rewrite/extraction stages for character-card import with completion usage/operation-log hooks
+  - known limitation: character-card rewrite/extraction currently submits one prompt per stage (no chunked/map-reduce fallback for oversized cards)
   - target-folder default sourced from shared setting `defaultLorebookImportLocation`
   - staged progress reporting for parse/build/apply
 - `src/character-card-bases-view.ts`

@@ -708,6 +708,7 @@ Shared panel inputs:
   - optional `Import Embedded Lorebook` toggle for card `character_book` payloads
   - when `Persona Note` is set, rewrite/extract prompts include persona markdown and explicit placeholder guidance
   - generated preview warns when unresolved `{{...}}` placeholders remain in rewrite/extract outputs
+  - known limitation: rewrite/extract uses a single completion request (no chunked import path yet), so very large cards can exceed the selected model context window and fail
 - `Sync Character Card Library`:
   - scans source folder for `.png`/`.json` cards
   - ensures one meta note exists per source card in meta folder

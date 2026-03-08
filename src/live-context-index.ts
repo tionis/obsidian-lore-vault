@@ -105,6 +105,9 @@ export class LiveContextIndex {
   }
 
   private scheduleRefresh(): void {
+    if (this.destroyed) {
+      return;
+    }
     if (this.refreshTimer !== null) {
       window.clearTimeout(this.refreshTimer);
     }

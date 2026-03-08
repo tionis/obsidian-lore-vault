@@ -854,6 +854,11 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   private getSecretStorage(): LoreVaultSecretStorage | null {
+    // Obsidian does not expose a stable typed API for secret storage as of the
+    // current SDK version.  We detect it via duck-typing so that the plugin
+    // degrades gracefully (stores keys in plain settings JSON) on hosts where
+    // the field is absent or renamed.  If Obsidian formalises the API this
+    // should be replaced with the official typed accessor.
     const maybe = (this.app as App & {secretStorage?: LoreVaultSecretStorage}).secretStorage;
     if (
       maybe

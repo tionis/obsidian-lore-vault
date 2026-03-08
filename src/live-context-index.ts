@@ -116,8 +116,15 @@ export class LiveContextIndex {
   }
 
   async flushRefreshQueue(): Promise<void> {
+    // If a refresh is already in-flight, wait for it to finish then re-enter
+    // so any changedPaths that arrived while it was running are also processed.
     if (this.refreshInFlight) {
       await this.refreshInFlight;
+      // After the in-flight refresh completes, check whether new changes
+      // accumulated in the queue during that time and flush them too.
+      if (this.task.changedPaths.size > 0 && !this.destroyed) {
+        await this.flushRefreshQueue();
+      }
       return;
     }
 

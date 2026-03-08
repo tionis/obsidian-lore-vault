@@ -1254,7 +1254,9 @@ export default class LoreBookConverterPlugin extends Plugin {
       maxOutputTokens: preset.maxOutputTokens,
       contextWindowTokens: preset.contextWindowTokens,
       promptReserveTokens: preset.promptReserveTokens,
-      timeoutMs: preset.timeoutMs
+      timeoutMs: preset.timeoutMs,
+      promptCachingEnabled: preset.promptCachingEnabled ?? base.promptCachingEnabled,
+      providerRouting: preset.providerRouting ?? base.providerRouting
     };
   }
 
@@ -2050,7 +2052,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       rateSelection,
       usage.reportedCostUsd
     );
-    const enrichedMetadata = this.enrichUsageMetadata(metadata);
+    const cacheMetadata: Record<string, unknown> = {};
+    if (usage.cachedReadTokens > 0) {
+      cacheMetadata.cachedReadTokens = usage.cachedReadTokens;
+    }
+    if (usage.cacheWriteTokens > 0) {
+      cacheMetadata.cacheWriteTokens = usage.cacheWriteTokens;
+    }
+    const enrichedMetadata = { ...this.enrichUsageMetadata(metadata), ...cacheMetadata };
 
     try {
       await this.usageLedgerStore.append({

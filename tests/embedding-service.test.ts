@@ -116,7 +116,9 @@ test('EmbeddingService forwards usage reports from embedding requests', async ()
       completionTokens: 0,
       totalTokens: 12,
       reportedCostUsd: 0.0002,
-      source: 'openai_usage'
+      source: 'openai_usage',
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0
     });
   } finally {
     globalAny.fetch = previousFetch;

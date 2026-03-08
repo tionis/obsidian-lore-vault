@@ -27,6 +27,10 @@ export interface CompletionUsageReport {
   totalTokens: number;
   reportedCostUsd: number | null;
   source: 'openai_usage' | 'ollama_usage';
+  /** Tokens served from the provider's prompt cache (cache hit). Zero when not reported. */
+  cachedReadTokens: number;
+  /** Tokens written into the provider's prompt cache on this request. Zero when not reported. */
+  cacheWriteTokens: number;
 }
 
 export type CompletionOperationKind = 'completion' | 'completion_stream' | 'tool_planner' | 'embedding';
@@ -457,11 +461,21 @@ function parseOpenAiUsage(payload: any): Omit<CompletionUsageReport, 'provider' 
     Math.floor(totalTokensRaw ?? (promptTokens + completionTokens))
   );
 
+  const details = usage.prompt_tokens_details;
+  const cachedReadTokens = Math.max(0, Math.floor(asFiniteNumber(details?.cached_tokens) ?? 0));
+  // Providers use different field names: OpenAI uses cache_write_tokens, Anthropic uses cache_creation_input_tokens.
+  const cacheWriteTokens = Math.max(
+    0,
+    Math.floor(asFiniteNumber(details?.cache_write_tokens ?? details?.cache_creation_input_tokens) ?? 0)
+  );
+
   return {
     promptTokens,
     completionTokens,
     totalTokens,
-    reportedCostUsd: extractReportedCostUsd(payload)
+    reportedCostUsd: extractReportedCostUsd(payload),
+    cachedReadTokens,
+    cacheWriteTokens
   };
 }
 
@@ -480,7 +494,9 @@ function parseOllamaUsage(payload: any): Omit<CompletionUsageReport, 'provider' 
     promptTokens,
     completionTokens,
     totalTokens,
-    reportedCostUsd: extractReportedCostUsd(payload)
+    reportedCostUsd: extractReportedCostUsd(payload),
+    cachedReadTokens: 0,
+    cacheWriteTokens: 0
   };
 }
 
@@ -777,6 +793,34 @@ async function fetchJson(
   }
 }
 
+function parseProviderRouting(value: string | undefined): string[] {
+  return (value ?? '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
+ * Builds OpenRouter-specific request body extras for prompt caching and provider routing.
+ * Returns an empty object for non-OpenRouter providers.
+ */
+function buildOpenRouterExtras(config: ConverterSettings['completion']): Record<string, unknown> {
+  if (config.provider !== 'openrouter') {
+    return {};
+  }
+  const extras: Record<string, unknown> = {};
+  // Adds cache_control so OpenRouter applies a prompt-cache breakpoint on Anthropic models.
+  // For other providers (OpenAI, DeepSeek, Gemini, etc.) caching is automatic and this is ignored.
+  if (config.promptCachingEnabled !== false) {
+    extras.cache_control = { type: 'ephemeral' };
+  }
+  const routingProviders = parseProviderRouting(config.providerRouting);
+  if (routingProviders.length > 0) {
+    extras.provider = {
+      order: routingProviders,
+      allow_fallbacks: false
+    };
+  }
+  return extras;
+}
+
 export async function requestStoryContinuation(
   config: ConverterSettings['completion'],
   request: StoryCompletionRequest
@@ -848,7 +892,8 @@ export async function requestStoryContinuation(
       model: config.model,
       messages,
       temperature: config.temperature,
-      max_tokens: config.maxOutputTokens
+      max_tokens: config.maxOutputTokens,
+      ...buildOpenRouterExtras(config)
     };
 
     const reportUsage = (payload: any): void => {
@@ -1076,7 +1121,8 @@ export async function requestStoryContinuationStream(
       temperature: config.temperature,
       max_tokens: config.maxOutputTokens,
       stream: true,
-      stream_options: streamOptions
+      stream_options: streamOptions,
+      ...buildOpenRouterExtras(config)
     };
     const attempt: CompletionOperationLogAttempt = {
       index: 1,
@@ -1208,7 +1254,8 @@ export function createCompletionToolPlanner(
       tool_choice: 'auto',
       temperature: 0,
       max_tokens: 240,
-      stream: false
+      stream: false,
+      ...buildOpenRouterExtras(config)
     };
     let responseBody: unknown;
     try {

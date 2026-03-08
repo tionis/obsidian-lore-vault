@@ -135,7 +135,9 @@ function parseOpenAiUsage(payload: any): Omit<CompletionUsageReport, 'provider' 
     promptTokens,
     completionTokens,
     totalTokens,
-    reportedCostUsd: extractReportedCostUsd(payload)
+    reportedCostUsd: extractReportedCostUsd(payload),
+    cachedReadTokens: 0,
+    cacheWriteTokens: 0
   };
 }
 
@@ -170,7 +172,9 @@ function parseOllamaUsage(payload: any): Omit<CompletionUsageReport, 'provider' 
     promptTokens,
     completionTokens,
     totalTokens,
-    reportedCostUsd: extractReportedCostUsd(payload)
+    reportedCostUsd: extractReportedCostUsd(payload),
+    cachedReadTokens: 0,
+    cacheWriteTokens: 0
   };
 }
 

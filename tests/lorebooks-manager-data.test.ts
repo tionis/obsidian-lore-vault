@@ -137,6 +137,8 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       },
       presets: [],
       activePresetId: '',
+      promptCachingEnabled: true,
+      providerRouting: '',
       ...(overrides.completion ?? {}),
       continuityAggressiveness: overrides.completion?.continuityAggressiveness ?? 'aggressive'
     },

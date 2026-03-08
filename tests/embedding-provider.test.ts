@@ -102,7 +102,9 @@ test('requestEmbeddings emits embedding operation log records', async () => {
       completionTokens: 0,
       totalTokens: 42,
       reportedCostUsd: 0.0007,
-      source: 'openai_usage'
+      source: 'openai_usage',
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0
     });
     assert.deepEqual(usageRecord, {
       provider: 'openrouter',
@@ -111,7 +113,9 @@ test('requestEmbeddings emits embedding operation log records', async () => {
       completionTokens: 0,
       totalTokens: 42,
       reportedCostUsd: 0.0007,
-      source: 'openai_usage'
+      source: 'openai_usage',
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0
     });
   } finally {
     globalAny.fetch = previousFetch;

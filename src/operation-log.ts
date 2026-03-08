@@ -92,7 +92,9 @@ function coerceUsage(value: unknown): CompletionUsageReport | null {
     reportedCostUsd: typeof source.reportedCostUsd === 'number' && Number.isFinite(source.reportedCostUsd)
       ? source.reportedCostUsd
       : null,
-    source: source.source === 'ollama_usage' ? 'ollama_usage' : 'openai_usage'
+    source: source.source === 'ollama_usage' ? 'ollama_usage' : 'openai_usage',
+    cachedReadTokens: Math.max(0, Math.floor(asNumber(source.cachedReadTokens, 0))),
+    cacheWriteTokens: Math.max(0, Math.floor(asNumber(source.cacheWriteTokens, 0)))
   };
 }
 

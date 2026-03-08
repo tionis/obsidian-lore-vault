@@ -557,7 +557,9 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       maxOutputTokens: completion.maxOutputTokens,
       contextWindowTokens: completion.contextWindowTokens,
       promptReserveTokens: completion.promptReserveTokens,
-      timeoutMs: completion.timeoutMs
+      timeoutMs: completion.timeoutMs,
+      promptCachingEnabled: completion.promptCachingEnabled,
+      providerRouting: completion.providerRouting
     };
   }
 
@@ -574,6 +576,8 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     completion.contextWindowTokens = preset.contextWindowTokens;
     completion.promptReserveTokens = preset.promptReserveTokens;
     completion.timeoutMs = preset.timeoutMs;
+    completion.promptCachingEnabled = preset.promptCachingEnabled ?? true;
+    completion.providerRouting = preset.providerRouting ?? '';
   }
 
   private syncSelectedCompletionPresetFromCurrent(): void {
@@ -1383,7 +1387,9 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           maxOutputTokens: DEFAULT_SETTINGS.completion.maxOutputTokens,
           contextWindowTokens: DEFAULT_SETTINGS.completion.contextWindowTokens,
           promptReserveTokens: DEFAULT_SETTINGS.completion.promptReserveTokens,
-          timeoutMs: DEFAULT_SETTINGS.completion.timeoutMs
+          timeoutMs: DEFAULT_SETTINGS.completion.timeoutMs,
+          promptCachingEnabled: DEFAULT_SETTINGS.completion.promptCachingEnabled,
+          providerRouting: DEFAULT_SETTINGS.completion.providerRouting
         };
         this.plugin.settings.completion.presets = [
           ...this.plugin.settings.completion.presets,
@@ -1760,6 +1766,27 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
             this.plugin.settings.completion.timeoutMs = numValue;
             await this.persistCompletionSettings();
           }
+        }));
+
+    new Setting(containerEl)
+      .setName('Prompt Caching (OpenRouter)')
+      .setDesc('Add a cache_control breakpoint to each request, enabling Anthropic prompt-cache hits. Other providers cache automatically regardless of this setting.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.completion.promptCachingEnabled)
+        .onChange(async value => {
+          this.plugin.settings.completion.promptCachingEnabled = value;
+          await this.persistCompletionSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Provider Routing (OpenRouter)')
+      .setDesc('Comma-separated OpenRouter provider slugs to lock requests to, e.g. "anthropic" or "anthropic,google". Leave blank to let OpenRouter route automatically.')
+      .addText(text => text
+        .setPlaceholder('anthropic')
+        .setValue(this.plugin.settings.completion.providerRouting)
+        .onChange(async value => {
+          this.plugin.settings.completion.providerRouting = value.trim();
+          await this.persistCompletionSettings();
         }));
 
     containerEl.createEl('h3', { text: 'Text Commands' });

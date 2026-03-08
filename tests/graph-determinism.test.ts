@@ -172,7 +172,9 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
         storyNotes: 'pre_history'
       },
       presets: [],
-      activePresetId: ''
+      activePresetId: '',
+      promptCachingEnabled: true,
+      providerRouting: ''
     },
     storyChat: {
       chatFolder: 'LoreVault/chat',

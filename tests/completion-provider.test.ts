@@ -211,6 +211,112 @@ test('requestStoryContinuation retries openrouter abort responses with provider 
   );
 });
 
+test('requestStoryContinuation includes cache_control for openrouter by default', async () => {
+  await withMockedFetchSequence(
+    [{ choices: [{ message: { content: 'ok' } }] }],
+    async (calls) => {
+      await requestStoryContinuation(createConfig(), {
+        systemPrompt: 'sys',
+        userPrompt: 'user'
+      });
+      assert.deepEqual(calls[0].body?.cache_control, { type: 'ephemeral' });
+    }
+  );
+});
+
+test('requestStoryContinuation omits cache_control when promptCachingEnabled is false', async () => {
+  await withMockedFetchSequence(
+    [{ choices: [{ message: { content: 'ok' } }] }],
+    async (calls) => {
+      const config = { ...createConfig(), promptCachingEnabled: false };
+      await requestStoryContinuation(config, {
+        systemPrompt: 'sys',
+        userPrompt: 'user'
+      });
+      assert.equal(calls[0].body?.cache_control, undefined);
+    }
+  );
+});
+
+test('requestStoryContinuation includes provider.order when providerRouting is set', async () => {
+  await withMockedFetchSequence(
+    [{ choices: [{ message: { content: 'ok' } }] }],
+    async (calls) => {
+      const config = { ...createConfig(), providerRouting: 'anthropic, openai' };
+      await requestStoryContinuation(config, {
+        systemPrompt: 'sys',
+        userPrompt: 'user'
+      });
+      assert.deepEqual(calls[0].body?.provider, { order: ['anthropic', 'openai'], allow_fallbacks: false });
+    }
+  );
+});
+
+test('requestStoryContinuation omits OpenRouter extras for openai_compatible provider', async () => {
+  await withMockedFetchSequence(
+    [{ choices: [{ message: { content: 'ok' } }] }],
+    async (calls) => {
+      const config = { ...createConfig(), provider: 'openai_compatible', promptCachingEnabled: true, providerRouting: 'anthropic' };
+      await requestStoryContinuation(config, {
+        systemPrompt: 'sys',
+        userPrompt: 'user'
+      });
+      assert.equal(calls[0].body?.cache_control, undefined);
+      assert.equal(calls[0].body?.provider, undefined);
+    }
+  );
+});
+
+test('requestStoryContinuation parses cachedReadTokens from prompt_tokens_details', async () => {
+  let usageReport: any = null;
+  await withMockedFetch({
+    choices: [{ message: { content: 'ok' } }],
+    usage: {
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: {
+        cached_tokens: 80,
+        cache_write_tokens: 15
+      }
+    }
+  }, async () => {
+    await requestStoryContinuation(createConfig(), {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      onUsage: usage => { usageReport = usage; }
+    });
+    assert.ok(usageReport);
+    assert.equal(usageReport.cachedReadTokens, 80);
+    assert.equal(usageReport.cacheWriteTokens, 15);
+  });
+});
+
+test('requestStoryContinuation parses cacheWriteTokens from cache_creation_input_tokens (Anthropic field)', async () => {
+  let usageReport: any = null;
+  await withMockedFetch({
+    choices: [{ message: { content: 'ok' } }],
+    usage: {
+      prompt_tokens: 200,
+      completion_tokens: 10,
+      total_tokens: 210,
+      prompt_tokens_details: {
+        cached_tokens: 0,
+        cache_creation_input_tokens: 50
+      }
+    }
+  }, async () => {
+    await requestStoryContinuation(createConfig(), {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      onUsage: usage => { usageReport = usage; }
+    });
+    assert.ok(usageReport);
+    assert.equal(usageReport.cachedReadTokens, 0);
+    assert.equal(usageReport.cacheWriteTokens, 50);
+  });
+});
+
 test('requestStoryContinuation supports external abort signal', async () => {
   ensureWindowShim();
   const globalAny = globalThis as any;

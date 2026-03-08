@@ -272,6 +272,10 @@ export interface CompletionPreset {
   contextWindowTokens: number;
   promptReserveTokens: number;
   timeoutMs: number;
+  /** Enable prompt caching for OpenRouter requests. Defaults to true. */
+  promptCachingEnabled?: boolean;
+  /** Comma-separated OpenRouter provider slugs to lock routing to (e.g. "anthropic" or "anthropic,google"). Empty = let OpenRouter decide. */
+  providerRouting?: string;
 }
 
 export interface CostProfileBudgetSettings {
@@ -449,6 +453,10 @@ export interface ConverterSettings {
     contextWindowTokens: number;
     promptReserveTokens: number;
     timeoutMs: number;
+    /** Enable prompt caching for OpenRouter requests (adds cache_control to request body). */
+    promptCachingEnabled: boolean;
+    /** Comma-separated OpenRouter provider slugs to lock routing to. Empty = let OpenRouter decide. */
+    providerRouting: string;
     continuityAggressiveness: CompletionContinuityAggressiveness;
     semanticChapterRecall: CompletionSemanticChapterRecallSettings;
     layerPlacement: {
@@ -608,6 +616,8 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     contextWindowTokens: 8192,
     promptReserveTokens: 400,
     timeoutMs: 60000,
+    promptCachingEnabled: true,
+    providerRouting: '',
     continuityAggressiveness: 'aggressive',
     semanticChapterRecall: {
       enabled: true,

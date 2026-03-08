@@ -138,7 +138,7 @@ test('destroy prevents accumulated paths from triggering a second flush', async 
   let callCount = 0;
   let releaseInFlight!: () => void;
 
-  const q = makeQueue(async (paths) => {
+  const q = makeQueue(async (_paths) => {
     callCount++;
     if (callCount === 1) {
       await new Promise<void>(r => { releaseInFlight = r; });

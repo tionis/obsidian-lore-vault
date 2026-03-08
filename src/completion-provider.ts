@@ -159,14 +159,12 @@ function resolveOllamaChatUrl(endpoint: string): string {
 // untyped JSON bodies from external LLM APIs whose shapes vary across
 // providers and versions.  Using `any` intentionally avoids deep cast
 // chains that would obscure the parsing logic without adding safety.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeContentValue(content: any): string {
   if (typeof content === 'string') {
     return content;
   }
   if (content && typeof content === 'object') {
     const pieces: string[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const maybeAdd = (value: any): void => {
       const normalized = normalizeContentValue(value);
       if (normalized) {
@@ -588,7 +586,6 @@ async function consumeOpenAiSseStream(
       completed = true;
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload = safeParseJson(payloadText) as any;
     if (!payload) {
       return;
@@ -670,7 +667,6 @@ async function consumeOllamaNdjsonStream(
   let usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null = null;
 
   const consumeJsonLine = (line: string): void => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload = safeParseJson(line) as any;
     if (!payload) {
       return;

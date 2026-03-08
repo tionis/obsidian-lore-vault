@@ -62,6 +62,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Export Usage Report (CSV)"
      - "Import SillyTavern Lorebook"
      - "Import SillyTavern Character Card"
+     - "Inject Character Card Event"
      - "Sync Character Card Library"
      - "Write Back Character Card Source"
      - Bases view type "LoreVault Characters" available in Bases view selector
@@ -248,11 +249,14 @@ If you prefer to build the plugin from source:
     - Synced card meta notes include a readable `Character Card Details` markdown section block for long fields, with numbered subheadings for alternate/group-only greeting variants
     - Run command `Import SillyTavern Character Card` (or switch import type in the same panel)
     - Pick a `.png`/`.json` card file from the vault
+    - If the card has multiple first/alternate greetings, choose the opening scene in the greeting picker
     - Keep/adjust completion profile for rewrite
     - Optional: enable/disable embedded lorebook import
     - Optional: enable `Extract Character Wiki Page` to generate one character-only lorebook page from scenario/card context
     - Rewrite output uses freeform `authorNoteMarkdown` (no enforced section template in plugin post-processing)
+    - Rewrite prompt preserves high-detail card constraints (description/personality/scenario/system prompts) and allows longer author-note output when needed
     - If a synced character-card meta note exists, generated story frontmatter includes `characterCardMeta: [[...]]` backlink target
+    - Later, on a linked story note, run `Inject Character Card Event` to select another greeting/event and review/apply a story rewrite (plus optional linked author-note rewrite)
     - In preview, review and edit planned write paths/content before apply
     - Preview and import generated story note + linked author note (+ optional character wiki page and embedded lorebook notes)
     - Optional: in a Base filtered to character meta notes, switch to the `LoreVault Characters` view for avatar-card rendering and markdown/HTML field display

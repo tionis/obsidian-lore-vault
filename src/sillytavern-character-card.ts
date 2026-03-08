@@ -39,6 +39,36 @@ export interface CharacterCardRewriteResult {
   rewriteNotes: string[];
 }
 
+export interface CharacterCardEventInjectionContext {
+  sourceFormat: 'json' | 'png' | 'meta';
+  sourceLabel: string;
+  name: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  messageExample: string;
+  alternateGreetings: string[];
+  groupOnlyGreetings: string[];
+  systemPrompt: string;
+  postHistoryInstructions: string;
+}
+
+export interface CharacterCardEventInjectionPromptInput {
+  card: CharacterCardEventInjectionContext;
+  selectedEventLabel: string;
+  selectedEventText: string;
+  availableEvents: Array<{label: string; text: string}>;
+  storyMarkdown: string;
+  authorNoteMarkdown: string;
+}
+
+export interface CharacterCardEventInjectionResult {
+  storyMarkdown: string;
+  authorNoteMarkdown: string;
+  rewriteNotes: string[];
+}
+
 export interface CharacterCardCharacterExtractResult {
   title: string;
   summary: string;
@@ -837,11 +867,13 @@ export function buildCharacterCardRewriteSystemPrompt(): string {
     '- Resolve placeholders into explicit prose. Do not leave unresolved `{{...}}` placeholders in output.',
     '- storyMarkdown should be setup text suitable for starting or continuing a prose chapter.',
     '- authorNoteMarkdown should be practical writing guidance in markdown format.',
+    '- Preserve specific information from the source card, especially from description, personality, scenario, systemPrompt, and postHistoryInstructions.',
+    '- Longer authorNoteMarkdown is allowed when the card has dense constraints; prioritize coverage over brevity when needed.',
     '- Choose structure and emphasis based on relevance; do not force template sections.',
     '- Keep language natural and direct (avoid rigid/template phrasing or hype wording).',
     '- Prefer specific constraints and immediate next actions over broad thematic statements.',
     '- Avoid conversion/meta commentary or references to prompt mechanics.',
-    '- Keep output concise, specific, and internally consistent.'
+    '- Keep output specific, internally consistent, and faithful to source constraints.'
   ].join('\n');
 }
 
@@ -992,6 +1024,74 @@ export function buildCharacterCardCharacterExtractUserPrompt(card: ParsedCharact
   ].join('\n');
 }
 
+export function buildCharacterCardEventInjectionSystemPrompt(): string {
+  return [
+    'You are a careful fiction editor updating an existing story draft.',
+    'Inject one selected character-card event into the story while preserving continuity.',
+    'Return JSON only. Do not wrap in markdown fences.',
+    'Required JSON schema:',
+    '{',
+    '  "storyMarkdown": "markdown string",',
+    '  "authorNoteMarkdown": "markdown string",',
+    '  "rewriteNotes": ["string"]',
+    '}',
+    'Rules:',
+    '- Integrate only the selected event; do not randomly switch to other event candidates.',
+    '- Preserve established canon, tone, POV, timeline, and unresolved story commitments.',
+    '- The story output should be full revised story markdown (not a patch/diff).',
+    '- The authorNoteMarkdown output should keep practical constraints aligned with the revised story.',
+    '- Keep details grounded in card description/personality/scenario/system prompts when relevant.',
+    '- Do not output reasoning, commentary, or section labels outside markdown fields.',
+    '- Resolve roleplay placeholders into natural prose; no raw `{{...}}` placeholders.'
+  ].join('\n');
+}
+
+export function buildCharacterCardEventInjectionUserPrompt(input: CharacterCardEventInjectionPromptInput): string {
+  const storyMarkdown = input.storyMarkdown.trim();
+  const authorNoteMarkdown = input.authorNoteMarkdown.trim();
+  const selectedEventLabel = input.selectedEventLabel.trim() || 'Selected Event';
+  const selectedEventText = input.selectedEventText.trim();
+  const availableEvents = input.availableEvents
+    .map(event => ({
+      label: event.label.trim(),
+      text: event.text.trim()
+    }))
+    .filter(event => event.label && event.text);
+
+  const payload = {
+    card: {
+      sourceFormat: input.card.sourceFormat,
+      sourceLabel: input.card.sourceLabel.trim(),
+      name: input.card.name.trim(),
+      description: input.card.description.trim(),
+      personality: input.card.personality.trim(),
+      scenario: input.card.scenario.trim(),
+      firstMessage: input.card.firstMessage.trim(),
+      messageExample: input.card.messageExample.trim(),
+      alternateGreetings: input.card.alternateGreetings,
+      groupOnlyGreetings: input.card.groupOnlyGreetings,
+      systemPrompt: input.card.systemPrompt.trim(),
+      postHistoryInstructions: input.card.postHistoryInstructions.trim()
+    },
+    selectedEvent: {
+      label: selectedEventLabel,
+      text: selectedEventText
+    },
+    availableEvents,
+    currentStory: storyMarkdown,
+    currentAuthorNote: authorNoteMarkdown || ''
+  };
+
+  return [
+    'Inject the selected event into the existing story and update author-note guidance to match.',
+    '',
+    'Input JSON:',
+    JSON.stringify(payload, null, 2),
+    '',
+    'Output only JSON with keys: storyMarkdown, authorNoteMarkdown, rewriteNotes.'
+  ].join('\n');
+}
+
 export function parseCharacterCardRewriteResponse(raw: string): CharacterCardRewriteResult {
   const payload = extractJsonPayload(raw);
   const objectPayload = asRecord(payload);
@@ -1020,6 +1120,32 @@ export function parseCharacterCardRewriteResponse(raw: string): CharacterCardRew
 
   return {
     title,
+    storyMarkdown,
+    authorNoteMarkdown,
+    rewriteNotes
+  };
+}
+
+export function parseCharacterCardEventInjectionResponse(raw: string): CharacterCardEventInjectionResult {
+  const payload = extractJsonPayload(raw);
+  const objectPayload = asRecord(payload);
+  if (!objectPayload) {
+    throw new Error('Event injection response payload is not an object.');
+  }
+
+  const storyMarkdown = asString(objectPayload.storyMarkdown)
+    || asString(objectPayload.story)
+    || asString(objectPayload.updatedStoryMarkdown);
+  const authorNoteMarkdown = asString(objectPayload.authorNoteMarkdown)
+    || asString(objectPayload.authorNote)
+    || asString(objectPayload.updatedAuthorNoteMarkdown);
+  const rewriteNotes = asStringArray(objectPayload.rewriteNotes ?? objectPayload.notes);
+
+  if (!storyMarkdown) {
+    throw new Error('Event injection response is missing `storyMarkdown`.');
+  }
+
+  return {
     storyMarkdown,
     authorNoteMarkdown,
     rewriteNotes

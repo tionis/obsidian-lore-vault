@@ -674,6 +674,7 @@ Commands:
 
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
+- `Inject Character Card Event`
 - `Sync Character Card Library`
 - `Write Back Character Card Source`
 - `Extract Wiki Pages from Story`
@@ -706,9 +707,21 @@ Shared panel inputs:
   - completion profile selector (used for LLM rewrite into freeform story format)
   - optional `Extract Character Wiki Page` toggle for one character-only wiki page from scenario/card context
   - optional `Import Embedded Lorebook` toggle for card `character_book` payloads
+  - when the card has multiple greetings, a selection modal lets you choose which opening scene to rewrite as the import story start
+  - rewrite instructions prioritize preserving high-detail description/personality/scenario/system constraints; longer author-note output is allowed when source detail is dense
   - when `Persona Note` is set, rewrite/extract prompts include persona markdown and explicit placeholder guidance
   - generated preview warns when unresolved `{{...}}` placeholders remain in rewrite/extract outputs
   - known limitation: rewrite/extract uses a single completion request (no chunked import path yet), so very large cards can exceed the selected model context window and fail
+- `Inject Character Card Event`:
+  - runs from the active story note and requires `characterCardPath` and/or `characterCardMeta` frontmatter linkage
+  - resolves event candidates from first/alternate/group-only greetings (source card preferred, synced meta-note details as fallback)
+  - shows the same greeting/event picker UI used by import when multiple candidates exist
+  - sends one rewrite request with current story markdown, linked author note markdown (if present), selected event text, and linked card context
+  - review-first apply flow:
+    - side-by-side story diff is required before write
+    - optional side-by-side author-note diff is shown when a linked author note exists and model returns updated author-note guidance
+  - preserves existing story frontmatter while replacing only the story body
+  - operation log + usage ledger operation name: `character_card_event_injection`
 - `Sync Character Card Library`:
   - scans source folder for `.png`/`.json` cards
   - ensures one meta note exists per source card in meta folder

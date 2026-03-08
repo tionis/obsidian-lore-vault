@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, WorkspaceLeaf, setIcon } from 'obsidian';
+import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 
 export const LOREVAULT_HELP_VIEW_TYPE = 'lorevault-help-view';
@@ -186,6 +186,7 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
         '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
+        '`Inject Character Card Event`: on a linked story note, pick another greeting/event from the card and run a review-first rewrite for story (and linked author note when present).',
         '`Sync Character Card Library`: scan Character Card Source Folder and create/update one `lvDocType: characterCard` meta note per card.',
         'Synced character-card meta notes keep compact metadata in frontmatter and keep long prose fields in a readable, versioned `Character Card Details` markdown block (including numbered subheadings for alternate/group-only greetings).',
         'If you localize avatar embeds in that details block (for example with Local Images Plus), sync preserves those local embeds.',
@@ -194,6 +195,7 @@ export class LorevaultHelpView extends ItemView {
         'Optional `Auto-Generate Card Summaries on Sync` adds concise summary/themes/tone fields and marks stale summaries by card hash without overwriting manual summaries.',
         'Bases integration: use view type `LoreVault Characters` in a Base filtered to character-card notes for avatar-card rendering and markdown/HTML field display.',
         'Character-card rewrite now keeps the model output as freeform `authorNoteMarkdown` (no enforced section template in post-processing).',
+        'Character-card rewrite prompts now preserve richer description/personality/scenario/system detail and allow longer author-note output when source detail is dense.',
         'Character-card rewrite/extract now includes broader SillyTavern placeholder handling (`{{char}}`, `{{user}}`, `{{persona}}`, `{{random_user_1}}`, etc.) and warns when unresolved placeholders remain.',
         'Known limitation: character-card rewrite/extract currently runs as one request per stage (no chunked fallback), so very large cards can exceed model context limits.',
         'Optional `Extract Character Wiki Page` runs a character-only pass and adds one lorebook-ready character page derived from the card scenario/context.',
@@ -210,6 +212,13 @@ export class LorevaultHelpView extends ItemView {
       actions: [
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
         { label: 'Open Character Card Import', onClick: () => void this.plugin.openImportLorebookView('character_card') },
+        {
+          label: 'Inject Card Event',
+          onClick: () => void this.plugin.injectCharacterCardEventFromActiveNote().catch(error => {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to inject character-card event: ${message}`);
+          })
+        },
         { label: 'Sync Character Cards', onClick: () => void this.plugin.syncCharacterCardLibrary() },
         { label: 'Write Back Character Card', onClick: () => void this.plugin.writeBackCharacterCardSourceFromActiveNote() },
         { label: 'Open Story Extraction', onClick: () => void this.plugin.openStoryExtractionView() },

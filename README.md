@@ -216,6 +216,7 @@ Import and updates:
 
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
+- `Inject Character Card Event`
 - `Sync Character Card Library`
 - `Write Back Character Card Source`
 - `Extract Wiki Pages from Story`
@@ -236,9 +237,11 @@ Import/extraction/update panel behavior:
 - character-card import can optionally run `Extract Character Wiki Page` to create one character-only lorebook page from scenario/card context
 - character-card import accepts an optional `Persona Note` input and bakes it into generated story/author-note content at import time
 - character-card rewrite expects freeform `authorNoteMarkdown`; structure is prompt-guided (no hardcoded section normalization/caps)
+- character-card rewrite prompt now explicitly preserves detailed card constraints from description/personality/scenario/system prompts and allows longer author-note output when source detail is dense
 - character-card rewrite/extract resolves common SillyTavern placeholders (`{{char}}`, `{{user}}`, `{{persona}}`, `{{random_user_1}}`, etc.) and warns if unresolved `{{...}}` placeholders remain in generated output
 - known limitation: character-card import rewrite/extract currently runs as a single request (no chunked map-reduce path yet), so very large cards can exceed model context limits and fail
 - character-card preview exposes editable planned writes (path + content) before import apply
+- `Inject Character Card Event` uses linked `characterCardPath` and/or `characterCardMeta` to pick first/alternate/group greeting events and run a review-first rewrite of the current story (plus linked author note when present)
 - `Sync Character Card Library` scans `Character Card Source Folder` and creates/updates one `lvDocType: characterCard` meta note per source card in `Character Card Meta Folder`
 - synced character-card meta notes keep compact metadata in frontmatter (identity/tags/source/lorebook stats) plus duplicated summary fields for Bases usage (`cardSummary`, themes/tone, scenario focus, hook)
 - all long card prose fields live in a managed, versioned markdown details block (`Character Card Details`) with avatar embed at top; block metadata is tracked by `characterCardDetailsVersion`

@@ -5,21 +5,29 @@ export interface GreetingOption {
   text: string;
 }
 
+export interface GreetingSelectorModalOptions {
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+}
+
 export type GreetingSelectorResult =
   | { action: 'use'; selectedText: string; selectedIndex: number }
   | { action: 'cancel' };
 
 export class GreetingSelectorModal extends Modal {
   private readonly greetings: GreetingOption[];
+  private readonly selectorOptions: GreetingSelectorModalOptions;
   private selectedIndex: number;
   private resolveResult: ((value: GreetingSelectorResult) => void) | null = null;
   private settled = false;
   private previewEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
 
-  constructor(app: App, greetings: GreetingOption[]) {
+  constructor(app: App, greetings: GreetingOption[], options: GreetingSelectorModalOptions = {}) {
     super(app);
     this.greetings = greetings;
+    this.selectorOptions = options;
     this.selectedIndex = 0;
   }
 
@@ -31,12 +39,13 @@ export class GreetingSelectorModal extends Modal {
 
   onOpen(): void {
     this.modalEl.addClass('lorevault-greeting-selector-shell');
-    this.setTitle('Select Opening Scene');
+    this.setTitle(this.selectorOptions.title?.trim() || 'Select Opening Scene');
     this.contentEl.empty();
     this.contentEl.addClass('lorevault-greeting-selector');
 
     this.contentEl.createEl('p', {
-      text: 'This card has multiple greetings. Choose which opening scene to transform into the story.'
+      text: this.selectorOptions.description?.trim()
+        || 'This card has multiple greetings. Choose which opening scene to transform into the story.'
     });
 
     const columns = this.contentEl.createDiv({ cls: 'lorevault-greeting-columns' });
@@ -60,7 +69,7 @@ export class GreetingSelectorModal extends Modal {
       this.close();
     });
 
-    const useButton = actions.createEl('button', { text: 'Use Selected' });
+    const useButton = actions.createEl('button', { text: this.selectorOptions.confirmLabel?.trim() || 'Use Selected' });
     useButton.addClass('mod-cta');
     useButton.addEventListener('click', () => {
       const greeting = this.greetings[this.selectedIndex];

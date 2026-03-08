@@ -124,8 +124,10 @@ This document is the implementation-level reference for core architecture and ru
   - deterministic card-field normalization (v1/v2/v3 shapes)
   - deterministic source write-back helpers (payload patch + `.png` metadata upsert with CRC-safe chunk re-encode)
   - rewrite prompt/response schema helpers (story/author-note + character-only wiki extraction)
+  - event-injection prompt/response schema helpers (selected greeting/event -> revised story + optional author-note guidance)
   - persona-aware prompt context + placeholder detection/helpers for SillyTavern `{{...}}` macros
   - freeform author-note markdown passthrough (`authorNoteMarkdown`) with prompt-driven guidance
+  - rewrite prompt emphasizes preserving dense source detail (description/personality/scenario/system constraints) and permits longer author-note outputs when needed
   - image-card avatar propagation into generated story notes (`characterCardAvatar` frontmatter + `![[...]]` embed)
   - story+author-note import plan builder with optional character-page extraction + optional embedded-lorebook conversion
 - `src/lorevault-import-view.ts`
@@ -153,6 +155,7 @@ This document is the implementation-level reference for core architecture and ru
 - `src/main.ts`
   - `Sync Character Card Library` command: source-folder scan -> meta-note upsert (`lvDocType: characterCard`)
   - `Write Back Character Card Source` command: active `characterCard` meta note -> source `.png`/`.json` payload update with hash staleness guard
+  - `Inject Character Card Event` command: resolve linked card/meta greetings, pick event, request story+author-note rewrite, then review/apply
   - meta-note lifecycle: create/update by `cardPath`, mark `status: missing_source` when source disappears (no delete)
   - sync also maintains a managed markdown details block (`LV_BEGIN_CHARACTER_CARD_DETAILS`/`LV_END_CHARACTER_CARD_DETAILS`) for readable long-form card fields
   - sync preserves existing local avatar embeds in details markdown (for localized image workflows) and otherwise uses canonical source-card avatar links
@@ -686,6 +689,7 @@ Implemented:
 
 - inbound SillyTavern lorebook JSON import command/view
 - inbound SillyTavern character-card import command/view (`.png` + `.json`)
+- linked-story character-card event-injection command (`Inject Character Card Event`) with greeting/event picker and review-first rewrite apply
 - character-card library sync command/view model (`Sync Character Card Library`)
 - character-card source write-back command (`Write Back Character Card Source`) with hash-staleness guard against unsynced source edits
 - deterministic entry normalization and sorting
@@ -693,6 +697,7 @@ Implemented:
 - deterministic file naming/path allocation
 - deterministic frontmatter/body mapping for generated wiki pages (summary persisted in `## Summary` section)
 - deterministic story+author-note note mapping for character-card rewrite output
+- character-card rewrite prompting tuned for richer source-detail retention and longer author-note guidance when needed
 - deterministic story-to-character-card-meta backlink injection (`characterCardMeta`) when a synced meta note exists
 - optional character-only wiki-page extraction mapping for character-card imports (`<target>/characters/<name>.md`)
 - preview and apply import flows

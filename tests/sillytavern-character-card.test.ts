@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   applyCharacterCardWriteBackToPayload,
+  buildCharacterCardEventInjectionSystemPrompt,
+  buildCharacterCardEventInjectionUserPrompt,
   buildCharacterCardCharacterExtractUserPrompt,
+  buildCharacterCardRewriteSystemPrompt,
   buildCharacterCardRewriteUserPrompt,
   buildCharacterCardImportPlan,
   collectCharacterCardTemplatePlaceholders,
+  parseCharacterCardEventInjectionResponse,
   parseCharacterCardCharacterExtractResponse,
   parseCharacterCardRewriteResponse,
   parseSillyTavernCharacterCardJson,
@@ -368,6 +372,12 @@ test('buildCharacterCardRewriteUserPrompt uses selectedGreeting as firstMessage 
   assert.deepEqual(payload.card.alternateGreetings, []);
 });
 
+test('buildCharacterCardRewriteSystemPrompt preserves source detail and permits longer author-note output', () => {
+  const prompt = buildCharacterCardRewriteSystemPrompt();
+  assert.match(prompt, /Preserve specific information from the source card/i);
+  assert.match(prompt, /Longer authorNoteMarkdown is allowed/i);
+});
+
 test('buildCharacterCardRewriteUserPrompt keeps original firstMessage and alternates when no selectedGreeting', () => {
   const card = parseSillyTavernCharacterCardJson(JSON.stringify({
     name: 'Kira',
@@ -409,4 +419,59 @@ test('rewrite and extract prompts include persona context and placeholder guidan
   assert.match(extractPrompt, /"persona": \{/);
   assert.match(extractPrompt, /"placeholderGuidance": \{/);
   assert.match(extractPrompt, /"Morgan Vale"/);
+});
+
+test('buildCharacterCardEventInjectionUserPrompt includes selected event and context payload', () => {
+  const prompt = buildCharacterCardEventInjectionUserPrompt({
+    card: {
+      sourceFormat: 'meta',
+      sourceLabel: 'LoreVault/character-cards/wakaba.md',
+      name: 'Wakaba',
+      description: 'A volatile cyber-entity bound to a prototype shard.',
+      personality: 'Cheerful, possessive, and manipulative under stress.',
+      scenario: 'Night City intrusion amid rising Arasaka pressure.',
+      firstMessage: 'You are late.',
+      messageExample: 'Keep your voice low.',
+      alternateGreetings: ['The package is gone.'],
+      groupOnlyGreetings: ['Everyone, move now.'],
+      systemPrompt: 'Keep tension high.',
+      postHistoryInstructions: 'Maintain first-person sensory detail.'
+    },
+    selectedEventLabel: 'Alternate 1',
+    selectedEventText: 'The package is gone.',
+    availableEvents: [
+      { label: 'First Message', text: 'You are late.' },
+      { label: 'Alternate 1', text: 'The package is gone.' }
+    ],
+    storyMarkdown: '# Chapter 2\n\nCurrent story body.',
+    authorNoteMarkdown: '# Author Note\n\n- Keep pressure escalating.'
+  });
+  const payload = JSON.parse(prompt.split('Input JSON:\n')[1].split('\n\nOutput only')[0]) as {
+    selectedEvent: {label: string; text: string};
+    availableEvents: Array<{label: string; text: string}>;
+    currentStory: string;
+    currentAuthorNote: string;
+  };
+
+  assert.equal(payload.selectedEvent.label, 'Alternate 1');
+  assert.equal(payload.selectedEvent.text, 'The package is gone.');
+  assert.equal(payload.availableEvents.length, 2);
+  assert.match(payload.currentStory, /Current story body/);
+  assert.match(payload.currentAuthorNote, /Keep pressure escalating/);
+});
+
+test('event injection prompt/response helpers support rewrite contract', () => {
+  const systemPrompt = buildCharacterCardEventInjectionSystemPrompt();
+  assert.match(systemPrompt, /Required JSON schema:/);
+  assert.match(systemPrompt, /storyMarkdown/);
+
+  const parsed = parseCharacterCardEventInjectionResponse(JSON.stringify({
+    storyMarkdown: '# Chapter 2\n\nInjected scene beats.',
+    authorNoteMarkdown: '# Author Note\n\n- Emphasize betrayal fallout.',
+    rewriteNotes: ['Shifted reveal into chapter midpoint.']
+  }));
+
+  assert.match(parsed.storyMarkdown, /Injected scene beats/);
+  assert.match(parsed.authorNoteMarkdown, /betrayal fallout/);
+  assert.deepEqual(parsed.rewriteNotes, ['Shifted reveal into chapter midpoint.']);
 });

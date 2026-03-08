@@ -128,6 +128,7 @@ import { TextCommandReviewModal } from './text-command-review-modal';
 import { AuthorNoteRewriteModal } from './author-note-rewrite-modal';
 import { AuthorNoteLinkModal } from './author-note-link-modal';
 import { InlineDirectiveInsertModal } from './inline-directive-insert-modal';
+import { GreetingSelectorModal, GreetingOption } from './greeting-selector-modal';
 import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
 import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
@@ -189,7 +190,11 @@ import {
 import { LorebookScopeCache } from './lorebook-scope-cache';
 import {
   applyCharacterCardWriteBackToPayload,
+  buildCharacterCardEventInjectionSystemPrompt,
+  buildCharacterCardEventInjectionUserPrompt,
+  CharacterCardEventInjectionContext,
   CharacterCardWriteBackFields,
+  parseCharacterCardEventInjectionResponse,
   ParsedCharacterCard,
   parseSillyTavernCharacterCardJson,
   parseSillyTavernCharacterCardPngBytes,
@@ -238,6 +243,10 @@ interface SteeringLayerSection {
   trimmed: boolean;
   trimReason?: string;
   locked: boolean;
+}
+
+interface CharacterCardEventOption extends GreetingOption {
+  category: 'first' | 'alternate' | 'group';
 }
 
 export interface GenerationTelemetry {
@@ -1721,6 +1730,39 @@ export default class LoreBookConverterPlugin extends Plugin {
       return text;
     }
     return text.slice(0, maxChars).trimEnd();
+  }
+
+  private trimTextHeadTailToTokenBudget(text: string, tokenBudget: number): string {
+    if (!text.trim()) {
+      return '';
+    }
+
+    const maxChars = Math.max(256, tokenBudget * 4);
+    if (text.length <= maxChars) {
+      return text;
+    }
+
+    const separator = '\n\n...[truncated for context window]...\n\n';
+    const separatorChars = separator.length;
+    const headChars = Math.max(128, Math.floor((maxChars - separatorChars) * 0.55));
+    const tailChars = Math.max(128, Math.max(0, maxChars - separatorChars - headChars));
+    const head = text.slice(0, headChars).trimEnd();
+    const tail = text.slice(Math.max(0, text.length - tailChars)).trimStart();
+    return `${head}${separator}${tail}`;
+  }
+
+  private preserveFrontmatterWithBody(originalMarkdown: string, nextBody: string): string {
+    const normalizedBody = nextBody.trim();
+    const frontmatterMatch = originalMarkdown.match(/^---\s*\r?\n[\s\S]*?\r?\n---\s*(?:\r?\n)?/);
+    if (!frontmatterMatch) {
+      return normalizedBody ? `${normalizedBody}\n` : '';
+    }
+
+    if (!normalizedBody) {
+      return frontmatterMatch[0];
+    }
+
+    return `${frontmatterMatch[0]}${normalizedBody}\n`;
   }
 
   private renderScopeListLabel(scopes: string[]): string {
@@ -8050,6 +8092,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'inject-character-card-event',
+      name: 'Inject Character Card Event',
+      callback: () => {
+        void this.injectCharacterCardEventFromActiveNote().catch(error => {
+          console.error('LoreVault: Failed to inject character-card event:', error);
+          new Notice(`Failed to inject character-card event: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
       id: 'sync-character-card-library',
       name: 'Sync Character Card Library',
       callback: () => {
@@ -8302,6 +8355,20 @@ export default class LoreBookConverterPlugin extends Plugin {
             .setIcon('message-square-plus')
             .onClick(() => {
               void this.insertInlineDirectiveAtCursor(editor, info);
+            });
+        });
+      }
+
+      if (targetFile && !isAuthorNote && this.noteHasCharacterCardLink(targetFile)) {
+        menu.addItem(item => {
+          item
+            .setTitle('LoreVault: Inject Character Card Event')
+            .setIcon('wand')
+            .onClick(() => {
+              void this.injectCharacterCardEventFromActiveNote().catch(error => {
+                console.error('LoreVault: Failed to inject character-card event:', error);
+                new Notice(`Failed to inject character-card event: ${error instanceof Error ? error.message : String(error)}`);
+              });
             });
         });
       }
@@ -8563,6 +8630,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     return Boolean(authorNote.trim());
   }
 
+  private noteHasCharacterCardLink(file: TFile): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+    const sourcePath = normalizeVaultPath(
+      asString(getFrontmatterValue(frontmatter, 'characterCardPath', 'cardPath')) ?? ''
+    );
+    const metaRef = asString(getFrontmatterValue(frontmatter, 'characterCardMeta', 'cardMeta')) ?? '';
+    return Boolean(sourcePath || metaRef.trim());
+  }
+
   private noteIsAuthorNote(file: TFile): boolean {
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
@@ -8583,6 +8660,496 @@ export default class LoreBookConverterPlugin extends Plugin {
       .toLowerCase()
       .replace(/[\s_-]/g, '');
     return normalizedDocType === CHARACTER_CARD_META_DOC_TYPE.toLowerCase();
+  }
+
+  private normalizeLinkLikeTarget(raw: string): string {
+    let normalized = raw.trim();
+    if (!normalized) {
+      return '';
+    }
+
+    const wikiMatch = normalized.match(/^\[\[([\s\S]+)\]\]$/);
+    if (wikiMatch) {
+      normalized = wikiMatch[1].trim();
+    }
+
+    const markdownLinkMatch = normalized.match(/^\[[^\]]*\]\(([^)]+)\)$/);
+    if (markdownLinkMatch) {
+      normalized = markdownLinkMatch[1].trim();
+    }
+
+    const angleBracketMatch = normalized.match(/^<([\s\S]+)>$/);
+    if (angleBracketMatch) {
+      normalized = angleBracketMatch[1].trim();
+    }
+
+    const pipeIndex = normalized.indexOf('|');
+    if (pipeIndex >= 0) {
+      normalized = normalized.slice(0, pipeIndex).trim();
+    }
+
+    return normalizeLinkTarget(normalized);
+  }
+
+  private resolveFileFromLinkLikeTarget(raw: string, sourcePath: string): TFile | null {
+    const normalizedTarget = this.normalizeLinkLikeTarget(raw);
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const resolved = this.app.metadataCache.getFirstLinkpathDest(normalizedTarget, sourcePath);
+    if (resolved instanceof TFile) {
+      return resolved;
+    }
+
+    const directCandidates = [normalizedTarget, `${normalizedTarget}.md`];
+    for (const candidate of directCandidates) {
+      const found = this.app.vault.getAbstractFileByPath(candidate);
+      if (found instanceof TFile) {
+        return found;
+      }
+    }
+
+    const basename = getVaultBasename(normalizedTarget);
+    const byBasename = this.app.vault
+      .getMarkdownFiles()
+      .filter(file => file.basename.localeCompare(basename, undefined, { sensitivity: 'accent' }) === 0);
+    if (byBasename.length === 1) {
+      return byBasename[0];
+    }
+
+    return null;
+  }
+
+  private buildCharacterCardEventOptions(
+    firstMessage: string,
+    alternateGreetings: string[],
+    groupOnlyGreetings: string[]
+  ): CharacterCardEventOption[] {
+    const options: CharacterCardEventOption[] = [];
+    const seenText = new Set<string>();
+    const push = (label: string, text: string, category: CharacterCardEventOption['category']) => {
+      const normalizedText = text.trim();
+      if (!normalizedText) {
+        return;
+      }
+      const key = normalizedText.toLowerCase();
+      if (seenText.has(key)) {
+        return;
+      }
+      seenText.add(key);
+      options.push({
+        label,
+        text: normalizedText,
+        category
+      });
+    };
+
+    push('First Message', firstMessage, 'first');
+    for (let index = 0; index < alternateGreetings.length; index += 1) {
+      push(`Alternate ${index + 1}`, alternateGreetings[index], 'alternate');
+    }
+    for (let index = 0; index < groupOnlyGreetings.length; index += 1) {
+      push(`Group-Only ${index + 1}`, groupOnlyGreetings[index], 'group');
+    }
+    return options;
+  }
+
+  private mergeCharacterCardEventOptions(...lists: CharacterCardEventOption[][]): CharacterCardEventOption[] {
+    const merged: CharacterCardEventOption[] = [];
+    const seenText = new Set<string>();
+    for (const list of lists) {
+      for (const option of list) {
+        const normalizedText = option.text.trim();
+        if (!normalizedText) {
+          continue;
+        }
+        const key = normalizedText.toLowerCase();
+        if (seenText.has(key)) {
+          continue;
+        }
+        seenText.add(key);
+        merged.push({
+          ...option,
+          text: normalizedText
+        });
+      }
+    }
+    return merged;
+  }
+
+  private async parseCharacterCardFromSourcePath(sourcePath: string): Promise<ParsedCharacterCard | null> {
+    const normalizedPath = normalizeVaultPath(sourcePath.trim());
+    if (!normalizedPath) {
+      return null;
+    }
+    const abstract = this.app.vault.getAbstractFileByPath(normalizedPath);
+    if (!(abstract instanceof TFile)) {
+      return null;
+    }
+    const extension = abstract.extension.toLowerCase();
+    try {
+      if (extension === 'json') {
+        return parseSillyTavernCharacterCardJson(await this.app.vault.read(abstract));
+      }
+      if (extension === 'png') {
+        return parseSillyTavernCharacterCardPngBytes(await readVaultBinary(this.app, abstract.path));
+      }
+    } catch (error) {
+      console.warn(`LoreVault: Failed to parse linked character card source "${normalizedPath}".`, error);
+      return null;
+    }
+    return null;
+  }
+
+  private buildCharacterCardEventContextFromParsedCard(
+    card: ParsedCharacterCard,
+    sourceLabel: string
+  ): CharacterCardEventInjectionContext {
+    return {
+      sourceFormat: card.sourceFormat,
+      sourceLabel: sourceLabel.trim(),
+      name: card.name.trim(),
+      description: card.description.trim(),
+      personality: card.personality.trim(),
+      scenario: card.scenario.trim(),
+      firstMessage: card.firstMessage.trim(),
+      messageExample: card.messageExample.trim(),
+      alternateGreetings: [...card.alternateGreetings],
+      groupOnlyGreetings: [...card.groupOnlyGreetings],
+      systemPrompt: card.systemPrompt.trim(),
+      postHistoryInstructions: card.postHistoryInstructions.trim()
+    };
+  }
+
+  private buildCharacterCardEventContextFromMeta(
+    frontmatter: FrontmatterData,
+    details: CharacterCardDetailsContent,
+    sourceLabel: string
+  ): CharacterCardEventInjectionContext {
+    const name = asString(getFrontmatterValue(frontmatter, 'characterName', 'characterCardName', 'title')) ?? '';
+    return {
+      sourceFormat: 'meta',
+      sourceLabel: sourceLabel.trim(),
+      name: (name || 'Character').trim(),
+      description: (details.cardDescription || (asString(getFrontmatterValue(frontmatter, 'cardDescription')) ?? '')).trim(),
+      personality: (details.cardPersonality || (asString(getFrontmatterValue(frontmatter, 'cardPersonality')) ?? '')).trim(),
+      scenario: (details.cardScenario || (asString(getFrontmatterValue(frontmatter, 'cardScenario')) ?? '')).trim(),
+      firstMessage: (details.cardFirstMessage || (asString(getFrontmatterValue(frontmatter, 'cardFirstMessage')) ?? '')).trim(),
+      messageExample: (details.cardMessageExample || (asString(getFrontmatterValue(frontmatter, 'cardMessageExample')) ?? '')).trim(),
+      alternateGreetings: details.cardAlternateGreetings.length > 0
+        ? [...details.cardAlternateGreetings]
+        : asStringArray(getFrontmatterValue(frontmatter, 'cardAlternateGreetings')),
+      groupOnlyGreetings: details.cardGroupOnlyGreetings.length > 0
+        ? [...details.cardGroupOnlyGreetings]
+        : asStringArray(getFrontmatterValue(frontmatter, 'cardGroupOnlyGreetings')),
+      systemPrompt: (details.cardSystemPrompt || (asString(getFrontmatterValue(frontmatter, 'cardSystemPrompt')) ?? '')).trim(),
+      postHistoryInstructions: (
+        details.cardPostHistoryInstructions
+        || (asString(getFrontmatterValue(frontmatter, 'cardPostHistoryInstructions')) ?? '')
+      ).trim()
+    };
+  }
+
+  private trimCharacterCardEventContext(
+    context: CharacterCardEventInjectionContext,
+    tokenBudget: number
+  ): CharacterCardEventInjectionContext {
+    const fieldBudget = Math.max(96, Math.floor(tokenBudget / 8));
+    const listItemBudget = Math.max(40, Math.floor(fieldBudget / 2));
+    const trimList = (values: string[]) => values
+      .slice(0, 32)
+      .map(value => this.trimTextHeadToTokenBudget(value, listItemBudget))
+      .map(value => value.trim())
+      .filter(Boolean);
+
+    return {
+      ...context,
+      sourceLabel: this.trimTextHeadToTokenBudget(context.sourceLabel, Math.max(32, Math.floor(fieldBudget / 2))),
+      name: this.trimTextHeadToTokenBudget(context.name, Math.max(32, Math.floor(fieldBudget / 2))),
+      description: this.trimTextHeadToTokenBudget(context.description, fieldBudget),
+      personality: this.trimTextHeadToTokenBudget(context.personality, fieldBudget),
+      scenario: this.trimTextHeadToTokenBudget(context.scenario, fieldBudget),
+      firstMessage: this.trimTextHeadToTokenBudget(context.firstMessage, fieldBudget),
+      messageExample: this.trimTextHeadToTokenBudget(context.messageExample, fieldBudget),
+      alternateGreetings: trimList(context.alternateGreetings),
+      groupOnlyGreetings: trimList(context.groupOnlyGreetings),
+      systemPrompt: this.trimTextHeadToTokenBudget(context.systemPrompt, fieldBudget),
+      postHistoryInstructions: this.trimTextHeadToTokenBudget(context.postHistoryInstructions, fieldBudget)
+    };
+  }
+
+  private async resolveCharacterCardContextForStory(storyFile: TFile): Promise<{
+    cardContext: CharacterCardEventInjectionContext;
+    options: CharacterCardEventOption[];
+    sourceCardPath: string;
+    metaPath: string;
+  }> {
+    const cache = this.app.metadataCache.getFileCache(storyFile);
+    const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
+
+    let sourceCardPath = normalizeVaultPath(
+      asString(getFrontmatterValue(frontmatter, 'characterCardPath', 'cardPath')) ?? ''
+    );
+    const metaRef = asString(getFrontmatterValue(frontmatter, 'characterCardMeta', 'cardMeta')) ?? '';
+    let metaFile = this.resolveFileFromLinkLikeTarget(metaRef, storyFile.path);
+
+    if (!metaFile && sourceCardPath) {
+      const metaPathBySource = this.findCharacterCardMetaPathBySourcePath(sourceCardPath);
+      const candidate = this.app.vault.getAbstractFileByPath(metaPathBySource);
+      if (candidate instanceof TFile) {
+        metaFile = candidate;
+      }
+    }
+
+    let parsedCard: ParsedCharacterCard | null = null;
+    if (sourceCardPath) {
+      parsedCard = await this.parseCharacterCardFromSourcePath(sourceCardPath);
+    }
+
+    let metaContext: CharacterCardEventInjectionContext | null = null;
+    let metaOptions: CharacterCardEventOption[] = [];
+    if (metaFile instanceof TFile) {
+      const metaCache = this.app.metadataCache.getFileCache(metaFile);
+      const metaFrontmatter = normalizeFrontmatter((metaCache?.frontmatter ?? {}) as FrontmatterData);
+      if (!sourceCardPath) {
+        sourceCardPath = normalizeVaultPath(
+          asString(getFrontmatterValue(metaFrontmatter, 'cardPath', 'characterCardPath')) ?? ''
+        );
+      }
+      const markdown = await this.app.vault.cachedRead(metaFile);
+      const details = parseCharacterCardDetailsContentFromMarkdown(markdown);
+      metaContext = this.buildCharacterCardEventContextFromMeta(metaFrontmatter, details, metaFile.path);
+      metaOptions = this.buildCharacterCardEventOptions(
+        metaContext.firstMessage,
+        metaContext.alternateGreetings,
+        metaContext.groupOnlyGreetings
+      );
+    }
+
+    if (!parsedCard && sourceCardPath) {
+      parsedCard = await this.parseCharacterCardFromSourcePath(sourceCardPath);
+    }
+
+    const sourceOptions = parsedCard
+      ? this.buildCharacterCardEventOptions(parsedCard.firstMessage, parsedCard.alternateGreetings, parsedCard.groupOnlyGreetings)
+      : [];
+    const mergedOptions = this.mergeCharacterCardEventOptions(sourceOptions, metaOptions);
+
+    const cardContext = parsedCard
+      ? this.buildCharacterCardEventContextFromParsedCard(parsedCard, sourceCardPath || storyFile.path)
+      : metaContext;
+    if (!cardContext) {
+      throw new Error('No linked character-card source or meta note was found in this story note.');
+    }
+    if (mergedOptions.length === 0) {
+      throw new Error('No first/alternate/group greetings are available for this linked character card.');
+    }
+
+    return {
+      cardContext,
+      options: mergedOptions,
+      sourceCardPath,
+      metaPath: metaFile?.path ?? ''
+    };
+  }
+
+  private async promptForCharacterCardEventSelection(options: CharacterCardEventOption[]): Promise<CharacterCardEventOption | null> {
+    if (options.length === 0) {
+      return null;
+    }
+    if (options.length === 1) {
+      return options[0];
+    }
+
+    const modal = new GreetingSelectorModal(this.app, options, {
+      title: 'Inject Character Card Event',
+      description: 'Select an event/greeting to inject into the current story and guidance.',
+      confirmLabel: 'Inject Selected'
+    });
+    const resultPromise = modal.waitForResult();
+    modal.open();
+    const result = await resultPromise;
+    if (result.action !== 'use') {
+      return null;
+    }
+    return options[result.selectedIndex] ?? null;
+  }
+
+  public async injectCharacterCardEventFromActiveNote(): Promise<void> {
+    if (this.generationInFlight) {
+      throw new Error('Generation is already running. Wait for the current run to finish.');
+    }
+
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile)) {
+      throw new Error('Open a story note before injecting a character-card event.');
+    }
+    if (this.noteIsAuthorNote(activeFile)) {
+      throw new Error('Character-card event injection is only available for story notes.');
+    }
+
+    const completionResolution = await this.resolveEffectiveCompletionForFile(activeFile);
+    const completion = completionResolution.completion;
+    if (!completion.enabled) {
+      throw new Error('Writing completion is disabled. Enable it under LoreVault Settings -> Writing Completion.');
+    }
+    if (completion.provider !== 'ollama' && !completion.apiKey) {
+      throw new Error('Missing completion API key. Configure it under LoreVault Settings -> Writing Completion.');
+    }
+
+    const eventContext = await this.resolveCharacterCardContextForStory(activeFile);
+    const selectedEvent = await this.promptForCharacterCardEventSelection(eventContext.options);
+    if (!selectedEvent) {
+      return;
+    }
+
+    const originalStoryMarkdown = await this.app.vault.cachedRead(activeFile);
+    const currentStoryBody = stripFrontmatter(originalStoryMarkdown).trim();
+    if (!currentStoryBody) {
+      throw new Error('Active story note has no markdown body to rewrite.');
+    }
+
+    const authorNoteFile = await this.storySteeringStore.resolveAuthorNoteFileForStory(activeFile);
+    let originalAuthorNoteMarkdown = '';
+    let currentAuthorNote = '';
+    if (authorNoteFile) {
+      originalAuthorNoteMarkdown = await this.app.vault.cachedRead(authorNoteFile);
+      currentAuthorNote = parseStorySteeringMarkdown(originalAuthorNoteMarkdown).authorNote;
+    }
+
+    const maxInputTokens = Math.max(768, completion.contextWindowTokens - completion.maxOutputTokens);
+    const storyTokenBudget = Math.max(900, Math.min(120000, Math.floor(maxInputTokens * 0.62)));
+    const authorNoteTokenBudget = Math.max(240, Math.min(24000, Math.floor(maxInputTokens * 0.2)));
+    const cardTokenBudget = Math.max(240, Math.min(18000, Math.floor(maxInputTokens * 0.18)));
+    const boundedStory = this.trimTextHeadTailToTokenBudget(currentStoryBody, storyTokenBudget);
+    const boundedAuthorNote = this.trimTextHeadToTokenBudget(currentAuthorNote, authorNoteTokenBudget);
+    const boundedCardContext = this.trimCharacterCardEventContext(eventContext.cardContext, cardTokenBudget);
+
+    let usageReport: CompletionUsageReport | null = null;
+    let rawResponse = '';
+    try {
+      this.generationInFlight = true;
+      this.generationAbortController = new AbortController();
+      this.setGenerationStatus('injecting character-card event', 'busy');
+      rawResponse = await requestStoryContinuation(completion, {
+        systemPrompt: buildCharacterCardEventInjectionSystemPrompt(),
+        userPrompt: buildCharacterCardEventInjectionUserPrompt({
+          card: boundedCardContext,
+          selectedEventLabel: selectedEvent.label,
+          selectedEventText: selectedEvent.text,
+          availableEvents: eventContext.options
+            .slice(0, 48)
+            .map(option => ({
+              label: option.label,
+              text: this.trimTextHeadToTokenBudget(option.text, 96)
+            })),
+          storyMarkdown: boundedStory,
+          authorNoteMarkdown: boundedAuthorNote
+        }),
+        operationName: 'character_card_event_injection',
+        abortSignal: this.generationAbortController.signal,
+        onOperationLog: record => this.appendCompletionOperationLog(record, {
+          costProfile: this.resolveEffectiveCostProfileLabel(completion.apiKey)
+        }),
+        onUsage: usage => {
+          usageReport = usage;
+        }
+      });
+    } finally {
+      this.generationInFlight = false;
+      this.generationAbortController = null;
+      this.setGenerationStatus('idle', 'idle');
+    }
+
+    if (usageReport) {
+      await this.recordCompletionUsage('character_card_event_injection', usageReport, {
+        notePath: activeFile.path,
+        sourceCardPath: eventContext.sourceCardPath,
+        sourceMetaPath: eventContext.metaPath,
+        selectedEventLabel: selectedEvent.label,
+        availableEventCount: eventContext.options.length,
+        completionProfileSource: completionResolution.source,
+        completionProfileId: completionResolution.presetId,
+        completionProfileName: completionResolution.presetName,
+        autoCostProfile: this.buildAutoCostProfileLabel(completion.apiKey)
+      });
+    }
+
+    const parsed = parseCharacterCardEventInjectionResponse(rawResponse);
+    const storyProposal = parsed.storyMarkdown.trim();
+    if (!storyProposal) {
+      throw new Error('Model returned empty story markdown.');
+    }
+
+    const storyReviewModal = new TextCommandReviewModal(
+      this.app,
+      currentStoryBody,
+      storyProposal,
+      'Inject Character Card Event',
+      {
+        title: 'Review Story Event Injection',
+        promptLabel: null,
+        editedTextLabel: 'Edited Story (will be saved)',
+        applyButtonText: 'Save Story',
+        compactDiffStats: true
+      }
+    );
+    const storyReviewPromise = storyReviewModal.waitForResult();
+    storyReviewModal.open();
+    const storyReview = await storyReviewPromise;
+    if (storyReview.action !== 'apply') {
+      return;
+    }
+
+    let authorNoteRewrite: string | null = null;
+    if (authorNoteFile && parsed.authorNoteMarkdown.trim()) {
+      const authorNoteReviewModal = new TextCommandReviewModal(
+        this.app,
+        currentAuthorNote,
+        parsed.authorNoteMarkdown.trim(),
+        'Inject Character Card Event (Author Note)',
+        {
+          title: 'Review Author Note Update',
+          promptLabel: null,
+          showOriginalText: false,
+          editedTextLabel: 'Edited Author Note (will be saved)',
+          applyButtonText: 'Save Author Note',
+          compactDiffStats: true
+        }
+      );
+      const authorNoteReviewPromise = authorNoteReviewModal.waitForResult();
+      authorNoteReviewModal.open();
+      const authorNoteReview = await authorNoteReviewPromise;
+      if (authorNoteReview.action === 'apply') {
+        authorNoteRewrite = authorNoteReview.revisedText.trim();
+      }
+    }
+
+    const latestStoryMarkdown = await this.app.vault.cachedRead(activeFile);
+    if (latestStoryMarkdown !== originalStoryMarkdown) {
+      throw new Error('Story note changed while generating. Re-run event injection on the latest version.');
+    }
+    await this.app.vault.modify(activeFile, this.preserveFrontmatterWithBody(originalStoryMarkdown, storyReview.revisedText));
+
+    if (authorNoteFile && authorNoteRewrite !== null) {
+      const latestAuthorNoteMarkdown = await this.app.vault.cachedRead(authorNoteFile);
+      if (latestAuthorNoteMarkdown !== originalAuthorNoteMarkdown) {
+        throw new Error('Author note changed while generating. Re-run event injection on the latest version.');
+      }
+      const scope: StorySteeringScope = {
+        type: 'note',
+        key: authorNoteFile.path
+      };
+      await this.saveStorySteeringScope(scope, {
+        authorNote: authorNoteRewrite
+      });
+      this.refreshStorySteeringViews();
+      new Notice(`Injected "${selectedEvent.label}" and updated story + author note.`);
+      return;
+    }
+
+    new Notice(`Injected "${selectedEvent.label}" into story.`);
   }
 
   private buildCharacterCardWriteBackFields(

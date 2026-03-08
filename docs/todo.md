@@ -25,6 +25,8 @@ Reference design: `docs/planning.md`.
 - Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
 - Cross-panel diff UX is now standardized on side-by-side source diffs (text-command review + story-delta review).
 - Character-card details markdown now renders alternate/group-only greetings as numbered subheadings for faster navigation, with backward-compatible parsing for write-back.
+- Character-card tooling now includes `Inject Character Card Event` for linked story notes (event picker + review-first story rewrite + optional linked author-note rewrite).
+- Character-card rewrite prompting now explicitly favors fuller description/personality/scenario coverage and allows longer author-note outputs when source detail is dense.
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order
@@ -152,6 +154,8 @@ Reference design: `docs/planning.md`.
 - [x] Add custom Bases renderer (`LoreVault Characters`) for character libraries with avatar cards and markdown-rendered personality/description/scenario.
 - [x] Add optional LLM-generated character-card catalog summaries during sync with hash-aware stale detection and non-destructive overwrite behavior.
 - [x] Add persona-aware character-card rewrite/extract prompting (import-panel `Persona Note` context) and broaden placeholder handling/warnings for unresolved `{{...}}` macros.
+- [x] Add `Inject Character Card Event` command for linked story notes, with greeting/event selection and review-first story/author-note rewrite flow.
+- [x] Update character-card rewrite prompt guidance to preserve richer source-card detail and permit longer author-note output when needed.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 

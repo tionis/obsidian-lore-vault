@@ -8407,8 +8407,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.generationStatusEl = null;
   }
 
-  async saveData(settings: any) {
-    this.settings = this.mergeSettings(settings as Partial<ConverterSettings>);
+  /**
+   * Persist updated settings and trigger all dependent side-effects
+   * (index rebuild, view refresh, etc.).
+   *
+   * This is intentionally named saveSettings rather than saveData so it does
+   * not shadow Plugin.saveData(), which is the Obsidian API for writing
+   * arbitrary JSON to disk.  Actual disk persistence is delegated to
+   * persistSettingsSnapshot() which calls super.saveData() internally.
+   */
+  async saveSettings(settings: Partial<ConverterSettings>): Promise<void> {
+    this.settings = this.mergeSettings(settings);
     let localStateUpdated = false;
     const activeDevicePresetId = this.deviceProfileState.activeCompletionPresetId;
     if (activeDevicePresetId && !this.settings.completion.presets.some(preset => preset.id === activeDevicePresetId)) {

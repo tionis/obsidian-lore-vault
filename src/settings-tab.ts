@@ -458,7 +458,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
   }
 
   private async persistSettings(): Promise<void> {
-    await this.plugin.saveData(this.plugin.settings);
+    await this.plugin.saveSettings(this.plugin.settings);
   }
 
   private openFolderPicker(onPick: (path: string) => void): void {
@@ -810,7 +810,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.tagScoping.tagPrefix)
         .onChange(async (value) => {
           this.plugin.settings.tagScoping.tagPrefix = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -821,7 +821,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.tagScoping.activeScope)
         .onChange(async (value) => {
           this.plugin.settings.tagScoping.activeScope = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -858,7 +858,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.defaultLoreBook.orderByTitle)
         .onChange(async (value) => {
           this.plugin.settings.defaultLoreBook.orderByTitle = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
     
     new Setting(containerEl)
@@ -868,7 +868,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.defaultLoreBook.useDroste)
         .onChange(async (value) => {
           this.plugin.settings.defaultLoreBook.useDroste = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
     
     new Setting(containerEl)
@@ -878,7 +878,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.defaultLoreBook.useRecursion)
         .onChange(async (value) => {
           this.plugin.settings.defaultLoreBook.useRecursion = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
     
     new Setting(containerEl)
@@ -890,7 +890,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue > 0) {
             this.plugin.settings.defaultLoreBook.tokenBudget = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
     
@@ -903,7 +903,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue > 0) {
             this.plugin.settings.defaultLoreBook.recursionBudget = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -969,7 +969,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         this.plugin.settings.defaultEntry.constant = true;
         this.plugin.settings.defaultEntry.vectorized = false;
         this.plugin.settings.defaultEntry.selective = false;
-        await this.plugin.saveData(this.plugin.settings);
+        await this.plugin.saveSettings(this.plugin.settings);
       }
     });
     
@@ -978,7 +978,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         this.plugin.settings.defaultEntry.constant = false;
         this.plugin.settings.defaultEntry.vectorized = true;
         this.plugin.settings.defaultEntry.selective = false;
-        await this.plugin.saveData(this.plugin.settings);
+        await this.plugin.saveSettings(this.plugin.settings);
       }
     });
     
@@ -987,7 +987,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         this.plugin.settings.defaultEntry.constant = false;
         this.plugin.settings.defaultEntry.vectorized = false;
         this.plugin.settings.defaultEntry.selective = true;
-        await this.plugin.saveData(this.plugin.settings);
+        await this.plugin.saveSettings(this.plugin.settings);
       }
     });
     
@@ -1008,7 +1008,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.defaultEntry.selectiveLogic.toString())
         .onChange(async (value) => {
           this.plugin.settings.defaultEntry.selectiveLogic = parseInt(value);
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
     
     // Probability setting
@@ -1021,7 +1021,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setDynamicTooltip()
         .onChange(async (value) => {
           this.plugin.settings.defaultEntry.probability = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
     
     // Depth setting
@@ -1034,7 +1034,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setDynamicTooltip()
         .onChange(async (value) => {
           this.plugin.settings.defaultEntry.depth = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
     
     // Group weight setting
@@ -1047,7 +1047,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setDynamicTooltip()
         .onChange(async (value) => {
           this.plugin.settings.defaultEntry.groupWeight = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     // Priority Weights section
@@ -1070,7 +1070,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
             // Validate the input is a valid number
             if (!isNaN(numValue)) {
               this.plugin.settings.weights[key] = numValue;
-              await this.plugin.saveData(this.plugin.settings);
+              await this.plugin.saveSettings(this.plugin.settings);
             }
           }));
     };
@@ -1458,7 +1458,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.completion.enabled)
         .onChange(async (value) => {
           this.plugin.settings.completion.enabled = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -1863,7 +1863,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           } else {
             this.plugin.settings.retrieval.ragFallbackPolicy = 'auto';
           }
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -1875,7 +1875,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 1) {
             this.plugin.settings.retrieval.ragFallbackSeedScoreThreshold = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1888,7 +1888,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 0 && numValue <= 3) {
             this.plugin.settings.retrieval.maxGraphHops = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1901,7 +1901,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = Number(value);
           if (!isNaN(numValue) && numValue >= 0.2 && numValue <= 0.9) {
             this.plugin.settings.retrieval.graphHopDecay = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1912,7 +1912,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.retrieval.includeBacklinksInGraphExpansion)
         .onChange(async (value) => {
           this.plugin.settings.retrieval.includeBacklinksInGraphExpansion = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -1922,7 +1922,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.retrieval.toolCalls.enabled)
         .onChange(async (value) => {
           this.plugin.settings.retrieval.toolCalls.enabled = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -1934,7 +1934,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 1 && numValue <= 16) {
             this.plugin.settings.retrieval.toolCalls.maxCallsPerTurn = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1947,7 +1947,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 128) {
             this.plugin.settings.retrieval.toolCalls.maxResultTokensPerTurn = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1960,7 +1960,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 500) {
             this.plugin.settings.retrieval.toolCalls.maxPlanningTimeMs = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1975,7 +1975,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 500) {
             this.plugin.settings.summaries.maxInputChars = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -1988,7 +1988,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.summaries.maxSummaryChars = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2001,7 +2001,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.costTracking.enabled)
         .onChange(async (value) => {
           this.plugin.settings.costTracking.enabled = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2012,7 +2012,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.costTracking.ledgerPath)
         .onChange(async (value) => {
           this.plugin.settings.costTracking.ledgerPath = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2024,7 +2024,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = Number(value);
           if (!Number.isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.costTracking.defaultInputCostPerMillionUsd = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2037,7 +2037,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = Number(value);
           if (!Number.isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.costTracking.defaultOutputCostPerMillionUsd = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2049,7 +2049,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.costTracking.reportOutputDir)
         .onChange(async (value) => {
           this.plugin.settings.costTracking.reportOutputDir = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     const budgetProfileOptions = this.resolveCostBudgetProfileOptions();
@@ -2061,7 +2061,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     let selectedBudgetSettings = this.getCostProfileBudgetSettings(selectedBudgetProfileId);
     const persistSelectedBudgetSettings = async (): Promise<void> => {
       this.setCostProfileBudgetSettings(selectedBudgetProfileId, selectedBudgetSettings);
-      await this.plugin.saveData(this.plugin.settings);
+      await this.plugin.saveSettings(this.plugin.settings);
     };
 
     new Setting(containerEl)
@@ -2107,7 +2107,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .onClick(async () => {
           const configured = this.getCostProfileBudgetMap();
           delete configured[selectedBudgetProfileId];
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
           this.display();
         }));
 
@@ -2157,7 +2157,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .onClick(async () => {
           try {
             this.plugin.settings.costTracking.modelPricingOverrides = this.parseModelPricingOverridesInput(pricingOverridesDraft);
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
             new Notice('Applied model pricing overrides.');
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -2257,7 +2257,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.operationLog.enabled)
         .onChange(async (value) => {
           this.plugin.settings.operationLog.enabled = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2269,7 +2269,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           const normalized = this.normalizePathInput(value);
           this.plugin.settings.operationLog.path = normalized || DEFAULT_SETTINGS.operationLog.path;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2281,7 +2281,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value, 10);
           if (!isNaN(numValue) && numValue >= 20) {
             this.plugin.settings.operationLog.maxEntries = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2292,7 +2292,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.operationLog.includeEmbeddings)
         .onChange(async (value) => {
           this.plugin.settings.operationLog.includeEmbeddings = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2313,7 +2313,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.embeddings.enabled)
         .onChange(async (value) => {
           this.plugin.settings.embeddings.enabled = value;
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2332,7 +2332,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           } else {
             this.plugin.settings.embeddings.provider = 'openrouter';
           }
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2343,7 +2343,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.embeddings.endpoint)
         .onChange(async (value) => {
           this.plugin.settings.embeddings.endpoint = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2355,7 +2355,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.embeddings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.embeddings.apiKey = value.trim();
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           });
         text.inputEl.type = 'password';
       });
@@ -2368,7 +2368,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.embeddings.apiKeySecretName)
         .onChange(async (value) => {
           this.plugin.settings.embeddings.apiKeySecretName = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }))
       .addButton(button => button
         .setButtonText('Pick Existing')
@@ -2390,7 +2390,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.embeddings.model)
         .onChange(async (value) => {
           this.plugin.settings.embeddings.model = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2401,7 +2401,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.embeddings.instruction)
         .onChange(async (value) => {
           this.plugin.settings.embeddings.instruction = value.trim();
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2413,7 +2413,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue > 0) {
             this.plugin.settings.embeddings.batchSize = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2426,7 +2426,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 1000) {
             this.plugin.settings.embeddings.timeoutMs = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2438,7 +2438,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.embeddings.cacheDir)
         .onChange(async (value) => {
           this.plugin.settings.embeddings.cacheDir = this.normalizePathInput(value);
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2457,7 +2457,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           } else {
             this.plugin.settings.embeddings.chunkingMode = 'auto';
           }
-          await this.plugin.saveData(this.plugin.settings);
+          await this.plugin.saveSettings(this.plugin.settings);
         }));
 
     new Setting(containerEl)
@@ -2469,7 +2469,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 100) {
             this.plugin.settings.embeddings.minChunkChars = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2482,7 +2482,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= this.plugin.settings.embeddings.minChunkChars) {
             this.plugin.settings.embeddings.maxChunkChars = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
 
@@ -2495,7 +2495,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           const numValue = parseInt(value);
           if (!isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.embeddings.overlapChars = numValue;
-            await this.plugin.saveData(this.plugin.settings);
+            await this.plugin.saveSettings(this.plugin.settings);
           }
         }));
   }

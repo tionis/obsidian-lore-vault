@@ -36,6 +36,7 @@ export class LiveContextIndex {
   private refreshTimer: number | null = null;
   private refreshInFlight: Promise<void> | null = null;
   private version = 0;
+  private destroyed = false;
   private embeddingService: EmbeddingService | null = null;
   private embeddingSignature = '';
   private onEmbeddingOperationLog: CompletionOperationLogger | undefined;
@@ -53,12 +54,21 @@ export class LiveContextIndex {
     this.onEmbeddingUsage = onEmbeddingUsage;
   }
 
+  /** Cancel pending timers and prevent any further async work. Call from Plugin.onunload(). */
+  destroy(): void {
+    this.destroyed = true;
+    if (this.refreshTimer !== null) {
+      window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
   async initialize(): Promise<void> {
     await this.rebuildAllScopes();
   }
 
   markFileChanged(fileOrPath: TAbstractFile | string | null | undefined): void {
-    if (!fileOrPath) {
+    if (this.destroyed || !fileOrPath) {
       return;
     }
 
@@ -72,6 +82,9 @@ export class LiveContextIndex {
   }
 
   markRenamed(file: TAbstractFile | null | undefined, oldPath: string): void {
+    if (this.destroyed) {
+      return;
+    }
     this.markFileChanged(file);
     if (oldPath && oldPath.toLowerCase().endsWith('.md')) {
       this.task.changedPaths.add(oldPath);
@@ -80,6 +93,9 @@ export class LiveContextIndex {
   }
 
   requestFullRefresh(): void {
+    if (this.destroyed) {
+      return;
+    }
     this.task.changedPaths.clear();
     if (this.refreshTimer !== null) {
       window.clearTimeout(this.refreshTimer);
@@ -249,10 +265,16 @@ export class LiveContextIndex {
     const nextScopes = new Map<string, ScopeContextPack>();
 
     for (const scope of scopesToBuild) {
+      if (this.destroyed) {
+        return;
+      }
       const pack = await this.buildScope(scope, buildAllScopes, files, settings);
       nextScopes.set(scope, pack);
     }
 
+    if (this.destroyed) {
+      return;
+    }
     this.scopes = nextScopes;
     this.updateFileScopeIndex(settings);
     this.version += 1;

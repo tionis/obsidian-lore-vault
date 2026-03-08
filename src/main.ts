@@ -8399,6 +8399,11 @@ export default class LoreBookConverterPlugin extends Plugin {
       window.clearTimeout(this.operationLogViewRefreshTimer);
       this.operationLogViewRefreshTimer = null;
     }
+    // Destroy the live context index so its internal debounce timer is cancelled
+    // before any async awaits below.
+    this.liveContextIndex?.destroy();
+    // Flush any pending operation-log writes so entries are not silently dropped.
+    await this.operationLogWriteQueue;
     this.generationStatusEl = null;
   }
 

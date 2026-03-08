@@ -43,10 +43,7 @@ export class EmbeddingCache {
 
   async get(cacheKey: string): Promise<CachedEmbeddingRecord | null> {
     const filePath = this.recordPath(cacheKey);
-    if (!(await this.app.vault.adapter.exists(filePath))) {
-      return null;
-    }
-
+    // Avoid a TOCTOU race by reading directly and treating any error as a cache miss.
     try {
       const raw = await this.app.vault.adapter.read(filePath);
       const parsed = JSON.parse(raw) as CachedEmbeddingRecord;
@@ -54,7 +51,7 @@ export class EmbeddingCache {
         return null;
       }
       return parsed;
-    } catch (_error) {
+    } catch {
       return null;
     }
   }

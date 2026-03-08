@@ -158,6 +158,7 @@ This document is the implementation-level reference for core architecture and ru
   - sync preserves existing local avatar embeds in details markdown (for localized image workflows) and otherwise uses canonical source-card avatar links
   - details block is versioned (`LV_CHARACTER_CARD_DETAILS_VERSION`) and tracked in frontmatter (`characterCardDetailsVersion`)
   - details block layout is summary-first and includes avatar embed at top when available
+  - alternate/group-only greeting fields are rendered as numbered `####` subheadings per greeting variant (parser remains compatible with prior bullet-list formatting)
   - synced meta frontmatter carries compact indexing metadata (identity/tags/source/lorebook stats) and duplicated summary fields; long prose/message/prompt fields are stored in details markdown instead of frontmatter
   - optional summary generation pipeline with operation-log + usage-ledger tracking (`character_card_summary`)
   - hash-aware summary persistence (`cardSummaryForHash`) and stale markers (`cardSummaryStale`) to avoid accidental overwrite during sync

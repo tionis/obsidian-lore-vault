@@ -72,6 +72,50 @@ function parseListSection(value: string): string[] {
   return uniqueStrings(items);
 }
 
+function parseGroupedSubheadingSection(value: string): string[] | null {
+  const lines = normalizeMarkdown(value).split('\n');
+  const items: string[] = [];
+  let hasSubheadings = false;
+  let buffer: string[] = [];
+
+  const flush = () => {
+    if (!hasSubheadings) {
+      return;
+    }
+    const normalized = buffer.join('\n').trim();
+    if (normalized) {
+      items.push(normalized);
+    }
+    buffer = [];
+  };
+
+  for (const rawLine of lines) {
+    if (/^####\s+.+\s*$/.test(rawLine)) {
+      hasSubheadings = true;
+      flush();
+      continue;
+    }
+    if (hasSubheadings) {
+      buffer.push(rawLine);
+    }
+  }
+
+  if (!hasSubheadings) {
+    return null;
+  }
+
+  flush();
+  return uniqueStrings(items);
+}
+
+function parseGreetingSection(value: string): string[] {
+  const grouped = parseGroupedSubheadingSection(value);
+  if (grouped) {
+    return grouped;
+  }
+  return parseListSection(value);
+}
+
 function parseTextSections(markdown: string): ParsedSectionMap {
   const sections: ParsedSectionMap = {};
   const lines = normalizeMarkdown(markdown).split('\n');
@@ -193,7 +237,7 @@ export function parseCharacterCardDetailsContentFromMarkdown(markdown: string): 
   details.cardMessageExample = sections['message example'] ?? '';
   details.cardSystemPrompt = sections['system prompt'] ?? '';
   details.cardPostHistoryInstructions = sections['post history instructions'] ?? '';
-  details.cardAlternateGreetings = parseListSection(sections['alternate greetings'] ?? '');
-  details.cardGroupOnlyGreetings = parseListSection(sections['group-only greetings'] ?? '');
+  details.cardAlternateGreetings = parseGreetingSection(sections['alternate greetings'] ?? '');
+  details.cardGroupOnlyGreetings = parseGreetingSection(sections['group-only greetings'] ?? '');
   return details;
 }

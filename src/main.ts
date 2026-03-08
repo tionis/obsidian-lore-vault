@@ -2630,6 +2630,30 @@ export default class LoreBookConverterPlugin extends Plugin {
     lines.push('');
   }
 
+  private pushCharacterCardGroupedTextSection(
+    lines: string[],
+    heading: string,
+    itemHeadingPrefix: string,
+    values: string[]
+  ): void {
+    const normalized = uniqueStrings(
+      values
+        .map(value => this.normalizeMarkdownSectionText(value))
+        .filter(Boolean)
+    );
+    if (normalized.length === 0) {
+      return;
+    }
+    lines.push(`### ${heading}`);
+    lines.push('');
+    for (let index = 0; index < normalized.length; index += 1) {
+      lines.push(`#### ${itemHeadingPrefix} ${index + 1}`);
+      lines.push('');
+      lines.push(normalized[index]);
+      lines.push('');
+    }
+  }
+
   private buildCharacterCardAvatarEmbedMarkdown(avatarRaw: string, sourcePath: string): string {
     const normalizedAvatar = avatarRaw.trim();
     if (normalizedAvatar) {
@@ -2768,8 +2792,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.pushCharacterCardTextSection(lines, 'Message Example', params.cardMessageExample);
     this.pushCharacterCardTextSection(lines, 'System Prompt', params.cardSystemPrompt);
     this.pushCharacterCardTextSection(lines, 'Post History Instructions', params.cardPostHistoryInstructions);
-    this.pushCharacterCardListSection(lines, 'Alternate Greetings', params.cardAlternateGreetings);
-    this.pushCharacterCardListSection(lines, 'Group-Only Greetings', params.cardGroupOnlyGreetings);
+    this.pushCharacterCardGroupedTextSection(lines, 'Alternate Greetings', 'Alternate Greeting', params.cardAlternateGreetings);
+    this.pushCharacterCardGroupedTextSection(lines, 'Group-Only Greetings', 'Group-Only Greeting', params.cardGroupOnlyGreetings);
 
     return lines.join('\n').trimEnd();
   }

@@ -52,6 +52,44 @@ test('parseCharacterCardDetailsContentFromMarkdown extracts text and list sectio
   assert.deepEqual(parsed.cardAlternateGreetings, ['Hey there.', 'Need a hand?']);
 });
 
+test('parseCharacterCardDetailsContentFromMarkdown extracts grouped greeting subheadings', () => {
+  const markdown = [
+    '<!-- LV_BEGIN_CHARACTER_CARD_DETAILS -->',
+    '<!-- LV_CHARACTER_CARD_DETAILS_VERSION: 2 -->',
+    '## Character Card Details',
+    '',
+    'Source Card: [[cards/demo.png]]',
+    '',
+    '### Alternate Greetings',
+    '',
+    '#### Alternate Greeting 1',
+    '',
+    'The door is already open.',
+    '"Come in, slowly," she says.',
+    '',
+    '#### Alternate Greeting 2',
+    '',
+    'Night falls over the market square.',
+    '',
+    '### Group-Only Greetings',
+    '',
+    '#### Group-Only Greeting 1',
+    '',
+    'Everyone made it. Keep your voices down.',
+    '',
+    '<!-- LV_END_CHARACTER_CARD_DETAILS -->'
+  ].join('\n');
+
+  const parsed = parseCharacterCardDetailsContentFromMarkdown(markdown);
+  assert.deepEqual(parsed.cardAlternateGreetings, [
+    'The door is already open.\n"Come in, slowly," she says.',
+    'Night falls over the market square.'
+  ]);
+  assert.deepEqual(parsed.cardGroupOnlyGreetings, [
+    'Everyone made it. Keep your voices down.'
+  ]);
+});
+
 test('parseCharacterCardDetailsContentFromMarkdown returns empty values when no managed block exists', () => {
   const parsed = parseCharacterCardDetailsContentFromMarkdown('# No managed details here');
   assert.equal(parsed.cardSummary, '');

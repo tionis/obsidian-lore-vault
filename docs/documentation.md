@@ -715,6 +715,7 @@ Shared panel inputs:
   - updates compact card metadata in frontmatter for Bases-friendly indexing (`characterName`, `cardTags`, source stats, embedded-lorebook stats) and keeps summary fields duplicated in frontmatter (`cardSummary`, themes/tone, scenario focus, hook)
   - upserts a managed, versioned markdown details block so long fields stay readable directly in the note body
   - details block includes top avatar embed (when image card/avatar is available) and summary-first ordering (`Card Summary`, `Summary Scenario Focus`, `Summary Hook`, tone/themes, then `Creator Notes`, `Personality`, and remaining fields)
+  - alternate/group-only greetings in that details block are emitted as numbered `####` subheadings (`Alternate Greeting 1`, etc.) so long greeting variants are easier to navigate
   - if the existing details block already contains a local avatar embed (for example localized by Local Images Plus), sync preserves that local embed instead of reverting it to the source-card link
   - block markers include a version comment and frontmatter tracks `characterCardDetailsVersion` for future migrations
   - optional auto-summary mode generates concise card catalog fields (`cardSummary`, themes/tone, scenario focus, hook) via completion profile selection

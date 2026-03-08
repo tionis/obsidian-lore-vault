@@ -187,7 +187,7 @@ export class LorevaultHelpView extends ItemView {
         '`Import SillyTavern Lorebook`: import JSON lorebooks into notes with list-based lorebook selection.',
         '`Import SillyTavern Character Card`: parse `.png`/`.json` cards, rewrite them into freeform story + author note with an LLM, and optionally import embedded lorebooks.',
         '`Sync Character Card Library`: scan Character Card Source Folder and create/update one `lvDocType: characterCard` meta note per card.',
-        'Synced character-card meta notes keep compact metadata in frontmatter and keep long prose fields in a readable, versioned `Character Card Details` markdown block.',
+        'Synced character-card meta notes keep compact metadata in frontmatter and keep long prose fields in a readable, versioned `Character Card Details` markdown block (including numbered subheadings for alternate/group-only greetings).',
         'If you localize avatar embeds in that details block (for example with Local Images Plus), sync preserves those local embeds.',
         'Summary fields stay duplicated in frontmatter and details markdown so Bases can display/filter quick summaries.',
         '`Write Back Character Card Source`: when a `characterCard` meta note is active, push identity/tags from frontmatter and long fields from details markdown back into the source `.png`/`.json` card file.',

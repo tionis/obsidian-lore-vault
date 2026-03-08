@@ -24,6 +24,7 @@ Reference design: `docs/planning.md`.
 - Cost-budget configuration is now profile-scoped (budget settings are saved/applied per selected cost profile).
 - Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
 - Cross-panel diff UX is now standardized on side-by-side source diffs (text-command review + story-delta review).
+- Character-card details markdown now renders alternate/group-only greetings as numbered subheadings for faster navigation, with backward-compatible parsing for write-back.
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order

@@ -155,12 +155,18 @@ function resolveOllamaChatUrl(endpoint: string): string {
   return `${trimmed}/api/chat`;
 }
 
+// The parser functions below accept `any` because they deal with raw,
+// untyped JSON bodies from external LLM APIs whose shapes vary across
+// providers and versions.  Using `any` intentionally avoids deep cast
+// chains that would obscure the parsing logic without adding safety.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeContentValue(content: any): string {
   if (typeof content === 'string') {
     return content;
   }
   if (content && typeof content === 'object') {
     const pieces: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const maybeAdd = (value: any): void => {
       const normalized = normalizeContentValue(value);
       if (normalized) {
@@ -393,10 +399,10 @@ function extractOllamaDeltaText(payload: any): string {
   return '';
 }
 
-function safeParseJson(value: string): any | null {
+function safeParseJson(value: string): unknown {
   try {
     return JSON.parse(value);
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -480,7 +486,7 @@ function parseOllamaUsage(payload: any): Omit<CompletionUsageReport, 'provider' 
   };
 }
 
-function convertPlannerMessages(messages: CompletionToolPlannerMessage[]): any[] {
+function convertPlannerMessages(messages: CompletionToolPlannerMessage[]): Record<string, unknown>[] {
   return messages.map((message) => {
     if (message.role === 'assistant' && Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
       return {
@@ -582,7 +588,8 @@ async function consumeOpenAiSseStream(
       completed = true;
       return;
     }
-    const payload = safeParseJson(payloadText);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = safeParseJson(payloadText) as any;
     if (!payload) {
       return;
     }
@@ -663,7 +670,8 @@ async function consumeOllamaNdjsonStream(
   let usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null = null;
 
   const consumeJsonLine = (line: string): void => {
-    const payload = safeParseJson(line);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload = safeParseJson(line) as any;
     if (!payload) {
       return;
     }

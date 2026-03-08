@@ -52,6 +52,8 @@ function normalizeQueryText(text: string): string {
 
 function splitHeadingSections(text: string): string[] {
   const matches: Array<{ index: number }> = [];
+  // Matches H2–H6 only.  H1 is intentionally excluded because it typically
+  // contains the note title which is already captured in frontmatter.
   const headingRegex = /^##{1,5}\s+\S.*$/gm;
   let match: RegExpExecArray | null;
   while ((match = headingRegex.exec(text)) !== null) {

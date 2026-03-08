@@ -661,8 +661,15 @@ export default class LoreBookConverterPlugin extends Plugin {
   private pendingExportScopes = new Set<string>();
   private operationLogWriteQueue: Promise<void> = Promise.resolve();
   private operationLogViewRefreshTimer: number | null = null;
+  // Note: the plugin keeps its own EmbeddingService for chapter-memory operations
+  // (separate from the one inside LiveContextIndex) so that usage events are tagged
+  // with source:'chapter_memory' rather than source:'live_context_index'.  Both
+  // instances share the same on-disk EmbeddingCache, so no redundant network calls
+  // occur for content that has already been embedded.
   private chapterMemoryEmbeddingService: EmbeddingService | null = null;
   private chapterMemoryEmbeddingSignature = '';
+  /** Lazily-built cache: normalised source path (lower-case) → meta note path. */
+  private cardMetaPathCache: Map<string, string> | null = null;
   private deviceProfileState: DeviceProfileState = {
     activeCompletionPresetId: '',
     activeStoryChatPresetId: '',
@@ -706,27 +713,43 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.getCharacterCardSourceFiles();
   }
 
+  /** Build (or return the cached) map of normalised source path → meta note path. */
+  private buildCardMetaPathCache(): Map<string, string> {
+    if (this.cardMetaPathCache) {
+      return this.cardMetaPathCache;
+    }
+    const result = new Map<string, string>();
+    const metaFolder = this.getCharacterCardMetaFolderPath();
+    const candidates = this.app.vault.getMarkdownFiles()
+      .filter(file => this.isPathInVaultFolder(file.path, metaFolder));
+    for (const file of candidates) {
+      const fileCache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = normalizeFrontmatter((fileCache?.frontmatter ?? {}) as FrontmatterData);
+      const docType = (asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '').toLowerCase();
+      if (docType !== CHARACTER_CARD_META_DOC_TYPE.toLowerCase()) {
+        continue;
+      }
+      const cardPath = normalizeVaultPath(
+        asString(getFrontmatterValue(frontmatter, 'cardPath', 'characterCardPath')) ?? ''
+      );
+      if (cardPath) {
+        result.set(cardPath.toLowerCase(), file.path);
+      }
+    }
+    this.cardMetaPathCache = result;
+    return result;
+  }
+
   public findCharacterCardMetaPathBySourcePath(sourcePath: string): string {
     const normalizedSourcePath = normalizeVaultPath(sourcePath.trim());
     if (!normalizedSourcePath) {
       return '';
     }
-    const metaFolder = this.getCharacterCardMetaFolderPath();
-    const candidates = this.app.vault.getMarkdownFiles()
-      .filter(file => this.isPathInVaultFolder(file.path, metaFolder));
-    for (const file of candidates) {
-      const cache = this.app.metadataCache.getFileCache(file);
-      const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-      const docType = (asString(getFrontmatterValue(frontmatter, 'lvDocType')) ?? '').toLowerCase();
-      if (docType !== CHARACTER_CARD_META_DOC_TYPE.toLowerCase()) {
-        continue;
-      }
-      const cardPath = normalizeVaultPath(asString(getFrontmatterValue(frontmatter, 'cardPath', 'characterCardPath')) ?? '');
-      if (cardPath && cardPath.toLowerCase() === normalizedSourcePath.toLowerCase()) {
-        return file.path;
-      }
-    }
-    return '';
+    return this.buildCardMetaPathCache().get(normalizedSourcePath.toLowerCase()) ?? '';
+  }
+
+  private invalidateCardMetaPathCache(): void {
+    this.cardMetaPathCache = null;
   }
 
   private getRawOperationLogBasePath(): string {
@@ -8324,6 +8347,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.invalidateCardMetaPathCache();
       this.handleVaultMutationForExports(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
@@ -8335,6 +8359,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('modify', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.invalidateCardMetaPathCache();
       this.handleVaultMutationForExports(file);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
@@ -8346,6 +8371,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', file => {
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.invalidateCardMetaPathCache();
       this.handleVaultMutationForExports(file, file.path);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();
@@ -8358,6 +8384,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.liveContextIndex.markRenamed(file, oldPath);
       this.chapterSummaryStore.invalidatePath(oldPath);
       this.chapterSummaryStore.invalidatePath(file.path);
+      this.invalidateCardMetaPathCache();
       this.handleVaultMutationForExports(file, oldPath);
       this.refreshManagerViews();
       this.refreshRoutingDebugViews();

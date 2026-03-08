@@ -198,7 +198,12 @@ export class LiveContextIndex {
     });
   }
 
-  private getEmbeddingService(settings: ConverterSettings): EmbeddingService | null {
+  /**
+   * Return the cached EmbeddingService for the current settings, or null if
+   * embeddings are disabled.  Exposed as public so the plugin can reuse the
+   * same instance rather than creating a duplicate with a separate cache.
+   */
+  getEmbeddingService(settings: ConverterSettings): EmbeddingService | null {
     if (!settings.embeddings.enabled) {
       this.embeddingService = null;
       this.embeddingSignature = '';

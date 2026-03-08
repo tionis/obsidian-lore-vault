@@ -75,6 +75,8 @@ export interface CharacterCardPromptContext {
   personaPath?: string;
   personaMarkdown?: string;
   detectedPlaceholders?: string[];
+  /** When set, use this as the opening scene instead of firstMessage and omit alternateGreetings. */
+  selectedGreeting?: string;
 }
 
 export interface CharacterCardWriteBackFields {
@@ -874,9 +876,9 @@ export function buildCharacterCardRewriteUserPrompt(card: ParsedCharacterCard, c
       description: card.description,
       personality: card.personality,
       scenario: card.scenario,
-      firstMessage: card.firstMessage,
+      firstMessage: context.selectedGreeting !== undefined ? context.selectedGreeting : card.firstMessage,
       messageExample: card.messageExample,
-      alternateGreetings: card.alternateGreetings,
+      alternateGreetings: context.selectedGreeting !== undefined ? [] : card.alternateGreetings,
       groupOnlyGreetings: card.groupOnlyGreetings,
       systemPrompt: card.systemPrompt,
       postHistoryInstructions: card.postHistoryInstructions

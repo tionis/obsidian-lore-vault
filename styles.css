@@ -1043,6 +1043,121 @@
   }
 }
 
+/* Greeting Selector Modal */
+.modal.lorevault-greeting-selector-shell {
+  width: min(92vw, 900px);
+  max-width: 900px;
+}
+
+.lorevault-greeting-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lorevault-greeting-columns {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+  min-height: 320px;
+}
+
+.lorevault-greeting-list-wrap {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lorevault-greeting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.lorevault-greeting-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--background-modifier-border);
+  gap: 3px;
+}
+
+.lorevault-greeting-item:last-child {
+  border-bottom: none;
+}
+
+.lorevault-greeting-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.lorevault-greeting-item.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.lorevault-greeting-item-label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.lorevault-greeting-item.is-selected .lorevault-greeting-item-label {
+  opacity: 0.9;
+}
+
+.lorevault-greeting-item-snippet {
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lorevault-greeting-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.lorevault-greeting-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.lorevault-greeting-preview {
+  flex: 1;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+@media (max-width: 700px) {
+  .lorevault-greeting-columns {
+    grid-template-columns: 1fr;
+    min-height: unset;
+  }
+
+  .lorevault-greeting-preview {
+    max-height: 180px;
+  }
+}
+
 /* Text Command Modal */
 .modal.lorevault-text-command-modal-shell {
   width: min(92vw, 980px);

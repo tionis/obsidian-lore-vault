@@ -8,6 +8,7 @@ import {
   parseSillyTavernLorebookJson
 } from './sillytavern-import';
 import { openVaultFolderPicker } from './folder-suggest-modal';
+import { GreetingSelectorModal, GreetingOption } from './greeting-selector-modal';
 import { LorebookScopeSuggestModal } from './lorebook-scope-suggest-modal';
 import { readVaultBinary } from './vault-binary-io';
 import {
@@ -29,6 +30,14 @@ import { normalizeVaultPath } from './vault-path-utils';
 import { ConverterSettings } from './models';
 
 export const LOREVAULT_IMPORT_VIEW_TYPE = 'lorevault-import-view';
+
+/** Thrown when the user dismisses a modal during the import flow. Handled silently. */
+class UserCancelledError extends Error {
+  constructor() {
+    super('User cancelled.');
+    this.name = 'UserCancelledError';
+  }
+}
 
 type ImportMode = 'lorebook_json' | 'character_card';
 
@@ -750,11 +759,38 @@ export class LorevaultImportView extends ItemView {
       ? parseSillyTavernCharacterCardJson(await this.app.vault.read(abstract))
       : parseSillyTavernCharacterCardPngBytes(await readVaultBinary(this.app, abstract.path));
     const personaContext = await this.resolvePersonaContextForImport(abstract);
+
+    // Let the user pick a greeting when alternates exist.
+    let selectedGreeting: string | undefined;
+    if (card.alternateGreetings.length > 0) {
+      const greetingOptions: GreetingOption[] = [];
+      if (card.firstMessage) {
+        greetingOptions.push({ label: 'First Message', text: card.firstMessage });
+      }
+      for (let i = 0; i < card.alternateGreetings.length; i++) {
+        const text = card.alternateGreetings[i];
+        if (text) {
+          greetingOptions.push({ label: `Alternate ${i + 1}`, text });
+        }
+      }
+      if (greetingOptions.length > 1) {
+        const modal = new GreetingSelectorModal(this.app, greetingOptions);
+        const resultPromise = modal.waitForResult();
+        modal.open();
+        const result = await resultPromise;
+        if (result.action === 'cancel') {
+          throw new UserCancelledError();
+        }
+        selectedGreeting = result.selectedText;
+      }
+    }
+
     const promptContext = {
       personaName: personaContext.personaName,
       personaPath: personaContext.personaPath,
       personaMarkdown: personaContext.personaMarkdown,
-      detectedPlaceholders: collectCharacterCardTemplatePlaceholders(card)
+      detectedPlaceholders: collectCharacterCardTemplatePlaceholders(card),
+      selectedGreeting
     };
     const personaLabel = personaContext.personaPath
       ? ` | persona: ${personaContext.personaName || personaContext.personaPath}`
@@ -886,9 +922,13 @@ export class LorevaultImportView extends ItemView {
       this.syncPreviewPathsFromPreparedPages();
       this.setProgress('Preview complete', `${pages.length} note(s)`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.lastError = `Preview failed: ${message}`;
-      this.setProgress('Preview failed', message);
+      if (error instanceof UserCancelledError) {
+        this.setProgress('Ready');
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        this.lastError = `Preview failed: ${message}`;
+        this.setProgress('Preview failed', message);
+      }
     } finally {
       this.running = false;
       this.runningMode = null;
@@ -944,11 +984,15 @@ export class LorevaultImportView extends ItemView {
       this.setProgress('Import complete', `${applied.created} created, ${applied.updated} updated`);
       new Notice(this.importSummary);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('LoreVault import failed:', error);
-      this.lastError = `Import failed: ${message}`;
-      this.setProgress('Import failed', message);
-      new Notice(`LoreVault import failed: ${message}`);
+      if (error instanceof UserCancelledError) {
+        this.setProgress('Ready');
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('LoreVault import failed:', error);
+        this.lastError = `Import failed: ${message}`;
+        this.setProgress('Import failed', message);
+        new Notice(`LoreVault import failed: ${message}`);
+      }
     } finally {
       this.running = false;
       this.runningMode = null;

@@ -346,6 +346,45 @@ test('collectCharacterCardTemplatePlaceholders detects common template placehold
   );
 });
 
+test('buildCharacterCardRewriteUserPrompt uses selectedGreeting as firstMessage and omits alternates', () => {
+  const card = parseSillyTavernCharacterCardJson(JSON.stringify({
+    name: 'Kira',
+    description: 'A courier.',
+    scenario: 'Night City drop point.',
+    first_mes: 'You found the package.',
+    alternate_greetings: [
+      'The package is gone.',
+      'Wrong drop point — run.'
+    ]
+  }));
+
+  const selected = 'The package is gone.';
+  const prompt = buildCharacterCardRewriteUserPrompt(card, { selectedGreeting: selected });
+  const payload = JSON.parse(prompt.split('Input JSON:\n')[1].split('\n\nOutput only')[0]) as {
+    card: { firstMessage: string; alternateGreetings: string[] }
+  };
+
+  assert.equal(payload.card.firstMessage, selected);
+  assert.deepEqual(payload.card.alternateGreetings, []);
+});
+
+test('buildCharacterCardRewriteUserPrompt keeps original firstMessage and alternates when no selectedGreeting', () => {
+  const card = parseSillyTavernCharacterCardJson(JSON.stringify({
+    name: 'Kira',
+    description: 'A courier.',
+    first_mes: 'You found the package.',
+    alternate_greetings: ['The package is gone.', 'Wrong drop point — run.']
+  }));
+
+  const prompt = buildCharacterCardRewriteUserPrompt(card, {});
+  const payload = JSON.parse(prompt.split('Input JSON:\n')[1].split('\n\nOutput only')[0]) as {
+    card: { firstMessage: string; alternateGreetings: string[] }
+  };
+
+  assert.equal(payload.card.firstMessage, 'You found the package.');
+  assert.deepEqual(payload.card.alternateGreetings, ['The package is gone.', 'Wrong drop point — run.']);
+});
+
 test('rewrite and extract prompts include persona context and placeholder guidance', () => {
   const card = parseSillyTavernCharacterCardJson(JSON.stringify({
     name: 'Lena',

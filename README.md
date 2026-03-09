@@ -214,6 +214,7 @@ Quality and utility:
 
 Import and updates:
 
+- `Import Ebook`
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
 - `Inject Character Card Event`
@@ -227,6 +228,13 @@ Import and updates:
 Import/extraction/update panel behavior:
 
 - each panel has a completion-profile selector
+- ebook import panel supports three sub-modes:
+  - `Story Chapters`: one chapter note per selected chapter with linked `previousChapter`/`nextChapter` frontmatter and auto-generated chapter summaries
+  - `Lorebook Extraction`: concatenates selected chapters and runs the same AI extraction pipeline as `Extract Wiki Pages from Story`
+  - `Raw Text Notes`: writes chapter text as plain notes (one per chapter or combined) without story-nav frontmatter
+- ebook import accepts `.epub` and `.txt` vault files picked via fuzzy search
+- EPUB parsing reads OPF spine and NCX/NAV navigation for chapter titles; TXT files are split by heading/blank-gap heuristics
+- chapter selector shows detected character counts per chapter so you can scope what you import
 - import panel supports two modes:
   - lorebook JSON import (`Import SillyTavern Lorebook`)
   - character-card import (`Import SillyTavern Character Card`) for `.png`/`.json` cards with LLM rewrite into story note + author note

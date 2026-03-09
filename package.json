@@ -36,6 +36,7 @@
     },
     "dependencies": {
         "@noble/hashes": "^2.0.1",
+        "fflate": "^0.8.2",
         "graphology": "^0.26.0",
         "graphology-metrics": "^2.4.0",
         "sql.js": "^1.14.0"

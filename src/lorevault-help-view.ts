@@ -202,6 +202,7 @@ export class LorevaultHelpView extends ItemView {
         'Character-card preview includes editable planned writes so you can adjust file paths and markdown content before import.',
         'When a synced card meta note exists, generated story notes store `characterCardMeta: [[...]]` for backlink-based related-story tracking.',
         'When the source card is image-based, generated story notes keep a linked avatar reference in frontmatter and embed the image in the note body.',
+        '`Import Ebook`: import `.epub` or `.txt` files from the vault in three modes — **Story Chapters** (one linked chapter note per chapter), **Lorebook Extraction** (AI extraction into wiki notes), or **Raw Text Notes**. Load the ebook to preview detected chapters with character counts before importing.',
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
         '`Fork Active Lorebook`: clone one lorebook into a new lorebook/folder and rewrite internal links to the forked pages.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',
@@ -210,6 +211,7 @@ export class LorevaultHelpView extends ItemView {
         'Story-delta and rewrite review steps show side-by-side source diffs at the point where you accept/reject changes.'
       ],
       actions: [
+        { label: 'Open Ebook Import', onClick: () => void this.plugin.openEbookImportView() },
         { label: 'Open Lorebook Import', onClick: () => void this.plugin.openImportLorebookView() },
         { label: 'Open Character Card Import', onClick: () => void this.plugin.openImportLorebookView('character_card') },
         {

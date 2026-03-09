@@ -68,6 +68,10 @@ import {
   LorevaultStoryExtractView
 } from './lorevault-story-extract-view';
 import {
+  LOREVAULT_EBOOK_IMPORT_VIEW_TYPE,
+  LorevaultEbookImportView
+} from './lorevault-ebook-import-view';
+import {
   LOREVAULT_STORY_DELTA_VIEW_TYPE,
   LorevaultStoryDeltaView
 } from './lorevault-story-delta-view';
@@ -2588,6 +2592,21 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultStoryExtractView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openEbookImportView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_EBOOK_IMPORT_VIEW_TYPE)[0];
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_EBOOK_IMPORT_VIEW_TYPE,
+        active: true
+      });
+    }
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultEbookImportView) {
       leaf.view.refresh();
     }
   }
@@ -7909,6 +7928,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_COST_ANALYZER_VIEW_TYPE, leaf => new LorevaultCostAnalyzerView(leaf, this));
     this.registerView(LOREVAULT_IMPORT_VIEW_TYPE, leaf => new LorevaultImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
+    this.registerView(LOREVAULT_EBOOK_IMPORT_VIEW_TYPE, leaf => new LorevaultEbookImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_DELTA_VIEW_TYPE, leaf => new LorevaultStoryDeltaView(leaf, this));
     const basesViewRegistered = this.registerBasesView(
       LOREVAULT_CHARACTER_BASES_VIEW_ID,
@@ -8135,6 +8155,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Extract Wiki Pages from Story',
       callback: () => {
         void this.openStoryExtractionView();
+      }
+    });
+
+    this.addCommand({
+      id: 'import-ebook',
+      name: 'Import Ebook',
+      callback: () => {
+        void this.openEbookImportView();
       }
     });
 
@@ -8518,6 +8546,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_COST_ANALYZER_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_IMPORT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_EBOOK_IMPORT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_DELTA_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
       window.clearTimeout(this.managerRefreshTimer);

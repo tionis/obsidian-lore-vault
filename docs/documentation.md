@@ -672,6 +672,7 @@ Behavior:
 
 Commands:
 
+- `Import Ebook`
 - `Import SillyTavern Lorebook`
 - `Import SillyTavern Character Card`
 - `Inject Character Card Event`
@@ -693,6 +694,31 @@ Shared panel inputs:
   - `Regenerate Auto Summaries on Card Changes` (hash-aware regeneration for LoreVault-generated summaries)
   - used to prefill target folder in import, extraction, and lorebook-fork flows
 
+- `Import Ebook`:
+  - ebook file picker (`.epub` and `.txt` vault files via fuzzy search)
+  - sub-mode selector: `Story Chapters` | `Lorebook Extraction` | `Raw Text Notes`
+  - chapter selector: all-toggle + per-chapter checkboxes with detected character count label
+  - `Story Chapters` sub-mode:
+    - target folder (manual path or Browse picker)
+    - story ID (derived from ebook title, editable)
+    - default tags
+    - produces one note per selected chapter with `storyId`, `chapter`, `chapterTitle`, `previousChapter`/`nextChapter` frontmatter and an auto-generated `## Summary` section
+    - two-pass path computation ensures `previousChapter`/`nextChapter` wikilinks are consistent across the import batch
+  - `Lorebook Extraction` sub-mode:
+    - target folder (manual path or Browse picker)
+    - lorebook name → lorebook tag (same pipeline as `Extract Wiki Pages from Story`)
+    - default tags
+    - completion profile selector
+    - concatenates selected chapter text then runs AI extraction into wiki notes
+  - `Raw Text Notes` sub-mode:
+    - target folder
+    - default tags
+    - optional `Combine into single note` toggle to merge all selected chapters into one file
+    - writes chapter body text verbatim without story-nav frontmatter
+  - parsed ebook is cached by file path; re-selecting the same file does not re-parse
+  - preview/import key encodes all relevant settings so a re-preview is forced when settings change
+  - EPUB parsing: ZIP decompressed via `fflate` → `META-INF/container.xml` → OPF → spine → XHTML HTML extraction; NCX (EPUB 2) and NAV (EPUB 3) navigation documents used for chapter title map; chapters < 30 chars are skipped (cover pages)
+  - TXT parsing: four-rule heuristic — explicit `Chapter N`/`Part N`/`CHAPTER` headings with blank line before, Markdown headings (`#`/`##`), 3+ blank line gaps with ≥ 500 chars body, single-chapter fallback
 - `Import SillyTavern Lorebook`:
   - target folder (manual path or Browse picker)
   - default tags

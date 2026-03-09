@@ -13,6 +13,12 @@
   width: 100%;
 }
 
+/* Disabled settings (used for reasoning sub-options when reasoning is off) */
+.lorebook-converter-settings .setting-item.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 /* Progress Bar Styles */
 .lorebook-progress-container {
   display: flex;

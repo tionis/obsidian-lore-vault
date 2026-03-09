@@ -158,8 +158,15 @@ export class GraphAnalyzer {
       getEdgeWeight: () => 1
     };
     
-    const pageRankResult = pagerank(this.graph, prOptions);
-    
+    let pageRankResult: {[node: string]: number} = {};
+    try {
+      if (this.graph.order > 1 && this.graph.size > 0) {
+        pageRankResult = pagerank(this.graph, prOptions);
+      }
+    } catch {
+      // PageRank failed to converge — use uniform fallback
+    }
+
     // Convert the results from node strings to numeric UIDs
     const pageRankByUID: {[key: number]: number} = {};
     let maxPageRank = 0;

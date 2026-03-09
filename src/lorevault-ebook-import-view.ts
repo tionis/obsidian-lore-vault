@@ -487,9 +487,17 @@ export class LorevaultEbookImportView extends ItemView {
 
     this.parsedEbook = parsed;
     this.parsedEbookPath = filePath;
-    // Reset chapter selection when a new file is loaded
-    this.chapterSelectionAll = true;
-    this.selectedChapterIndices = new Set();
+    // Pre-deselect front matter chapters; select all story chapters by default.
+    const frontMatterChapters = parsed.chapters.filter(ch => ch.isFrontMatter);
+    if (frontMatterChapters.length > 0) {
+      this.chapterSelectionAll = false;
+      this.selectedChapterIndices = new Set(
+        parsed.chapters.filter(ch => !ch.isFrontMatter).map(ch => ch.index)
+      );
+    } else {
+      this.chapterSelectionAll = true;
+      this.selectedChapterIndices = new Set();
+    }
     return parsed;
   }
 
@@ -1027,9 +1035,13 @@ export class LorevaultEbookImportView extends ItemView {
   }
 
   private buildChapterSelector(container: HTMLElement, parsed: ParsedEbook): void {
+    const frontMatterCount = parsed.chapters.filter(ch => ch.isFrontMatter).length;
+    const frontMatterNote = frontMatterCount > 0
+      ? ` ${frontMatterCount} front-matter item(s) pre-deselected.`
+      : '';
     const chapterSetting = new Setting(container)
       .setName('Chapters')
-      .setDesc(`${parsed.chapters.length} chapter(s) detected. Uncheck to exclude.`);
+      .setDesc(`${parsed.chapters.length} chapter(s) detected. Uncheck to exclude.${frontMatterNote}`);
 
     const allToggle = chapterSetting.controlEl.createEl('label', { cls: 'lorevault-ebook-chapter-all' });
     const allCheck = allToggle.createEl('input', { type: 'checkbox' });
@@ -1054,6 +1066,12 @@ export class LorevaultEbookImportView extends ItemView {
           cls: 'lorevault-ebook-chapter-chars',
           text: ` (${chapter.bodyText.length.toLocaleString()} chars)`
         });
+        if (chapter.isFrontMatter) {
+          label.createSpan({
+            cls: 'lorevault-ebook-chapter-frontmatter',
+            text: ' [front matter]'
+          });
+        }
         check.addEventListener('change', () => {
           if (check.checked) {
             this.selectedChapterIndices.add(chapter.index);

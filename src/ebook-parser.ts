@@ -4,6 +4,7 @@ export interface EbookChapter {
   index: number; // 1-based reading order
   title: string;
   bodyText: string; // plain text, paragraphs separated by \n\n
+  isFrontMatter: boolean; // true for title pages, ToC, copyright, dedication, etc.
 }
 
 export interface ParsedEbook {
@@ -102,6 +103,7 @@ interface ManifestItem {
   href: string;       // absolute path within the archive
   mediaType: string;
   properties: string;
+  nonLinear: boolean; // true when spine itemref has linear="no"
 }
 
 interface ParsedOpf {
@@ -142,7 +144,7 @@ function parseOpfDoc(lcMap: Map<string, Uint8Array>, opfPath: string): ParsedOpf
     const mediaType = item.getAttribute('media-type') ?? '';
     const properties = item.getAttribute('properties') ?? '';
     const absoluteHref = resolveRelativeHref(opfBaseDir, href);
-    manifestMap.set(id, { id, href: absoluteHref, mediaType, properties });
+    manifestMap.set(id, { id, href: absoluteHref, mediaType, properties, nonLinear: false });
   }
 
   // Spine: ordered list of HTML items
@@ -160,7 +162,8 @@ function parseOpfDoc(lcMap: Map<string, Uint8Array>, opfPath: string): ParsedOpf
       item.href.endsWith('.html') ||
       item.href.endsWith('.xhtml');
     if (!isHtml) continue;
-    spineItems.push(item);
+    const nonLinear = itemref.getAttribute('linear') === 'no';
+    spineItems.push({ ...item, nonLinear });
   }
 
   if (spineItems.length === 0) {
@@ -287,6 +290,44 @@ function parseEpubHtmlFile(htmlText: string): Document {
   return parseAsHtml(htmlText);
 }
 
+// epub:type values that indicate front/back matter that is not story content.
+// See: https://www.w3.org/TR/epub-ssv/
+const EPUB_FRONT_MATTER_TYPES = new Set([
+  'cover', 'title-page', 'copyright-page', 'dedication',
+  'halftitlepage', 'frontmatter', 'landmarks', 'toc',
+  'loa', 'loi', 'lot', 'lov', 'colophon', 'imprint',
+]);
+
+const EPUB_NS = 'http://www.idpf.org/2007/ops';
+
+function getEpubTypeAttr(el: Element): string {
+  return (
+    el.getAttributeNS(EPUB_NS, 'type') ??
+    el.getAttribute('epub:type') ??
+    ''
+  );
+}
+
+function hasEpubFrontMatterType(el: Element): boolean {
+  const epubType = getEpubTypeAttr(el);
+  if (!epubType) return false;
+  return epubType.split(/\s+/).some(t => EPUB_FRONT_MATTER_TYPES.has(t));
+}
+
+// Checks epub:type on body and its first block-level child.
+function isFrontMatterDoc(doc: Document): boolean {
+  const body = doc.body;
+  if (body && hasEpubFrontMatterType(body)) return true;
+  // Many publishers put epub:type on the top-level <section> or <div>
+  const firstBlock = body?.firstElementChild;
+  if (firstBlock && hasEpubFrontMatterType(firstBlock)) return true;
+  return false;
+}
+
+// Title-pattern heuristic for EPUB 2 / untagged books.
+const FRONT_MATTER_TITLE_RE =
+  /^(title\s*page|copyright(\s+(page|notice))?|dedication|table\s+of\s+contents|contents|toc|half\s*title|colophon|also\s+by(\s+the\s+author)?|about\s+the\s+author|acknowledgements?|imprint|epigraph|frontispiece|about\s+this\s+book|publisher'?s?\s+note)$/i;
+
 function extractFirstHeading(doc: Document): string {
   for (const tag of ['h1', 'h2', 'h3']) {
     const el = doc.querySelector(tag);
@@ -334,7 +375,13 @@ function extractChaptersFromSpine(
     chapterIndex += 1;
     const titleFromMap = titleMap.get(item.href.toLowerCase()) ?? '';
     const title = titleFromMap || extractFirstHeading(doc) || `Chapter ${chapterIndex}`;
-    chapters.push({ index: chapterIndex, title, bodyText });
+
+    const frontMatterByLinear = item.nonLinear;
+    const frontMatterByEpubType = isFrontMatterDoc(doc);
+    const frontMatterByTitle = FRONT_MATTER_TITLE_RE.test(title.trim());
+    const isFrontMatter = frontMatterByLinear || frontMatterByEpubType || frontMatterByTitle;
+
+    chapters.push({ index: chapterIndex, title, bodyText, isFrontMatter });
   }
 
   return chapters;

@@ -16,6 +16,8 @@ export interface StoryCompletionRequest {
 
 export interface StoryCompletionStreamRequest extends StoryCompletionRequest {
   onDelta: (delta: string) => void;
+  /** Called for each reasoning/thinking token chunk. Not called when reasoning is excluded or not configured. */
+  onReasoning?: (delta: string) => void;
   abortSignal?: AbortSignal;
 }
 
@@ -356,6 +358,15 @@ function extractOpenAiCompletionText(payload: any): string {
   );
 }
 
+function extractOpenAiReasoningDelta(payload: any): string {
+  const first = payload?.choices?.[0];
+  return (
+    normalizeContentValue(first?.delta?.reasoning) ||
+    normalizeContentValue(first?.delta?.reasoning_content) ||
+    ''
+  );
+}
+
 function extractOpenAiDeltaText(payload: any): string {
   const first = payload?.choices?.[0];
   const deltaContent = normalizeContentValue(first?.delta?.content);
@@ -566,9 +577,11 @@ function parsePlannerResponse(payload: any): CompletionToolPlannerResponse {
 
 async function consumeOpenAiSseStream(
   response: Response,
-  onDelta: (delta: string) => void
+  onDelta: (delta: string) => void,
+  onReasoningDelta?: (delta: string) => void
 ): Promise<{
   text: string;
+  reasoning: string;
   usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null;
 }> {
   if (!response.body) {
@@ -579,6 +592,7 @@ async function consumeOpenAiSseStream(
     }
     return {
       text,
+      reasoning: '',
       usage: parseOpenAiUsage(payload)
     };
   }
@@ -587,6 +601,7 @@ async function consumeOpenAiSseStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let combined = '';
+  let combinedReasoning = '';
   let completed = false;
   let usage: Omit<CompletionUsageReport, 'provider' | 'model' | 'source'> | null = null;
 
@@ -609,6 +624,11 @@ async function consumeOpenAiSseStream(
     const parsedUsage = parseOpenAiUsage(payload);
     if (parsedUsage) {
       usage = parsedUsage;
+    }
+    const reasoningDelta = extractOpenAiReasoningDelta(payload);
+    if (reasoningDelta) {
+      combinedReasoning += reasoningDelta;
+      onReasoningDelta?.(reasoningDelta);
     }
     const delta = extractOpenAiDeltaText(payload);
     if (!delta) {
@@ -652,6 +672,7 @@ async function consumeOpenAiSseStream(
 
   return {
     text: combined.trim(),
+    reasoning: combinedReasoning,
     usage
   };
 }
@@ -817,6 +838,19 @@ function buildOpenRouterExtras(config: ConverterSettings['completion']): Record<
       order: routingProviders,
       allow_fallbacks: false
     };
+  }
+  if (config.reasoning?.enabled) {
+    const r = config.reasoning;
+    const reasoningParam: Record<string, unknown> = { enabled: true };
+    if (r.maxTokens && r.maxTokens > 0) {
+      reasoningParam.max_tokens = r.maxTokens;
+    } else if (r.effort) {
+      reasoningParam.effort = r.effort;
+    }
+    if (r.exclude) {
+      reasoningParam.exclude = true;
+    }
+    extras.reasoning = reasoningParam;
   }
   return extras;
 }
@@ -1046,6 +1080,16 @@ export async function requestStoryContinuationStream(
       console.error('LoreVault: Streaming delta consumer failed; continuing stream.', error);
     }
   };
+  const safeOnReasoningDelta = request.onReasoning
+    ? (delta: string): void => {
+        if (!delta || !request.onReasoning) return;
+        try {
+          request.onReasoning(delta);
+        } catch (error) {
+          console.error('LoreVault: Reasoning delta consumer failed; continuing stream.', error);
+        }
+      }
+    : undefined;
 
   const controller = new AbortController();
   let timedOut = false;
@@ -1143,7 +1187,7 @@ export async function requestStoryContinuationStream(
       throw new Error(`Completion request failed (${response.status}): ${text}`);
     }
 
-    const result = await consumeOpenAiSseStream(response, safeOnDelta);
+    const result = await consumeOpenAiSseStream(response, safeOnDelta, safeOnReasoningDelta);
     finalText = result.text;
     attempt.responseText = result.text;
     if (result.usage && request.onUsage) {

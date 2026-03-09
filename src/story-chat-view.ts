@@ -1268,9 +1268,17 @@ export class StoryChatView extends ItemView {
         this.renderMessageEditor(row);
       } else {
         const content = row.createDiv({ cls: 'lorevault-chat-message-content' });
+        if (message.role === 'assistant' && version.reasoning?.trim()) {
+          const details = content.createEl('details', { cls: 'lorevault-chat-thinking' });
+          details.createEl('summary', { text: 'Thinking' });
+          const thinkingBody = details.createDiv({ cls: 'lorevault-chat-thinking-body' });
+          this.renderMarkdownContent(thinkingBody, version.reasoning);
+        }
         const contentText = version.content || (this.isSending && message.role === 'assistant' ? '...' : '');
         if (!contentText.trim()) {
-          content.setText('');
+          if (!version.reasoning?.trim()) {
+            content.setText('');
+          }
         } else {
           this.renderMarkdownContent(content, contentText);
         }
@@ -1591,6 +1599,7 @@ export class StoryChatView extends ItemView {
       });
 
       targetVersion.content = result.assistantText;
+      targetVersion.reasoning = result.reasoning || undefined;
       targetVersion.contextMeta = this.cloneContextMeta(result.contextMeta);
       this.setStatus('Idle');
       await this.saveCurrentConversation();

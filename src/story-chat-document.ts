@@ -8,6 +8,8 @@ export interface ChatMessageVersion {
   content: string;
   createdAt: number;
   contextMeta?: StoryChatContextMeta;
+  /** Reasoning/thinking tokens returned by the model. Stored for display; filtered before sending as history. */
+  reasoning?: string;
 }
 
 export interface ConversationMessage {

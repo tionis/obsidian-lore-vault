@@ -258,6 +258,19 @@ export interface StoryChatForkSnapshot {
   noteContextRefs: string[];
 }
 
+export type ReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+
+export interface ReasoningConfig {
+  /** Enable reasoning/thinking tokens. */
+  enabled: boolean;
+  /** Effort level for models that support it (OpenAI o-series, Grok). Ignored when maxTokens > 0. */
+  effort?: ReasoningEffort;
+  /** Max reasoning tokens for Anthropic/Gemini. Overrides effort when > 0. Minimum 1024. */
+  maxTokens?: number;
+  /** If true, reasoning is used internally but not returned in the response. */
+  exclude?: boolean;
+}
+
 export interface CompletionPreset {
   id: string;
   name: string;
@@ -276,6 +289,8 @@ export interface CompletionPreset {
   promptCachingEnabled?: boolean;
   /** Comma-separated OpenRouter provider slugs to lock routing to (e.g. "anthropic" or "anthropic,google"). Empty = let OpenRouter decide. */
   providerRouting?: string;
+  /** Reasoning/thinking token configuration. OpenRouter only. */
+  reasoning?: ReasoningConfig;
 }
 
 export interface CostProfileBudgetSettings {
@@ -457,6 +472,8 @@ export interface ConverterSettings {
     promptCachingEnabled: boolean;
     /** Comma-separated OpenRouter provider slugs to lock routing to. Empty = let OpenRouter decide. */
     providerRouting: string;
+    /** Reasoning/thinking token configuration. OpenRouter only. Undefined = disabled. */
+    reasoning?: ReasoningConfig;
     continuityAggressiveness: CompletionContinuityAggressiveness;
     semanticChapterRecall: CompletionSemanticChapterRecallSettings;
     layerPlacement: {

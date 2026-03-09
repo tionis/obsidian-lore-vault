@@ -298,11 +298,13 @@ export interface StoryChatTurnRequest {
   noteContextRefs: string[];
   history: StoryChatMessage[];
   onDelta: (delta: string) => void;
+  onReasoning?: (delta: string) => void;
 }
 
 export interface StoryChatTurnResult {
   assistantText: string;
   contextMeta: StoryChatContextMeta;
+  reasoning?: string;
 }
 
 export interface LinkedStoryDisplayItem {
@@ -1260,7 +1262,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       promptReserveTokens: preset.promptReserveTokens,
       timeoutMs: preset.timeoutMs,
       promptCachingEnabled: preset.promptCachingEnabled ?? base.promptCachingEnabled,
-      providerRouting: preset.providerRouting ?? base.providerRouting
+      providerRouting: preset.providerRouting ?? base.providerRouting,
+      reasoning: preset.reasoning ?? base.reasoning
     };
   }
 
@@ -6848,6 +6851,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.setGenerationStatus('chat generating', 'busy');
 
     let assistantText = '';
+    let reasoningText = '';
     let streamFailure: Error | null = null;
     let completionUsage: CompletionUsageReport | null = null;
     try {
@@ -6868,6 +6872,10 @@ export default class LoreBookConverterPlugin extends Plugin {
             generatedTokens: this.estimateTokens(assistantText),
             statusText: 'chat generating'
           });
+        },
+        onReasoning: (delta: string) => {
+          reasoningText += delta;
+          request.onReasoning?.(delta);
         },
         onUsage: usage => {
           completionUsage = usage;
@@ -6961,7 +6969,8 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     return {
       assistantText: normalizedAssistantText,
-      contextMeta
+      contextMeta,
+      reasoning: reasoningText || undefined
     };
   }
 

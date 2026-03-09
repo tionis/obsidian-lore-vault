@@ -1635,62 +1635,62 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
             ? { enabled: true, effort: 'medium' }
             : undefined;
           await this.persistCompletionSettings();
-          this.display();
         }));
 
-    if (reasoningEnabled) {
-      new Setting(containerEl)
-        .setName('Reasoning Effort')
-        .setDesc('Controls how many tokens the model uses for reasoning. Ignored when Max Tokens is set. "none" disables thinking while keeping the reasoning parameter.')
-        .addDropdown(dropdown => {
-          const effort = this.plugin.settings.completion.reasoning?.effort ?? 'medium';
-          dropdown
-            .addOptions({
-              xhigh: 'xhigh — ~95% of max tokens',
-              high: 'high — ~80% of max tokens',
-              medium: 'medium — ~50% of max tokens (default)',
-              low: 'low — ~20% of max tokens',
-              minimal: 'minimal — ~10% of max tokens',
-              none: 'none — disable reasoning'
-            })
-            .setValue(effort)
-            .onChange(async value => {
-              const r = this.plugin.settings.completion.reasoning;
-              if (r) {
-                r.effort = value as ReasoningEffort;
-                await this.persistCompletionSettings();
-              }
-            });
-        });
-
-      new Setting(containerEl)
-        .setName('Max Reasoning Tokens')
-        .setDesc('Exact token budget for Anthropic/Gemini models. Overrides Effort when > 0. Minimum 1024. Set to 0 to use Effort instead.')
-        .addText(text => text
-          .setPlaceholder('0')
-          .setValue(String(this.plugin.settings.completion.reasoning?.maxTokens ?? 0))
+    new Setting(containerEl)
+      .setName('Reasoning Effort')
+      .setDesc('Controls how many tokens the model uses for reasoning. Ignored when Max Tokens is set. "none" disables thinking while keeping the reasoning parameter.')
+      .setDisabled(!reasoningEnabled)
+      .addDropdown(dropdown => {
+        const effort = this.plugin.settings.completion.reasoning?.effort ?? 'medium';
+        dropdown
+          .addOptions({
+            xhigh: 'xhigh — ~95% of max tokens',
+            high: 'high — ~80% of max tokens',
+            medium: 'medium — ~50% of max tokens (default)',
+            low: 'low — ~20% of max tokens',
+            minimal: 'minimal — ~10% of max tokens',
+            none: 'none — disable reasoning'
+          })
+          .setValue(effort)
           .onChange(async value => {
             const r = this.plugin.settings.completion.reasoning;
             if (r) {
-              const parsed = parseInt(value);
-              r.maxTokens = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+              r.effort = value as ReasoningEffort;
               await this.persistCompletionSettings();
             }
-          }));
+          });
+      });
 
-      new Setting(containerEl)
-        .setName('Exclude Reasoning from Response')
-        .setDesc('The model reasons internally but does not return the reasoning text. In chat, no Thinking block will appear. Useful for improving response quality without extra output.')
-        .addToggle(toggle => toggle
-          .setValue(this.plugin.settings.completion.reasoning?.exclude ?? false)
-          .onChange(async value => {
-            const r = this.plugin.settings.completion.reasoning;
-            if (r) {
-              r.exclude = value;
-              await this.persistCompletionSettings();
-            }
-          }));
-    }
+    new Setting(containerEl)
+      .setName('Max Reasoning Tokens')
+      .setDesc('Exact token budget for Anthropic/Gemini models. Overrides Effort when > 0. Minimum 1024. Set to 0 to use Effort instead.')
+      .setDisabled(!reasoningEnabled)
+      .addText(text => text
+        .setPlaceholder('0')
+        .setValue(String(this.plugin.settings.completion.reasoning?.maxTokens ?? 0))
+        .onChange(async value => {
+          const r = this.plugin.settings.completion.reasoning;
+          if (r) {
+            const parsed = parseInt(value);
+            r.maxTokens = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+            await this.persistCompletionSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Exclude Reasoning from Response')
+      .setDesc('The model reasons internally but does not return the reasoning text. In chat, no Thinking block will appear. Useful for improving response quality without extra output.')
+      .setDisabled(!reasoningEnabled)
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.completion.reasoning?.exclude ?? false)
+        .onChange(async value => {
+          const r = this.plugin.settings.completion.reasoning;
+          if (r) {
+            r.exclude = value;
+            await this.persistCompletionSettings();
+          }
+        }));
 
     new Setting(containerEl)
       .setName('Story Continuity Aggressiveness')

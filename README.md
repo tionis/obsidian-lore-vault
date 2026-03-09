@@ -18,6 +18,7 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 - Runs graph-first retrieval for story continuation and chat.
 - Supports optional embedding-assisted fallback retrieval.
 - Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
+- Provides a Story Starter panel that turns an idea into a first chapter note plus linked author note.
 - Provides a Story Chat panel with per-conversation context controls.
 - Registers a custom Bases view (`LoreVault Characters`) for character-card libraries with avatar cards and markdown-rendered character fields.
 - Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass` and `Scene Consistency Pass`.
@@ -109,6 +110,20 @@ The panel also shows:
 - collapsible cost breakdown (session/day/week/month/project) in the same panel section as the profile selector
 - rewrite/edit review modals use side-by-side source diffs (with omitted-line markers for large unchanged ranges)
 
+## Story Starter Workflow
+
+Command: `Open Story Starter`
+
+The panel is for going from premise to usable story assets in one pass:
+
+- set target story folder, optional default tags, completion profile, and optional lorebooks
+- provide a story idea plus optional brainstorm/chat notes
+- preview two editable planned writes:
+  - first chapter/introduction note
+  - linked author note
+- selected lorebooks are used both for retrieval during generation and for `lorebooks` frontmatter on the generated notes
+- `Create Notes` writes or updates the story note in the selected target folder and the author note in the configured Author Note Folder
+
 ## Story Chat Workflow
 
 Command: `Open Story Chat`
@@ -193,6 +208,7 @@ Writing:
 - `Continue Story with Context`
 - `Stop Active Generation`
 - `Open Story Writing Panel`
+- `Open Story Starter`
 - `Open Story Chat`
 - `Open or Create Linked Author Note`
 - `Link Existing Author Note`
@@ -225,7 +241,7 @@ Import and updates:
 - `Apply Story Delta to Existing Wiki`
 - `Open Lorebook Update`
 
-Import/extraction/update panel behavior:
+Import/extraction/update/story-starter panel behavior:
 
 - each panel has a completion-profile selector
 - ebook import panel supports three sub-modes:
@@ -263,6 +279,7 @@ Import/extraction/update panel behavior:
 - story notes generated from image-based character cards include linked avatar metadata and an embedded image reference for visual vibe anchoring
 - default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)
 - story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions
+- story-starter panel (`Open Story Starter`) turns a premise + optional brainstorm notes into a first chapter note and linked author note with preview/apply and editable planned writes
 
 Operations and reporting:
 

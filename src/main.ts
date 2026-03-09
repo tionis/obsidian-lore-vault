@@ -51,6 +51,10 @@ import {
   LorebooksQuerySimulationView
 } from './lorebooks-query-simulator-view';
 import { LOREVAULT_STORY_CHAT_VIEW_TYPE, StoryChatView } from './story-chat-view';
+import {
+  LOREVAULT_STORY_STARTER_VIEW_TYPE,
+  LorevaultStoryStarterView
+} from './lorevault-story-starter-view';
 import { LOREVAULT_STORY_STEERING_VIEW_TYPE, StorySteeringView } from './story-steering-view';
 import { LOREVAULT_HELP_VIEW_TYPE, LorevaultHelpView } from './lorevault-help-view';
 import { openVaultFolderPicker } from './folder-suggest-modal';
@@ -2378,6 +2382,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
+  private refreshStoryStarterViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_STARTER_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof LorevaultStoryStarterView) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
   private refreshStorySteeringViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE);
     for (const leaf of leaves) {
@@ -2496,6 +2509,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof StoryChatView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openStoryStarterView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_STORY_STARTER_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_STORY_STARTER_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultStoryStarterView) {
       leaf.view.refresh();
     }
   }
@@ -7931,6 +7961,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE, leaf => new LorebooksRoutingDebugView(leaf, this));
     this.registerView(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE, leaf => new LorebooksQuerySimulationView(leaf, this));
     this.registerView(LOREVAULT_STORY_CHAT_VIEW_TYPE, leaf => new StoryChatView(leaf, this));
+    this.registerView(LOREVAULT_STORY_STARTER_VIEW_TYPE, leaf => new LorevaultStoryStarterView(leaf, this));
     this.registerView(LOREVAULT_STORY_STEERING_VIEW_TYPE, leaf => new StorySteeringView(leaf, this));
     this.registerView(LOREVAULT_HELP_VIEW_TYPE, leaf => new LorevaultHelpView(leaf, this));
     this.registerView(LOREVAULT_OPERATION_LOG_VIEW_TYPE, leaf => new LorevaultOperationLogView(leaf, this));
@@ -8026,6 +8057,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open Story Chat',
       callback: () => {
         void this.openStoryChatView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-story-starter',
+      name: 'Open Story Starter',
+      callback: () => {
+        void this.openStoryStarterView();
       }
     });
 
@@ -8549,6 +8588,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_ROUTING_DEBUG_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_QUERY_SIMULATION_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_CHAT_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_STARTER_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_STEERING_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_HELP_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_OPERATION_LOG_VIEW_TYPE);

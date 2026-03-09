@@ -153,6 +153,19 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
+    this.renderSection(contentEl, 'Story Starter', {
+      bullets: [
+        'Open it with `Open Story Starter`.',
+        'Use it to turn a premise into two notes: a first chapter/introduction and a linked Author Note.',
+        'Optional lorebooks are used for retrieval during generation and written into `lorebooks` frontmatter on the generated notes.',
+        'Paste extra brainstorm/chat notes into `Brainstorm Notes` when you want the opener to reflect prior ideation.',
+        'Preview exposes editable planned writes before `Create Notes`.'
+      ],
+      actions: [
+        { label: 'Open Story Starter', onClick: () => void this.plugin.openStoryStarterView() }
+      ]
+    });
+
     this.renderSection(contentEl, 'Story Chat Panel', {
       bullets: [
         'Open chat with `Open Story Chat`.',

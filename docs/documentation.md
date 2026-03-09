@@ -639,6 +639,59 @@ Capabilities:
   - session/day/week/month/project totals
   - warnings when selected-profile budgets are exceeded
 
+## Story Starter Panel
+
+Command: `Open Story Starter`
+
+Current behavior:
+
+- opens a persistent workspace view for premise-to-draft generation
+- collects:
+  - target folder for the generated first chapter note (default `LoreVault/stories`)
+  - author-note folder from `Story Steering -> Author Note Folder`
+  - optional default tags
+  - optional completion profile override (same profile resolution path as Story Chat when unset)
+  - optional lorebooks
+  - optional requested title
+  - required story idea
+  - optional brainstorm/chat notes
+- selected lorebooks are used in two ways:
+  - live retrieval against the selected lorebooks before generation
+  - persisted `lorebooks` frontmatter on the generated story note and author note
+- preview flow:
+  - retrieves graph-first lore context (`world_info` + fallback entries) from selected lorebooks when present
+  - sends one strict-JSON completion request with fields:
+    - `title`
+    - `chapterTitle`
+    - `storyMarkdown`
+    - `authorNoteMarkdown`
+    - `starterNotes`
+  - parses the response deterministically
+  - materializes two editable planned writes:
+    - first chapter/introduction story note
+    - linked author note
+- create flow reuses the previewed plan when inputs are unchanged
+- generated story note frontmatter includes:
+  - `title`
+  - `authorNote`
+  - `storyId`
+  - `chapter: 1`
+  - `chapterTitle`
+  - optional `tags`
+  - optional `lorebooks`
+  - `sourceType: "lorevault_story_starter"`
+- generated author note frontmatter includes:
+  - `lvDocType: "authorNote"`
+  - `storyId`
+  - optional `tags`
+  - optional `lorebooks`
+  - optional `completionProfile` when a profile is chosen in the panel
+  - `sourceType: "lorevault_story_starter"`
+- preview output exposes:
+  - starter notes returned by the model
+  - unresolved-placeholder warnings when generated output still contains `{{...}}`
+  - editable path/content fields before apply
+
 ## Cost Analyzer
 
 Command: `Open Cost Analyzer`

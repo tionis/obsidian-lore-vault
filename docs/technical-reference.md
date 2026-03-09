@@ -9,7 +9,7 @@ This document is the implementation-level reference for core architecture and ru
   - command/ribbon registration
   - export pipeline orchestration
   - completion orchestration
-  - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings` for Story Writing; `chat preset -> device preset -> base settings` for Story Chat)
+  - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings` for Story Writing; `chat preset -> device preset -> base settings` for Story Chat and Story Starter)
   - API key hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs; plugin only creates missing secrets and never overwrites existing values
   - device-local profile state via Obsidian local storage (active Story Writing preset, active Story Chat preset, and optional cost profile label; auto API-key hash fallback when blank)
   - lorebook fork utility (`Fork Active Lorebook`): deterministic branch copy + internal link rewrite + retagging
@@ -42,6 +42,14 @@ This document is the implementation-level reference for core architecture and ru
   - note-backed conversation persistence
   - device-level chat completion preset selection with conversation snapshot metadata
   - message versions/regeneration/forking
+- `src/lorevault-story-starter-view.ts`
+  - premise-to-draft panel (`Open Story Starter`)
+  - optional lorebook retrieval before generation
+  - editable planned-write preview/apply for story note + linked author note
+- `src/story-starter.ts`
+  - strict JSON prompt contract for story-starter generation
+  - deterministic response parsing and story/author-note materialization
+  - placeholder warning detection for generated outputs
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - note-level author-note storage resolved from story frontmatter `authorNote` link
   - Story Writing panel combines writing controls, generation monitor, lorebook controls, context-item inspection, and compact cost summary

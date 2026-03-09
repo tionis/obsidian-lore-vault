@@ -48,6 +48,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Open LoreVault Lorebook Auditor" (opens dedicated lorebook audit panel)
      - "Open LoreVault Query Simulation" (opens dedicated retrieval simulation panel)
      - "Open Story Chat" (opens right sidebar panel)
+     - "Open Story Starter" (opens dedicated story-starter panel)
      - "Open Story Writing Panel" (opens right sidebar panel)
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
@@ -162,6 +163,7 @@ If you prefer to build the plugin from source:
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Optional (character-card import only): set `Persona Note` in the import panel to bake protagonist/user context into generated story + author note output
+   - Optional: run `Open Story Starter` to turn an idea + brainstorm notes into a chapter-1 story note and linked author note before you begin manual drafting
    - Author Note content is edited directly in the linked note (native Obsidian editor)
    - Optional: set `completionProfile: <preset-id>` in Author Note frontmatter (or via command `Set Author Note Completion Profile`) to override the completion profile for linked story operations
    - `Rewrite Author Note` supports an optional change prompt and shows a side-by-side source diff review before apply

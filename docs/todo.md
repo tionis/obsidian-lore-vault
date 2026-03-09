@@ -27,6 +27,7 @@ Reference design: `docs/planning.md`.
 - Character-card details markdown now renders alternate/group-only greetings as numbered subheadings for faster navigation, with backward-compatible parsing for write-back.
 - Character-card tooling now includes `Inject Character Card Event` for linked story notes (event picker + review-first story rewrite + optional linked author-note rewrite).
 - Character-card rewrite prompting now explicitly favors fuller description/personality/scenario coverage and allows longer author-note outputs when source detail is dense.
+- Story Starter panel is complete (`Open Story Starter`: idea + optional lore retrieval -> first chapter note + linked author note with preview/apply).
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order
@@ -156,6 +157,14 @@ Reference design: `docs/planning.md`.
 - [x] Add persona-aware character-card rewrite/extract prompting (import-panel `Persona Note` context) and broaden placeholder handling/warnings for unresolved `{{...}}` macros.
 - [x] Add `Inject Character Card Event` command for linked story notes, with greeting/event selection and review-first story/author-note rewrite flow.
 - [x] Update character-card rewrite prompt guidance to preserve richer source-card detail and permit longer author-note output when needed.
+
+## Phase 14.5: Story Starter
+
+- [x] Add command + panel: `Open Story Starter`.
+- [x] Add story-starter JSON prompt/response contract (`title`, `chapterTitle`, `storyMarkdown`, `authorNoteMarkdown`, `starterNotes`).
+- [x] Add optional lorebook retrieval and completion-profile selection for story-starter generation.
+- [x] Add deterministic preview/apply flow with editable planned writes for story note + linked author note.
+- [x] Add regression tests for response parsing and deterministic note materialization.
 
 ## Phase 15: Story-Driven Wiki Updates (In Progress)
 

@@ -1625,6 +1625,9 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     const reasoningEnabled = this.plugin.settings.completion.reasoning?.enabled ?? false;
+    let reasoningEffortSetting: Setting;
+    let reasoningMaxTokensSetting: Setting;
+    let reasoningExcludeSetting: Setting;
     new Setting(containerEl)
       .setName('Reasoning (OpenRouter)')
       .setDesc('Request reasoning/thinking tokens from models that support them (Anthropic Claude, Gemini, OpenAI o-series, etc.). Token usage and cost increase when enabled.')
@@ -1635,9 +1638,12 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
             ? { enabled: true, effort: 'medium' }
             : undefined;
           await this.persistCompletionSettings();
+          reasoningEffortSetting.setDisabled(!value);
+          reasoningMaxTokensSetting.setDisabled(!value);
+          reasoningExcludeSetting.setDisabled(!value);
         }));
 
-    new Setting(containerEl)
+    reasoningEffortSetting = new Setting(containerEl)
       .setName('Reasoning Effort')
       .setDesc('Controls how many tokens the model uses for reasoning. Ignored when Max Tokens is set. "none" disables thinking while keeping the reasoning parameter.')
       .setDisabled(!reasoningEnabled)
@@ -1662,7 +1668,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(containerEl)
+    reasoningMaxTokensSetting = new Setting(containerEl)
       .setName('Max Reasoning Tokens')
       .setDesc('Exact token budget for Anthropic/Gemini models. Overrides Effort when > 0. Minimum 1024. Set to 0 to use Effort instead.')
       .setDisabled(!reasoningEnabled)
@@ -1678,7 +1684,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           }
         }));
 
-    new Setting(containerEl)
+    reasoningExcludeSetting = new Setting(containerEl)
       .setName('Exclude Reasoning from Response')
       .setDesc('The model reasons internally but does not return the reasoning text. In chat, no Thinking block will appear. Useful for improving response quality without extra output.')
       .setDisabled(!reasoningEnabled)

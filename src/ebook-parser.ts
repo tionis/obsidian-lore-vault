@@ -443,7 +443,7 @@ function buildChaptersFromHeadings(
       .trim();
     if (!bodyText) continue;
     const title = headings[i].title || `Chapter ${chapters.length + 1}`;
-    chapters.push({ index: chapters.length + 1, title, bodyText });
+    chapters.push({ index: chapters.length + 1, title, bodyText, isFrontMatter: false });
   }
   return chapters;
 }
@@ -488,7 +488,8 @@ export function parseTxt(text: string, fallbackTitle = ''): ParsedEbook {
     const chapters = substantialSections.map((section, i) => ({
       index: i + 1,
       title: `Chapter ${i + 1}`,
-      bodyText: section.trim()
+      bodyText: section.trim(),
+      isFrontMatter: false
     }));
     return { title: fallbackTitle, author: '', chapters, warnings };
   }
@@ -498,7 +499,7 @@ export function parseTxt(text: string, fallbackTitle = ''): ParsedEbook {
   return {
     title: fallbackTitle,
     author: '',
-    chapters: [{ index: 1, title: fallbackTitle || 'Full Text', bodyText: normalized.trim() }],
+    chapters: [{ index: 1, title: fallbackTitle || 'Full Text', bodyText: normalized.trim(), isFrontMatter: false }],
     warnings
   };
 }

@@ -11737,8 +11737,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       let applyingInsert = false;
       let lastUserEditAt = 0;
       let lastUserViewportInteractionAt = 0;
+      let suppressProgrammaticScroll = false;
 
       const noteViewportInteraction = (): void => {
+        lastUserViewportInteractionAt = Date.now();
+      };
+
+      const noteScrollEvent = (): void => {
+        if (suppressProgrammaticScroll) return;
         lastUserViewportInteractionAt = Date.now();
       };
 
@@ -11746,7 +11752,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (streamScroller) {
         streamScroller.addEventListener('pointerdown', noteViewportInteraction, { passive: true });
         streamScroller.addEventListener('wheel', noteViewportInteraction, { passive: true });
-        streamScroller.addEventListener('scroll', noteViewportInteraction, { passive: true });
+        streamScroller.addEventListener('scroll', noteScrollEvent, { passive: true });
         streamScroller.addEventListener('touchstart', noteViewportInteraction, { passive: true });
         streamScroller.addEventListener('touchmove', noteViewportInteraction, { passive: true });
       }
@@ -11816,10 +11822,14 @@ export default class LoreBookConverterPlugin extends Plugin {
         const insertPos = editor.offsetToPos(clampOffset(insertOffset));
         applyingInsert = true;
         const shouldPreserveViewport = Date.now() - lastUserViewportInteractionAt > 260;
+        if (shouldPreserveViewport) suppressProgrammaticScroll = true;
         const ok = this.replaceRangePreservingViewport(editor, markdownView, nextChunk, insertPos, {
           preserveViewport: shouldPreserveViewport
         });
         applyingInsert = false;
+        if (suppressProgrammaticScroll) {
+          setTimeout(() => { suppressProgrammaticScroll = false; }, 50);
+        }
         if (!ok) {
           detachedDeltaBuffer += nextChunk;
           lastUserEditAt = Date.now();
@@ -11873,7 +11883,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         if (streamScroller) {
           streamScroller.removeEventListener('pointerdown', noteViewportInteraction);
           streamScroller.removeEventListener('wheel', noteViewportInteraction);
-          streamScroller.removeEventListener('scroll', noteViewportInteraction);
+          streamScroller.removeEventListener('scroll', noteScrollEvent);
           streamScroller.removeEventListener('touchstart', noteViewportInteraction);
           streamScroller.removeEventListener('touchmove', noteViewportInteraction);
         }

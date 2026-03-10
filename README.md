@@ -21,7 +21,7 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 - Provides a Story Starter panel that turns an idea into a first chapter note plus linked author note.
 - Provides a Story Chat panel with per-conversation context controls.
 - Registers a custom Bases view (`LoreVault Characters`) for character-card libraries with avatar cards and markdown-rendered character fields.
-- Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass`, `Scene Consistency Pass`, and `Remove LLMisms`.
+- Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass`, `Scene Consistency Pass`, and `Remove LLMisms`, with pending-review recovery when the result arrives after you have moved elsewhere.
 - Adds `Fork Active Lorebook` to clone a lorebook into a new lorebook/folder while rewriting internal links.
 - Story extraction/update keeps one best summary candidate per page (instead of concatenating multiple summary strings).
 - World-info summary output capping is optional (`Summary Max Output Chars`; default `0` means no hard truncation).
@@ -227,6 +227,7 @@ Quality and utility:
 - `Generate World Info Summaries (Active Lorebook)`
 - `Generate Chapter Summaries (Current Story)`
 - `Run Text Command on Selection`
+- `Review Pending Text Command Edit`
 
 Import and updates:
 

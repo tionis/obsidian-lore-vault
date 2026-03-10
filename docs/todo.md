@@ -24,6 +24,7 @@ Reference design: `docs/planning.md`.
 - Cost-budget configuration is now profile-scoped (budget settings are saved/applied per selected cost profile).
 - Story text-completion stop control is complete (`Stop Active Generation` command + editor-menu stop action).
 - Cross-panel diff UX is now standardized on side-by-side source diffs (text-command review + story-delta review).
+- Text-command review results now fall back to a pending-review queue when focus moves away or the review modal is dismissed, with a reopen command plus status-bar indicator.
 - Character-card details markdown now renders alternate/group-only greetings as numbered subheadings for faster navigation, with backward-compatible parsing for write-back.
 - Character-card tooling now includes `Inject Character Card Event` for linked story notes (event picker + review-first story rewrite + optional linked author-note rewrite).
 - Character-card rewrite prompting now explicitly favors fuller description/personality/scenario coverage and allows longer author-note outputs when source detail is dense.

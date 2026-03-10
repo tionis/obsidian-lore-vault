@@ -1871,12 +1871,12 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h3', { text: 'Text Commands' });
     containerEl.createEl('p', {
-      text: 'Prompt-driven rewrite/reformat commands for selected editor text.'
+      text: 'Prompt-driven rewrite/reformat commands for selected editor text. If a review is dismissed or focus moves elsewhere before it opens, LoreVault keeps the result in a pending review queue.'
     });
 
     new Setting(containerEl)
       .setName('Auto-Accept Text Command Edits')
-      .setDesc('If enabled, generated edits are applied without review modal confirmation.')
+      .setDesc('If enabled, generated edits are applied without review modal confirmation. Unsafe auto-apply cases are saved to pending review instead of being dropped.')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.textCommands.autoAcceptEdits)
         .onChange(async value => {

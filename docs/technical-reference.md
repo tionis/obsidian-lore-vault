@@ -511,6 +511,7 @@ Precedence contract:
 Entrypoints in `src/main.ts`:
 
 - command: `Run Text Command on Selection`
+- command: `Review Pending Text Command Edit`
 - editor menu action: `LoreVault: Run Text Command on Selection`
 
 Flow:
@@ -520,8 +521,10 @@ Flow:
 3. optionally retrieve lore context (lorebook/frontmatter resolution mirrors continuation behavior)
 4. call completion provider with text-command system prompt + user prompt payload
 5. optionally record usage ledger entry (`operation = text_command_edit`)
-6. if auto-accept disabled, open review modal with side-by-side source diff (`src/text-command-review-modal.ts`)
-7. apply replacement only when selection still matches captured source text
+6. build a captured target snapshot (file path + selection range + original text) for safe later apply
+7. if auto-accept is off and the original editor selection is still active, open review modal with side-by-side source diff (`src/text-command-review-modal.ts`)
+8. if focus moved elsewhere or the review modal closes without explicit discard, push the result into an in-memory pending-review queue and expose it through `Review Pending Text Command Edit` plus a status-bar indicator
+9. apply replacement against the active editor when it still matches the captured snapshot; otherwise fall back to file-level guarded replacement and keep the review pending if the target drifted
 
 Settings contract (`ConverterSettings.textCommands`):
 

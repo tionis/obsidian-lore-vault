@@ -144,6 +144,10 @@
   width: 100%;
 }
 
+.lorevault-text-command-pending-status {
+  cursor: pointer;
+}
+
 /* Lorebooks Manager View */
 .lorevault-manager-view {
   height: 100%;

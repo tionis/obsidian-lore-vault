@@ -3,7 +3,7 @@ import { buildTextCommandDiffPreview } from './text-command-diff';
 import { renderSourceDiffPreview } from './source-diff-view';
 
 export interface TextCommandReviewResult {
-  action: 'cancel' | 'apply';
+  action: 'cancel' | 'apply' | 'defer';
   revisedText: string;
 }
 
@@ -14,8 +14,10 @@ export interface TextCommandReviewModalOptions {
   originalTextLabel?: string;
   showEditedText?: boolean;
   editedTextLabel?: string;
+  cancelButtonText?: string;
   applyButtonText?: string;
   compactDiffStats?: boolean;
+  onCloseAction?: 'cancel' | 'defer';
 }
 
 export class TextCommandReviewModal extends Modal {
@@ -99,7 +101,7 @@ export class TextCommandReviewModal extends Modal {
     }
 
     const actions = this.contentEl.createDiv({ cls: 'lorevault-summary-actions' });
-    const cancelButton = actions.createEl('button', { text: 'Cancel' });
+    const cancelButton = actions.createEl('button', { text: this.options.cancelButtonText?.trim() || 'Cancel' });
     cancelButton.addEventListener('click', () => {
       this.finish({ action: 'cancel', revisedText: this.revisedText });
       this.close();
@@ -116,7 +118,10 @@ export class TextCommandReviewModal extends Modal {
   onClose(): void {
     this.modalEl.removeClass('lorevault-summary-modal-shell');
     this.contentEl.empty();
-    this.finish({ action: 'cancel', revisedText: this.revisedText });
+    this.finish({
+      action: this.options.onCloseAction === 'defer' ? 'defer' : 'cancel',
+      revisedText: this.revisedText
+    });
   }
 
   private finish(result: TextCommandReviewResult): void {

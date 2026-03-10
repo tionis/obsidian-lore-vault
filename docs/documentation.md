@@ -420,6 +420,7 @@ When enabled, LoreVault can also add a bounded tool-retrieval layer (`<tool_retr
 Command:
 
 - `Run Text Command on Selection`
+- `Review Pending Text Command Edit` (appears when a saved text-command review is waiting)
 
 Editor menu:
 
@@ -434,11 +435,12 @@ Run flow:
 3. LoreVault optionally retrieves lorebook context using selected text as query
 4. LoreVault sends prompt + selected text (+ optional context) to completion provider
 5. response text is treated as replacement candidate
-6. if auto-accept is off, review modal shows an editable review with side-by-side source diff before apply
-7. selected range is replaced only if selection still matches original text
-8. default `Canon Consistency Pass` template emphasizes lorebook factual consistency and only minimal style edits needed to fix canon conflicts
-9. default `Scene Consistency Pass` template focuses on internal scene continuity (character positions, movement continuity, object state, and immediate spatial logic) with minimal edits
-10. default `Remove LLMisms` template removes common AI-writing tells such as mirrored contrast framing (`not X but Y` / `not just X, but Y`), heavy signposting, hedging/meta filler, buzzwordy abstraction, cliche metaphors, overly even cadence, and unnecessary em-dash pivots while preserving voice
+6. if auto-accept is off and the original editor selection is still active, LoreVault opens an editable review modal with side-by-side source diff before apply
+7. if focus moved elsewhere or the review modal is dismissed, LoreVault saves the result into a pending-review queue instead of discarding it; reopen it with `Review Pending Text Command Edit` or the status-bar indicator
+8. LoreVault applies the edit only when it can still match the captured target text/range safely; otherwise the review stays pending so the generated edit is not lost
+9. default `Canon Consistency Pass` template emphasizes lorebook factual consistency and only minimal style edits needed to fix canon conflicts
+10. default `Scene Consistency Pass` template focuses on internal scene continuity (character positions, movement continuity, object state, and immediate spatial logic) with minimal edits
+11. default `Remove LLMisms` template removes common AI-writing tells such as mirrored contrast framing (`not X but Y` / `not just X, but Y`), heavy signposting, hedging/meta filler, buzzwordy abstraction, cliche metaphors, overly even cadence, and unnecessary em-dash pivots while preserving voice
 
 Settings (LoreVault -> Text Commands):
 

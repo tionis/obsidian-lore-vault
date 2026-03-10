@@ -133,6 +133,13 @@ import {
 import { SummaryReviewModal, SummaryReviewResult } from './summary-review-modal';
 import { TextCommandPromptModal, TextCommandPromptSelectionResult } from './text-command-modal';
 import { TextCommandReviewModal } from './text-command-review-modal';
+import {
+  cloneTextCommandPosition,
+  cloneTextCommandTargetSnapshot,
+  doesTextCommandSelectionMatchSnapshot,
+  replaceTextCommandTargetRange,
+  TextCommandTargetSnapshot
+} from './text-command-target';
 import { AuthorNoteRewriteModal } from './author-note-rewrite-modal';
 import { AuthorNoteLinkModal } from './author-note-link-modal';
 import { InlineDirectiveInsertModal } from './inline-directive-insert-modal';
@@ -406,6 +413,28 @@ interface CompletionPresetSuggestItem {
   label: string;
 }
 
+interface PendingTextCommandReview {
+  id: string;
+  promptName: string;
+  target: TextCommandTargetSnapshot;
+  revisedText: string;
+  includeLorebookContext: boolean;
+  scopeLabels: string[];
+  worldInfoCount: number;
+  ragCount: number;
+  worldInfoDetails: string[];
+  ragDetails: string[];
+  createdAt: number;
+}
+
+type TextCommandApplyResult =
+  | { ok: true }
+  | {
+    ok: false;
+    reason: 'selection_changed' | 'target_missing' | 'write_failed';
+    message?: string;
+  };
+
 class CompletionPresetSuggestModal extends FuzzySuggestModal<CompletionPresetSuggestItem> {
   private readonly items: CompletionPresetSuggestItem[];
   private resolveResult: ((value: CompletionPresetSuggestItem | null) => void) | null = null;
@@ -669,10 +698,13 @@ export default class LoreBookConverterPlugin extends Plugin {
   private readonly sessionStartedAt = Date.now();
   private chapterSummaryStore!: ChapterSummaryStore;
   private generationStatusEl: HTMLElement | null = null;
+  private pendingTextCommandReviewEl: HTMLElement | null = null;
   private generationInFlight = false;
   private generationAbortController: AbortController | null = null;
   private generationStatusLevel: 'idle' | 'busy' | 'error' = 'idle';
   private generationTelemetry: GenerationTelemetry = this.createDefaultGenerationTelemetry();
+  private pendingTextCommandReviews: PendingTextCommandReview[] = [];
+  private pendingTextCommandReviewInFlight = false;
   private managerRefreshTimer: number | null = null;
   private exportScopeIndexByPath: Map<string, string[]> = new Map();
   private exportRebuildTimer: number | null = null;
@@ -8000,6 +8032,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Add settings tab
     this.addSettingTab(new LoreBookConverterSettingTab(this.app, this));
     this.generationStatusEl = this.addStatusBarItem();
+    this.pendingTextCommandReviewEl = this.addStatusBarItem();
+    this.pendingTextCommandReviewEl.addClass('lorevault-text-command-pending-status');
+    this.pendingTextCommandReviewEl.style.display = 'none';
+    this.registerDomEvent(this.pendingTextCommandReviewEl, 'click', () => {
+      void this.reviewPendingTextCommandEdit();
+    });
+    this.updatePendingTextCommandReviewIndicator();
     this.syncIdleGenerationTelemetryToSettings();
 
     // Add ribbon icon
@@ -8267,6 +8306,20 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Run Text Command on Selection',
       editorCallback: (editor, info) => {
         void this.runTextCommandOnSelection(editor, info);
+      }
+    });
+
+    this.addCommand({
+      id: 'review-pending-text-command-edit',
+      name: 'Review Pending Text Command Edit',
+      checkCallback: (checking: boolean) => {
+        if (this.pendingTextCommandReviews.length === 0) {
+          return false;
+        }
+        if (!checking) {
+          void this.reviewPendingTextCommandEdit();
+        }
+        return true;
       }
     });
 
@@ -8615,6 +8668,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Flush any pending operation-log writes so entries are not silently dropped.
     await this.operationLogWriteQueue;
     this.generationStatusEl = null;
+    this.pendingTextCommandReviewEl = null;
   }
 
   /**
@@ -11005,6 +11059,281 @@ export default class LoreBookConverterPlugin extends Plugin {
     return `${normalized.slice(0, maxChars).trimEnd()}\n...`;
   }
 
+  private createPendingTextCommandReview(
+    promptName: string,
+    target: TextCommandTargetSnapshot,
+    revisedText: string,
+    options: {
+      includeLorebookContext: boolean;
+      scopeLabels: string[];
+      worldInfoCount: number;
+      ragCount: number;
+      worldInfoDetails: string[];
+      ragDetails: string[];
+    }
+  ): PendingTextCommandReview {
+    return {
+      id: `text-command-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      promptName,
+      target: cloneTextCommandTargetSnapshot(target),
+      revisedText,
+      includeLorebookContext: options.includeLorebookContext,
+      scopeLabels: [...options.scopeLabels],
+      worldInfoCount: options.worldInfoCount,
+      ragCount: options.ragCount,
+      worldInfoDetails: [...options.worldInfoDetails],
+      ragDetails: [...options.ragDetails],
+      createdAt: Date.now()
+    };
+  }
+
+  private getActiveTextCommandSelectionState(): {
+    filePath: string | null;
+    from: { line: number; ch: number };
+    to: { line: number; ch: number };
+    selectedText: string;
+  } | null {
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const editor = markdownView?.editor;
+    if (!editor) {
+      return null;
+    }
+    const from = editor.getCursor('from');
+    const to = editor.getCursor('to');
+    return {
+      filePath: markdownView.file?.path ?? null,
+      from,
+      to,
+      selectedText: editor.getRange(from, to)
+    };
+  }
+
+  private shouldOpenTextCommandReviewImmediately(review: PendingTextCommandReview): boolean {
+    if (typeof document !== 'undefined' && !document.hasFocus()) {
+      return false;
+    }
+    const activeSelection = this.getActiveTextCommandSelectionState();
+    if (!activeSelection) {
+      return false;
+    }
+    return doesTextCommandSelectionMatchSnapshot(
+      review.target,
+      activeSelection.filePath,
+      activeSelection.from,
+      activeSelection.to,
+      activeSelection.selectedText
+    );
+  }
+
+  private updatePendingTextCommandReviewIndicator(): void {
+    if (!this.pendingTextCommandReviewEl) {
+      return;
+    }
+    const count = this.pendingTextCommandReviews.length;
+    if (count === 0) {
+      this.pendingTextCommandReviewEl.setText('');
+      this.pendingTextCommandReviewEl.style.display = 'none';
+      this.pendingTextCommandReviewEl.removeAttribute('title');
+      this.pendingTextCommandReviewEl.setAttribute('aria-label', 'No pending text-command reviews');
+      return;
+    }
+
+    const nextReview = this.pendingTextCommandReviews[0];
+    this.pendingTextCommandReviewEl.style.display = '';
+    this.pendingTextCommandReviewEl.setText(count === 1 ? 'LoreVault text review' : `LoreVault reviews ${count}`);
+    this.pendingTextCommandReviewEl.setAttribute(
+      'title',
+      count === 1
+        ? `Pending text-command review: ${nextReview.promptName}. Click to open.`
+        : `${count} pending text-command reviews. Next: ${nextReview.promptName}. Click to open.`
+    );
+    this.pendingTextCommandReviewEl.setAttribute(
+      'aria-label',
+      count === 1
+        ? 'One pending text-command review'
+        : `${count} pending text-command reviews`
+    );
+  }
+
+  private queuePendingTextCommandReview(
+    review: PendingTextCommandReview,
+    options: {
+      toFront?: boolean;
+      noticeMessage?: string;
+    } = {}
+  ): void {
+    if (this.pendingTextCommandReviews.some(item => item.id === review.id)) {
+      this.updatePendingTextCommandReviewIndicator();
+      return;
+    }
+
+    if (options.toFront) {
+      this.pendingTextCommandReviews.unshift(review);
+    } else {
+      this.pendingTextCommandReviews.push(review);
+    }
+    this.updatePendingTextCommandReviewIndicator();
+
+    if (options.noticeMessage?.trim()) {
+      const count = this.pendingTextCommandReviews.length;
+      new Notice(`${options.noticeMessage.trim()}${count > 1 ? ` (${count} pending).` : ''}`);
+    }
+  }
+
+  private takeNextPendingTextCommandReview(): PendingTextCommandReview | null {
+    const next = this.pendingTextCommandReviews.shift() ?? null;
+    this.updatePendingTextCommandReviewIndicator();
+    return next;
+  }
+
+  private async reviewPendingTextCommandEdit(): Promise<void> {
+    if (this.pendingTextCommandReviewInFlight) {
+      new Notice('A text-command review is already open.');
+      return;
+    }
+
+    const review = this.takeNextPendingTextCommandReview();
+    if (!review) {
+      new Notice('No pending text-command reviews.');
+      return;
+    }
+
+    this.pendingTextCommandReviewInFlight = true;
+    try {
+      await this.openTextCommandReview(review);
+    } finally {
+      this.pendingTextCommandReviewInFlight = false;
+    }
+  }
+
+  private async openTextCommandReview(review: PendingTextCommandReview): Promise<void> {
+    const reviewModal = new TextCommandReviewModal(
+      this.app,
+      review.target.originalText,
+      review.revisedText,
+      review.promptName,
+      {
+        cancelButtonText: 'Discard Result',
+        onCloseAction: 'defer'
+      }
+    );
+    const reviewResultPromise = reviewModal.waitForResult();
+    reviewModal.open();
+    const reviewResult = await reviewResultPromise;
+
+    if (reviewResult.action === 'apply') {
+      const nextReview: PendingTextCommandReview = {
+        ...review,
+        revisedText: reviewResult.revisedText
+      };
+      const applyResult = await this.applyPendingTextCommandReview(nextReview);
+      if (applyResult.ok) {
+        this.notifyTextCommandApplySuccess(nextReview);
+        return;
+      }
+
+      this.queuePendingTextCommandReview(nextReview, {
+        toFront: true,
+        noticeMessage: applyResult.reason === 'selection_changed'
+          ? 'Text command target changed. Review kept for later so the edit is not lost'
+          : applyResult.reason === 'target_missing'
+            ? 'Text command target file is no longer available. Review kept for later'
+            : `Failed to apply text command edit: ${applyResult.message ?? 'unknown error'}. Review kept for later`
+      });
+      return;
+    }
+
+    if (reviewResult.action === 'defer') {
+      this.queuePendingTextCommandReview(review, {
+        toFront: true,
+        noticeMessage: 'Text command review dismissed. Saved for later review'
+      });
+      return;
+    }
+
+    new Notice('Text command discarded.');
+  }
+
+  private async applyPendingTextCommandReview(review: PendingTextCommandReview): Promise<TextCommandApplyResult> {
+    const activeSelection = this.getActiveTextCommandSelectionState();
+    const activeMarkdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (
+      activeSelection
+      && activeMarkdownView?.editor
+      && doesTextCommandSelectionMatchSnapshot(
+        review.target,
+        activeSelection.filePath,
+        activeSelection.from,
+        activeSelection.to,
+        activeSelection.selectedText
+      )
+    ) {
+      activeMarkdownView.editor.replaceRange(review.revisedText, review.target.from, review.target.to);
+      return { ok: true };
+    }
+
+    const targetPath = review.target.filePath;
+    if (!targetPath) {
+      return {
+        ok: false,
+        reason: 'selection_changed'
+      };
+    }
+
+    const abstract = this.app.vault.getAbstractFileByPath(targetPath);
+    if (!(abstract instanceof TFile)) {
+      return {
+        ok: false,
+        reason: 'target_missing'
+      };
+    }
+
+    try {
+      await this.app.vault.process(abstract, data => {
+        const replaced = replaceTextCommandTargetRange(data, review.target, review.revisedText);
+        if (!replaced.ok) {
+          throw new Error(replaced.reason);
+        }
+        return replaced.text;
+      });
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'selection_mismatch' || message === 'line_out_of_range') {
+        return {
+          ok: false,
+          reason: 'selection_changed'
+        };
+      }
+      console.error('Failed to apply pending text-command review:', error);
+      return {
+        ok: false,
+        reason: 'write_failed',
+        message
+      };
+    }
+  }
+
+  private notifyTextCommandApplySuccess(review: PendingTextCommandReview): void {
+    if (review.includeLorebookContext) {
+      new Notice(
+        `Applied text command (${review.scopeLabels.join(', ') || '(all)'} | world_info ${review.worldInfoCount}, fallback ${review.ragCount}).`
+      );
+    } else {
+      new Notice('Applied text command edit.');
+    }
+
+    if (review.includeLorebookContext && (review.worldInfoDetails.length > 0 || review.ragDetails.length > 0)) {
+      new Notice(
+        [
+          'text command context',
+          `world_info: ${review.worldInfoDetails.join(', ') || '(none)'}`,
+          `fallback: ${review.ragDetails.join(', ') || '(none)'}`
+        ].join('\n')
+      );
+    }
+  }
+
   private async promptForTextCommandSelection(selectionText: string): Promise<TextCommandPromptSelectionResult> {
     const templates = await this.loadTextCommandPromptTemplates();
     const modal = new TextCommandPromptModal(this.app, {
@@ -11104,6 +11433,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     const activeFile = infoOverride instanceof MarkdownView
       ? (infoOverride.file ?? this.app.workspace.getActiveFile())
       : (markdownView?.file ?? this.app.workspace.getActiveFile());
+    const targetSnapshot: TextCommandTargetSnapshot = {
+      filePath: activeFile?.path ?? null,
+      from: cloneTextCommandPosition(from),
+      to: cloneTextCommandPosition(to),
+      originalText: selectedText
+    };
 
     let revisedText = '';
     let loreContextMarkdown = '';
@@ -11192,47 +11527,49 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.setGenerationStatus('idle', 'idle');
     }
 
-    let nextText = revisedText;
-    if (!this.settings.textCommands.autoAcceptEdits) {
-      const reviewModal = new TextCommandReviewModal(
-        this.app,
-        selectedText,
-        revisedText,
-        selection.promptName
-      );
-      const reviewResultPromise = reviewModal.waitForResult();
-      reviewModal.open();
-      const review = await reviewResultPromise;
-      if (review.action !== 'apply') {
-        new Notice('Text command cancelled.');
+    const review = this.createPendingTextCommandReview(
+      selection.promptName,
+      targetSnapshot,
+      revisedText,
+      {
+        includeLorebookContext: selection.includeLorebookContext,
+        scopeLabels,
+        worldInfoCount,
+        ragCount,
+        worldInfoDetails,
+        ragDetails
+      }
+    );
+
+    if (this.settings.textCommands.autoAcceptEdits) {
+      const applyResult = await this.applyPendingTextCommandReview(review);
+      if (applyResult.ok) {
+        this.notifyTextCommandApplySuccess(review);
         return;
       }
-      nextText = review.revisedText;
-    }
 
-    const currentSelectedText = editor.getRange(from, to);
-    if (currentSelectedText !== selectedText) {
-      new Notice('Selection changed while generating. Re-run the text command on the current selection.');
+      this.queuePendingTextCommandReview(review, {
+        noticeMessage: applyResult.reason === 'selection_changed'
+          ? 'Auto-accept could not safely apply the text command. Saved for later review'
+          : applyResult.reason === 'target_missing'
+            ? 'Text command target file is unavailable. Saved for later review'
+            : `Failed to auto-apply text command edit: ${applyResult.message ?? 'unknown error'}. Saved for later review`
+      });
       return;
     }
 
-    editor.replaceRange(nextText, from, to);
-    if (selection.includeLorebookContext) {
-      new Notice(
-        `Applied text command (${scopeLabels.join(', ') || '(all)'} | world_info ${worldInfoCount}, fallback ${ragCount}).`
-      );
-    } else {
-      new Notice('Applied text command edit.');
+    if (!this.shouldOpenTextCommandReviewImmediately(review)) {
+      this.queuePendingTextCommandReview(review, {
+        noticeMessage: 'Text command finished while you were elsewhere. Saved for later review'
+      });
+      return;
     }
 
-    if (selection.includeLorebookContext && (worldInfoDetails.length > 0 || ragDetails.length > 0)) {
-      new Notice(
-        [
-          `text command context`,
-          `world_info: ${worldInfoDetails.join(', ') || '(none)'}`,
-          `fallback: ${ragDetails.join(', ') || '(none)'}`
-        ].join('\n')
-      );
+    this.pendingTextCommandReviewInFlight = true;
+    try {
+      await this.openTextCommandReview(review);
+    } finally {
+      this.pendingTextCommandReviewInFlight = false;
     }
   }
 

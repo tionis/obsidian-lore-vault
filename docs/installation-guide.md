@@ -53,6 +53,7 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Open LoreVault Help" (opens embedded help/documentation panel)
      - "Continue Story with Context"
      - "Run Text Command on Selection"
+     - "Review Pending Text Command Edit" (appears when a saved text-command result is waiting)
      - "Generate Keywords (Active Note)"
      - "Generate World Info Summary (Active Note)"
      - "Generate Chapter Summary (Active Note)"
@@ -210,7 +211,8 @@ If you prefer to build the plugin from source:
    - Choose/edit prompt template and optional lorebook-context toggle
    - Built-in defaults include `Canon Consistency Pass`, `Scene Consistency Pass` (internal scene continuity checks), and `Remove LLMisms` (common AI-style cleanup)
    - Prompt templates are markdown notes from your prompt folder (`Text Command Prompt Notes Folder` in settings)
-   - Review the side-by-side diff modal and click `Apply Edit` (unless auto-accept is enabled)
+   - If you stay on the original selection, review the side-by-side diff modal and click `Apply Edit` (unless auto-accept is enabled)
+   - If the result finishes after you move elsewhere, or if the review modal is dismissed, reopen it with `Review Pending Text Command Edit` or the LoreVault status-bar review indicator
    - Configure defaults in Settings -> LoreVault -> `Text Commands`
 
 8. **Use Story Chat (Phase 10 foundation)**

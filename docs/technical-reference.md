@@ -10,6 +10,7 @@ This document is the implementation-level reference for core architecture and ru
   - export pipeline orchestration
   - completion orchestration
   - effective completion-profile resolution (`author note completionProfile -> device preset -> base settings` for Story Writing; `chat preset -> device preset -> base settings` for Story Chat and Story Starter)
+  - Story Writing and Story Chat profile resolution are separate paths; Story Chat preset state is not consulted for Story Writing generations
   - API key hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs; plugin only creates missing secrets and never overwrites existing values
   - device-local profile state via Obsidian local storage (active Story Writing preset, active Story Chat preset, and optional cost profile label; auto API-key hash fallback when blank)
   - lorebook fork utility (`Fork Active Lorebook`): deterministic branch copy + internal link rewrite + retagging

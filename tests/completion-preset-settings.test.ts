@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { CompletionPreset, ConverterSettings, DEFAULT_SETTINGS } from '../src/models';
 import {
   cloneReasoningConfig,
-  normalizeCompletionPreset
+  normalizeCompletionPreset,
+  resolveDeviceCompletionFallback
 } from '../src/completion-settings';
 
 function createPreset(overrides: Partial<CompletionPreset> = {}): CompletionPreset {
@@ -66,4 +67,43 @@ test('cloneReasoningConfig returns an independent copy', () => {
   }
   applied.reasoning.effort = 'minimal';
   assert.equal(preset.reasoning?.effort, 'high');
+});
+
+test('resolveDeviceCompletionFallback applies the Story Writing device preset', () => {
+  const baseCompletion: ConverterSettings['completion'] = {
+    ...DEFAULT_SETTINGS.completion,
+    model: 'base-model',
+    contextWindowTokens: 32000,
+    maxOutputTokens: 1200,
+    promptReserveTokens: 1500
+  };
+  const devicePreset = createPreset({
+    id: 'device-preset',
+    name: 'Device Preset',
+    model: 'device-model',
+    contextWindowTokens: 128000,
+    maxOutputTokens: 4096,
+    promptReserveTokens: 2048
+  });
+
+  const resolution = resolveDeviceCompletionFallback(
+    baseCompletion,
+    'device-preset',
+    presetId => (presetId === devicePreset.id ? devicePreset : null),
+    (base, preset) => ({
+      ...base,
+      model: preset.model,
+      contextWindowTokens: preset.contextWindowTokens,
+      maxOutputTokens: preset.maxOutputTokens,
+      promptReserveTokens: preset.promptReserveTokens
+    })
+  );
+
+  assert.equal(resolution.source, 'device');
+  assert.equal(resolution.presetId, 'device-preset');
+  assert.equal(resolution.presetName, 'Device Preset');
+  assert.equal(resolution.completion.model, 'device-model');
+  assert.equal(resolution.completion.contextWindowTokens, 128000);
+  assert.equal(resolution.completion.maxOutputTokens, 4096);
+  assert.equal(resolution.completion.promptReserveTokens, 2048);
 });

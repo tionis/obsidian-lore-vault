@@ -97,3 +97,37 @@ export function normalizeCompletionPreset(
     reasoning: normalizeReasoningConfig(candidate.reasoning)
   };
 }
+
+export function resolveDeviceCompletionFallback(
+  baseCompletion: ConverterSettings['completion'],
+  devicePresetId: string | null | undefined,
+  getPresetById: (presetId: string) => CompletionPreset | null,
+  applyCompletionPresetToConfig: (
+    base: ConverterSettings['completion'],
+    preset: CompletionPreset
+  ) => ConverterSettings['completion']
+): {
+  completion: ConverterSettings['completion'];
+  source: 'device' | 'base';
+  presetId: string;
+  presetName: string;
+} {
+  const normalizedDevicePresetId = (devicePresetId ?? '').trim();
+  if (normalizedDevicePresetId) {
+    const preset = getPresetById(normalizedDevicePresetId);
+    if (preset) {
+      return {
+        completion: applyCompletionPresetToConfig(baseCompletion, preset),
+        source: 'device',
+        presetId: preset.id,
+        presetName: preset.name
+      };
+    }
+  }
+  return {
+    completion: baseCompletion,
+    source: 'base',
+    presetId: '',
+    presetName: ''
+  };
+}

@@ -102,6 +102,7 @@ The panel also shows:
 - active completion model
 - device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)
 - provider/request options edited for the selected completion preset, including thinking/reasoning, persist with that preset when switching profiles
+- Story Writing uses `authorNote completionProfile -> Story Writing device preset -> base settings`; Story Chat profile selection does not affect `Continue Story`
 - command `Set Author Note Completion Profile` updates author-note frontmatter `completionProfile` override
 - generation status and token usage
 - selected context items (`world_info` + fallback)

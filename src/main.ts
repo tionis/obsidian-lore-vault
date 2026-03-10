@@ -33,7 +33,8 @@ import {
 import {
   cloneReasoningConfig,
   normalizeCompletionPreset,
-  normalizeReasoningConfig
+  normalizeReasoningConfig,
+  resolveDeviceCompletionFallback
 } from './completion-settings';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
@@ -1092,26 +1093,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     return this.deviceProfileState.activeCostProfile;
   }
 
-  private resolveDeviceCompletionForCostProfile(): CompletionProfileResolution {
-    const baseCompletion = this.cloneCompletionConfig(this.settings.completion);
-    const devicePresetId = this.deviceProfileState.activeCompletionPresetId;
-    if (devicePresetId) {
-      const preset = this.getCompletionPresetById(devicePresetId);
-      if (preset) {
-        return {
-          completion: this.applyCompletionPresetToConfig(baseCompletion, preset),
-          source: 'device',
-          presetId: preset.id,
-          presetName: preset.name,
-          authorNotePath: ''
-        };
-      }
-    }
+  private resolveDeviceCompletionFallback(): CompletionProfileResolution {
+    const resolution = resolveDeviceCompletionFallback(
+      this.cloneCompletionConfig(this.settings.completion),
+      this.deviceProfileState.activeCompletionPresetId,
+      presetId => this.getCompletionPresetById(presetId),
+      (base, preset) => this.applyCompletionPresetToConfig(base, preset)
+    );
     return {
-      completion: baseCompletion,
-      source: 'base',
-      presetId: '',
-      presetName: '',
+      ...resolution,
       authorNotePath: ''
     };
   }
@@ -1137,7 +1127,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     if (explicit) {
       return explicit;
     }
-    const resolution = this.resolveDeviceCompletionForCostProfile();
+    const resolution = this.resolveDeviceCompletionFallback();
     return this.buildAutoCostProfileLabel(resolution.completion.apiKey);
   }
 
@@ -1385,11 +1375,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
     }
 
-    const fallback = this.resolveEffectiveCompletionForStoryChat('');
-    const fallbackSource: CompletionProfileSource = fallback.source === 'device' ? 'device' : 'base';
+    const fallback = this.resolveDeviceCompletionFallback();
     return {
       completion: fallback.completion,
-      source: fallbackSource,
+      source: fallback.source,
       presetId: fallback.presetId,
       presetName: fallback.presetName,
       authorNotePath

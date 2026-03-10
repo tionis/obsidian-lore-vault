@@ -542,6 +542,7 @@ Built-in fallback templates (used when no prompt notes are found) include:
 
 - `Canon Consistency Pass`
 - `Scene Consistency Pass` (internal scene continuity pass)
+- `Remove LLMisms` (AI-style cleanup pass for mirrored contrast framing, signposting, meta filler, inflated abstraction, and overly even cadence)
 
 ## Story Chat Persistence
 

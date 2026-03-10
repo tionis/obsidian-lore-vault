@@ -328,6 +328,12 @@ export const DEFAULT_TEXT_COMMAND_PROMPT_TEMPLATES: TextCommandPromptTemplate[] 
     includeLorebookContext: false
   },
   {
+    id: 'remove-llmisms',
+    name: 'Remove LLMisms',
+    prompt: 'Rewrite to remove common AI-writing tells while preserving meaning, voice, and scene facts. Cut mirrored contrast framing (for example \'not X but Y\' / \'not just X, but Y\'), obvious signposting, hedging/meta commentary, buzzwordy abstraction, cliche metaphors, overly even sentence rhythm, list-like triads, and unnecessary em-dash pivots. Prefer direct, concrete phrasing and natural cadence without flattening intentional style.',
+    includeLorebookContext: false
+  },
+  {
     id: 'dialogue-naturalize',
     name: 'Naturalize Dialogue',
     prompt: 'Rewrite dialogue so it sounds natural and character-consistent while preserving speaker intent.',

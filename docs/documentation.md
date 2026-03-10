@@ -438,6 +438,7 @@ Run flow:
 7. selected range is replaced only if selection still matches original text
 8. default `Canon Consistency Pass` template emphasizes lorebook factual consistency and only minimal style edits needed to fix canon conflicts
 9. default `Scene Consistency Pass` template focuses on internal scene continuity (character positions, movement continuity, object state, and immediate spatial logic) with minimal edits
+10. default `Remove LLMisms` template removes common AI-writing tells such as mirrored contrast framing (`not X but Y` / `not just X, but Y`), heavy signposting, hedging/meta filler, buzzwordy abstraction, cliche metaphors, overly even cadence, and unnecessary em-dash pivots while preserving voice
 
 Settings (LoreVault -> Text Commands):
 

@@ -5,16 +5,23 @@ import {
   cloneDefaultTextCommandPromptTemplates
 } from '../src/models';
 
-test('default text command templates include canon and scene consistency passes', () => {
+test('default text command templates include consistency and LLMism cleanup passes', () => {
   const templates = cloneDefaultTextCommandPromptTemplates();
   const ids = templates.map(template => template.id);
   assert.ok(ids.includes('canon-consistency'));
   assert.ok(ids.includes('scene-consistency'));
+  assert.ok(ids.includes('remove-llmisms'));
 
   const sceneTemplate = templates.find(template => template.id === 'scene-consistency');
   assert.ok(sceneTemplate);
   assert.equal(sceneTemplate.includeLorebookContext, true);
   assert.match(sceneTemplate.prompt.toLowerCase(), /internal scene consistency/);
+
+  const llmismTemplate = templates.find(template => template.id === 'remove-llmisms');
+  assert.ok(llmismTemplate);
+  assert.equal(llmismTemplate.includeLorebookContext, false);
+  assert.match(llmismTemplate.prompt.toLowerCase(), /not x but y/);
+  assert.match(llmismTemplate.prompt.toLowerCase(), /em-dash/);
 });
 
 test('cloneDefaultTextCommandPromptTemplates returns a detached clone', () => {

@@ -208,7 +208,7 @@ If you prefer to build the plugin from source:
    - Select text in editor
    - Right-click and run `LoreVault: Run Text Command on Selection` (or run command palette action `Run Text Command on Selection`)
    - Choose/edit prompt template and optional lorebook-context toggle
-   - Built-in defaults include `Canon Consistency Pass` and `Scene Consistency Pass` (internal scene continuity checks)
+   - Built-in defaults include `Canon Consistency Pass`, `Scene Consistency Pass` (internal scene continuity checks), and `Remove LLMisms` (common AI-style cleanup)
    - Prompt templates are markdown notes from your prompt folder (`Text Command Prompt Notes Folder` in settings)
    - Review the side-by-side diff modal and click `Apply Edit` (unless auto-accept is enabled)
    - Configure defaults in Settings -> LoreVault -> `Text Commands`

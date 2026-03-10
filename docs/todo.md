@@ -350,6 +350,7 @@ Reference design: `docs/planning.md`.
 - [x] Text command consistency default prompt updates:
   - [x] bias `Canon Consistency Pass` template toward lorebook factual consistency constraints
   - [x] add `Scene Consistency Pass` template for internal scene continuity fixes (character positions, movement continuity, object state, spatial logic)
+  - [x] add `Remove LLMisms` template for mirrored contrast framing, signposting, meta filler, inflated abstraction, cliche metaphors, overly even cadence, and unnecessary em-dash pivots
 - [x] Repository release automation:
   - [x] add versioned release command that validates monotonic semver bump against `manifest.json`
   - [x] update `manifest.json` + `versions.json`, commit/tag, and push branch + tag with configurable remote/branch

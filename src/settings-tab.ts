@@ -1939,7 +1939,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Prompt Notes')
-      .setDesc('Create default prompt notes in the configured folder (existing files are not overwritten), including Canon/Scene Consistency passes.')
+      .setDesc('Create default prompt notes in the configured folder (existing files are not overwritten), including Canon/Scene Consistency and Remove LLMisms passes.')
       .addButton(button => button
         .setButtonText('Create Default Prompt Notes')
         .onClick(async () => {

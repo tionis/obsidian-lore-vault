@@ -17,6 +17,7 @@ import {
   DEFAULT_SETTINGS,
   ReasoningEffort
 } from './models';
+import { cloneReasoningConfig } from './completion-settings';
 
 class FolderSuggestModal extends FuzzySuggestModal<string> {
   private readonly folders: string[];
@@ -561,7 +562,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       timeoutMs: completion.timeoutMs,
       promptCachingEnabled: completion.promptCachingEnabled,
       providerRouting: completion.providerRouting,
-      reasoning: completion.reasoning
+      reasoning: cloneReasoningConfig(completion.reasoning)
     };
   }
 
@@ -580,7 +581,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
     completion.timeoutMs = preset.timeoutMs;
     completion.promptCachingEnabled = preset.promptCachingEnabled ?? true;
     completion.providerRouting = preset.providerRouting ?? '';
-    completion.reasoning = preset.reasoning;
+    completion.reasoning = cloneReasoningConfig(preset.reasoning);
   }
 
   private syncSelectedCompletionPresetFromCurrent(): void {
@@ -1588,7 +1589,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
         }));
 
     containerEl.createEl('h4', { text: 'Provider & Request Options' });
-    containerEl.createEl('p', { text: 'These settings are saved with the selected completion preset.' });
+    containerEl.createEl('p', { text: 'These settings are saved with the selected completion preset, including reasoning/thinking options.' });
 
     new Setting(containerEl)
       .setName('Completion Timeout (ms)')

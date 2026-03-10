@@ -65,6 +65,7 @@ This document is the implementation-level reference for core architecture and ru
   - effective author-note merge for chat/continuation prompt assembly
   - author-note completion profile override is managed by command (`Set Author Note Completion Profile`) and persisted as frontmatter `completionProfile`
   - device completion profile selection is a direct dropdown (no apply button) and shares a combined profile+cost section with cost breakdown
+  - Writing Completion preset settings persist provider/request options per preset, including prompt-caching, provider-routing, and reasoning/thinking
 - `src/lorevault-cost-analyzer-view.ts`
   - profile-scoped cost analysis panel (totals + by-operation/model/lorebook/source breakdowns)
 - `src/lorebook-scope-cache.ts`

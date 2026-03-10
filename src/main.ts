@@ -30,6 +30,11 @@ import {
   StoryChatForkSnapshot,
   StoryChatMessage
 } from './models';
+import {
+  cloneReasoningConfig,
+  normalizeCompletionPreset,
+  normalizeReasoningConfig
+} from './completion-settings';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
 import { LoreBookExporter } from './lorebook-exporter'; 
@@ -1274,9 +1279,13 @@ export default class LoreBookConverterPlugin extends Plugin {
   private cloneCompletionConfig(config: ConverterSettings['completion']): ConverterSettings['completion'] {
     return {
       ...config,
+      reasoning: cloneReasoningConfig(config.reasoning),
       semanticChapterRecall: { ...config.semanticChapterRecall },
       layerPlacement: { ...config.layerPlacement },
-      presets: config.presets.map(preset => ({ ...preset }))
+      presets: config.presets.map(preset => ({
+        ...preset,
+        reasoning: cloneReasoningConfig(preset.reasoning)
+      }))
     };
   }
 
@@ -1299,7 +1308,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       timeoutMs: preset.timeoutMs,
       promptCachingEnabled: preset.promptCachingEnabled ?? base.promptCachingEnabled,
       providerRouting: preset.providerRouting ?? base.providerRouting,
-      reasoning: preset.reasoning ?? base.reasoning
+      reasoning: cloneReasoningConfig(preset.reasoning ?? base.reasoning)
     };
   }
 
@@ -7467,6 +7476,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
     merged.completion.promptReserveTokens = Math.max(0, Math.floor(merged.completion.promptReserveTokens));
     merged.completion.timeoutMs = Math.max(1000, Math.floor(merged.completion.timeoutMs));
+    merged.completion.promptCachingEnabled = Boolean(
+      merged.completion.promptCachingEnabled
+      ?? DEFAULT_SETTINGS.completion.promptCachingEnabled
+    );
+    merged.completion.providerRouting = (merged.completion.providerRouting ?? '')
+      .toString()
+      .trim();
+    merged.completion.reasoning = normalizeReasoningConfig(merged.completion.reasoning);
     merged.completion.continuityAggressiveness = normalizeChapterMemoryAggressiveness(
       merged.completion.continuityAggressiveness
     );
@@ -7522,41 +7539,14 @@ export default class LoreBookConverterPlugin extends Plugin {
     const rawPresets = Array.isArray(merged.completion.presets) ? merged.completion.presets : [];
     const normalizedPresets: CompletionPreset[] = [];
     for (const rawPreset of rawPresets) {
-      if (!rawPreset || typeof rawPreset !== 'object') {
-        continue;
-      }
-      const candidate = rawPreset as Partial<CompletionPreset>;
-      const id = typeof candidate.id === 'string' && candidate.id.trim()
-        ? candidate.id.trim()
-        : `preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const name = typeof candidate.name === 'string' && candidate.name.trim()
-        ? candidate.name.trim()
-        : 'Preset';
-      const provider: CompletionPreset['provider'] = (
-        candidate.provider === 'ollama' ||
-        candidate.provider === 'openai_compatible'
-      ) ? candidate.provider : 'openrouter';
-      normalizedPresets.push({
-        id,
-        name,
-        provider,
-        endpoint: (candidate.endpoint ?? DEFAULT_SETTINGS.completion.endpoint).toString().trim() || DEFAULT_SETTINGS.completion.endpoint,
-        apiKey: (candidate.apiKey ?? '').toString().trim(),
-        apiKeySecretName: normalizeSecretIdentifier(
-          candidate.apiKeySecretName,
-          this.buildDefaultCompletionPresetSecretName(id)
-        ),
-        model: (candidate.model ?? DEFAULT_SETTINGS.completion.model).toString().trim() || DEFAULT_SETTINGS.completion.model,
-        systemPrompt: (candidate.systemPrompt ?? DEFAULT_SETTINGS.completion.systemPrompt).toString().trim() || DEFAULT_SETTINGS.completion.systemPrompt,
-        temperature: Math.max(0, Math.min(2, Number(candidate.temperature ?? DEFAULT_SETTINGS.completion.temperature))),
-        maxOutputTokens: Math.max(64, Math.floor(Number(candidate.maxOutputTokens ?? DEFAULT_SETTINGS.completion.maxOutputTokens))),
-        contextWindowTokens: Math.max(
-          Math.max(64, Math.floor(Number(candidate.maxOutputTokens ?? DEFAULT_SETTINGS.completion.maxOutputTokens))) + 512,
-          Math.floor(Number(candidate.contextWindowTokens ?? DEFAULT_SETTINGS.completion.contextWindowTokens))
-        ),
-        promptReserveTokens: Math.max(0, Math.floor(Number(candidate.promptReserveTokens ?? DEFAULT_SETTINGS.completion.promptReserveTokens))),
-        timeoutMs: Math.max(1000, Math.floor(Number(candidate.timeoutMs ?? DEFAULT_SETTINGS.completion.timeoutMs)))
+      const normalizedPreset = normalizeCompletionPreset(rawPreset, {
+        buildDefaultSecretName: id => this.buildDefaultCompletionPresetSecretName(id),
+        normalizeSecretIdentifier: (value, fallback) => normalizeSecretIdentifier(value, fallback),
+        fallbackId: () => `preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       });
+      if (normalizedPreset) {
+        normalizedPresets.push(normalizedPreset);
+      }
     }
     merged.completion.presets = normalizedPresets
       .filter((preset, index, array) => array.findIndex(item => item.id === preset.id) === index)

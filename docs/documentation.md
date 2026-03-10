@@ -624,6 +624,7 @@ Capabilities:
 - completion profile controls:
   - device-local active preset selector (dropdown, applies immediately)
   - selector is disabled when Author Note `completionProfile` override is active and shows `Overridden by Author Note`
+  - provider/request options in Writing Completion settings, including reasoning/thinking, are saved per selected preset
   - selected preset `Completion API Secret Name` for secret storage key mapping
   - API key bootstrap fields only create missing secrets; update existing secret values via Obsidian Secret Storage
   - device-local cost profile label is configured in settings (usage metadata tagging only); if empty, usage falls back to an automatic API-key hash profile

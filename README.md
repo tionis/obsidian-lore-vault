@@ -101,6 +101,7 @@ The panel also shows:
 - linked stories when an author note is active
 - active completion model
 - device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)
+- provider/request options edited for the selected completion preset, including thinking/reasoning, persist with that preset when switching profiles
 - command `Set Author Note Completion Profile` updates author-note frontmatter `completionProfile` override
 - generation status and token usage
 - selected context items (`world_info` + fallback)

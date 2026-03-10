@@ -170,6 +170,7 @@ If you prefer to build the plugin from source:
    - `Rewrite Author Note` supports an optional change prompt and shows a side-by-side source diff review before apply
    - Lorebook selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-lorebook fallback)
    - In Story Writing panel, the device completion profile is selected from a dropdown and applies immediately
+   - Writing Completion settings under the selected preset, including thinking/reasoning options, persist with that preset when you switch profiles
    - Cost profile label is configured in settings (not in Story Writing panel)
    - Inline instruction comments are supported as `[LV: ...]` and `<!-- LV: ... -->`; LoreVault renders them in-place as `<inline_story_directive>` tags during prompt assembly
    - Long-form chapter QoL commands:

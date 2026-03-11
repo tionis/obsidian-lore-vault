@@ -103,6 +103,7 @@ The panel also shows:
 - active completion model
 - the editor right-click menu exposes `Insert Inline Directive` on non-author-note notes, even before an author note is linked
 - device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)
+- if a generation ends in error, the active-note card keeps the error state but the action row returns to `Continue Story` and the device profile selector unlocks
 - provider/request options edited for the selected completion preset, including thinking/reasoning, persist with that preset when switching profiles
 - if reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` stores returned thinking in a collapsed `lv-thinking` callout before the generated continuation
 - Story Writing uses `authorNote completionProfile -> Story Writing device preset -> base settings`; Story Chat profile selection does not affect `Continue Story`

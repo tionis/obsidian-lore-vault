@@ -136,6 +136,7 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Story Writing Panel', {
       bullets: [
         'Generation actions: `Continue Story` (switches to `Stop` while running) and `Insert Directive`.',
+        'If generation fails, the `Active Writing Note` card keeps the error state but the action row returns to `Continue Story` and the profile selector unlocks.',
         'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are rendered in-place as `<inline_story_directive>` tags during generation; configured ignored callout types and non-`LV:` HTML comments are stripped from staged prompt blocks.',
         'Author note actions: `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`.',
         'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`.',

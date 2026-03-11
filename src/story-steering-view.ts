@@ -1,4 +1,5 @@
 import { App, FuzzySuggestModal, ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
+import { isActiveGenerationState } from './generation-state';
 import LoreBookConverterPlugin from './main';
 import { UsageLedgerReportSnapshot, UsageLedgerTotals } from './usage-ledger-report';
 import { formatRelativeTime } from './time-format';
@@ -330,7 +331,7 @@ export class StorySteeringView extends ItemView {
 
     try {
       const telemetry = this.plugin.getGenerationTelemetry();
-      const generationRunning = telemetry.state !== 'idle';
+      const generationRunning = isActiveGenerationState(telemetry.state);
       const workspaceContext = await this.plugin.resolveAuthorNoteWorkspaceContext();
       const linkedStoryItems = workspaceContext.mode === 'author_note' && workspaceContext.authorNotePath
         ? await this.plugin.resolveLinkedStoryDisplayForAuthorNote(workspaceContext.authorNotePath)

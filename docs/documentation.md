@@ -625,6 +625,7 @@ Capabilities:
 - completion profile controls:
   - device-local active preset selector (dropdown, applies immediately)
   - selector is disabled when Author Note `completionProfile` override is active and shows `Overridden by Author Note`
+  - if a Story Writing generation ends in error, the panel keeps the error badge/status in `Active Writing Note` but unlocks controls because no generation is still running
   - provider/request options in Writing Completion settings, including reasoning/thinking, are saved per selected preset
   - when reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` stores returned thinking in a collapsed `lv-thinking` callout before the generated continuation
   - Story Writing resolves completion as `authorNote completionProfile -> Story Writing device preset -> base settings`; Story Chat profile selection does not affect Story Writing runs

@@ -101,6 +101,7 @@ The panel also shows:
 - active note + linked author note state
 - linked stories when an author note is active
 - active completion model
+- the editor right-click menu exposes `Insert Inline Directive` on non-author-note notes, even before an author note is linked
 - device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)
 - provider/request options edited for the selected completion preset, including thinking/reasoning, persist with that preset when switching profiles
 - if reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` stores returned thinking in a collapsed `lv-thinking` callout before the generated continuation

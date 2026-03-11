@@ -307,7 +307,7 @@ Also registered as an editor action command so it appears in mobile editor actio
 Also available via ribbon icon for fast mobile invocation.
 The same editor menu also exposes note-level summary actions when eligible:
 
-- `LoreVault: Insert Inline Directive` for story notes (chapter metadata or `authorNote` link).
+- `LoreVault: Insert Inline Directive` for non-author-note markdown notes, including drafts that do not yet link an Author Note.
 - `LoreVault: Run Text Command on Selection` (only when text selection is non-empty).
 - `LoreVault: Generate Keywords` for notes with lorebook tags.
 - `LoreVault: Generate World Info Summary` for notes with lorebook tags.

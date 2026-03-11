@@ -41,6 +41,7 @@ import {
   normalizeIgnoredCalloutTypes,
   stripIgnoredCallouts
 } from './callout-utils';
+import { shouldShowInsertInlineDirectiveContextAction } from './editor-action-visibility';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
 import { LoreBookExporter } from './lorebook-exporter'; 
@@ -8442,7 +8443,6 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor, info: MarkdownView | MarkdownFileInfo) => {
       const targetFile = this.resolveFileFromEditorMenuInfo(info);
       const isLorebookNote = targetFile ? this.noteBelongsToLorebookScope(targetFile) : false;
-      const isChapterNote = targetFile ? this.noteHasChapterFrontmatter(targetFile) : false;
       const isAuthorNote = targetFile ? this.noteIsAuthorNote(targetFile) : false;
       const isCharacterCardMeta = targetFile ? this.noteIsCharacterCardMeta(targetFile) : false;
       const hasSelection = editor.somethingSelected() && Boolean(editor.getSelection().trim());
@@ -8491,10 +8491,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         });
       }
 
-      const shouldShowStoryActions = Boolean(
-        targetFile && !isAuthorNote && (isChapterNote || this.noteHasAuthorNoteLink(targetFile))
-      );
-      if (targetFile && shouldShowStoryActions) {
+      const shouldShowStoryActions = shouldShowInsertInlineDirectiveContextAction({
+        isAuthorNote
+      });
+      if (shouldShowStoryActions) {
         menu.addItem(item => {
           item
             .setTitle('LoreVault: Insert Inline Directive')

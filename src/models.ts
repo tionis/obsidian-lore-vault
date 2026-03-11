@@ -1,3 +1,5 @@
+import { DEFAULT_IGNORED_LLM_CALLOUT_TYPES } from './callout-utils';
+
 // Define interfaces for our data structures
 export interface LoreBookEntry {
   uid: number;
@@ -480,6 +482,8 @@ export interface ConverterSettings {
     providerRouting: string;
     /** Reasoning/thinking token configuration. OpenRouter only. Undefined = disabled. */
     reasoning?: ReasoningConfig;
+    /** Callout types stripped from markdown before LoreVault sends note text to LLMs. */
+    ignoredCalloutTypes: string[];
     continuityAggressiveness: CompletionContinuityAggressiveness;
     semanticChapterRecall: CompletionSemanticChapterRecallSettings;
     layerPlacement: {
@@ -641,6 +645,7 @@ export const DEFAULT_SETTINGS: ConverterSettings = {
     timeoutMs: 60000,
     promptCachingEnabled: true,
     providerRouting: '',
+    ignoredCalloutTypes: [...DEFAULT_IGNORED_LLM_CALLOUT_TYPES],
     continuityAggressiveness: 'aggressive',
     semanticChapterRecall: {
       enabled: true,

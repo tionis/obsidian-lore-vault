@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import { GraphAnalyzer } from '../src/graph-analyzer';
-import { ConverterSettings, LoreBookEntry } from '../src/models';
+import { ConverterSettings, DEFAULT_SETTINGS, LoreBookEntry } from '../src/models';
 
 interface DeterminismFixture {
   rootUid: number | null;
@@ -156,6 +156,7 @@ function createSettings(weights: ConverterSettings['weights']): ConverterSetting
       contextWindowTokens: 8192,
       promptReserveTokens: 400,
       timeoutMs: 60000,
+      ignoredCalloutTypes: [...DEFAULT_SETTINGS.completion.ignoredCalloutTypes],
       continuityAggressiveness: 'aggressive',
       semanticChapterRecall: {
         enabled: false,

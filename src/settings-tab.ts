@@ -18,6 +18,7 @@ import {
   ReasoningEffort
 } from './models';
 import { cloneReasoningConfig } from './completion-settings';
+import { normalizeIgnoredCalloutTypes } from './callout-utils';
 
 class FolderSuggestModal extends FuzzySuggestModal<string> {
   private readonly folders: string[];
@@ -1687,7 +1688,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     reasoningExcludeSetting = new Setting(containerEl)
       .setName('Exclude Reasoning from Response')
-      .setDesc('The model reasons internally but does not return the reasoning text. In chat, no Thinking block will appear. Useful for improving response quality without extra output.')
+      .setDesc('The model reasons internally but does not return the reasoning text. When off, Story Chat shows a Thinking block and Continue Story stores returned reasoning in a collapsed lv-thinking callout.')
       .setDisabled(!reasoningEnabled)
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.completion.reasoning?.exclude ?? false)
@@ -1844,8 +1845,18 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
       text: 'Steering placement controls where Author Note markdown is staged in prompts.'
     });
     containerEl.createEl('p', {
-      text: 'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are kept in-place and rendered as `<inline_story_directive>` tags; non-`LV:` HTML comments are stripped from staged prompt blocks.'
+      text: 'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are kept in-place and rendered as `<inline_story_directive>` tags; configured ignored callout types and non-`LV:` HTML comments are stripped from staged prompt blocks.'
     });
+
+    new Setting(containerEl)
+      .setName('Ignored LLM Callout Types')
+      .setDesc('Callout types removed from markdown before LoreVault sends note text to LLMs. One per line or comma-separated. Defaults: lv-thinking, lv-ignore, note.')
+      .addTextArea(text => text
+        .setValue(this.plugin.settings.completion.ignoredCalloutTypes.join('\n'))
+        .onChange(async value => {
+          this.plugin.settings.completion.ignoredCalloutTypes = normalizeIgnoredCalloutTypes(value);
+          await this.persistSettings();
+        }));
 
     const placementOptions = {
       system: 'System Prompt',

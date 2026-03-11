@@ -338,6 +338,7 @@ Settings:
 - prompt reserve tokens
 - steering layer placement for author note
 - inline directives are converted in-place to `<inline_story_directive>` tags during prompt assembly
+- configured ignored callout types are removed from note markdown before LoreVault sends LLM prompt text (default: `lv-thinking`, `lv-ignore`, `note`)
 - timeout
 
 Story lorebook selection order:
@@ -625,6 +626,7 @@ Capabilities:
   - device-local active preset selector (dropdown, applies immediately)
   - selector is disabled when Author Note `completionProfile` override is active and shows `Overridden by Author Note`
   - provider/request options in Writing Completion settings, including reasoning/thinking, are saved per selected preset
+  - when reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` stores returned thinking in a collapsed `lv-thinking` callout before the generated continuation
   - Story Writing resolves completion as `authorNote completionProfile -> Story Writing device preset -> base settings`; Story Chat profile selection does not affect Story Writing runs
   - selected preset `Completion API Secret Name` for secret storage key mapping
   - API key bootstrap fields only create missing secrets; update existing secret values via Obsidian Secret Storage
@@ -1028,9 +1030,11 @@ Query behavior:
 - completion:
   - builds a prompt from lorebook context + recent near-cursor story context
   - stages explicit steering layer for author note (`system`, `pre-history`, `pre-response`)
+  - strips configured ignored callout types from story/author-note markdown before prompt assembly (default: `lv-thinking`, `lv-ignore`, `note`)
   - converts inline directives to `<inline_story_directive>` tags in-place so directives stay near related text
   - optionally runs model-driven retrieval hooks (`search_entries`, `expand_neighbors`, `get_entry`) within configured safety limits
   - calls configured completion provider with streaming enabled
+  - when reasoning is returned and not excluded, inserts a collapsed `lv-thinking` callout before the streamed continuation text
   - inserts streamed generated continuation text at cursor
   - active story-text generation can be aborted via `Stop Active Generation` (or editor menu while running)
 - deterministic tie-breakers:
@@ -1057,6 +1061,7 @@ Token budgeting:
 - skips entries/documents that would exceed section budget and reports cutoff diagnostics
 - context block is used for generation input and is not inserted into the note
 - inline directives are parsed and rendered in-place for prompt steering, but excluded from lore exports/summary generation/import-update pipelines
+- configured ignored callout types are removed from LLM-bound markdown before inline-directive rendering/stripping
 
 Retrieval tuning settings (applies immediately to live query and generation):
 

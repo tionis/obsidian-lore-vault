@@ -57,6 +57,7 @@ export interface StoryExtractionProgressEvent {
 
 export interface StoryExtractionOptions {
   storyMarkdown: string;
+  ignoredCalloutTypes?: string[];
   targetFolder: string;
   defaultTagsRaw: string;
   lorebookName: string;
@@ -606,7 +607,9 @@ function resolveUniquePath(
 export async function extractWikiPagesFromStory(
   options: StoryExtractionOptions
 ): Promise<StoryExtractionResult> {
-  const storyMarkdown = stripInlineLoreDirectives(options.storyMarkdown).trim();
+  const storyMarkdown = stripInlineLoreDirectives(options.storyMarkdown, {
+    ignoredCalloutTypes: options.ignoredCalloutTypes ?? []
+  }).trim();
   if (!storyMarkdown) {
     throw new Error('Story markdown is empty.');
   }

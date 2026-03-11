@@ -87,3 +87,46 @@ test('renderInlineLoreDirectivesAsTags preserves placement and converts directiv
   assert.equal(rendered.text.includes('Before.'), true);
   assert.equal(rendered.text.includes('After.'), true);
 });
+
+test('renderInlineLoreDirectivesAsTags strips ignored callouts before directive rendering', () => {
+  const source = [
+    'Before.',
+    '',
+    '> [!lv-ignore]- Hidden',
+    '> [LV: Ignore this directive too]',
+    '> Hidden body.',
+    '',
+    '[LV: Keep this visible]',
+    '',
+    'After.'
+  ].join('\n');
+
+  const rendered = renderInlineLoreDirectivesAsTags(source, {
+    ignoredCalloutTypes: ['lv-ignore']
+  });
+  assert.deepEqual(rendered.directives, ['Keep this visible']);
+  assert.equal(rendered.text.includes('Ignore this directive too'), false);
+  assert.equal(rendered.text.includes('Hidden body.'), false);
+  assert.equal(rendered.text.includes('Keep this visible'), true);
+});
+
+test('stripInlineLoreDirectives strips ignored callouts when configured', () => {
+  const source = [
+    'Before.',
+    '',
+    '> [!note] Hidden',
+    '> Private context',
+    '',
+    '[LV: Keep this out too]',
+    '',
+    'After.'
+  ].join('\n');
+
+  const stripped = stripInlineLoreDirectives(source, {
+    ignoredCalloutTypes: ['note']
+  });
+  assert.equal(stripped.includes('Private context'), false);
+  assert.equal(stripped.includes('[!note]'), false);
+  assert.equal(stripped.includes('[LV:'), false);
+  assert.equal(stripped.includes('After.'), true);
+});

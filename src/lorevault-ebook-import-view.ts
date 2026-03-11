@@ -655,6 +655,7 @@ export class LorevaultEbookImportView extends ItemView {
 
       const result = await extractWikiPagesFromStory({
         storyMarkdown: storyText,
+        ignoredCalloutTypes: this.plugin.getIgnoredLlmCalloutTypes(),
         targetFolder: this.targetFolder,
         defaultTagsRaw: this.defaultTags,
         lorebookName: this.lorebookName.trim() || toSafeFileStem(parsed.title || 'ebook'),

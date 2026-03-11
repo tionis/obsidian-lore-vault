@@ -210,6 +210,7 @@ export class LorevaultStoryExtractView extends ItemView {
     try {
       const result = await extractWikiPagesFromStory({
         storyMarkdown: this.storyMarkdown,
+        ignoredCalloutTypes: this.plugin.getIgnoredLlmCalloutTypes(),
         targetFolder: this.targetFolder,
         defaultTagsRaw: this.defaultTags,
         lorebookName: this.lorebookName,

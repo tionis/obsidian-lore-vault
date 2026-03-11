@@ -20,10 +20,12 @@ interface ChapterSummaryCacheEntry {
 
 export class ChapterSummaryStore {
   private readonly app: App;
+  private readonly getIgnoredCalloutTypes: () => string[];
   private readonly cache = new Map<string, ChapterSummaryCacheEntry>();
 
-  constructor(app: App) {
+  constructor(app: App, getIgnoredCalloutTypes: () => string[] = () => []) {
     this.app = app;
+    this.getIgnoredCalloutTypes = getIgnoredCalloutTypes;
   }
 
   invalidatePath(path: string): void {
@@ -46,7 +48,9 @@ export class ChapterSummaryStore {
     }
 
     const raw = await this.app.vault.cachedRead(file);
-    const bodyWithSummarySection = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+    const bodyWithSummarySection = stripInlineLoreDirectives(stripFrontmatter(raw), {
+      ignoredCalloutTypes: this.getIgnoredCalloutTypes()
+    }).trim();
     const summaryFromSection = extractSummarySectionFromBody(bodyWithSummarySection);
     if (summaryFromSection) {
       const summary: ChapterSummarySnapshot = {

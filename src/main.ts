@@ -36,6 +36,11 @@ import {
   normalizeReasoningConfig,
   resolveDeviceCompletionFallback
 } from './completion-settings';
+import {
+  buildThinkingCallout,
+  normalizeIgnoredCalloutTypes,
+  stripIgnoredCallouts
+} from './callout-utils';
 import { ProgressBar } from './progress-bar';
 import { createTemplate } from './template-creator';
 import { LoreBookExporter } from './lorebook-exporter'; 
@@ -1212,6 +1217,28 @@ export default class LoreBookConverterPlugin extends Plugin {
       .map(item => ({ ...item }));
   }
 
+  public getIgnoredLlmCalloutTypes(): string[] {
+    return [...this.settings.completion.ignoredCalloutTypes];
+  }
+
+  private getPromptCleanupOptions(): { ignoredCalloutTypes: string[] } {
+    return {
+      ignoredCalloutTypes: this.getIgnoredLlmCalloutTypes()
+    };
+  }
+
+  private stripMarkdownForLlm(source: string): string {
+    return stripInlineLoreDirectives(source, this.getPromptCleanupOptions()).trim();
+  }
+
+  private stripIgnoredCalloutsForLlm(source: string): string {
+    return stripIgnoredCallouts(source, this.getIgnoredLlmCalloutTypes()).trim();
+  }
+
+  private renderInlineLoreDirectivesForLlm(source: string): ReturnType<typeof renderInlineLoreDirectivesAsTags> {
+    return renderInlineLoreDirectivesAsTags(source, this.getPromptCleanupOptions());
+  }
+
   private async promptCompletionPresetSelection(
     options: {
       includeNoneOption?: boolean;
@@ -1270,6 +1297,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     return {
       ...config,
       reasoning: cloneReasoningConfig(config.reasoning),
+      ignoredCalloutTypes: [...config.ignoredCalloutTypes],
       semanticChapterRecall: { ...config.semanticChapterRecall },
       layerPlacement: { ...config.layerPlacement },
       presets: config.presets.map(preset => ({
@@ -1639,7 +1667,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     ];
 
     return layerSpecs.map(spec => {
-      const normalizedText = spec.text.trim();
+      const normalizedText = this.stripIgnoredCalloutsForLlm(spec.text);
       const reservedTokens = normalizedText
         ? Math.max(48, Math.floor(steeringReserve * spec.reserveFraction))
         : 0;
@@ -4096,7 +4124,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
       const allowed = Math.max(120, Math.min(maxPerStory, remaining));
       const raw = await this.app.vault.cachedRead(storyFile);
-      const body = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+      const body = this.stripMarkdownForLlm(stripFrontmatter(raw));
       if (!body) {
         continue;
       }
@@ -4665,7 +4693,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
 
       const raw = await this.app.vault.cachedRead(file);
-      const body = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+      const body = this.stripMarkdownForLlm(stripFrontmatter(raw));
       if (!body) {
         continue;
       }
@@ -5118,7 +5146,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         return cached;
       }
       const raw = await this.app.vault.cachedRead(file);
-      const body = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+      const body = this.stripMarkdownForLlm(stripFrontmatter(raw));
       storyBodyCache.set(key, body);
       return body;
     };
@@ -5748,7 +5776,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       asStringArray(getFrontmatterValue(frontmatter, 'keywords', 'key'))
     );
     const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary')) ?? '';
-    const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+    const bodyWithSummary = this.stripMarkdownForLlm(stripFrontmatter(raw));
     const resolvedSummary = resolveNoteSummary(bodyWithSummary, frontmatterSummary)?.text ?? '';
     const bodyText = stripSummarySectionFromBody(bodyWithSummary).trim();
     if (!bodyText) {
@@ -6002,7 +6030,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const raw = await this.app.vault.cachedRead(file);
-    const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+    const bodyWithSummary = this.stripMarkdownForLlm(stripFrontmatter(raw));
     const bodyText = stripSummarySectionFromBody(bodyWithSummary);
     if (!bodyText) {
       throw new Error('Note body is empty.');
@@ -6139,7 +6167,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
     const frontmatterSummary = asString(getFrontmatterValue(frontmatter, 'summary'));
     const raw = await this.app.vault.cachedRead(file);
-    const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+    const bodyWithSummary = this.stripMarkdownForLlm(stripFrontmatter(raw));
     return Boolean(resolveNoteSummary(bodyWithSummary, frontmatterSummary));
   }
 
@@ -6501,13 +6529,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     const totalRagCount = contexts.reduce((sum, context) => sum + context.rag.length, 0);
     const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
     const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
-    const renderedChatHistory = renderInlineLoreDirectivesAsTags(chatHistory);
-    const renderedManualContext = renderInlineLoreDirectivesAsTags(manualContext);
-    const renderedSpecificNotes = renderInlineLoreDirectivesAsTags(specificNotesContextMarkdown);
-    const renderedChapterMemory = renderInlineLoreDirectivesAsTags(chapterMemoryMarkdown);
-    const renderedAgentToolContext = renderInlineLoreDirectivesAsTags(chatAgentToolContextMarkdown);
-    const renderedToolContext = renderInlineLoreDirectivesAsTags(toolContextMarkdown);
-    const renderedLoreContext = renderInlineLoreDirectivesAsTags(contextMarkdown);
+    const renderedChatHistory = this.renderInlineLoreDirectivesForLlm(chatHistory);
+    const renderedManualContext = this.renderInlineLoreDirectivesForLlm(manualContext);
+    const renderedSpecificNotes = this.renderInlineLoreDirectivesForLlm(specificNotesContextMarkdown);
+    const renderedChapterMemory = this.renderInlineLoreDirectivesForLlm(chapterMemoryMarkdown);
+    const renderedAgentToolContext = this.renderInlineLoreDirectivesForLlm(chatAgentToolContextMarkdown);
+    const renderedToolContext = this.renderInlineLoreDirectivesForLlm(toolContextMarkdown);
+    const renderedLoreContext = this.renderInlineLoreDirectivesForLlm(contextMarkdown);
     const resolvedInlineDirectiveItems = uniqueStrings([
       ...renderedChatHistory.directives,
       ...renderedManualContext.directives,
@@ -7473,6 +7501,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       .toString()
       .trim();
     merged.completion.reasoning = normalizeReasoningConfig(merged.completion.reasoning);
+    merged.completion.ignoredCalloutTypes = normalizeIgnoredCalloutTypes(merged.completion.ignoredCalloutTypes);
     merged.completion.continuityAggressiveness = normalizeChapterMemoryAggressiveness(
       merged.completion.continuityAggressiveness
     );
@@ -7959,7 +7988,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         });
       }
     );
-    this.chapterSummaryStore = new ChapterSummaryStore(this.app);
+    this.chapterSummaryStore = new ChapterSummaryStore(this.app, () => this.getIgnoredLlmCalloutTypes());
     this.lorebookScopeCache = new LorebookScopeCache({
       computeNotes: () => collectLorebookNoteMetadata(this.app, this.settings),
       getActiveScope: () => this.settings.tagScoping.activeScope
@@ -9125,7 +9154,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
 
     const originalStoryMarkdown = await this.app.vault.cachedRead(activeFile);
-    const currentStoryBody = stripFrontmatter(originalStoryMarkdown).trim();
+    const currentStoryBody = this.stripIgnoredCalloutsForLlm(stripFrontmatter(originalStoryMarkdown));
     if (!currentStoryBody) {
       throw new Error('Active story note has no markdown body to rewrite.');
     }
@@ -9135,7 +9164,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     let currentAuthorNote = '';
     if (authorNoteFile) {
       originalAuthorNoteMarkdown = await this.app.vault.cachedRead(authorNoteFile);
-      currentAuthorNote = parseStorySteeringMarkdown(originalAuthorNoteMarkdown).authorNote;
+      currentAuthorNote = this.stripIgnoredCalloutsForLlm(parseStorySteeringMarkdown(originalAuthorNoteMarkdown).authorNote);
     }
 
     const maxInputTokens = Math.max(768, completion.contextWindowTokens - completion.maxOutputTokens);
@@ -10353,7 +10382,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         }
 
         const raw = await this.app.vault.cachedRead(file);
-        const bodyWithSummary = stripInlineLoreDirectives(stripFrontmatter(raw)).trim();
+        const bodyWithSummary = this.stripMarkdownForLlm(stripFrontmatter(raw));
         const bodyWithoutSummary = stripSummarySectionFromBody(bodyWithSummary).trim();
         if (!bodyWithoutSummary) {
           continue;
@@ -10720,7 +10749,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         continue;
       }
 
-      let chapterBody = stripInlineLoreDirectives(stripFrontmatter(await this.app.vault.cachedRead(file))).trim();
+      let chapterBody = this.stripMarkdownForLlm(stripFrontmatter(await this.app.vault.cachedRead(file)));
       chapterBody = stripSummarySectionFromBody(chapterBody).trim() || chapterBody;
       if (!chapterBody) {
         continue;
@@ -10991,7 +11020,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
       const raw = await this.app.vault.cachedRead(file);
-      const prompt = stripFrontmatter(raw).trim();
+      const prompt = this.stripIgnoredCalloutsForLlm(stripFrontmatter(raw));
       if (!prompt) {
         continue;
       }
@@ -11569,7 +11598,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     const resolvedActiveFile = markdownView.file ?? activeFile;
     const cursor = editor.getCursor();
     const rawTextBeforeCursor = editor.getRange({ line: 0, ch: 0 }, cursor);
-    const textBeforeCursorForQuery = stripInlineLoreDirectives(rawTextBeforeCursor);
+    const textBeforeCursorForQuery = stripInlineLoreDirectives(rawTextBeforeCursor, this.getPromptCleanupOptions());
     const fallbackQuery = resolvedActiveFile?.basename ?? 'story continuation';
     let targetScopes: string[] = [];
     let targetScopeLabels: string[] = ['(none)'];
@@ -11819,10 +11848,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         .slice(0, 8);
       const ragPolicies = [...new Set(contexts.map(context => context.explainability.rag.policy))];
       const ragEnabledScopes = contexts.filter(context => context.explainability.rag.enabled).length;
-      const renderedStoryWindow = renderInlineLoreDirectivesAsTags(storyWindow);
-      const renderedChapterMemory = renderInlineLoreDirectivesAsTags(chapterMemoryMarkdown);
-      const renderedToolContext = renderInlineLoreDirectivesAsTags(toolContextMarkdown);
-      const renderedGraphContext = renderInlineLoreDirectivesAsTags(graphContextMarkdown);
+      const renderedStoryWindow = this.renderInlineLoreDirectivesForLlm(storyWindow);
+      const renderedChapterMemory = this.renderInlineLoreDirectivesForLlm(chapterMemoryMarkdown);
+      const renderedToolContext = this.renderInlineLoreDirectivesForLlm(toolContextMarkdown);
+      const renderedGraphContext = this.renderInlineLoreDirectivesForLlm(graphContextMarkdown);
       const resolvedInlineDirectiveItems = uniqueStrings([
         ...renderedStoryWindow.directives,
         ...renderedChapterMemory.directives,
@@ -12082,8 +12111,10 @@ export default class LoreBookConverterPlugin extends Plugin {
           insertOffset = editor.posToOffset(cursor) + 1;
         }
       }
+      let thinkingInsertOffset = insertOffset;
 
       let generatedText = '';
+      let reasoningText = '';
       let detachedDeltaBuffer = '';
       let lastStatusUpdate = 0;
       let completionUsage: CompletionUsageReport | null = null;
@@ -12145,6 +12176,9 @@ export default class LoreBookConverterPlugin extends Plugin {
           return;
         }
         const cursorOffset = editor.posToOffset(editor.getCursor('to'));
+        if (cursorOffset <= thinkingInsertOffset) {
+          thinkingInsertOffset = clampOffset(thinkingInsertOffset + delta);
+        }
         if (cursorOffset <= insertOffset) {
           insertOffset = clampOffset(insertOffset + delta);
         }
@@ -12230,6 +12264,12 @@ export default class LoreBookConverterPlugin extends Plugin {
           onUsage: usage => {
             completionUsage = usage;
           },
+          onReasoning: (delta: string) => {
+            if (!delta) {
+              return;
+            }
+            reasoningText += delta;
+          },
           abortSignal: this.generationAbortController.signal
         });
       } finally {
@@ -12268,6 +12308,21 @@ export default class LoreBookConverterPlugin extends Plugin {
 
       if (!generatedText.trim()) {
         throw new Error('Completion provider returned empty output.');
+      }
+      const shouldInsertThinkingCallout = completion.reasoning?.enabled && completion.reasoning.exclude !== true;
+      const thinkingCallout = shouldInsertThinkingCallout
+        ? buildThinkingCallout(reasoningText)
+        : '';
+      if (thinkingCallout) {
+        const thinkingInsertPos = editor.offsetToPos(clampOffset(thinkingInsertOffset));
+        const thinkingBlock = `${thinkingCallout}\n\n`;
+        const insertedThinking = this.replaceRangePreservingViewport(editor, markdownView, thinkingBlock, thinkingInsertPos);
+        if (insertedThinking) {
+          insertOffset = clampOffset(insertOffset + thinkingBlock.length);
+          knownDocLength = editor.getValue().length;
+        } else {
+          new Notice('Could not insert returned thinking callout into the story note.');
+        }
       }
       if (detachedDeltaBuffer.length > 0) {
         const fallbackCursor = editor.getCursor();

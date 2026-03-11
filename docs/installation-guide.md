@@ -126,6 +126,7 @@ If you prefer to build the plugin from source:
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
    - Optional: tune completion context budgets (`max output tokens`, `context window tokens`, `prompt reserve tokens`)
+   - Optional: configure `Ignored LLM Callout Types` for note-local markdown that should stay in notes but be removed from LLM prompts (default: `lv-thinking`, `lv-ignore`, `note`)
    - Optional: set `Story Continuity Aggressiveness` (`Balanced` or `Aggressive`) to control how much prior chapter memory/style carryover is injected
    - Optional: configure `Semantic Chapter Recall` (under Writing Completion) to toggle/tune embedding-based related prior-scene recall (`Related Past Scenes`) with controls for chapter/chunk limits, chunk sizing, similarity threshold, recency blend, and budget share (enabled by default with a large-context tuned profile)
    - Optional: configure Auto Summaries (summary input cap + optional world_info output cap; default output cap is `0` to disable truncation)
@@ -174,6 +175,8 @@ If you prefer to build the plugin from source:
    - Story Chat profile selection is separate and does not affect `Continue Story`; Story Writing uses author-note override first, then its own device preset, then base settings
    - Cost profile label is configured in settings (not in Story Writing panel)
    - Inline instruction comments are supported as `[LV: ...]` and `<!-- LV: ... -->`; LoreVault renders them in-place as `<inline_story_directive>` tags during prompt assembly
+   - Configured ignored callout types are stripped before note text is sent to the LLM; defaults are `lv-thinking`, `lv-ignore`, and `note`
+   - If thinking/reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` stores returned reasoning in a collapsed `lv-thinking` callout before the continuation text
    - Long-form chapter QoL commands:
      - `Split Active Story Note into Chapter Notes`
      - `Split Active Story Note into Chapter Notes (Pick Folder)`

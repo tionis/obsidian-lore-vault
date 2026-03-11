@@ -28,6 +28,7 @@ import {
 import { stripFrontmatter } from './frontmatter-utils';
 import { normalizeVaultPath } from './vault-path-utils';
 import { ConverterSettings } from './models';
+import { stripIgnoredCallouts } from './callout-utils';
 
 export const LOREVAULT_IMPORT_VIEW_TYPE = 'lorevault-import-view';
 
@@ -469,7 +470,10 @@ export class LorevaultImportView extends ItemView {
       };
     }
 
-    const markdown = stripFrontmatter(await this.app.vault.cachedRead(resolvedPersonaFile)).trim();
+    const markdown = stripIgnoredCallouts(
+      stripFrontmatter(await this.app.vault.cachedRead(resolvedPersonaFile)),
+      this.plugin.getIgnoredLlmCalloutTypes()
+    ).trim();
     return {
       personaPath: resolvedPersonaFile.path,
       personaName: resolvedPersonaFile.basename,

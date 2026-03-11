@@ -46,6 +46,7 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 | Story lorebook selection | Story frontmatter `lorebooks` | Selects lorebooks for continuation/chat |
 | Chapter ordering | `chapter`, `previousChapter`, `nextChapter` | Determines chapter threading/memory |
 | Inline directives | Story body (`<!-- LV: ... -->` or `[LV: ...]`) | Turn-level guidance kept next to the related text |
+| Ignored LLM callouts | Story/author-note callouts (`> [!lv-ignore]`, `> [!note]`, `> [!lv-thinking]`) | Note-local text stripped from prompts by default |
 
 ## Frontmatter Examples
 
@@ -102,6 +103,7 @@ The panel also shows:
 - active completion model
 - device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)
 - provider/request options edited for the selected completion preset, including thinking/reasoning, persist with that preset when switching profiles
+- if reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` stores returned thinking in a collapsed `lv-thinking` callout before the generated continuation
 - Story Writing uses `authorNote completionProfile -> Story Writing device preset -> base settings`; Story Chat profile selection does not affect `Continue Story`
 - command `Set Author Note Completion Profile` updates author-note frontmatter `completionProfile` override
 - generation status and token usage
@@ -176,7 +178,9 @@ Use it with your character-card meta notes (`lvDocType: characterCard`) to get:
 Notes:
 
 - Inline directives remain in-place near their source text in prompt staging.
+- Configured ignored callout types are stripped from staged prompt blocks before sending note text to the LLM. Default types: `lv-thinking`, `lv-ignore`, `note`.
 - Non-`LV:` HTML comments are stripped from staged prompt blocks before sending context to the LLM.
+- If reasoning is enabled and not excluded, returned thinking is inserted into the note as a collapsed `> [!lv-thinking]- Thinking` callout immediately before the streamed continuation.
 - Chapter memory scales aggressively with available budget on large-context models and can include deeper prior-chapter coverage plus recent style excerpts (in addition to chapter summaries) when budget allows.
 - Optional semantic chapter recall can inject a `Related Past Scenes` block by embedding prior chapter chunks and selecting high-similarity matches to the current query/story window.
 - Chapter-memory lineage can walk linked prior chapters across different author-note anchors, but steering guidance is still taken only from the active note's linked author note.

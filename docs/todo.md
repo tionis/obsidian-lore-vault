@@ -29,6 +29,7 @@ Reference design: `docs/planning.md`.
 - Character-card tooling now includes `Inject Character Card Event` for linked story notes (event picker + review-first story rewrite + optional linked author-note rewrite).
 - Character-card rewrite prompting now explicitly favors fuller description/personality/scenario coverage and allows longer author-note outputs when source detail is dense.
 - Story Starter panel is complete (`Open Story Starter`: idea + optional lore retrieval -> first chapter note + linked author note with preview/apply).
+- Prompt staging now supports configurable ignored callout types, and Continue Story can persist returned thinking in `lv-thinking` callouts.
 - Current priority is Phase 22 stabilization (conflict UX, export freshness, terminology cleanup, UI scaling, and auditor/docs/test parity).
 
 ## Active Execution Order

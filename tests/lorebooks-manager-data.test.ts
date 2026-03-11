@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'fs';
 import * as path from 'path';
-import { ConverterSettings } from '../src/models';
+import { ConverterSettings, DEFAULT_SETTINGS } from '../src/models';
 import {
   LorebookNoteMetadata,
   buildScopeSummaries
@@ -140,6 +140,7 @@ function createSettings(overrides: Partial<ConverterSettings> = {}): ConverterSe
       promptCachingEnabled: true,
       providerRouting: '',
       ...(overrides.completion ?? {}),
+      ignoredCalloutTypes: overrides.completion?.ignoredCalloutTypes ?? [...DEFAULT_SETTINGS.completion.ignoredCalloutTypes],
       continuityAggressiveness: overrides.completion?.continuityAggressiveness ?? 'aggressive'
     },
     storyChat: {

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requestStoryContinuation } from '../src/completion-provider';
+import {
+  requestStoryContinuation,
+  requestStoryContinuationStream
+} from '../src/completion-provider';
 
 type FetchLike = typeof fetch;
 
@@ -149,6 +152,57 @@ test('requestStoryContinuation handles object content values and nested usage', 
     assert.equal(usageReport.promptTokens, 12);
     assert.equal(usageReport.completionTokens, 4);
     assert.equal(usageReport.totalTokens, 16);
+  });
+});
+
+test('requestStoryContinuationStream keeps reasoning separate from visible text', async () => {
+  let streamedText = '';
+  let reasoningText = '';
+
+  await withMockedFetch({
+    choices: [
+      {
+        message: {
+          content: 'Visible streamed text.',
+          reasoning: 'Hidden chain of thought.'
+        }
+      }
+    ]
+  }, async () => {
+    const text = await requestStoryContinuationStream(createConfig(), {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      onDelta: delta => {
+        streamedText += delta;
+      },
+      onReasoning: delta => {
+        reasoningText += delta;
+      }
+    });
+    assert.equal(text, 'Visible streamed text.');
+    assert.equal(streamedText, 'Visible streamed text.');
+    assert.equal(reasoningText, 'Hidden chain of thought.');
+  });
+});
+
+test('requestStoryContinuation does not treat reasoning-only payloads as visible completion text', async () => {
+  await withMockedFetch({
+    choices: [
+      {
+        message: {
+          content: '',
+          reasoning: 'Hidden chain of thought.'
+        }
+      }
+    ]
+  }, async () => {
+    await assert.rejects(
+      requestStoryContinuation(createConfig(), {
+        systemPrompt: 'sys',
+        userPrompt: 'user'
+      }),
+      /did not contain text content/i
+    );
   });
 });
 

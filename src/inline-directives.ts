@@ -1,3 +1,5 @@
+import { stripIgnoredCallouts } from './callout-utils';
+
 interface DirectiveMatch {
   index: number;
   text: string;
@@ -24,7 +26,14 @@ export interface InlineDirectiveTagRenderResult {
   directives: string[];
 }
 
-export function renderInlineLoreDirectivesAsTags(source: string): InlineDirectiveTagRenderResult {
+interface InlineDirectiveCleanupOptions {
+  ignoredCalloutTypes?: readonly string[];
+}
+
+export function renderInlineLoreDirectivesAsTags(
+  source: string,
+  options: InlineDirectiveCleanupOptions = {}
+): InlineDirectiveTagRenderResult {
   if (!source) {
     return {
       text: '',
@@ -32,6 +41,7 @@ export function renderInlineLoreDirectivesAsTags(source: string): InlineDirectiv
     };
   }
 
+  const cleanedSource = stripIgnoredCallouts(source, options.ignoredCalloutTypes ?? []);
   const directives: string[] = [];
   const renderMatch = (raw: string): string => {
     const normalized = normalizeDirectiveText(raw);
@@ -42,7 +52,7 @@ export function renderInlineLoreDirectivesAsTags(source: string): InlineDirectiv
     return renderDirectiveTag(normalized);
   };
 
-  const withCommentTags = source.replace(COMMENT_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
+  const withCommentTags = cleanedSource.replace(COMMENT_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
   const withAllTags = withCommentTags.replace(BRACKET_DIRECTIVE_PATTERN, (_, value: string) => renderMatch(value ?? ''));
   const withoutNonDirectiveComments = withAllTags.replace(HTML_COMMENT_PATTERN, '');
 
@@ -111,12 +121,15 @@ export function extractInlineLoreDirectives(source: string): string[] {
   return directives;
 }
 
-export function stripInlineLoreDirectives(source: string): string {
+export function stripInlineLoreDirectives(
+  source: string,
+  options: InlineDirectiveCleanupOptions = {}
+): string {
   if (!source) {
     return '';
   }
 
-  return source
+  return stripIgnoredCallouts(source, options.ignoredCalloutTypes ?? [])
     .replace(COMMENT_DIRECTIVE_PATTERN, '')
     .replace(BRACKET_DIRECTIVE_PATTERN, '');
 }

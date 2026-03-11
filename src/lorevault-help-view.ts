@@ -113,7 +113,8 @@ export class LorevaultHelpView extends ItemView {
         'Link a shared author note with `authorNote: [[...]]`.',
         'Optional persona context is set in Character Card Import (`Persona Note`) and baked into generated outputs at import time.',
         'Use `chapter`, `previousChapter`, and `nextChapter` for ordering.',
-        'Add a `## Summary` section near the top for better memory injection.'
+        'Add a `## Summary` section near the top for better memory injection.',
+        'Use ignored callouts such as `> [!lv-ignore]` or `> [!note]` for note-local drafting comments that should stay out of prompts by default.'
       ],
       codeSample: [
         '---',
@@ -135,11 +136,12 @@ export class LorevaultHelpView extends ItemView {
     this.renderSection(contentEl, 'Story Writing Panel', {
       bullets: [
         'Generation actions: `Continue Story` (switches to `Stop` while running) and `Insert Directive`.',
-        'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are rendered in-place as `<inline_story_directive>` tags during generation; non-`LV:` HTML comments are stripped from staged prompt blocks.',
+        'Inline directives (`[LV: ...]` / `<!-- LV: ... -->`) are rendered in-place as `<inline_story_directive>` tags during generation; configured ignored callout types and non-`LV:` HTML comments are stripped from staged prompt blocks.',
         'Author note actions: `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`.',
         'Chapter actions: `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`.',
         'Completion profile: use the panel dropdown (applies immediately). If an Author Note override exists the selector is disabled and shows `Overridden by Author Note`.',
         'Writing Completion preset settings, including reasoning/thinking, are saved per selected preset.',
+        'If reasoning is enabled and `Exclude Reasoning from Response` is off, `Continue Story` inserts returned thinking into a collapsed `lv-thinking` callout before the continuation.',
         'Story Chat profile selection is separate; `Continue Story` uses author-note override first, then the Story Writing device preset, then base settings.',
         'Set author-note `completionProfile` via command `Set Author Note Completion Profile`.',
         'API keys are in Obsidian Secret Storage; each completion preset has a `Completion API Secret Name` used as its secret key id. LoreVault only creates missing secrets and never overwrites existing ones.',

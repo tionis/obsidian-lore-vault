@@ -94,8 +94,12 @@ This document is the implementation-level reference for core architecture and ru
   - rolling chapter-summary cache (`## Summary` section -> frontmatter fallback -> excerpt fallback)
 - `src/summary-utils.ts`
   - summary normalization and world_info content resolution
+- `src/callout-utils.ts`
+  - Obsidian callout normalization/removal helpers for LLM staging
+  - `lv-thinking` callout rendering for persisted reasoning blocks
 - `src/inline-directives.ts`
   - strict-prefix inline directive parse/strip helpers plus in-place tag rendering (`[LV: ...]`, `<!-- LV: ... -->` -> `<inline_story_directive>`)
+  - prompt-cleanup support for stripping configured ignored callout types before directive render/strip
 - `src/prompt-staging.ts`
   - deterministic prompt-segment budgeting
   - fixed-order overflow trimming with locked-layer protection
@@ -576,7 +580,7 @@ Story Chat UI behavior:
 Parsing and serialization logic is centralized in `src/story-chat-document.ts` and covered by tests.
 Legacy single-code-block (` ```lorevault-chat `) chat payload parsing is removed; only `agent-session` note format is accepted.
 
-## Inline Directive Contract
+## Inline Directive and Callout Cleanup Contract
 
 Inline steering directives are implemented as optional in-text shorthand for generation/chat.
 
@@ -588,11 +592,18 @@ Accepted directive forms:
 Parser and staging constraints (implemented):
 
 - only strict-prefix `LV:` directives are parsed
+- configured ignored callout types are stripped before note markdown is rendered/cleaned for LLM-bound prompt blocks
+- default ignored callout types are `lv-thinking`, `lv-ignore`, and `note`
 - directives are converted in-place where they appear in staged context blocks (story window, chat history/manual context, etc.)
 - non-`LV:` HTML comments are removed from staged prompt blocks
 - deterministic parse order follows source document order within each rendered block
 - system prompt explicitly instructs model to follow `<inline_story_directive>` tags
 - inspector traces include resolved directive summaries
+
+Reasoning persistence constraints:
+
+- Story Writing inserts returned reasoning into the note as a collapsed `lv-thinking` callout immediately before the streamed continuation when reasoning is enabled and `exclude !== true`
+- Story Chat continues to store/render reasoning separately as Thinking metadata rather than feeding it back into subsequent history
 
 Exclusion constraints:
 

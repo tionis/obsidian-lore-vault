@@ -100,6 +100,7 @@ export interface StoryDeltaProgressEvent {
 
 export interface StoryDeltaUpdateOptions {
   storyMarkdown: string;
+  ignoredCalloutTypes?: string[];
   newNoteFolder: string;
   defaultTagsRaw: string;
   lorebookScopes: string[];
@@ -945,7 +946,9 @@ function applyOperation(
 export async function buildStoryDeltaPlan(
   options: StoryDeltaUpdateOptions
 ): Promise<StoryDeltaResult> {
-  const storyMarkdown = stripInlineLoreDirectives(options.storyMarkdown).trim();
+  const storyMarkdown = stripInlineLoreDirectives(options.storyMarkdown, {
+    ignoredCalloutTypes: options.ignoredCalloutTypes ?? []
+  }).trim();
   if (!storyMarkdown) {
     throw new Error('Story markdown is empty.');
   }

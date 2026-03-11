@@ -638,6 +638,7 @@ export class LorevaultStoryDeltaView extends ItemView {
 
       const result = await buildStoryDeltaPlan({
         storyMarkdown,
+        ignoredCalloutTypes: this.plugin.getIgnoredLlmCalloutTypes(),
         newNoteFolder: this.newNoteTargetFolder,
         defaultTagsRaw: this.defaultTags,
         lorebookScopes: selectedScopes,

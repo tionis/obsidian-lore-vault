@@ -341,10 +341,6 @@ function extractOpenAiCompletionText(payload: any): string {
   if (refusalContent) {
     return refusalContent;
   }
-  const reasoningContent = normalizeContentValue(first?.message?.reasoning);
-  if (reasoningContent) {
-    return reasoningContent;
-  }
   const textContent = normalizeContentValue(first?.text);
   if (textContent) {
     return textContent;
@@ -356,6 +352,11 @@ function extractOpenAiCompletionText(payload: any): string {
   throw new Error(
     `Completion response did not contain text content. ${summarizeCompletionFailure(payload)} ${summarizeCompletionPayloadShape(payload)}`
   );
+}
+
+function extractOpenAiReasoningText(payload: any): string {
+  const first = payload?.choices?.[0];
+  return normalizeContentValue(first?.message?.reasoning);
 }
 
 function extractOpenAiReasoningDelta(payload: any): string {
@@ -586,13 +587,17 @@ async function consumeOpenAiSseStream(
 }> {
   if (!response.body) {
     const payload = await response.json();
+    const reasoning = extractOpenAiReasoningText(payload).trim();
+    if (reasoning) {
+      onReasoningDelta?.(reasoning);
+    }
     const text = extractOpenAiCompletionText(payload).trim();
     if (text) {
       onDelta(text);
     }
     return {
       text,
-      reasoning: '',
+      reasoning,
       usage: parseOpenAiUsage(payload)
     };
   }

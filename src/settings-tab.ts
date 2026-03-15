@@ -2381,7 +2381,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('LLM Operation Log Path')
-      .setDesc('Vault-relative JSONL base path for operation logs. LoreVault writes one file per cost profile by suffixing this path.')
+      .setDesc('Vault-relative legacy JSONL base path for operation logs. LoreVault uses this for fallback writes, legacy import, and raw-file inspection, with one file per cost profile suffix.')
       .addText(text => text
         .setPlaceholder('.obsidian/plugins/lore-vault/cache/llm-operation-log.jsonl')
         .setValue(this.plugin.settings.operationLog.path)
@@ -2393,7 +2393,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('LLM Operation Log Max Entries')
-      .setDesc('Maximum number of recent log entries kept in each per-profile log file (default 10000, range 20-20000). Oldest entries are trimmed.')
+      .setDesc('Maximum number of recent log entries kept per cost profile in local SQLite storage and legacy JSONL fallback files (default 10000, range 20-20000). Oldest entries are trimmed.')
       .addText(text => text
         .setValue(this.plugin.settings.operationLog.maxEntries.toString())
         .onChange(async (value) => {
@@ -2416,7 +2416,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Open LLM Operation Log Explorer')
-      .setDesc('Open the built-in panel to browse and inspect captured LLM operations.')
+      .setDesc('Open the built-in panel to browse captured LLM operations, inspect storage backend status, and open the legacy JSONL file when needed.')
       .addButton(button => button
         .setButtonText('Open Explorer')
         .onClick(() => {

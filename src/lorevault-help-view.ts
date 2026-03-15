@@ -187,6 +187,19 @@ export class LorevaultHelpView extends ItemView {
       ]
     });
 
+    this.renderSection(contentEl, 'Operation Log', {
+      bullets: [
+        'Open it with `Open LLM Operation Log Explorer`.',
+        'Explorer shows full completion, streaming, tool-planner, and optional embedding payloads with search and status filters.',
+        'LoreVault prefers a local SQLite-backed operation-log store and the explorer shows whether the current runtime is using `OPFS`, `IndexedDB`, or legacy JSONL fallback.',
+        'Setting `LLM Operation Log Path` controls the legacy per-cost-profile JSONL path used for fallback writes, legacy import, and raw-file inspection.'
+      ],
+      actions: [
+        { label: 'Open Operation Log', onClick: () => void this.plugin.openOperationLogView() },
+        { label: 'Open Cost Analyzer', onClick: () => void this.plugin.openCostAnalyzerView() }
+      ]
+    });
+
     this.renderSection(contentEl, 'Lorebook Quality Tools', {
       bullets: [
         'Use **Lorebook Auditor** to find weak entries and generate keywords.',

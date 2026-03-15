@@ -1,5 +1,7 @@
 import esbuild from "esbuild";
+import fs from "fs/promises";
 import process from "process";
+import path from "path";
 import builtins from "builtin-modules";
 
 const banner =
@@ -12,12 +14,70 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = process.argv[2] === "production";
 const externalBuiltins = builtins.filter((moduleName) => moduleName.replace(/^node:/, "") !== "events");
 
-const buildOptions = {
+const sharedOptions = {
   banner: {
     js: banner,
   },
-  entryPoints: ["src/main.ts"],
   bundle: true,
+  logLevel: "info",
+  sourcemap: prod ? false : "inline",
+  treeShaking: true,
+};
+
+function inlineInternalDbWorkerPlugin() {
+  return {
+    name: "inline-internal-db-worker",
+    setup(build) {
+      const workerVirtualPath = "virtual:internal-db-worker-source";
+
+      build.onResolve({ filter: /^virtual:internal-db-worker-source$/ }, () => ({
+        path: workerVirtualPath,
+        namespace: "lorevault-inline-worker",
+      }));
+
+      build.onLoad({ filter: /.*/, namespace: "lorevault-inline-worker" }, async () => {
+        const workerResult = await esbuild.build({
+          banner: {
+            js: banner,
+          },
+          bundle: true,
+          entryPoints: [path.resolve("src/internal-db-worker.ts")],
+          format: "iife",
+          target: "es2022",
+          platform: "browser",
+          write: false,
+          metafile: true,
+          sourcemap: false,
+          treeShaking: true,
+          loader: {
+            ".wasm": "binary",
+          },
+        });
+
+        const workerSource = workerResult.outputFiles[0]?.text ?? "";
+        const watchFiles = Object.keys(workerResult.metafile?.inputs ?? {});
+
+        return {
+          contents: `export default ${JSON.stringify(workerSource)};`,
+          loader: "js",
+          watchFiles,
+        };
+      });
+    },
+  };
+}
+
+async function removeLegacyWorkerArtifacts() {
+  await Promise.all([
+    fs.rm("internal-db-worker.js", { force: true }),
+    fs.rm("assets", { recursive: true, force: true }),
+  ]);
+}
+
+const mainBuildOptions = {
+  ...sharedOptions,
+  entryPoints: ["src/main.ts"],
+  plugins: [inlineInternalDbWorkerPlugin()],
   external: [
     "obsidian",
     "electron",
@@ -35,21 +95,15 @@ const buildOptions = {
   ],
   format: "cjs",
   target: "es2018",
-  logLevel: "info",
-  sourcemap: prod ? false : "inline",
-  treeShaking: true,
   outfile: "main.js",
 };
 
 if (prod) {
-  await esbuild.build(buildOptions);
+  await removeLegacyWorkerArtifacts();
+  await esbuild.build(mainBuildOptions);
   process.exit(0);
 } else {
-  buildOptions.watch = {
-    onRebuild(error, result) {
-      if (error) console.error('watch build failed:', error);
-      else console.log('watch build succeeded:', result);
-    },
-  };
-  await esbuild.build(buildOptions);
+  await removeLegacyWorkerArtifacts();
+  const mainContext = await esbuild.context(mainBuildOptions);
+  await mainContext.watch();
 }

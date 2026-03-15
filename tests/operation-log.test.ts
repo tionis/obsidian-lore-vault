@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseOperationLogJsonl } from '../src/operation-log';
+import {
+  buildOperationLogSearchText,
+  tokenizeOperationLogSearchQuery
+} from '../src/operation-log-utils';
 
 test('parseOperationLogJsonl parses entries and sorts by start time descending', () => {
   const raw = [
@@ -115,4 +119,40 @@ test('parseOperationLogJsonl keeps embedding kind records', () => {
   const parsed = parseOperationLogJsonl(raw);
   assert.equal(parsed.entries.length, 1);
   assert.equal(parsed.entries[0].record.kind, 'embedding');
+});
+
+test('buildOperationLogSearchText includes core searchable payload fields', () => {
+  const searchText = buildOperationLogSearchText({
+    id: 'op-search',
+    costProfile: 'Writer A',
+    kind: 'completion',
+    operationName: 'story_chat_turn',
+    provider: 'openrouter',
+    model: 'openai/gpt-test',
+    endpoint: 'https://example.test/chat',
+    startedAt: 1,
+    finishedAt: 2,
+    durationMs: 1,
+    status: 'error',
+    aborted: false,
+    error: 'timeout while streaming',
+    request: {
+      messages: [{ role: 'user', content: 'Describe the city gates.' }]
+    },
+    attempts: [],
+    finalText: 'The gates stood open.'
+  });
+
+  assert.equal(searchText.includes('writer a'), true);
+  assert.equal(searchText.includes('story_chat_turn'), true);
+  assert.equal(searchText.includes('timeout while streaming'), true);
+  assert.equal(searchText.includes('describe the city gates'), true);
+  assert.equal(searchText.includes('the gates stood open'), true);
+});
+
+test('tokenizeOperationLogSearchQuery lowercases and splits whitespace', () => {
+  assert.deepEqual(
+    tokenizeOperationLogSearchQuery('  Story   Gates TIMEOUT  '),
+    ['story', 'gates', 'timeout']
+  );
 });

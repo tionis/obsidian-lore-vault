@@ -1110,10 +1110,11 @@ Operation log defaults:
 
 - `Enable LLM Operation Log` is enabled by default.
 - `Include Embedding Backend Calls` is enabled by default.
-- LoreVault writes one JSONL file per cost profile by suffixing the configured base path.
-- default retention is `10000` entries per profile file.
+- LoreVault prefers a local SQLite-backed internal store for operation logs (`OPFS` when available, otherwise `IndexedDB`).
+- The configured `LLM Operation Log Path` remains the legacy per-cost-profile JSONL base path used for fallback writes, legacy import, and raw-file inspection.
+- default retention is `10000` entries per cost profile.
 
-Use command `Open LLM Operation Log Explorer` to inspect/search entries, choose a cost profile, view parsed request messages (with preserved newlines) in expandable textboxes, and open the raw per-profile JSONL file.
+Use command `Open LLM Operation Log Explorer` to inspect/search entries, choose a cost profile, view parsed request messages (with preserved newlines) in expandable textboxes, inspect the active storage backend, and open the raw legacy per-profile JSONL file.
 
 ## Story Chat Panel
 

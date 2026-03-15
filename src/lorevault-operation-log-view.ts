@@ -2,9 +2,9 @@ import { ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import type LoreBookConverterPlugin from './main';
 import {
   OperationLogParseIssue,
-  ParsedOperationLogEntry,
-  parseOperationLogJsonl
+  ParsedOperationLogEntry
 } from './operation-log';
+import type { OperationLogStoreStatus } from './operation-log-store';
 import type { CompletionOperationKind, CompletionOperationLogAttempt } from './completion-provider';
 
 export const LOREVAULT_OPERATION_LOG_VIEW_TYPE = 'lorevault-operation-log-view';
@@ -299,7 +299,7 @@ export class LorevaultOperationLogView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private entries: ParsedOperationLogEntry[] = [];
   private issues: OperationLogParseIssue[] = [];
-  private totalLines = 0;
+  private totalEntries = 0;
   private fatalError = '';
   private isLoading = false;
   private loadVersion = 0;
@@ -311,6 +311,10 @@ export class LorevaultOperationLogView extends ItemView {
   private selectedCostProfile = '';
   private availableCostProfiles: string[] = [];
   private autoRefreshTimer: number | null = null;
+  private reloadDebounceTimer: number | null = null;
+  private backendLabel = 'Unavailable';
+  private legacyPath = '';
+  private storageStatus: OperationLogStoreStatus | null = null;
   private statusEl: HTMLElement | null = null;
   private pathEl: HTMLElement | null = null;
   private issueEl: HTMLElement | null = null;
@@ -341,6 +345,10 @@ export class LorevaultOperationLogView extends ItemView {
 
   async onClose(): Promise<void> {
     this.stopAutoRefresh();
+    if (this.reloadDebounceTimer !== null) {
+      window.clearTimeout(this.reloadDebounceTimer);
+      this.reloadDebounceTimer = null;
+    }
     this.contentEl.empty();
   }
 
@@ -364,7 +372,7 @@ export class LorevaultOperationLogView extends ItemView {
       void this.reloadEntries();
     });
 
-    const openFileButton = controls.createEl('button', { text: 'Open Log File' });
+    const openFileButton = controls.createEl('button', { text: 'Open Legacy JSONL' });
     openFileButton.addEventListener('click', () => {
       void this.openRawLogFile();
     });
@@ -399,7 +407,7 @@ export class LorevaultOperationLogView extends ItemView {
     searchInput.value = this.searchQuery;
     searchInput.addEventListener('input', () => {
       this.searchQuery = searchInput.value;
-      this.renderEntries();
+      this.scheduleReload(140);
     });
 
     const kindSelect = filters.createEl('select');
@@ -423,7 +431,7 @@ export class LorevaultOperationLogView extends ItemView {
       } else {
         this.kindFilter = 'all';
       }
-      this.renderEntries();
+      void this.reloadEntries();
     });
 
     const statusSelect = filters.createEl('select');
@@ -444,7 +452,7 @@ export class LorevaultOperationLogView extends ItemView {
         : statusSelect.value === 'ok'
           ? 'ok'
           : 'all';
-      this.renderEntries();
+      void this.reloadEntries();
     });
 
     const limitInput = filters.createEl('input');
@@ -459,7 +467,7 @@ export class LorevaultOperationLogView extends ItemView {
       const nextLimit = Number.isFinite(numeric) ? numeric : this.rowLimit;
       this.rowLimit = Math.max(10, Math.min(5000, nextLimit));
       limitInput.value = this.rowLimit.toString();
-      this.renderEntries();
+      void this.reloadEntries();
     });
 
     this.pathEl = contentEl.createDiv({ cls: 'lorevault-operation-log-path' });
@@ -519,8 +527,55 @@ export class LorevaultOperationLogView extends ItemView {
       return;
     }
     this.pathEl.empty();
-    this.pathEl.createSpan({ text: 'Path: ' });
-    this.pathEl.createEl('code', { text: this.plugin.getOperationLogPath(this.selectedCostProfile) });
+    const summary = this.pathEl.createDiv();
+    summary.createSpan({ text: 'Backend: ' });
+    summary.createEl('code', {
+      text: this.backendLabel || 'Unavailable'
+    });
+    summary.createSpan({ text: ' | Legacy JSONL: ' });
+    summary.createEl('code', {
+      text: this.legacyPath || this.plugin.getOperationLogPath(this.selectedCostProfile)
+    });
+
+    const internalDb = this.storageStatus?.internalDb;
+    if (!internalDb) {
+      return;
+    }
+
+    if (internalDb.available) {
+      const detailParts = [
+        internalDb.sqliteVersion ? `SQLite ${internalDb.sqliteVersion}` : '',
+        internalDb.storagePersisted === true
+          ? 'persistent storage granted'
+          : internalDb.storagePersisted === false
+            ? 'persistent storage not granted'
+            : ''
+      ].filter(Boolean);
+      if (detailParts.length > 0) {
+        this.pathEl.createDiv({
+          cls: 'lorevault-operation-log-subtle',
+          text: detailParts.join(' | ')
+        });
+      }
+      return;
+    }
+
+    this.pathEl.createDiv({
+      cls: 'lorevault-operation-log-warning',
+      text: internalDb.errorMessage
+        ? `Internal DB unavailable; using JSONL fallback. ${internalDb.errorMessage}`
+        : 'Internal DB unavailable; using JSONL fallback.'
+    });
+  }
+
+  private scheduleReload(delayMs = 120): void {
+    if (this.reloadDebounceTimer !== null) {
+      window.clearTimeout(this.reloadDebounceTimer);
+    }
+    this.reloadDebounceTimer = window.setTimeout(() => {
+      this.reloadDebounceTimer = null;
+      void this.reloadEntries();
+    }, delayMs);
   }
 
   private startAutoRefresh(): void {
@@ -550,30 +605,25 @@ export class LorevaultOperationLogView extends ItemView {
     }
     this.updatePathSummary();
     try {
-      const path = this.plugin.getOperationLogPath(this.selectedCostProfile);
-      const exists = await this.app.vault.adapter.exists(path);
-      if (!exists) {
-        if (loadVersion !== this.loadVersion) {
-          return;
-        }
-        this.entries = [];
-        this.issues = [];
-        this.totalLines = 0;
-        this.fatalError = '';
-        this.isLoading = false;
-        this.renderStatus();
-        this.renderEntries();
-        return;
-      }
-
-      const raw = await this.app.vault.adapter.read(path);
+      const [storageStatus, result] = await Promise.all([
+        this.plugin.getOperationLogStorageStatus(this.selectedCostProfile),
+        this.plugin.loadOperationLogEntries({
+          costProfile: this.selectedCostProfile,
+          kindFilter: this.kindFilter,
+          statusFilter: this.statusFilter,
+          searchQuery: this.searchQuery,
+          limit: this.rowLimit
+        })
+      ]);
       if (loadVersion !== this.loadVersion) {
         return;
       }
-      const parsed = parseOperationLogJsonl(raw);
-      this.entries = parsed.entries;
-      this.issues = parsed.issues;
-      this.totalLines = parsed.totalLines;
+      this.storageStatus = storageStatus;
+      this.entries = result.entries;
+      this.issues = result.issues;
+      this.totalEntries = result.totalEntries;
+      this.backendLabel = result.backendLabel;
+      this.legacyPath = result.legacyPath;
       this.fatalError = '';
     } catch (error) {
       if (loadVersion !== this.loadVersion) {
@@ -581,11 +631,14 @@ export class LorevaultOperationLogView extends ItemView {
       }
       this.entries = [];
       this.issues = [];
-      this.totalLines = 0;
+      this.totalEntries = 0;
+      this.backendLabel = 'Unavailable';
+      this.legacyPath = this.plugin.getOperationLogPath(this.selectedCostProfile);
       this.fatalError = error instanceof Error ? error.message : String(error);
     } finally {
       if (loadVersion === this.loadVersion) {
         this.isLoading = false;
+        this.updatePathSummary();
         this.renderStatus();
         this.renderEntries();
       }
@@ -619,9 +672,14 @@ export class LorevaultOperationLogView extends ItemView {
       return;
     }
 
-    this.statusEl.setText(
-      `Loaded ${this.entries.length} entries from ${Math.max(0, this.totalLines)} line(s). Parse issues: ${this.issues.length}.`
-    );
+    const parts = [
+      `Loaded ${this.entries.length} of ${Math.max(0, this.totalEntries)} matching entr${this.totalEntries === 1 ? 'y' : 'ies'}.`,
+      this.backendLabel
+    ];
+    if (this.issues.length > 0) {
+      parts.push(`Parse issues: ${this.issues.length}`);
+    }
+    this.statusEl.setText(parts.join(' | '));
   }
 
   private renderIssues(): void {
@@ -650,29 +708,10 @@ export class LorevaultOperationLogView extends ItemView {
     }
   }
 
-  private matchesSearch(entry: ParsedOperationLogEntry): boolean {
-    const query = this.searchQuery.trim().toLowerCase();
-    if (!query) {
-      return true;
-    }
-    const tokens = query.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) {
-      return true;
-    }
-    return tokens.every(token => entry.searchText.includes(token));
-  }
-
-  private filteredEntries(): ParsedOperationLogEntry[] {
-    const filtered = this.entries.filter(entry => {
-      if (this.kindFilter !== 'all' && entry.record.kind !== this.kindFilter) {
-        return false;
-      }
-      if (this.statusFilter !== 'all' && entry.record.status !== this.statusFilter) {
-        return false;
-      }
-      return this.matchesSearch(entry);
-    });
-    return filtered.slice(0, this.rowLimit);
+  private hasActiveFilters(): boolean {
+    return this.kindFilter !== 'all'
+      || this.statusFilter !== 'all'
+      || this.searchQuery.trim().length > 0;
   }
 
   private renderEntries(): void {
@@ -695,10 +734,11 @@ export class LorevaultOperationLogView extends ItemView {
       return;
     }
 
-    const filtered = this.filteredEntries();
-    if (filtered.length === 0) {
+    if (this.entries.length === 0) {
       this.listEl.createEl('p', {
-        text: this.entries.length === 0
+        text: this.hasActiveFilters()
+          ? 'No entries match current filters.'
+          : this.totalEntries === 0
           ? 'No operation log entries found. Trigger a completion/chat request to populate this file.'
           : 'No entries match current filters.'
       });
@@ -707,10 +747,10 @@ export class LorevaultOperationLogView extends ItemView {
 
     this.listEl.createEl('p', {
       cls: 'lorevault-operation-log-subtle',
-      text: `Showing ${filtered.length} of ${this.entries.length} loaded entries.`
+      text: `Showing ${this.entries.length} of ${this.totalEntries} matching entries.`
     });
 
-    for (const entry of filtered) {
+    for (const entry of this.entries) {
       this.renderEntry(entry);
     }
   }
@@ -871,7 +911,11 @@ export class LorevaultOperationLogView extends ItemView {
     });
     details.createEl('p', {
       cls: 'lorevault-operation-log-subtle',
-      text: `Started: ${formatDateTime(entry.record.startedAt)} | Finished: ${formatDateTime(entry.record.finishedAt)} | Source line: ${entry.lineNumber}`
+      text: [
+        `Started: ${formatDateTime(entry.record.startedAt)}`,
+        `Finished: ${formatDateTime(entry.record.finishedAt)}`,
+        entry.lineNumber > 0 ? `Source line: ${entry.lineNumber}` : ''
+      ].filter(Boolean).join(' | ')
     });
 
     if (entry.record.error) {
@@ -960,10 +1004,10 @@ export class LorevaultOperationLogView extends ItemView {
   }
 
   private async openRawLogFile(): Promise<void> {
-    const path = this.plugin.getOperationLogPath(this.selectedCostProfile);
+    const path = this.legacyPath || this.plugin.getOperationLogPath(this.selectedCostProfile);
     const abstract = this.app.vault.getAbstractFileByPath(path);
     if (!(abstract instanceof TFile)) {
-      new Notice(`Operation log file does not exist yet: ${clampPreview(path, 180)}`);
+      new Notice(`Legacy operation-log JSONL file does not exist yet: ${clampPreview(path, 180)}`);
       return;
     }
     const leaf = this.app.workspace.getLeaf(true);

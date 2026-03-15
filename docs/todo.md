@@ -329,7 +329,7 @@ Reference design: `docs/planning.md`.
   - [x] add optional write tools (steering update + lorebook note create) behind explicit setting and per-turn write-intent gate
   - [x] expose chat tool call/write traces in context inspector metadata
 - [x] LLM operation logging:
-  - [x] add vault-backed JSONL operation log for completion + streaming + tool planner calls
+  - [x] add local SQLite-backed operation log store for completion + streaming + tool planner calls, with legacy JSONL fallback/import
   - [x] add optional embedding backend call logging (`kind: embedding`)
   - [x] add settings for operation-log enable/path/max-entry retention
   - [x] add operation-log explorer panel with command, filters, and full payload inspection

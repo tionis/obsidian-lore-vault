@@ -4,6 +4,7 @@ import type {
   CompletionOperationLogRecord,
   CompletionUsageReport
 } from './completion-provider';
+import { buildOperationLogSearchText } from './operation-log-utils';
 
 export interface ParsedOperationLogEntry {
   lineNumber: number;
@@ -124,34 +125,6 @@ function clampPreview(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}...`;
 }
 
-function safeJsonString(value: unknown, maxChars: number): string {
-  try {
-    return clampPreview(JSON.stringify(value), maxChars);
-  } catch {
-    return '';
-  }
-}
-
-function buildSearchText(record: CompletionOperationLogRecord): string {
-  const parts = [
-    record.id,
-    record.costProfile ?? '',
-    record.kind,
-    record.operationName,
-    record.provider,
-    record.model,
-    record.endpoint,
-    record.status,
-    record.error ?? '',
-    record.finalText ?? '',
-    safeJsonString(record.request, 4000),
-    safeJsonString(record.attempts, 4000)
-  ]
-    .filter(Boolean)
-    .map(part => part.toLowerCase());
-  return parts.join('\n');
-}
-
 function coerceRecord(value: unknown, lineNumber: number): CompletionOperationLogRecord | null {
   const source = asObject(value);
   if (!source) {
@@ -227,7 +200,7 @@ export function parseOperationLogJsonl(raw: string): ParseOperationLogJsonlResul
       entries.push({
         lineNumber,
         record,
-        searchText: buildSearchText(record)
+        searchText: buildOperationLogSearchText(record)
       });
     } catch (error) {
       issues.push({

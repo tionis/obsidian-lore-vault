@@ -16,7 +16,12 @@ This document is the implementation-level reference for core architecture and ru
   - lorebook fork utility (`Fork Active Lorebook`): deterministic branch copy + internal link rewrite + retagging
   - lore-delta maintenance utility (`Apply Lore Delta to Existing Wiki` / `Open Lore Delta`): idea-brief driven multi-note update planning with focused-note rewrite gating
   - story-chat turn orchestration
-  - vault-backed LLM operation log persistence (`operationLog` settings) with per-cost-profile JSONL namespace + explorer-view refresh hooks
+  - worker-backed LLM operation log persistence (`operationLog` settings) with local SQLite storage, legacy per-cost-profile JSONL fallback/import, and explorer-view refresh hooks
+- `src/operation-log-store.ts` + `src/internal-db-worker.ts`
+  - operation-log storage abstraction and worker-owned SQLite runtime
+  - backend selection (`OPFS` when available, otherwise `IndexedDB`)
+  - legacy JSONL import/fallback and per-profile retention pruning
+  - internal DB worker source is bundled into `main.js` and launched via blob URL so Obsidian Sync only needs the normal plugin artifact
 - `src/live-context-index.ts`
   - near-live lorebook indexing
   - lorebook pack rebuild strategy
@@ -199,7 +204,7 @@ This document is the implementation-level reference for core architecture and ru
   - explicit completion profile selection + chunk/apply progress status
 - `src/lorevault-operation-log-view.ts` + `src/operation-log.ts`
   - operation-log explorer UI (`Open LLM Operation Log Explorer`)
-  - JSONL parsing/coercion with malformed-line diagnostics
+  - SQLite-backed query UI with legacy JSONL parsing/coercion for fallback/import diagnostics
   - filter/search and full payload inspection for completion/planner calls
 - `src/story-delta-update.ts`
   - deterministic chunked delta extraction
@@ -685,8 +690,8 @@ Current non-goals in this phase:
 Optional debugging surface (`settings.operationLog.*`):
 
 - `enabled`: toggles persistence
-- `path`: vault-relative JSONL log file
-- `maxEntries`: retention cap (oldest entries trimmed deterministically by file order)
+- `path`: vault-relative legacy JSONL base path used for fallback writes, legacy import, and raw-file inspection
+- `maxEntries`: retention cap per cost profile (oldest entries trimmed deterministically)
 - `includeEmbeddings`: optional embedding backend request/response logging (`kind: embedding`)
 
 Captured records include:
@@ -708,7 +713,8 @@ Explorer surface:
 
 - command: `Open LLM Operation Log Explorer`
 - view type: `lorevault-operation-log-view`
-- reads/parses the configured JSONL path, shows malformed line diagnostics, and supports text/status/kind filters
+- queries the local internal SQLite store when available and falls back to the configured legacy JSONL path otherwise
+- shows the active backend (`OPFS`, `IndexedDB`, or JSONL fallback), the legacy JSONL path, and malformed-line diagnostics when fallback/import parsing encounters bad lines
 - per-entry inspection includes parsed request message/tool sections (newline-preserving textboxes), attempt payloads/responses/errors, final output text, and normalized record JSON
 
 ## Phase 14 Import/Extraction (Current Progress)

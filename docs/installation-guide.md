@@ -123,7 +123,8 @@ If you prefer to build the plugin from source:
    - Optional: create model presets (`New Preset`, `Clone Current`, `Delete Selected`); preset edits auto-save and active preset selection is device-local (not synced between devices)
    - Optional: set a device-local cost profile label for usage metadata tagging (if empty, LoreVault auto-derives one from API key hash)
    - Optional: configure Story Chat tool calling (`Enable Story Chat Tool Calls`, call/token/time limits, optional write-action gate)
-   - LLM Operation Log is enabled by default (including embedding backend calls); default retention is `10000` entries per profile log file
+   - LLM Operation Log is enabled by default (including embedding backend calls); LoreVault prefers a local SQLite-backed store and keeps `10000` entries per cost profile by default
+   - Current builds inline the internal DB worker into `main.js`, so there are no extra worker/asset files to sync for operation-log storage
    - Optional: open `LLM Operation Log Explorer` from settings (or command palette) to inspect/search captured calls by cost profile
    - Optional: configure Retrieval tuning (`Fallback Retrieval Policy`, seed threshold, max graph hops, graph hop decay)
    - Optional: enable Retrieval Tool Hooks (`search_entries`, `expand_neighbors`, `get_entry`) and set per-turn safety limits (call cap, tool-result token cap, planning time cap)
@@ -188,7 +189,7 @@ If you prefer to build the plugin from source:
      - `Continue Story` (toggles to `Stop` during generation) + `Insert Directive`
      - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
      - `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`
-   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads (profile-scoped logs) without leaving Obsidian
+   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads, current storage backend status, and the legacy per-profile JSONL path without leaving Obsidian
    - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 

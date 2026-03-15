@@ -305,9 +305,10 @@ Operations and reporting:
 
 - Operation log is enabled by default and captures full LLM request/response payloads.
 - Embedding backend call logging is enabled by default.
-- Operation logs are namespaced by cost profile (one JSONL file per profile suffix).
-- Default retention is `10000` entries per profile log file.
-- Operation Log Explorer includes a cost-profile selector and defaults to the active device profile.
+- Operation logs are stored in a local SQLite-backed internal database when available (`OPFS` on capable runtimes, otherwise `IndexedDB`).
+- The configured operation-log path remains the legacy per-cost-profile JSONL path used for fallback writes, legacy import, and raw-file inspection.
+- Default retention is `10000` entries per cost profile.
+- Operation Log Explorer includes a cost-profile selector, defaults to the active device profile, and shows whether the current runtime is using SQLite or JSONL fallback.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
 - Budget settings are stored per cost profile (`Budget Cost Profile` selector in settings).
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).

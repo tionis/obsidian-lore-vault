@@ -78,6 +78,12 @@ import {
   LOREVAULT_COST_ANALYZER_VIEW_TYPE,
   LorevaultCostAnalyzerView
 } from './lorevault-cost-analyzer-view';
+import internalDbWorkerSource from 'virtual:internal-db-worker-source';
+import {
+  OperationLogLoadResult,
+  OperationLogStore,
+  OperationLogStoreStatus
+} from './operation-log-store';
 import { LOREVAULT_IMPORT_VIEW_TYPE, LorevaultImportView } from './lorevault-import-view';
 import {
   LOREVAULT_STORY_EXTRACT_VIEW_TYPE,
@@ -103,6 +109,7 @@ import { LiveContextIndex } from './live-context-index';
 import { ChapterSummaryStore } from './chapter-summary-store';
 import { EmbeddingService } from './embedding-service';
 import {
+  CompletionOperationKind,
   CompletionOperationLogRecord,
   CompletionToolDefinition,
   CompletionToolPlannerMessage,
@@ -726,8 +733,11 @@ export default class LoreBookConverterPlugin extends Plugin {
   private exportRebuildTimer: number | null = null;
   private exportRebuildInFlight = false;
   private pendingExportScopes = new Set<string>();
+  private internalDbWorkerObjectUrl: string | null = null;
+  private operationLogStore: OperationLogStore | null = null;
   private operationLogWriteQueue: Promise<void> = Promise.resolve();
   private operationLogViewRefreshTimer: number | null = null;
+  private storagePersisted: boolean | null = null;
   // Note: the plugin keeps its own EmbeddingService for chapter-memory operations
   // (separate from the one inside LiveContextIndex) so that usage events are tagged
   // with source:'chapter_memory' rather than source:'live_context_index'.  Both
@@ -855,6 +865,45 @@ export default class LoreBookConverterPlugin extends Plugin {
     );
   }
 
+  private getOperationLogMaxEntries(): number {
+    return Math.max(
+      20,
+      Math.min(20000, Math.floor(Number(this.settings.operationLog.maxEntries) || DEFAULT_SETTINGS.operationLog.maxEntries))
+    );
+  }
+
+  private createInternalDbWorkerUrl(): string | null {
+    try {
+      if (this.internalDbWorkerObjectUrl) {
+        URL.revokeObjectURL(this.internalDbWorkerObjectUrl);
+        this.internalDbWorkerObjectUrl = null;
+      }
+      const blob = new Blob(
+        [
+          `${internalDbWorkerSource}\n//# sourceURL=lorevault-internal-db-worker.js`
+        ],
+        { type: 'text/javascript' }
+      );
+      this.internalDbWorkerObjectUrl = URL.createObjectURL(blob);
+      return this.internalDbWorkerObjectUrl;
+    } catch (error) {
+      console.warn('LoreVault: Failed to create internal DB worker URL:', error);
+      return null;
+    }
+  }
+
+  private async requestPersistentBrowserStorage(): Promise<boolean | null> {
+    if (typeof navigator === 'undefined' || typeof navigator.storage?.persist !== 'function') {
+      return null;
+    }
+    try {
+      return await navigator.storage.persist();
+    } catch (error) {
+      console.warn('LoreVault: Failed to request persistent browser storage:', error);
+      return null;
+    }
+  }
+
   private isEmbeddingOperationLogEnabled(): boolean {
     return this.settings.operationLog.enabled && this.settings.operationLog.includeEmbeddings;
   }
@@ -864,33 +913,19 @@ export default class LoreBookConverterPlugin extends Plugin {
     options: OperationLogAppendOptions = {}
   ): Promise<void> {
     const costProfile = (options.costProfile ?? record.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default';
-    const path = this.getOperationLogPath(costProfile);
-    const maxEntries = Math.max(20, Math.min(20000, Math.floor(Number(this.settings.operationLog.maxEntries) || DEFAULT_SETTINGS.operationLog.maxEntries)));
-    const serialized = JSON.stringify({
-      ...record,
-      costProfile
-    });
+    const store = this.operationLogStore;
+    if (!store) {
+      return;
+    }
 
     this.operationLogWriteQueue = this.operationLogWriteQueue
       .catch(() => undefined)
       .then(async () => {
         try {
-          await ensureParentVaultFolderForFile(this.app, path);
-          const exists = await this.app.vault.adapter.exists(path);
-          let lines: string[] = [];
-          if (exists) {
-            const current = await this.app.vault.adapter.read(path);
-            lines = current
-              .replace(/\r\n?/g, '\n')
-              .split('\n')
-              .map(line => line.trim())
-              .filter(Boolean);
-          }
-          lines.push(serialized);
-          if (lines.length > maxEntries) {
-            lines = lines.slice(lines.length - maxEntries);
-          }
-          await this.app.vault.adapter.write(path, `${lines.join('\n')}\n`);
+          await store.append({
+            ...record,
+            costProfile
+          }, costProfile);
         } catch (error) {
           console.warn('LoreVault: Failed to persist operation log entry:', error);
         }
@@ -918,6 +953,48 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
     await this.appendOperationLogRecord(record, options);
+  }
+
+  public async loadOperationLogEntries(options: {
+    costProfile?: string | null;
+    kindFilter?: 'all' | CompletionOperationKind;
+    statusFilter?: 'all' | 'ok' | 'error';
+    searchQuery?: string;
+    limit?: number;
+  }): Promise<OperationLogLoadResult> {
+    if (!this.operationLogStore) {
+      return {
+        entries: [],
+        issues: [],
+        totalEntries: 0,
+        backendLabel: 'Unavailable',
+        legacyPath: this.getOperationLogPath(options.costProfile)
+      };
+    }
+    return this.operationLogStore.query({
+      costProfile: (options.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default',
+      kindFilter: options.kindFilter ?? 'all',
+      statusFilter: options.statusFilter ?? 'all',
+      searchQuery: options.searchQuery ?? '',
+      limit: Math.max(10, Math.min(5000, Math.floor(options.limit ?? 120)))
+    });
+  }
+
+  public async getOperationLogStorageStatus(costProfile?: string | null): Promise<OperationLogStoreStatus> {
+    if (!this.operationLogStore) {
+      return {
+        internalDb: {
+          available: false,
+          backend: null,
+          backendLabel: 'uninitialized',
+          sqliteVersion: '',
+          storagePersisted: this.storagePersisted,
+          errorMessage: ''
+        },
+        legacyPath: this.getOperationLogPath(costProfile)
+      };
+    }
+    return this.operationLogStore.getStatus(costProfile);
   }
 
   private getSecretStorage(): LoreVaultSecretStorage | null {
@@ -7992,6 +8069,17 @@ export default class LoreBookConverterPlugin extends Plugin {
     } catch (error) {
       console.error('LoreVault: Secret storage initialization failed. Continuing without secret hydration.', error);
     }
+    this.storagePersisted = await this.requestPersistentBrowserStorage();
+    const internalDbWorkerUrl = this.createInternalDbWorkerUrl();
+    this.operationLogStore = new OperationLogStore({
+      app: this.app,
+      workerUrl: internalDbWorkerUrl,
+      storagePersisted: this.storagePersisted,
+      getDeviceCostProfileLabel: () => this.getDeviceEffectiveCostProfileLabel(),
+      getLegacyPath: costProfile => this.getOperationLogPath(costProfile),
+      getMaxEntries: () => this.getOperationLogMaxEntries()
+    });
+    await this.operationLogStore.initialize();
     this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
     this.storySteeringStore = new StorySteeringStore(
       this.app,
@@ -8714,6 +8802,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.liveContextIndex?.destroy();
     // Flush any pending operation-log writes so entries are not silently dropped.
     await this.operationLogWriteQueue;
+    await this.operationLogStore?.close();
+    if (this.internalDbWorkerObjectUrl) {
+      URL.revokeObjectURL(this.internalDbWorkerObjectUrl);
+      this.internalDbWorkerObjectUrl = null;
+    }
     this.generationStatusEl = null;
     this.pendingTextCommandReviewEl = null;
   }

@@ -225,6 +225,7 @@ export class LorevaultHelpView extends ItemView {
         '`Extract Wiki Pages from Story`: extract structured wiki pages from story text with selectable completion profile.',
         '`Fork Active Lorebook`: clone one lorebook into a new lorebook/folder and rewrite internal links to the forked pages.',
         '`Apply Story Delta to Existing Wiki` / `Open Lorebook Update`: update existing pages from new story content with selectable completion profile.',
+        '`Apply Lore Delta to Existing Wiki` / `Open Lore Delta`: apply an idea/design brief across existing lore notes, with section-aware merge by default and optional focused-note rewrites.',
         'Import/Extraction/Fork default target folder is controlled by `Default Lorebook Import Location` in settings.',
         'All panels show staged progress while preview/apply is running.',
         'Story-delta and rewrite review steps show side-by-side source diffs at the point where you accept/reject changes.'
@@ -243,7 +244,8 @@ export class LorevaultHelpView extends ItemView {
         { label: 'Sync Character Cards', onClick: () => void this.plugin.syncCharacterCardLibrary() },
         { label: 'Write Back Character Card', onClick: () => void this.plugin.writeBackCharacterCardSourceFromActiveNote() },
         { label: 'Open Story Extraction', onClick: () => void this.plugin.openStoryExtractionView() },
-        { label: 'Open Lorebook Update', onClick: () => void this.plugin.openStoryDeltaView() }
+        { label: 'Open Lorebook Update', onClick: () => void this.plugin.openStoryDeltaView() },
+        { label: 'Open Lore Delta', onClick: () => void this.plugin.openLoreDeltaView() }
       ]
     });
 

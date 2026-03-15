@@ -14,6 +14,7 @@ This document is the implementation-level reference for core architecture and ru
   - API key hydration via Obsidian Secret Storage (completion, embeddings, preset keys) with user-defined secret IDs; plugin only creates missing secrets and never overwrites existing values
   - device-local profile state via Obsidian local storage (active Story Writing preset, active Story Chat preset, and optional cost profile label; auto API-key hash fallback when blank)
   - lorebook fork utility (`Fork Active Lorebook`): deterministic branch copy + internal link rewrite + retagging
+  - lore-delta maintenance utility (`Apply Lore Delta to Existing Wiki` / `Open Lore Delta`): idea-brief driven multi-note update planning with focused-note rewrite gating
   - story-chat turn orchestration
   - vault-backed LLM operation log persistence (`operationLog` settings) with per-cost-profile JSONL namespace + explorer-view refresh hooks
 - `src/live-context-index.ts`
@@ -762,6 +763,24 @@ Conflict review UX is now integrated in the panel:
 
 - conflict decisions (`accept`/`reject`/`keep_both`) are made directly next to inline side-by-side diffs
 - processed conflicts/changes are visibly marked and can be hidden after apply
+
+## Phase 15.5 Lore Delta Maintenance (Current Progress)
+
+Implemented:
+
+- lore-delta command/view (`Apply Lore Delta to Existing Wiki`)
+- alias command `Open Lore Delta` (same view target)
+- source idea input from inline markdown or idea-note mode with picker/active-note shortcuts
+- deterministic target-page loading from selected lorebooks plus optional focused target notes
+- focused target-note snapshots (full note-body excerpts) injected separately from candidate-page metadata
+- schema-constrained lore-delta operations including `updateMode` (`merge` vs `rewrite`), confidence, and rationale
+- merge policies:
+  - `section_merge`: summary replacement (single best candidate), keyword/alias union, and section-aware body merge keyed by `##` headings
+  - `rewrite_focused`: same general merge behavior, but explicitly focused target notes may request full managed-body rewrites
+- rewrite safety gate: rewrite requests for non-focused notes are downgraded to section merge with preview warnings
+- optional create-note disable gate (`Allow New Notes` off)
+- dry-run diff generation, conflict review, per-change approval, and `Apply Selected` reuse the same deterministic preview/apply flow as story delta
+- fixture-backed tests for parsing, section-aware merges, focused rewrites, rewrite downgrade behavior, and create-disabled gating
 
 ## Determinism Requirements (Implementation)
 

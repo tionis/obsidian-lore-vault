@@ -742,6 +742,7 @@ Commands:
 - `Extract Wiki Pages from Story`
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki` (Phase 15 foundation)
+- `Apply Lore Delta to Existing Wiki`
 
 Shared panel inputs:
 
@@ -839,6 +840,17 @@ Shared panel inputs:
   - `New Note Target Folder` (used only for new-note creation)
   - default tags
   - completion profile selector used for lorebook-update model calls
+- `Apply Lore Delta to Existing Wiki`:
+  - idea input: inline `Idea Brief` markdown or `Idea Note Path` (`Pick Note` / `Use Active Note`)
+  - lorebook selection list (candidate pages for idea-driven updates)
+  - optional focused target-note list (full note-content context + rewrite eligibility)
+  - `New Note Target Folder` (used only when Lore Delta creates new notes)
+  - `Allow New Notes` toggle
+  - update policy:
+    - `section_merge`: merge new canon into matching headings while preserving untouched sections
+    - `rewrite_focused`: same merge behavior generally, but explicitly focused target notes may receive full managed-body rewrites
+  - default tags
+  - completion profile selector used for lore-delta model calls
 - `Fork Active Lorebook`:
   - source lorebook resolved from active note lorebook first, then configured active lorebook
   - prompts for new lorebook + target folder
@@ -869,11 +881,15 @@ Implemented now:
 - runtime progress reporting:
   - import panel reports parse/build/apply stages and per-file write progress
   - extraction panel reports chunk-by-chunk progress and apply-write progress
-  - story-delta panel reports chunk-by-chunk progress and apply-write progress
+- story-delta panel reports chunk-by-chunk progress and apply-write progress
+- lore-delta panel reports chunk-by-chunk progress and apply-write progress
 - lorebook fork reports deterministic completion summary with created note count
 - lorebook update is exposed via both commands:
   - `Apply Story Delta to Existing Wiki`
   - `Open Lorebook Update` (alias command)
+- lore delta is exposed via both commands:
+  - `Apply Lore Delta to Existing Wiki`
+  - `Open Lore Delta`
 
 Current mapping for imported notes:
 
@@ -919,6 +935,9 @@ Current merge policy (default):
 - story delta update policy:
   - `safe_append`: keep existing metadata for existing notes, append unique updates
   - `structured_merge`: update summary/keywords/aliases and append unique updates
+- lore delta update policy:
+  - `section_merge`: update summary/keywords/aliases, merge matching `##` sections, preserve untouched sections, and append new sections deterministically
+  - `rewrite_focused`: same as `section_merge` for general notes, but explicitly focused target notes may request a full managed-body rewrite while preserving unmanaged frontmatter lines
 - low-confidence story-delta operations are skipped by default using configurable threshold
 - story delta note matching order:
   - explicit/normalized `pageKey`
@@ -927,7 +946,10 @@ Current merge policy (default):
 - story delta can use inline markdown or load source markdown from a selected story source note
 - source note mode supports deterministic `note`, `chapter`, or `story` expansion from the selected note (with picker support)
 - story delta selects existing notes from one or more chosen lorebooks
+- lore delta can use inline markdown or load source markdown from a selected idea/design note
+- focused lore-delta target notes receive full note-content snapshots in the model prompt; rewrite requests for non-focused notes are downgraded to section merges with preview warnings
 - story delta preview includes per-change side-by-side source diffs with context windows and omitted-line markers
+- lore delta preview includes the same per-change side-by-side source diffs, conflict review, and selective apply flow
 - story delta preview includes conflict-review rows for update churn with quick decisions (`accept`, `reject`, `keep_both`)
 - conflict rows render diff details inline at the decision point (no separate detached diff section)
 - story delta preview includes conflict counters and filter controls (`all`, `pending`, `accept`, `reject`, `keep_both`)

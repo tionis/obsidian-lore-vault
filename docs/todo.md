@@ -14,6 +14,7 @@ Reference design: `docs/planning.md`.
 - Phase 14 import now also includes SillyTavern character-card import (`.png`/`.json`) with model rewrite into story+author-note notes and optional embedded-lorebook import.
 - Added lorebook forking utility (`Fork Active Lorebook`) with deterministic scoped-copy, link rewrite, and retagging workflow.
 - Phase 15 foundation is complete (story-delta panel + deterministic planning + diff preview + per-change approval/apply).
+- Lore Delta maintenance panel is complete (idea-brief lore updates with section-aware merge and focused-note rewrite flow).
 - Phase 16 text commands are complete (selection command + prompt collection + optional lore context + diff review/auto-accept).
 - Phase 17 unified retrieval model is complete (single lore-entry set with graph-first selection + fallback retrieval over the same entries).
 - Phase 18 quality audit foundation is complete (risk scoring + missing-keyword actions + LLM keyword generation).
@@ -188,6 +189,19 @@ Reference design: `docs/planning.md`.
 - [x] Add lorebook-update command alias: `Open Lorebook Update`.
 - [x] Add staged progress telemetry in story-delta preview/apply UI.
 - [x] Simplify structured-merge summary handling to deterministic single-candidate replacement (no summary concatenation).
+
+## Phase 15.5: Lore Delta Maintenance
+
+- [x] Add command + panel: `Apply Lore Delta to Existing Wiki`.
+- [x] Add alias command: `Open Lore Delta`.
+- [x] Add idea-brief source inputs (inline markdown or note picker/active note).
+- [x] Add focused target-note selection for rewrite-eligible pages.
+- [x] Add lore-delta planner schema with `merge` vs `rewrite` update modes.
+- [x] Add section-aware merge policy keyed by markdown headings.
+- [x] Add focused-rewrite policy with downgrade warnings for non-focused pages.
+- [x] Add optional create-note disable gate.
+- [x] Reuse diff/conflict preview + selective apply flow for lore-delta writes.
+- [x] Add regression tests for parsing, merges, focused rewrites, and create-disabled gating.
 
 ## Phase 16: Selection Text Commands
 

@@ -20,6 +20,7 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 - Provides a unified Story Writing panel for continuation, author-note workflow, chapter actions, and live generation/cost telemetry.
 - Provides a Story Starter panel that turns an idea into a first chapter note plus linked author note.
 - Provides a Story Chat panel with per-conversation context controls.
+- Provides a Lore Delta panel for idea-driven lorebook maintenance across multiple notes, with section-aware merges and focused-note rewrites.
 - Registers a custom Bases view (`LoreVault Characters`) for character-card libraries with avatar cards and markdown-rendered character fields.
 - Includes selection rewrite text commands with built-in templates such as `Canon Consistency Pass`, `Scene Consistency Pass`, and `Remove LLMisms`, with pending-review recovery when the result arrives after you have moved elsewhere.
 - Adds `Fork Active Lorebook` to clone a lorebook into a new lorebook/folder while rewriting internal links.
@@ -249,6 +250,8 @@ Import and updates:
 - `Fork Active Lorebook`
 - `Apply Story Delta to Existing Wiki`
 - `Open Lorebook Update`
+- `Apply Lore Delta to Existing Wiki`
+- `Open Lore Delta`
 
 Import/extraction/update/story-starter panel behavior:
 
@@ -264,6 +267,7 @@ Import/extraction/update/story-starter panel behavior:
   - lorebook JSON import (`Import SillyTavern Lorebook`)
   - character-card import (`Import SillyTavern Character Card`) for `.png`/`.json` cards with LLM rewrite into story note + author note
 - extraction and lorebook-update previews report chunk-stage progress while running
+- lore-delta preview accepts inline idea briefs or an idea note, optional focused target notes, and uses `section_merge` / `rewrite_focused` policies instead of append-only note updates
 - import and apply flows report live write progress while files are being created/updated
 - lorebook selection in the import panel uses a list with per-item delete, interactive add picker, and Enter-to-add custom input
 - character-card import can optionally import embedded card lorebooks into generated wiki notes

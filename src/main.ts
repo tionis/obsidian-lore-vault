@@ -92,6 +92,10 @@ import {
   LorevaultStoryDeltaView
 } from './lorevault-story-delta-view';
 import {
+  LOREVAULT_LORE_DELTA_VIEW_TYPE,
+  LorevaultLoreDeltaView
+} from './lorevault-lore-delta-view';
+import {
   createLorevaultCharacterBasesViewRegistration,
   LOREVAULT_CHARACTER_BASES_VIEW_ID
 } from './character-card-bases-view';
@@ -2716,6 +2720,23 @@ export default class LoreBookConverterPlugin extends Plugin {
 
     await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof LorevaultStoryDeltaView) {
+      leaf.view.refresh();
+    }
+  }
+
+  async openLoreDeltaView(): Promise<void> {
+    let leaf = this.app.workspace.getLeavesOfType(LOREVAULT_LORE_DELTA_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: LOREVAULT_LORE_DELTA_VIEW_TYPE,
+        active: true
+      });
+    }
+
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof LorevaultLoreDeltaView) {
       leaf.view.refresh();
     }
   }
@@ -8011,6 +8032,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.registerView(LOREVAULT_STORY_EXTRACT_VIEW_TYPE, leaf => new LorevaultStoryExtractView(leaf, this));
     this.registerView(LOREVAULT_EBOOK_IMPORT_VIEW_TYPE, leaf => new LorevaultEbookImportView(leaf, this));
     this.registerView(LOREVAULT_STORY_DELTA_VIEW_TYPE, leaf => new LorevaultStoryDeltaView(leaf, this));
+    this.registerView(LOREVAULT_LORE_DELTA_VIEW_TYPE, leaf => new LorevaultLoreDeltaView(leaf, this));
     const basesViewRegistered = this.registerBasesView(
       LOREVAULT_CHARACTER_BASES_VIEW_ID,
       createLorevaultCharacterBasesViewRegistration()
@@ -8275,6 +8297,22 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open Lorebook Update',
       callback: () => {
         void this.openStoryDeltaView();
+      }
+    });
+
+    this.addCommand({
+      id: 'apply-lore-delta-to-existing-wiki',
+      name: 'Apply Lore Delta to Existing Wiki',
+      callback: () => {
+        void this.openLoreDeltaView();
+      }
+    });
+
+    this.addCommand({
+      id: 'open-lore-delta',
+      name: 'Open Lore Delta',
+      callback: () => {
+        void this.openLoreDeltaView();
       }
     });
 
@@ -8658,6 +8696,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_EXTRACT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_EBOOK_IMPORT_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(LOREVAULT_STORY_DELTA_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(LOREVAULT_LORE_DELTA_VIEW_TYPE);
     if (this.managerRefreshTimer !== null) {
       window.clearTimeout(this.managerRefreshTimer);
       this.managerRefreshTimer = null;

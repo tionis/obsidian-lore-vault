@@ -72,6 +72,8 @@ This guide will help you install the LoreVault plugin for Obsidian.
      - "Fork Active Lorebook"
      - "Apply Story Delta to Existing Wiki"
      - "Open Lorebook Update"
+     - "Apply Lore Delta to Existing Wiki"
+     - "Open Lore Delta"
      - "Create LoreVault Entry Template"
 
 ### Method 2: Building from Source
@@ -296,7 +298,18 @@ If you prefer to build the plugin from source:
    - Review per-change side-by-side dry-run diffs
    - Select approved changes and click `Apply Selected` (live per-file apply progress)
 
-12. **Fork Lorebook**
+12. **Apply Lore Delta to Existing Wiki**
+   - Run command `Apply Lore Delta to Existing Wiki` (or alias `Open Lore Delta`)
+   - Paste an idea brief directly or set `Idea Note Path` (via `Pick Note` or `Use Active Note`)
+   - Select one or more lorebooks in `Lorebooks to Consider`
+   - Optionally add focused target notes when you want a specific page to receive a structural rewrite instead of only merged canon additions
+   - Choose update policy:
+     - `section_merge`: merge into matching headings while preserving untouched sections
+     - `rewrite_focused`: allow full managed-body rewrites for focused target notes
+   - Set `Allow New Notes` depending on whether the idea may need a brand new lore page
+   - Click `Preview Lore Delta`, inspect diffs/conflicts, then `Apply Selected`
+
+13. **Fork Lorebook**
    - Run command `Fork Active Lorebook`
    - Source lorebook is resolved from the active note lorebook (or configured `Active Lorebook`)
    - Enter a new lorebook and target folder (default: `<Default Lorebook Import Location>/<new-lorebook>`)

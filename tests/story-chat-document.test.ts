@@ -191,6 +191,70 @@ test('serializeConversationMarkdown and parseConversationMarkdown round-trip con
   assert.deepEqual(parsed?.messages[1].versions[0].contextMeta, document.messages[1].versions[0].contextMeta);
 });
 
+test('serializeConversationMarkdown and parseConversationMarkdown round-trip failed assistant placeholders', () => {
+  const document: ConversationDocument = {
+    schemaVersion: CHAT_SCHEMA_VERSION,
+    id: 'conv-failed',
+    title: 'Failed Turn',
+    completionPresetId: '',
+    createdAt: 1700000000000,
+    updatedAt: 1700000005000,
+    selectedScopes: [],
+    useLorebookContext: false,
+    manualContext: '',
+    steeringScopeRefs: [],
+    continuityPlotThreads: [],
+    continuityOpenLoops: [],
+    continuityCanonDeltas: [],
+    continuitySelection: {
+      includePlotThreads: true,
+      includeOpenLoops: true,
+      includeCanonDeltas: true
+    },
+    noteContextRefs: [],
+    messages: [
+      {
+        id: 'user-1',
+        role: 'user',
+        createdAt: 1700000001000,
+        activeVersionId: 'ver-user-1',
+        versions: [
+          {
+            id: 'ver-user-1',
+            content: 'Try that again.',
+            createdAt: 1700000001000
+          }
+        ]
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        createdAt: 1700000002000,
+        activeVersionId: 'ver-assistant-1',
+        versions: [
+          {
+            id: 'ver-assistant-1',
+            content: '',
+            createdAt: 1700000002000,
+            status: 'error',
+            errorMessage: 'Completion provider returned empty output.'
+          }
+        ]
+      }
+    ]
+  };
+
+  const markdown = serializeConversationMarkdown(document);
+  const parsed = parseConversationMarkdown(markdown, 'Fallback');
+
+  assert.ok(parsed);
+  assert.match(markdown, /^> \| Status \| error \|$/m);
+  assert.match(markdown, /^> \| Error \| Completion provider returned empty output\. \|$/m);
+  assert.equal(parsed?.messages[1].versions[0].status, 'error');
+  assert.equal(parsed?.messages[1].versions[0].errorMessage, 'Completion provider returned empty output.');
+  assert.equal(parsed?.messages[1].versions[0].content, '');
+});
+
 test('parseConversationMarkdown returns null when session frontmatter is missing', () => {
   const parsed = parseConversationMarkdown('# No session frontmatter', 'Fallback');
   assert.equal(parsed, null);

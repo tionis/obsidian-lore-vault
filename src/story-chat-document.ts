@@ -3,10 +3,14 @@ import { normalizeStoryChatSteeringRefs } from './story-chat-steering-refs';
 
 export const CHAT_SCHEMA_VERSION = 2;
 
+export type ChatMessageVersionStatus = 'error';
+
 export interface ChatMessageVersion {
   id: string;
   content: string;
   createdAt: number;
+  status?: ChatMessageVersionStatus;
+  errorMessage?: string;
   contextMeta?: StoryChatContextMeta;
   /** Reasoning/thinking tokens returned by the model. Stored for display; filtered before sending as history. */
   reasoning?: string;
@@ -65,6 +69,13 @@ function normalizeContinuitySelection(raw: unknown): ContinuitySelection {
     includeOpenLoops: value.includeOpenLoops !== false,
     includeCanonDeltas: value.includeCanonDeltas !== false
   };
+}
+
+function normalizeVersionStatus(raw: unknown): ChatMessageVersionStatus | undefined {
+  if (raw !== 'error') {
+    return undefined;
+  }
+  return 'error';
 }
 
 export function cloneStoryChatContextMeta(meta: StoryChatContextMeta | undefined): StoryChatContextMeta | undefined {
@@ -251,11 +262,17 @@ export function normalizeConversationDocument(
           const createdAt = Number.isFinite(candidateVersion.createdAt)
             ? Math.floor(Number(candidateVersion.createdAt))
             : now;
+          const status = normalizeVersionStatus(candidateVersion.status);
+          const errorMessage = typeof candidateVersion.errorMessage === 'string'
+            ? candidateVersion.errorMessage
+            : String(candidateVersion.errorMessage ?? '');
 
           return {
             id,
             content,
             createdAt,
+            ...(status ? { status } : {}),
+            ...(status && errorMessage.trim() ? { errorMessage: errorMessage.trim() } : {}),
             contextMeta: normalizeContextMeta(candidateVersion.contextMeta)
           };
         })
@@ -804,6 +821,8 @@ function parseMessageSections(body: string, createId: CreateIdFn): ConversationM
     const versionId = tableValues['version id'] || createId('ver');
     const versionCreatedAt = parseTimestampValue(tableValues.time) ?? Date.now();
     const activeVersion = parseBooleanText(tableValues['active version']) === true;
+    const status = normalizeVersionStatus(tableValues.status);
+    const errorMessage = typeof tableValues.error === 'string' ? tableValues.error.trim() : '';
 
     const contextMeta = parseContextMetaFromMetadataCallout(sectionBody);
 
@@ -811,6 +830,8 @@ function parseMessageSections(body: string, createId: CreateIdFn): ConversationM
       id: versionId,
       content: extractCalloutContent(sectionBody, heading.role),
       createdAt: versionCreatedAt,
+      ...(status ? { status } : {}),
+      ...(status && errorMessage ? { errorMessage } : {}),
       ...(contextMeta ? { contextMeta } : {})
     };
 
@@ -920,6 +941,10 @@ function toProfileLabel(meta: StoryChatContextMeta): string {
     || meta.completionProfileId?.trim()
     || meta.completionProfileSource?.trim()
     || '(none)';
+}
+
+function toMetadataTableCell(value: string): string {
+  return value.replace(/\r?\n+/g, ' ').replace(/\|/g, ' / ').trim();
 }
 
 function isYamlScalarValue(value: unknown): boolean {
@@ -1107,6 +1132,12 @@ export function serializeConversationMarkdown(document: ConversationDocument): s
       lines.push(`> | Message ID | ${message.id} |`);
       lines.push(`> | Version ID | ${version.id} |`);
       lines.push(`> | Active Version | ${isActiveVersion ? 'true' : 'false'} |`);
+      if (version.status) {
+        lines.push(`> | Status | ${version.status} |`);
+      }
+      if (version.errorMessage?.trim()) {
+        lines.push(`> | Error | ${toMetadataTableCell(version.errorMessage)} |`);
+      }
       if (message.role === 'assistant' && version.contextMeta) {
         const meta = version.contextMeta;
         lines.push(`> | Completion Profile | ${toProfileLabel(meta)} |`);

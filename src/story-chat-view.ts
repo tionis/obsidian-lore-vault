@@ -40,6 +40,7 @@ import {
   parseStoryChatSteeringRef,
   stringifyStoryChatSteeringRef
 } from './story-chat-steering-refs';
+import { applyStoryChatAssistantFailure } from './story-chat-message-state';
 
 export const LOREVAULT_STORY_CHAT_VIEW_TYPE = 'lorevault-story-chat-view';
 
@@ -312,6 +313,17 @@ export class StoryChatView extends ItemView {
 
   private getSelectedVersion(message: ConversationMessage): ChatMessageVersion {
     return message.versions.find(version => version.id === message.activeVersionId) ?? message.versions[0];
+  }
+
+  private isRetryableAssistantVersion(version: ChatMessageVersion): boolean {
+    return version.status === 'error';
+  }
+
+  private getAssistantVersionFallbackText(version: ChatMessageVersion): string {
+    if (this.isRetryableAssistantVersion(version)) {
+      return `Generation failed: ${version.errorMessage?.trim() || 'unknown error'}`;
+    }
+    return '';
   }
 
   private isPathAlreadyExistsError(error: unknown): boolean {
@@ -1249,6 +1261,9 @@ export class StoryChatView extends ItemView {
         message.role === 'assistant' ? 'Assistant' : 'You',
         formatTime(message.createdAt)
       ];
+      if (message.role === 'assistant' && this.isRetryableAssistantVersion(version)) {
+        metaParts.push('Failed');
+      }
       if (message.role === 'assistant') {
         const profileMeta = this.formatAssistantProfileMeta(version.contextMeta);
         if (profileMeta) {
@@ -1274,12 +1289,17 @@ export class StoryChatView extends ItemView {
           const thinkingBody = details.createDiv({ cls: 'lorevault-chat-thinking-body' });
           this.renderMarkdownContent(thinkingBody, version.reasoning);
         }
-        const contentText = version.content || (this.isSending && message.role === 'assistant' ? '...' : '');
+        const contentText = version.content
+          || (this.isSending && message.role === 'assistant' ? '...' : '')
+          || (message.role === 'assistant' ? this.getAssistantVersionFallbackText(version) : '');
         if (!contentText.trim()) {
           if (!version.reasoning?.trim()) {
             content.setText('');
           }
         } else {
+          if (message.role === 'assistant' && this.isRetryableAssistantVersion(version)) {
+            content.addClass('lorevault-chat-message-content-error');
+          }
           this.renderMarkdownContent(content, contentText);
         }
       }
@@ -1305,7 +1325,9 @@ export class StoryChatView extends ItemView {
       });
 
       if (message.role === 'assistant' && message.id === latestAssistantId) {
-        const regenerateButton = messageActions.createEl('button', { text: 'Regenerate' });
+        const regenerateButton = messageActions.createEl('button', {
+          text: this.isRetryableAssistantVersion(version) ? 'Retry' : 'Regenerate'
+        });
         regenerateButton.disabled = this.isSending;
         regenerateButton.addEventListener('click', () => {
           void this.regenerateLatestAssistantVersion();
@@ -1397,6 +1419,8 @@ export class StoryChatView extends ItemView {
     }
 
     version.content = this.editingMessageDraft;
+    delete version.status;
+    delete version.errorMessage;
     this.editingMessageId = null;
     this.editingVersionId = null;
     this.editingMessageDraft = '';
@@ -1601,26 +1625,22 @@ export class StoryChatView extends ItemView {
       targetVersion.content = result.assistantText;
       targetVersion.reasoning = result.reasoning || undefined;
       targetVersion.contextMeta = this.cloneContextMeta(result.contextMeta);
+      delete targetVersion.status;
+      delete targetVersion.errorMessage;
       this.setStatus('Idle');
       await this.saveCurrentConversation();
       this.render();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const contentNow = targetVersion.content.trim();
-
-      if (this.stopRequested && !contentNow) {
-        targetVersion.content = '[Generation stopped.]';
-      } else if (!contentNow) {
-        if (createdNewMessage) {
-          this.messages = this.messages.filter(item => item.id !== targetAssistantMessage.id);
-        } else {
-          const target = this.messages.find(item => item.id === targetAssistantMessage.id);
-          if (target) {
-            target.versions = target.versions.filter(item => item.id !== targetVersion.id);
-            target.activeVersionId = previousActiveVersionId || (target.versions[0]?.id ?? '');
-          }
-        }
-      }
+      this.messages = applyStoryChatAssistantFailure({
+        messages: this.messages,
+        assistantMessageId: targetAssistantMessage.id,
+        failedVersionId: targetVersion.id,
+        previousActiveVersionId,
+        createdNewMessage,
+        stopRequested: this.stopRequested,
+        errorMessage: message
+      });
 
       if (!this.stopRequested) {
         new Notice(`Story chat generation failed: ${message}`);

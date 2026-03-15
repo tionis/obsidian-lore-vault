@@ -147,7 +147,7 @@ Additional behavior:
 - `Open Conversation` picker + `New Chat`
 - device-level `Chat Completion Profile` selector in Story Chat (independent from Story Writing panel profile selection; shared across conversations)
 - markdown-rendered messages
-- edit/fork/regenerate message actions
+- edit/fork/regenerate message actions; empty failed assistant turns stay as retryable placeholders so `Retry` remains available even when no reply text was produced
 - assistant message metadata shows the profile/model used for that response
 - chat sessions are saved as readable markdown notes with frontmatter + `## User` / `## Model` transcript sections
 - full turn context metadata is stored in collapsed `Context Meta` callouts with fenced `yaml` blocks

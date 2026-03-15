@@ -1138,7 +1138,7 @@ Current behavior:
 - supports per-message actions:
   - `Edit` past user/assistant messages
   - `Fork Here` to create a new conversation note from any turn
-  - `Regenerate` on latest assistant turn (adds a new assistant version)
+  - `Regenerate` on the latest successful assistant turn and `Retry` on the latest failed empty assistant turn (both add/replace the latest assistant version)
 - allows switching between multiple generated versions of a message; only selected version is used for future context
 - renders message content as markdown inside the chat transcript
 - assistant message metadata includes the effective completion profile/model used for that turn
@@ -1146,6 +1146,7 @@ Current behavior:
 - conversation-note format is human-readable (`agent-session` frontmatter + `## User` / `## Model` transcript sections)
 - conversation frontmatter stores `completion_preset_id` as a snapshot of the active Story Chat profile when the conversation is saved
 - assistant turns store expanded Message Info table rows plus a collapsed `Context Meta` callout containing a fenced `yaml` metadata payload
+- if a turn fails before any assistant text is produced, Story Chat keeps an empty failed assistant placeholder with status/error metadata so the turn can be retried without manually re-entering the prompt
 - legacy JSON code-block conversation notes are not loaded; Story Chat expects `agent-session` notes
 - plugin settings persist active conversation path and chat folder
 - chat folder path is configurable in settings (`Story Chat Conversation Folder`)

@@ -44,6 +44,7 @@ This document is the implementation-level reference for core architecture and ru
   - note-backed conversation persistence
   - device-level chat completion preset selection with conversation snapshot metadata
   - message versions/regeneration/forking
+  - empty failed assistant turns persist as retryable error versions with status/error metadata, and those empty placeholders are filtered out of future prompt history
 - `src/lorevault-story-starter-view.ts`
   - premise-to-draft panel (`Open Story Starter`)
   - optional lorebook retrieval before generation

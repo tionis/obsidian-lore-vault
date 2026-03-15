@@ -843,6 +843,10 @@
   white-space: pre-wrap;
 }
 
+.lorevault-chat-message-content-error {
+  color: var(--text-error, var(--color-red));
+}
+
 .lorevault-chat-context-meta {
   margin-bottom: 8px;
   font-size: 12px;

@@ -84,6 +84,7 @@ import {
   OperationLogStore,
   OperationLogStoreStatus
 } from './operation-log-store';
+import type { ParsedOperationLogEntry } from './operation-log';
 import { LOREVAULT_IMPORT_VIEW_TYPE, LorevaultImportView } from './lorevault-import-view';
 import {
   LOREVAULT_STORY_EXTRACT_VIEW_TYPE,
@@ -968,7 +969,8 @@ export default class LoreBookConverterPlugin extends Plugin {
         issues: [],
         totalEntries: 0,
         backendLabel: 'Unavailable',
-        legacyPath: this.getOperationLogPath(options.costProfile)
+        legacyPath: this.getOperationLogPath(options.costProfile),
+        warningMessage: ''
       };
     }
     return this.operationLogStore.query({
@@ -978,6 +980,58 @@ export default class LoreBookConverterPlugin extends Plugin {
       searchQuery: options.searchQuery ?? '',
       limit: Math.max(10, Math.min(5000, Math.floor(options.limit ?? 120)))
     });
+  }
+
+  public async loadOperationLogEntryDetail(options: {
+    costProfile?: string | null;
+    id: string;
+  }): Promise<ParsedOperationLogEntry | null> {
+    if (!this.operationLogStore) {
+      return null;
+    }
+    return this.operationLogStore.getEntryDetail(
+      (options.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default',
+      options.id
+    );
+  }
+
+  public async loadOperationLogEntryRequestPayload(options: {
+    costProfile?: string | null;
+    id: string;
+  }): Promise<unknown> {
+    if (!this.operationLogStore) {
+      return null;
+    }
+    return this.operationLogStore.getEntryRequestPayload(
+      (options.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default',
+      options.id
+    );
+  }
+
+  public async loadOperationLogEntryAttempts(options: {
+    costProfile?: string | null;
+    id: string;
+  }) {
+    if (!this.operationLogStore) {
+      return [];
+    }
+    return this.operationLogStore.getEntryAttempts(
+      (options.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default',
+      options.id
+    );
+  }
+
+  public async loadOperationLogEntryFinalText(options: {
+    costProfile?: string | null;
+    id: string;
+  }): Promise<string | null> {
+    if (!this.operationLogStore) {
+      return null;
+    }
+    return this.operationLogStore.getEntryFinalText(
+      (options.costProfile ?? '').trim() || this.getDeviceEffectiveCostProfileLabel() || 'default',
+      options.id
+    );
   }
 
   public async getOperationLogStorageStatus(costProfile?: string | null): Promise<OperationLogStoreStatus> {

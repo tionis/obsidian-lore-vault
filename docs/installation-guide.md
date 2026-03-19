@@ -189,7 +189,7 @@ If you prefer to build the plugin from source:
      - `Continue Story` (toggles to `Stop` during generation) + `Insert Directive`
      - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
      - `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`
-   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads, current storage backend status, and the legacy per-profile JSONL path without leaving Obsidian
+   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads and current storage backend status without leaving Obsidian; the explorer preloads the current result page, rows open immediately from summary metadata, heavy payload sections only render when opened, and text/json fields include `Copy` buttons
    - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 

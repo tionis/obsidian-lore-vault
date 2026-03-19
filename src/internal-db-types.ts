@@ -1,4 +1,8 @@
-import type { CompletionOperationKind, CompletionOperationLogRecord } from './completion-provider';
+import type {
+  CompletionOperationKind,
+  CompletionOperationLogAttempt,
+  CompletionOperationLogRecord
+} from './completion-provider';
 
 export type InternalDbBackend = 'opfs' | 'idb';
 
@@ -24,6 +28,27 @@ export interface OperationLogQueryResult {
   totalEntries: number;
 }
 
+export interface OperationLogEntryDetailRequest {
+  costProfile: string;
+  id: string;
+}
+
+export interface OperationLogEntryDetailResult {
+  record: CompletionOperationLogRecord | null;
+}
+
+export interface OperationLogEntryRequestPayloadResult {
+  payload: unknown;
+}
+
+export interface OperationLogEntryAttemptsResult {
+  attempts: CompletionOperationLogAttempt[];
+}
+
+export interface OperationLogEntryFinalTextResult {
+  finalText: string | null;
+}
+
 export type InternalDbRequest =
   | {
     id: number;
@@ -46,6 +71,22 @@ export type InternalDbRequest =
     id: number;
     type: 'queryOperationLog';
   } & OperationLogQueryRequest)
+  | ({
+    id: number;
+    type: 'getOperationLogEntryDetail';
+  } & OperationLogEntryDetailRequest)
+  | ({
+    id: number;
+    type: 'getOperationLogEntryRequestPayload';
+  } & OperationLogEntryDetailRequest)
+  | ({
+    id: number;
+    type: 'getOperationLogEntryAttempts';
+  } & OperationLogEntryDetailRequest)
+  | ({
+    id: number;
+    type: 'getOperationLogEntryFinalText';
+  } & OperationLogEntryDetailRequest)
   | {
     id: number;
     type: 'getStatus';

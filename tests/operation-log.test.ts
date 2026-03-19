@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseOperationLogJsonl } from '../src/operation-log';
+import { parseOperationLogJsonl, summarizeOperationLogRecord } from '../src/operation-log';
 import {
   buildOperationLogSearchText,
   tokenizeOperationLogSearchQuery
@@ -148,6 +148,54 @@ test('buildOperationLogSearchText includes core searchable payload fields', () =
   assert.equal(searchText.includes('timeout while streaming'), true);
   assert.equal(searchText.includes('describe the city gates'), true);
   assert.equal(searchText.includes('the gates stood open'), true);
+});
+
+test('summarizeOperationLogRecord strips heavy payload fields while keeping scan metadata', () => {
+  const summary = summarizeOperationLogRecord({
+    id: 'op-summary',
+    costProfile: 'writer-a',
+    kind: 'completion',
+    operationName: 'story_chat_turn',
+    provider: 'openrouter',
+    model: 'openai/gpt-test',
+    endpoint: 'https://example.test/chat',
+    startedAt: 10,
+    finishedAt: 25,
+    durationMs: 15,
+    status: 'error',
+    aborted: true,
+    error: 'timeout',
+    request: { messages: [{ role: 'user', content: 'hello' }] },
+    attempts: [{ index: 0, url: 'https://example.test/chat', requestBody: { model: 'm' } }],
+    finalText: 'hello',
+    usage: {
+      provider: 'openrouter',
+      model: 'openai/gpt-test',
+      promptTokens: 10,
+      completionTokens: 4,
+      totalTokens: 14,
+      reportedCostUsd: 0.1,
+      source: 'openai_usage',
+      cachedReadTokens: 0,
+      cacheWriteTokens: 0
+    }
+  });
+
+  assert.deepEqual(summary, {
+    id: 'op-summary',
+    costProfile: 'writer-a',
+    kind: 'completion',
+    operationName: 'story_chat_turn',
+    provider: 'openrouter',
+    model: 'openai/gpt-test',
+    endpoint: 'https://example.test/chat',
+    startedAt: 10,
+    finishedAt: 25,
+    durationMs: 15,
+    status: 'error',
+    aborted: true,
+    error: 'timeout'
+  });
 });
 
 test('tokenizeOperationLogSearchQuery lowercases and splits whitespace', () => {

@@ -1,5 +1,10 @@
 import type { CompletionOperationLogRecord } from './completion-provider';
 import type {
+  OperationLogEntryAttemptsResult,
+  OperationLogEntryDetailRequest,
+  OperationLogEntryDetailResult,
+  OperationLogEntryFinalTextResult,
+  OperationLogEntryRequestPayloadResult,
   InternalDbRequest,
   InternalDbRequestPayload,
   InternalDbResponse,
@@ -120,6 +125,40 @@ export class InternalDbClient {
     await this.initialize();
     return this.request<OperationLogQueryResult>({
       type: 'queryOperationLog',
+      ...request
+    });
+  }
+
+  async getOperationLogEntryDetail(request: OperationLogEntryDetailRequest): Promise<OperationLogEntryDetailResult> {
+    await this.initialize();
+    return this.request<OperationLogEntryDetailResult>({
+      type: 'getOperationLogEntryDetail',
+      ...request
+    });
+  }
+
+  async getOperationLogEntryRequestPayload(
+    request: OperationLogEntryDetailRequest
+  ): Promise<OperationLogEntryRequestPayloadResult> {
+    await this.initialize();
+    return this.request<OperationLogEntryRequestPayloadResult>({
+      type: 'getOperationLogEntryRequestPayload',
+      ...request
+    });
+  }
+
+  async getOperationLogEntryAttempts(request: OperationLogEntryDetailRequest): Promise<OperationLogEntryAttemptsResult> {
+    await this.initialize();
+    return this.request<OperationLogEntryAttemptsResult>({
+      type: 'getOperationLogEntryAttempts',
+      ...request
+    });
+  }
+
+  async getOperationLogEntryFinalText(request: OperationLogEntryDetailRequest): Promise<OperationLogEntryFinalTextResult> {
+    await this.initialize();
+    return this.request<OperationLogEntryFinalTextResult>({
+      type: 'getOperationLogEntryFinalText',
       ...request
     });
   }

@@ -6,6 +6,29 @@ import type {
 } from './completion-provider';
 import { buildOperationLogSearchText } from './operation-log-utils';
 
+export interface OperationLogRecordSummary {
+  id: string;
+  costProfile?: string;
+  kind: CompletionOperationKind;
+  operationName: string;
+  provider: CompletionOperationLogRecord['provider'];
+  model: string;
+  endpoint: string;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+  status: 'ok' | 'error';
+  aborted: boolean;
+  error?: string;
+}
+
+export interface OperationLogListEntry {
+  lineNumber: number;
+  summary: OperationLogRecordSummary;
+  searchText: string;
+  detailRecord?: ParsedOperationLogEntry | null;
+}
+
 export interface ParsedOperationLogEntry {
   lineNumber: number;
   record: CompletionOperationLogRecord;
@@ -172,6 +195,24 @@ function coerceRecord(value: unknown, lineNumber: number): CompletionOperationLo
     record.costProfile = costProfile;
   }
   return record;
+}
+
+export function summarizeOperationLogRecord(record: CompletionOperationLogRecord): OperationLogRecordSummary {
+  return {
+    id: record.id,
+    ...(record.costProfile ? { costProfile: record.costProfile } : {}),
+    kind: record.kind,
+    operationName: record.operationName,
+    provider: record.provider,
+    model: record.model,
+    endpoint: record.endpoint,
+    startedAt: record.startedAt,
+    finishedAt: record.finishedAt,
+    durationMs: record.durationMs,
+    status: record.status,
+    aborted: record.aborted,
+    ...(record.error ? { error: record.error } : {})
+  };
 }
 
 export function parseOperationLogJsonl(raw: string): ParseOperationLogJsonlResult {

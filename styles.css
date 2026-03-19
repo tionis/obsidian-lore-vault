@@ -1542,9 +1542,21 @@
   overflow-wrap: anywhere;
 }
 
+.lorevault-operation-log-copyable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.lorevault-operation-log-copyable-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.lorevault-operation-log-inline-field,
 .lorevault-operation-log-textbox {
   width: 100%;
-  margin: 6px 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   padding: 8px;
@@ -1552,9 +1564,18 @@
   font-family: var(--font-monospace);
   font-size: 11px;
   line-height: 1.35;
-  resize: vertical;
-  min-height: 96px;
+  color: var(--text-normal);
   box-sizing: border-box;
+  user-select: text;
+}
+
+.lorevault-operation-log-inline-field {
+  min-width: 0;
+}
+
+.lorevault-operation-log-textbox {
+  margin: 0;
+  resize: vertical;
 }
 
 @media (max-width: 900px) {

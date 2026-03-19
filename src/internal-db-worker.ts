@@ -5,6 +5,11 @@ import { OPFSAdaptiveVFS } from '@journeyapps/wa-sqlite/src/examples/OPFSAdaptiv
 import type { CompletionOperationLogRecord } from './completion-provider';
 import type {
   InternalDbBackend,
+  OperationLogEntryAttemptsResult,
+  OperationLogEntryDetailRequest,
+  OperationLogEntryDetailResult,
+  OperationLogEntryFinalTextResult,
+  OperationLogEntryRequestPayloadResult,
   InternalDbRequest,
   InternalDbResponse,
   InternalDbStatus,
@@ -259,6 +264,98 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
   };
 }
 
+async function getOperationLogEntryDetail(
+  workerState: WorkerState,
+  request: OperationLogEntryDetailRequest
+): Promise<OperationLogEntryDetailResult> {
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT
+      id,
+      cost_profile,
+      kind,
+      operation_name,
+      provider,
+      model,
+      endpoint,
+      started_at,
+      finished_at,
+      duration_ms,
+      status,
+      aborted,
+      error_text,
+      request_json,
+      attempts_json,
+      final_text,
+      usage_json
+    FROM operation_log
+    WHERE cost_profile = ? AND id = ?
+    LIMIT 1;`,
+    [request.costProfile, request.id]
+  );
+  if (rows.length === 0) {
+    return { record: null };
+  }
+  return {
+    record: rowToOperationLogRecord(rows[0])
+  };
+}
+
+async function getOperationLogEntryRequestPayload(
+  workerState: WorkerState,
+  request: OperationLogEntryDetailRequest
+): Promise<OperationLogEntryRequestPayloadResult> {
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT request_json
+    FROM operation_log
+    WHERE cost_profile = ? AND id = ?
+    LIMIT 1;`,
+    [request.costProfile, request.id]
+  );
+  return {
+    payload: parseJsonOr(rows[0]?.request_json, null)
+  };
+}
+
+async function getOperationLogEntryAttempts(
+  workerState: WorkerState,
+  request: OperationLogEntryDetailRequest
+): Promise<OperationLogEntryAttemptsResult> {
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT attempts_json
+    FROM operation_log
+    WHERE cost_profile = ? AND id = ?
+    LIMIT 1;`,
+    [request.costProfile, request.id]
+  );
+  return {
+    attempts: parseJsonOr(rows[0]?.attempts_json, [])
+  };
+}
+
+async function getOperationLogEntryFinalText(
+  workerState: WorkerState,
+  request: OperationLogEntryDetailRequest
+): Promise<OperationLogEntryFinalTextResult> {
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT final_text
+    FROM operation_log
+    WHERE cost_profile = ? AND id = ?
+    LIMIT 1;`,
+    [request.costProfile, request.id]
+  );
+  return {
+    finalText: typeof rows[0]?.final_text === 'string' ? rows[0].final_text : null
+  };
+}
+
 async function ensureSchema(sqlite3: any, db: number): Promise<void> {
   await sqlite3.exec(
     db,
@@ -434,6 +531,22 @@ async function handleRequest(request: InternalDbRequest): Promise<unknown> {
     case 'queryOperationLog': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);
       return queryOperationLogRows(workerState, request);
+    }
+    case 'getOperationLogEntryDetail': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return getOperationLogEntryDetail(workerState, request);
+    }
+    case 'getOperationLogEntryRequestPayload': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return getOperationLogEntryRequestPayload(workerState, request);
+    }
+    case 'getOperationLogEntryAttempts': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return getOperationLogEntryAttempts(workerState, request);
+    }
+    case 'getOperationLogEntryFinalText': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return getOperationLogEntryFinalText(workerState, request);
     }
     case 'close': {
       if (!statePromise) {

@@ -1,11 +1,17 @@
 import type { App } from 'obsidian';
-import type { CompletionOperationLogRecord, CompletionOperationKind } from './completion-provider';
+import type {
+  CompletionOperationLogAttempt,
+  CompletionOperationLogRecord,
+  CompletionOperationKind
+} from './completion-provider';
 import { InternalDbClient } from './internal-db-client';
 import type { InternalDbStatus } from './internal-db-types';
 import {
+  OperationLogListEntry,
   OperationLogParseIssue,
   ParsedOperationLogEntry,
-  parseOperationLogJsonl
+  parseOperationLogJsonl,
+  summarizeOperationLogRecord
 } from './operation-log';
 import { buildOperationLogSearchText, tokenizeOperationLogSearchQuery } from './operation-log-utils';
 import { ensureParentVaultFolderForFile } from './vault-path-utils';
@@ -19,11 +25,12 @@ export interface OperationLogStoreQuery {
 }
 
 export interface OperationLogLoadResult {
-  entries: ParsedOperationLogEntry[];
+  entries: OperationLogListEntry[];
   issues: OperationLogParseIssue[];
   totalEntries: number;
   backendLabel: string;
   legacyPath: string;
+  warningMessage: string;
 }
 
 export interface OperationLogStoreStatus {
@@ -136,13 +143,19 @@ export class OperationLogStore {
         return {
           entries: result.entries.map(record => ({
             lineNumber: 0,
-            record,
-            searchText: buildOperationLogSearchText(record)
+            summary: summarizeOperationLogRecord(record),
+            searchText: buildOperationLogSearchText(record),
+            detailRecord: {
+              lineNumber: 0,
+              record,
+              searchText: buildOperationLogSearchText(record)
+            }
           })),
           issues: [],
           totalEntries: result.totalEntries,
           backendLabel: `SQLite (${this.internalDbStatus.backendLabel || 'local'})`,
-          legacyPath: this.getLegacyPath(resolvedProfile)
+          legacyPath: this.getLegacyPath(resolvedProfile),
+          warningMessage: ''
         };
       } catch (error) {
         this.markInternalDbUnavailable(error);
@@ -153,6 +166,116 @@ export class OperationLogStore {
       ...request,
       costProfile: resolvedProfile
     });
+  }
+
+  async getEntryDetail(costProfile: string, id: string): Promise<ParsedOperationLogEntry | null> {
+    const resolvedProfile = costProfile.trim()
+      || this.getDeviceCostProfileLabel()
+      || 'default';
+    const normalizedId = id.trim();
+    if (!normalizedId) {
+      return null;
+    }
+
+    if (this.internalDbClient && this.internalDbStatus.available) {
+      try {
+        await this.ensureLegacyProfileImported(resolvedProfile);
+        const result = await this.internalDbClient.getOperationLogEntryDetail({
+          costProfile: resolvedProfile,
+          id: normalizedId
+        });
+        if (!result.record) {
+          return null;
+        }
+        return {
+          lineNumber: 0,
+          record: result.record,
+          searchText: buildOperationLogSearchText(result.record)
+        };
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    return this.getLegacyJsonlEntryDetail(resolvedProfile, normalizedId);
+  }
+
+  async getEntryRequestPayload(costProfile: string, id: string): Promise<unknown> {
+    const resolvedProfile = costProfile.trim()
+      || this.getDeviceCostProfileLabel()
+      || 'default';
+    const normalizedId = id.trim();
+    if (!normalizedId) {
+      return null;
+    }
+
+    if (this.internalDbClient && this.internalDbStatus.available) {
+      try {
+        await this.ensureLegacyProfileImported(resolvedProfile);
+        const result = await this.internalDbClient.getOperationLogEntryRequestPayload({
+          costProfile: resolvedProfile,
+          id: normalizedId
+        });
+        return result.payload ?? null;
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    const detail = await this.getLegacyJsonlEntryDetail(resolvedProfile, normalizedId);
+    return detail?.record.request ?? null;
+  }
+
+  async getEntryAttempts(costProfile: string, id: string): Promise<CompletionOperationLogAttempt[]> {
+    const resolvedProfile = costProfile.trim()
+      || this.getDeviceCostProfileLabel()
+      || 'default';
+    const normalizedId = id.trim();
+    if (!normalizedId) {
+      return [];
+    }
+
+    if (this.internalDbClient && this.internalDbStatus.available) {
+      try {
+        await this.ensureLegacyProfileImported(resolvedProfile);
+        const result = await this.internalDbClient.getOperationLogEntryAttempts({
+          costProfile: resolvedProfile,
+          id: normalizedId
+        });
+        return result.attempts;
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    const detail = await this.getLegacyJsonlEntryDetail(resolvedProfile, normalizedId);
+    return detail?.record.attempts ?? [];
+  }
+
+  async getEntryFinalText(costProfile: string, id: string): Promise<string | null> {
+    const resolvedProfile = costProfile.trim()
+      || this.getDeviceCostProfileLabel()
+      || 'default';
+    const normalizedId = id.trim();
+    if (!normalizedId) {
+      return null;
+    }
+
+    if (this.internalDbClient && this.internalDbStatus.available) {
+      try {
+        await this.ensureLegacyProfileImported(resolvedProfile);
+        const result = await this.internalDbClient.getOperationLogEntryFinalText({
+          costProfile: resolvedProfile,
+          id: normalizedId
+        });
+        return result.finalText;
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    const detail = await this.getLegacyJsonlEntryDetail(resolvedProfile, normalizedId);
+    return detail?.record.finalText ?? null;
   }
 
   private async ensureLegacyProfileImported(costProfile: string): Promise<void> {
@@ -233,7 +356,8 @@ export class OperationLogStore {
         issues: [],
         totalEntries: 0,
         backendLabel: 'JSONL fallback',
-        legacyPath: path
+        legacyPath: path,
+        warningMessage: this.buildFallbackWarningMessage()
       };
     }
 
@@ -251,11 +375,39 @@ export class OperationLogStore {
     });
 
     return {
-      entries: filtered.slice(0, request.limit),
+      entries: filtered
+        .slice(0, request.limit)
+        .map(entry => ({
+          lineNumber: entry.lineNumber,
+          summary: summarizeOperationLogRecord(entry.record),
+          searchText: entry.searchText,
+          detailRecord: entry
+        })),
       issues: parsed.issues,
       totalEntries: filtered.length,
       backendLabel: 'JSONL fallback',
-      legacyPath: path
+      legacyPath: path,
+      warningMessage: this.buildFallbackWarningMessage()
     };
+  }
+
+  private async getLegacyJsonlEntryDetail(costProfile: string, id: string): Promise<ParsedOperationLogEntry | null> {
+    const path = this.getLegacyPath(costProfile);
+    const exists = await this.app.vault.adapter.exists(path);
+    if (!exists) {
+      return null;
+    }
+    const raw = await this.app.vault.adapter.read(path);
+    const parsed = parseOperationLogJsonl(raw);
+    return parsed.entries.find(entry => entry.record.id === id) ?? null;
+  }
+
+  private buildFallbackWarningMessage(): string {
+    if (!this.internalDbStatus.available) {
+      return this.internalDbStatus.errorMessage
+        ? `Internal DB unavailable; using JSONL fallback. ${this.internalDbStatus.errorMessage}`
+        : 'Internal DB unavailable; using JSONL fallback.';
+    }
+    return '';
   }
 }

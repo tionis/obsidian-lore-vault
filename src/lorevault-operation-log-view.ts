@@ -1,10 +1,9 @@
 import { ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import type LoreBookConverterPlugin from './main';
 import {
-  OperationLogParseIssue,
-  ParsedOperationLogEntry
+  OperationLogListEntry,
+  OperationLogParseIssue
 } from './operation-log';
-import type { OperationLogStoreStatus } from './operation-log-store';
 import type { CompletionOperationKind, CompletionOperationLogAttempt } from './completion-provider';
 
 export const LOREVAULT_OPERATION_LOG_VIEW_TYPE = 'lorevault-operation-log-view';
@@ -297,7 +296,7 @@ function parsePayloadShape(payload: unknown): ParsedPayloadShape {
 
 export class LorevaultOperationLogView extends ItemView {
   private plugin: LoreBookConverterPlugin;
-  private entries: ParsedOperationLogEntry[] = [];
+  private entries: OperationLogListEntry[] = [];
   private issues: OperationLogParseIssue[] = [];
   private totalEntries = 0;
   private fatalError = '';
@@ -314,7 +313,7 @@ export class LorevaultOperationLogView extends ItemView {
   private reloadDebounceTimer: number | null = null;
   private backendLabel = 'Unavailable';
   private legacyPath = '';
-  private storageStatus: OperationLogStoreStatus | null = null;
+  private backendWarning = '';
   private statusEl: HTMLElement | null = null;
   private pathEl: HTMLElement | null = null;
   private issueEl: HTMLElement | null = null;
@@ -522,49 +521,24 @@ export class LorevaultOperationLogView extends ItemView {
     this.costProfileSelectEl.value = this.selectedCostProfile;
   }
 
+  private getEntryCostProfile(entry: OperationLogListEntry): string {
+    return entry.summary.costProfile?.trim()
+      || this.selectedCostProfile
+      || this.plugin.getDeviceEffectiveCostProfileLabel().trim()
+      || 'default';
+  }
+
   private updatePathSummary(): void {
     if (!this.pathEl) {
       return;
     }
     this.pathEl.empty();
-    const summary = this.pathEl.createDiv();
-    summary.createSpan({ text: 'Backend: ' });
-    summary.createEl('code', {
-      text: this.backendLabel || 'Unavailable'
-    });
-    summary.createSpan({ text: ' | Legacy JSONL: ' });
-    summary.createEl('code', {
-      text: this.legacyPath || this.plugin.getOperationLogPath(this.selectedCostProfile)
-    });
-
-    const internalDb = this.storageStatus?.internalDb;
-    if (!internalDb) {
+    if (!this.backendWarning) {
       return;
     }
-
-    if (internalDb.available) {
-      const detailParts = [
-        internalDb.sqliteVersion ? `SQLite ${internalDb.sqliteVersion}` : '',
-        internalDb.storagePersisted === true
-          ? 'persistent storage granted'
-          : internalDb.storagePersisted === false
-            ? 'persistent storage not granted'
-            : ''
-      ].filter(Boolean);
-      if (detailParts.length > 0) {
-        this.pathEl.createDiv({
-          cls: 'lorevault-operation-log-subtle',
-          text: detailParts.join(' | ')
-        });
-      }
-      return;
-    }
-
     this.pathEl.createDiv({
       cls: 'lorevault-operation-log-warning',
-      text: internalDb.errorMessage
-        ? `Internal DB unavailable; using JSONL fallback. ${internalDb.errorMessage}`
-        : 'Internal DB unavailable; using JSONL fallback.'
+      text: this.backendWarning
     });
   }
 
@@ -605,25 +579,22 @@ export class LorevaultOperationLogView extends ItemView {
     }
     this.updatePathSummary();
     try {
-      const [storageStatus, result] = await Promise.all([
-        this.plugin.getOperationLogStorageStatus(this.selectedCostProfile),
-        this.plugin.loadOperationLogEntries({
-          costProfile: this.selectedCostProfile,
-          kindFilter: this.kindFilter,
-          statusFilter: this.statusFilter,
-          searchQuery: this.searchQuery,
-          limit: this.rowLimit
-        })
-      ]);
+      const result = await this.plugin.loadOperationLogEntries({
+        costProfile: this.selectedCostProfile,
+        kindFilter: this.kindFilter,
+        statusFilter: this.statusFilter,
+        searchQuery: this.searchQuery,
+        limit: this.rowLimit
+      });
       if (loadVersion !== this.loadVersion) {
         return;
       }
-      this.storageStatus = storageStatus;
       this.entries = result.entries;
       this.issues = result.issues;
       this.totalEntries = result.totalEntries;
       this.backendLabel = result.backendLabel;
       this.legacyPath = result.legacyPath;
+      this.backendWarning = result.warningMessage;
       this.fatalError = '';
     } catch (error) {
       if (loadVersion !== this.loadVersion) {
@@ -634,6 +605,7 @@ export class LorevaultOperationLogView extends ItemView {
       this.totalEntries = 0;
       this.backendLabel = 'Unavailable';
       this.legacyPath = this.plugin.getOperationLogPath(this.selectedCostProfile);
+      this.backendWarning = '';
       this.fatalError = error instanceof Error ? error.message : String(error);
     } finally {
       if (loadVersion === this.loadVersion) {
@@ -756,13 +728,75 @@ export class LorevaultOperationLogView extends ItemView {
   }
 
   private createReadonlyTextBox(container: HTMLElement, value: string, placeholder?: string): void {
-    const textValue = value.trim().length > 0
-      ? value
+    const rawValue = value;
+    const textValue = rawValue.trim().length > 0
+      ? rawValue
       : (placeholder ?? '[No text content]');
-    const textArea = container.createEl('textarea', { cls: 'lorevault-operation-log-textbox' });
+    const wrapper = container.createDiv({ cls: 'lorevault-operation-log-copyable' });
+    const actions = wrapper.createDiv({ cls: 'lorevault-operation-log-copyable-actions' });
+    const copyButton = actions.createEl('button', { text: 'Copy' });
+    copyButton.disabled = rawValue.length === 0;
+    copyButton.addEventListener('click', () => {
+      void this.copyTextToClipboard(rawValue);
+    });
+    const textArea = wrapper.createEl('textarea', { cls: 'lorevault-operation-log-textbox' });
     textArea.value = textValue;
     textArea.readOnly = true;
     textArea.rows = Math.max(4, Math.min(20, textValue.split('\n').length + 1));
+  }
+
+  private createReadonlyInlineField(container: HTMLElement, value: string, placeholder?: string): void {
+    const rawValue = value;
+    const textValue = rawValue.trim().length > 0
+      ? rawValue
+      : (placeholder ?? '[No text content]');
+    const wrapper = container.createDiv({ cls: 'lorevault-operation-log-copyable' });
+    const actions = wrapper.createDiv({ cls: 'lorevault-operation-log-copyable-actions' });
+    const copyButton = actions.createEl('button', { text: 'Copy' });
+    copyButton.disabled = rawValue.length === 0;
+    copyButton.addEventListener('click', () => {
+      void this.copyTextToClipboard(rawValue);
+    });
+    const input = wrapper.createEl('input', { cls: 'lorevault-operation-log-inline-field' });
+    input.type = 'text';
+    input.value = textValue;
+    input.readOnly = true;
+  }
+
+  private async copyTextToClipboard(value: string): Promise<void> {
+    if (value.length === 0) {
+      new Notice('Nothing to copy.');
+      return;
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        new Notice('Copied to clipboard.');
+        return;
+      }
+    } catch (_error) {
+      // Fall through to document.execCommand fallback.
+    }
+
+    if (typeof document === 'undefined') {
+      new Notice('Failed to copy to clipboard.');
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = value;
+    textArea.setAttribute('readonly', 'true');
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    textArea.style.pointerEvents = 'none';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, value.length);
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    new Notice(copied ? 'Copied to clipboard.' : 'Failed to copy to clipboard.');
   }
 
   private renderPayloadMessages(container: HTMLElement, messages: ParsedPayloadMessage[], label = 'Messages'): void {
@@ -829,11 +863,10 @@ export class LorevaultOperationLogView extends ItemView {
         text: `${index + 1}. ${tool.name || '(unnamed tool)'}`
       });
       if (tool.description) {
-        detail.createEl('p', { text: tool.description });
+        this.createReadonlyTextBox(detail, tool.description, '[No description]');
       }
       if (typeof tool.parameters !== 'undefined') {
-        const pre = detail.createEl('pre', { cls: 'lorevault-operation-log-json' });
-        pre.setText(prettyJson(tool.parameters));
+        this.createReadonlyTextBox(detail, prettyJson(tool.parameters), '[No parameters]');
       }
     }
   }
@@ -845,161 +878,189 @@ export class LorevaultOperationLogView extends ItemView {
   ): void {
     const parsed = parsePayloadShape(payload);
     if (!parsed.raw) {
-      container.createEl('p', {
-        cls: 'lorevault-operation-log-subtle',
-        text: 'Payload is not an object record.'
-      });
+      this.createReadonlyInlineField(container, 'Payload is not an object record.');
       if (options?.includeRawJson) {
         const rawDetails = container.createEl('details');
         rawDetails.createEl('summary', { text: options.rawLabel ?? 'Raw JSON' });
-        rawDetails.createEl('pre', {
-          cls: 'lorevault-operation-log-json',
-          text: prettyJson(payload)
-        });
+        this.createReadonlyTextBox(rawDetails, prettyJson(payload), '[No JSON]');
       }
       return;
     }
 
     if (parsed.summaryParts.length > 0) {
-      container.createEl('p', {
-        text: parsed.summaryParts.join(' | ')
-      });
+      this.createReadonlyInlineField(container, parsed.summaryParts.join(' | '));
     }
     this.renderPayloadMessages(container, parsed.messages);
     this.renderPayloadTools(container, parsed.tools);
     if (options?.includeRawJson) {
       const rawDetails = container.createEl('details');
       rawDetails.createEl('summary', { text: options.rawLabel ?? 'Raw JSON' });
-      rawDetails.createEl('pre', {
-        cls: 'lorevault-operation-log-json',
-        text: prettyJson(payload)
-      });
+      this.createReadonlyTextBox(rawDetails, prettyJson(payload), '[No JSON]');
     }
   }
 
-  private renderEntry(entry: ParsedOperationLogEntry): void {
+  private createLazyDetailsSection(
+    container: HTMLElement,
+    summaryText: string,
+    renderContent: (body: HTMLElement) => void
+  ): HTMLDetailsElement {
+    const details = container.createEl('details');
+    details.createEl('summary', { text: summaryText });
+    const body = details.createDiv();
+    let rendered = false;
+    const renderIfNeeded = (): void => {
+      if (rendered) {
+        return;
+      }
+      rendered = true;
+      renderContent(body);
+    };
+    details.addEventListener('toggle', () => {
+      if (details.open) {
+        renderIfNeeded();
+      }
+    });
+    return details;
+  }
+
+  private renderEntry(entry: OperationLogListEntry): void {
     if (!this.listEl) {
       return;
     }
     const details = this.listEl.createEl('details', { cls: 'lorevault-operation-log-entry' });
-    const summary = details.createEl('summary', { cls: 'lorevault-operation-log-entry-summary' });
-
-    const statusClass = entry.record.status === 'error'
+    const summaryEl = details.createEl('summary', { cls: 'lorevault-operation-log-entry-summary' });
+    const summary = entry.summary;
+    const statusClass = summary.status === 'error'
       ? 'lorevault-operation-log-status-error'
       : 'lorevault-operation-log-status-ok';
-    const abortedLabel = entry.record.aborted ? ' | aborted' : '';
-    summary.createEl('span', {
-      text: `${formatDateTime(entry.record.startedAt)} | ${entry.record.operationName} | ${entry.record.kind}${abortedLabel}`
+    const abortedLabel = summary.aborted ? ' | aborted' : '';
+    const secondaryParts = [
+      summary.model || summary.provider,
+      formatDuration(summary.durationMs)
+    ].filter(Boolean);
+    summaryEl.createEl('span', {
+      text: `${formatDateTime(summary.startedAt)} | ${summary.operationName} | ${summary.kind}${abortedLabel}`
     });
-    summary.createEl('span', {
+    if (secondaryParts.length > 0) {
+      summaryEl.createEl('span', {
+        cls: 'lorevault-operation-log-subtle',
+        text: secondaryParts.join(' | ')
+      });
+    }
+    summaryEl.createEl('span', {
       cls: statusClass,
-      text: entry.record.status
+      text: summary.status
     });
 
-    details.createEl('p', {
-      text: [
-        `ID: ${entry.record.id}`,
-        `Cost profile: ${entry.record.costProfile || '(none)'}`,
-        `Provider: ${entry.record.provider}`,
-        `Model: ${entry.record.model || '(none)'}`,
-        `Duration: ${formatDuration(entry.record.durationMs)}`,
-        `Attempts: ${entry.record.attempts.length}`
-      ].join(' | ')
-    });
-    details.createEl('p', {
-      text: `Endpoint: ${entry.record.endpoint || '(none)'}`
-    });
-    details.createEl('p', {
-      cls: 'lorevault-operation-log-subtle',
-      text: [
-        `Started: ${formatDateTime(entry.record.startedAt)}`,
-        `Finished: ${formatDateTime(entry.record.finishedAt)}`,
-        entry.lineNumber > 0 ? `Source line: ${entry.lineNumber}` : ''
-      ].filter(Boolean).join(' | ')
-    });
-
-    if (entry.record.error) {
-      details.createEl('p', {
-        cls: 'lorevault-operation-log-error',
-        text: `Error: ${entry.record.error}`
-      });
-    }
-
-    if (entry.record.usage) {
-      details.createEl('p', {
-        text: [
-          `Usage source: ${entry.record.usage.source}`,
-          `prompt ${entry.record.usage.promptTokens}`,
-          `completion ${entry.record.usage.completionTokens}`,
-          `total ${entry.record.usage.totalTokens}`,
-          `cost ${entry.record.usage.reportedCostUsd === null ? 'n/a' : entry.record.usage.reportedCostUsd.toString()}`
-        ].join(' | ')
-      });
-    }
-
-    const requestDetails = details.createEl('details');
-    requestDetails.createEl('summary', { text: 'Request Payload' });
-    this.renderPayloadBreakdown(requestDetails, entry.record.request, {
-      includeRawJson: true,
-      rawLabel: 'Request JSON'
-    });
-
-    const attemptsDetails = details.createEl('details');
-    attemptsDetails.createEl('summary', { text: `Attempts (${entry.record.attempts.length})` });
-    if (entry.record.attempts.length === 0) {
-      attemptsDetails.createEl('p', { text: 'No attempts captured.' });
-    } else {
-      for (let index = 0; index < entry.record.attempts.length; index += 1) {
-        const attempt = entry.record.attempts[index];
-        const attemptDetails = attemptsDetails.createEl('details');
-        attemptDetails.createEl('summary', { text: formatAttemptHeader(attempt, index) });
-        const attemptRequestDetails = attemptDetails.createEl('details');
-        attemptRequestDetails.createEl('summary', { text: 'Attempt Request' });
-        this.renderPayloadBreakdown(attemptRequestDetails, attempt.requestBody, {
-          includeRawJson: true,
-          rawLabel: 'Attempt Request JSON'
-        });
-        if (typeof attempt.responseBody !== 'undefined') {
-          const responseDetails = attemptDetails.createEl('details');
-          responseDetails.createEl('summary', { text: 'Response Body' });
-          this.renderPayloadBreakdown(responseDetails, attempt.responseBody, {
-            includeRawJson: true,
-            rawLabel: 'Response JSON'
-          });
-        }
-        if (attempt.responseText) {
-          const textDetails = attemptDetails.createEl('details');
-          textDetails.createEl('summary', { text: 'Raw Response Text' });
-          textDetails.createEl('pre', {
-            cls: 'lorevault-operation-log-json',
-            text: attempt.responseText
-          });
-        }
-        if (attempt.error) {
-          attemptDetails.createEl('p', {
-            cls: 'lorevault-operation-log-error',
-            text: `Attempt error: ${attempt.error}`
-          });
-        }
+    const bodyEl = details.createDiv({ cls: 'lorevault-operation-log-entry-body' });
+    let rendered = false;
+    details.addEventListener('toggle', () => {
+      if (!details.open) {
+        return;
       }
+      if (rendered) {
+        return;
+      }
+      rendered = true;
+      this.renderEntryDetailBody(bodyEl, entry);
+    });
+  }
+
+  private renderEntryDetailBody(container: HTMLElement, entry: OperationLogListEntry): void {
+    const summary = entry.summary;
+    const detail = entry.detailRecord;
+    this.createReadonlyInlineField(container, [
+      `ID: ${summary.id}`,
+      `Cost profile: ${summary.costProfile || '(none)'}`,
+      `Provider: ${summary.provider}`,
+      `Model: ${summary.model || '(none)'}`,
+      `Duration: ${formatDuration(summary.durationMs)}`
+    ].join(' | '));
+    this.createReadonlyInlineField(container, `Endpoint: ${summary.endpoint || '(none)'}`);
+    this.createReadonlyInlineField(container, [
+      `Started: ${formatDateTime(summary.startedAt)}`,
+      `Finished: ${formatDateTime(summary.finishedAt)}`
+    ].filter(Boolean).join(' | '));
+
+    if (summary.error) {
+      this.createReadonlyTextBox(container, `Error: ${summary.error}`);
     }
 
-    if (entry.record.finalText) {
-      const outputDetails = details.createEl('details');
-      outputDetails.createEl('summary', {
-        text: `Final Output Text (${entry.record.finalText.length} chars)`
+    if (!detail) {
+      container.createEl('p', {
+        cls: 'lorevault-operation-log-error',
+        text: 'Detailed record data is unavailable for this entry.'
       });
-      outputDetails.createEl('pre', {
-        cls: 'lorevault-operation-log-json',
-        text: entry.record.finalText
-      });
+      return;
     }
 
-    const normalizedDetails = details.createEl('details');
-    normalizedDetails.createEl('summary', { text: 'Normalized Record JSON' });
-    normalizedDetails.createEl('pre', {
-      cls: 'lorevault-operation-log-json',
-      text: prettyJson(entry.record)
+    if (detail.record.usage) {
+      this.createReadonlyInlineField(container, [
+        `Usage source: ${detail.record.usage.source}`,
+        `prompt ${detail.record.usage.promptTokens}`,
+        `completion ${detail.record.usage.completionTokens}`,
+        `total ${detail.record.usage.totalTokens}`,
+        `cost ${detail.record.usage.reportedCostUsd === null ? 'n/a' : detail.record.usage.reportedCostUsd.toString()}`
+      ].join(' | '));
+    }
+
+    this.createLazyDetailsSection(container, 'Request Payload', body => {
+      this.renderPayloadBreakdown(body, detail.record.request, {
+        includeRawJson: true,
+        rawLabel: 'Request JSON'
+      });
+    });
+
+    this.createLazyDetailsSection(container, `Attempts (${detail.record.attempts.length})`, body => {
+      if (!Array.isArray(detail.record.attempts) || detail.record.attempts.length === 0) {
+        body.createEl('p', { text: 'No attempts captured.' });
+        return;
+      }
+      for (let index = 0; index < detail.record.attempts.length; index += 1) {
+        const attempt = detail.record.attempts[index];
+        this.createLazyDetailsSection(body, formatAttemptHeader(attempt, index), attemptBody => {
+          this.createLazyDetailsSection(attemptBody, 'Attempt Request', requestBody => {
+            this.renderPayloadBreakdown(requestBody, attempt.requestBody, {
+              includeRawJson: true,
+              rawLabel: 'Attempt Request JSON'
+            });
+          });
+          if (typeof attempt.responseBody !== 'undefined') {
+            this.createLazyDetailsSection(attemptBody, 'Response Body', responseBody => {
+              this.renderPayloadBreakdown(responseBody, attempt.responseBody, {
+                includeRawJson: true,
+                rawLabel: 'Response JSON'
+              });
+            });
+          }
+          const responseText = attempt.responseText;
+          if (typeof responseText === 'string' && responseText.length > 0) {
+            this.createLazyDetailsSection(attemptBody, 'Raw Response Text', textBody => {
+              this.createReadonlyTextBox(textBody, responseText);
+            });
+          }
+          if (attempt.error) {
+            this.createReadonlyTextBox(attemptBody, `Attempt error: ${attempt.error}`);
+          }
+        });
+      }
+    });
+
+    this.createLazyDetailsSection(container, detail.record.finalText
+      ? `Final Output Text (${detail.record.finalText.length} chars)`
+      : 'Final Output Text', body => {
+      if (typeof detail.record.finalText !== 'string' || detail.record.finalText.length === 0) {
+        body.createEl('p', {
+          cls: 'lorevault-operation-log-subtle',
+          text: 'No final output text captured.'
+        });
+        return;
+      }
+      this.createReadonlyTextBox(body, detail.record.finalText);
+    });
+
+    this.createLazyDetailsSection(container, 'Normalized Record JSON', body => {
+      this.createReadonlyTextBox(body, prettyJson(detail.record), '[No JSON]');
     });
   }
 

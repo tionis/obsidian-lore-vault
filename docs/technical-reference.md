@@ -714,7 +714,9 @@ Explorer surface:
 - command: `Open LLM Operation Log Explorer`
 - view type: `lorevault-operation-log-view`
 - queries the local internal SQLite store when available and falls back to the configured legacy JSONL path otherwise
-- shows the active backend (`OPFS`, `IndexedDB`, or JSONL fallback), the legacy JSONL path, and malformed-line diagnostics when fallback/import parsing encounters bad lines
+- list refreshes preload the current result page from SQLite/JSONL; row expansion uses summary metadata immediately, and heavier request/attempt/final-text sections are only rendered into the DOM when those subsections are opened
+- text-bearing payload/detail fields render in readonly inputs/textareas with per-field `Copy` buttons instead of mixed paragraph/pre formatting
+- shows the active backend (`OPFS`, `IndexedDB`, or `JSONL fallback`) and malformed-line diagnostics when fallback/import parsing encounters bad lines
 - per-entry inspection includes parsed request message/tool sections (newline-preserving textboxes), attempt payloads/responses/errors, final output text, and normalized record JSON
 
 ## Phase 14 Import/Extraction (Current Progress)

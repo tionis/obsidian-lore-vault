@@ -42,3 +42,11 @@ export function tokenizeOperationLogSearchQuery(query: string): string[] {
     .split(/\s+/)
     .filter(Boolean);
 }
+
+export function buildOperationLogFtsMatchQuery(tokens: readonly string[]): string {
+  return tokens
+    .map(token => token.trim())
+    .filter(Boolean)
+    .map(token => `"${token.replace(/"/g, '""')}"`)
+    .join(' AND ');
+}

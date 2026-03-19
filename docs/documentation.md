@@ -1124,6 +1124,8 @@ Operation log defaults:
 
 Use command `Open LLM Operation Log Explorer` to inspect/search entries, choose a cost profile, view the active storage backend, and open the raw legacy per-profile JSONL file when needed. The explorer preloads the current result page from SQLite/JSONL as summary rows only, fetches the full record on first row expansion, and only renders the heavy request/response payload sections when you open those subsections. Text/JSON payload fields are shown in copy-friendly readonly controls with `Copy` buttons so old prompts or raw payloads can be extracted directly.
 
+When the local SQLite backend is active, operation-log search runs against an FTS-backed index instead of `%LIKE%` scans. Reloads also avoid exact `COUNT(*)` work for truncated result pages, so the explorer may say it is showing the first `N` matching entries when more matches exist than the current row limit.
+
 ## Story Chat Panel
 
 Command: `Open Story Chat`

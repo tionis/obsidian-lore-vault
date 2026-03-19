@@ -299,7 +299,8 @@ export class LorevaultOperationLogView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private entries: OperationLogListEntry[] = [];
   private issues: OperationLogParseIssue[] = [];
-  private totalEntries = 0;
+  private totalEntries: number | null = 0;
+  private hasMoreEntries = false;
   private fatalError = '';
   private isLoading = false;
   private loadVersion = 0;
@@ -593,6 +594,7 @@ export class LorevaultOperationLogView extends ItemView {
       this.entries = result.entries;
       this.issues = result.issues;
       this.totalEntries = result.totalEntries;
+      this.hasMoreEntries = result.hasMoreEntries;
       this.backendLabel = result.backendLabel;
       this.legacyPath = result.legacyPath;
       this.backendWarning = result.warningMessage;
@@ -604,6 +606,7 @@ export class LorevaultOperationLogView extends ItemView {
       this.entries = [];
       this.issues = [];
       this.totalEntries = 0;
+      this.hasMoreEntries = false;
       this.backendLabel = 'Unavailable';
       this.legacyPath = this.plugin.getOperationLogPath(this.selectedCostProfile);
       this.backendWarning = '';
@@ -645,10 +648,7 @@ export class LorevaultOperationLogView extends ItemView {
       return;
     }
 
-    const parts = [
-      `Loaded ${this.entries.length} of ${Math.max(0, this.totalEntries)} matching entr${this.totalEntries === 1 ? 'y' : 'ies'}.`,
-      this.backendLabel
-    ];
+    const parts = [this.describeEntryCount('Loaded'), this.backendLabel];
     if (this.issues.length > 0) {
       parts.push(`Parse issues: ${this.issues.length}`);
     }
@@ -720,7 +720,7 @@ export class LorevaultOperationLogView extends ItemView {
 
     this.listEl.createEl('p', {
       cls: 'lorevault-operation-log-subtle',
-      text: `Showing ${this.entries.length} of ${this.totalEntries} matching entries.`
+      text: this.describeEntryCount('Showing')
     });
 
     for (const entry of this.entries) {
@@ -744,6 +744,17 @@ export class LorevaultOperationLogView extends ItemView {
     textArea.value = textValue;
     textArea.readOnly = true;
     textArea.rows = Math.max(4, Math.min(20, textValue.split('\n').length + 1));
+  }
+
+  private describeEntryCount(verb: 'Loaded' | 'Showing'): string {
+    const count = this.entries.length;
+    if (typeof this.totalEntries === 'number') {
+      return `${verb} ${count} of ${Math.max(0, this.totalEntries)} matching entr${this.totalEntries === 1 ? 'y' : 'ies'}.`;
+    }
+    if (this.hasMoreEntries) {
+      return `${verb} first ${count} matching entr${count === 1 ? 'y' : 'ies'} (more available).`;
+    }
+    return `${verb} ${count} matching entr${count === 1 ? 'y' : 'ies'}.`;
   }
 
   private createReadonlyInlineField(container: HTMLElement, value: string, placeholder?: string): void {

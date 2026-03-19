@@ -21,7 +21,10 @@ import type {
   UsageLedgerReportQueryRequest,
   UsageLedgerReportQueryResult
 } from './internal-db-types';
-import { buildOperationLogSearchText } from './operation-log-utils';
+import {
+  buildOperationLogFtsMatchQuery,
+  buildOperationLogSearchText
+} from './operation-log-utils';
 import type { OperationLogRecordSummary } from './operation-log';
 import { resolveUsageLedgerScopeKey } from './usage-ledger-report';
 import type { UsageLedgerEntry } from './usage-ledger-store';
@@ -104,6 +107,12 @@ function serializeUsageJson(record: CompletionOperationLogRecord): string | null
 }
 
 async function insertOperationLogRecord(sqlite3: any, db: number, record: CompletionOperationLogRecord): Promise<void> {
+  const costProfile = (record.costProfile ?? '').trim() || 'default';
+  const normalizedRecord: CompletionOperationLogRecord = {
+    ...record,
+    costProfile
+  };
+  const searchText = buildOperationLogSearchText(normalizedRecord);
   await execSql(
     sqlite3,
     db,
@@ -129,7 +138,7 @@ async function insertOperationLogRecord(sqlite3: any, db: number, record: Comple
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       record.id,
-      (record.costProfile ?? '').trim() || 'default',
+      costProfile,
       record.kind,
       record.operationName,
       record.provider,
@@ -145,12 +154,37 @@ async function insertOperationLogRecord(sqlite3: any, db: number, record: Comple
       JSON.stringify(record.attempts ?? []),
       record.finalText ?? null,
       serializeUsageJson(record),
-      buildOperationLogSearchText(record)
+      searchText
     ]
+  );
+  await execSql(sqlite3, db, 'DELETE FROM operation_log_search WHERE id = ?;', [record.id]);
+  await execSql(
+    sqlite3,
+    db,
+    `INSERT INTO operation_log_search (
+      id,
+      cost_profile,
+      search_text
+    ) VALUES (?, ?, ?);`,
+    [record.id, costProfile, searchText]
   );
 }
 
 async function pruneOperationLogForProfile(sqlite3: any, db: number, costProfile: string, maxEntries: number): Promise<void> {
+  const pruneBindings = [costProfile, Math.max(20, Math.floor(maxEntries))];
+  await execSql(
+    sqlite3,
+    db,
+    `DELETE FROM operation_log_search
+     WHERE id IN (
+       SELECT id
+       FROM operation_log
+       WHERE cost_profile = ?
+       ORDER BY started_at DESC, finished_at DESC, id DESC
+       LIMIT -1 OFFSET ?
+     );`,
+    pruneBindings
+  );
   await execSql(
     sqlite3,
     db,
@@ -162,7 +196,7 @@ async function pruneOperationLogForProfile(sqlite3: any, db: number, costProfile
        ORDER BY started_at DESC, finished_at DESC, id DESC
        LIMIT -1 OFFSET ?
      );`,
-    [costProfile, Math.max(20, Math.floor(maxEntries))]
+    pruneBindings
   );
 }
 
@@ -318,24 +352,29 @@ function rowToUsageLedgerEntry(row: Record<string, unknown>): UsageLedgerEntry {
   };
 }
 
-function buildQueryWhere(request: OperationLogQueryRequest): { whereSql: string; bindings: unknown[] } {
-  const clauses = ['cost_profile = ?'];
+function buildQuerySql(request: OperationLogQueryRequest): { joinSql: string; whereSql: string; bindings: unknown[] } {
+  const clauses = ['operation_log.cost_profile = ?'];
   const bindings: unknown[] = [request.costProfile];
+  let joinSql = '';
 
   if (request.kindFilter !== 'all') {
-    clauses.push('kind = ?');
+    clauses.push('operation_log.kind = ?');
     bindings.push(request.kindFilter);
   }
   if (request.statusFilter !== 'all') {
-    clauses.push('status = ?');
+    clauses.push('operation_log.status = ?');
     bindings.push(request.statusFilter);
   }
-  for (const token of request.searchTokens) {
-    clauses.push('search_text LIKE ?');
-    bindings.push(`%${token}%`);
+  if (request.searchTokens.length > 0) {
+    joinSql = 'INNER JOIN operation_log_search ON operation_log_search.id = operation_log.id';
+    clauses.push('operation_log_search.cost_profile = ?');
+    bindings.push(request.costProfile);
+    clauses.push('operation_log_search.search_text MATCH ?');
+    bindings.push(buildOperationLogFtsMatchQuery(request.searchTokens));
   }
 
   return {
+    joinSql,
     whereSql: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '',
     bindings
   };
@@ -343,14 +382,8 @@ function buildQueryWhere(request: OperationLogQueryRequest): { whereSql: string;
 
 async function queryOperationLogRows(workerState: WorkerState, request: OperationLogQueryRequest): Promise<OperationLogQueryResult> {
   const { sqlite3, db } = workerState;
-  const { whereSql, bindings } = buildQueryWhere(request);
-  const countRows = await queryRows(
-    sqlite3,
-    db,
-    `SELECT COUNT(*) AS total FROM operation_log ${whereSql};`,
-    bindings
-  );
-  const totalEntries = Number(countRows[0]?.total ?? 0);
+  const { joinSql, whereSql, bindings } = buildQuerySql(request);
+  const fetchLimit = Math.max(1, Math.floor(request.limit));
   const entryRows = await queryRows(
     sqlite3,
     db,
@@ -369,15 +402,19 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
       aborted,
       error_text
     FROM operation_log
+    ${joinSql}
     ${whereSql}
     ORDER BY started_at DESC, finished_at DESC, id DESC
     LIMIT ?;`,
-    [...bindings, Math.max(1, Math.floor(request.limit))]
+    [...bindings, fetchLimit + 1]
   );
+  const hasMoreEntries = entryRows.length > fetchLimit;
+  const visibleRows = hasMoreEntries ? entryRows.slice(0, fetchLimit) : entryRows;
 
   return {
-    entries: entryRows.map(row => rowToOperationLogSummary(row)),
-    totalEntries
+    entries: visibleRows.map(row => rowToOperationLogSummary(row)),
+    totalEntries: hasMoreEntries ? null : visibleRows.length,
+    hasMoreEntries
   };
 }
 
@@ -788,11 +825,18 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
         ON usage_ledger(cost_profile, timestamp ASC, id ASC);
       CREATE INDEX IF NOT EXISTS idx_usage_ledger_operation_time
         ON usage_ledger(operation, timestamp ASC, id ASC);
-      INSERT OR REPLACE INTO meta (key, value) VALUES
-        ('schema_version', '3'),
-        ('store_kind', 'lorevault.internal');
     `
   );
+
+  const metaRows = await queryRows(
+    sqlite3,
+    db,
+    `SELECT value
+     FROM meta
+     WHERE key = 'schema_version'
+     LIMIT 1;`
+  );
+  const schemaVersion = Number(metaRows[0]?.value ?? 0);
 
   const usageLedgerColumns = await queryRows(sqlite3, db, 'PRAGMA table_info(usage_ledger);');
   if (!usageLedgerColumns.some(row => row.name === 'source_root')) {
@@ -823,6 +867,37 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_usage_ledger_source_root_scope_key_time
         ON usage_ledger(source_root, scope_key, timestamp ASC, id ASC);
     `
+  );
+
+  await execSql(
+    sqlite3,
+    db,
+    `CREATE VIRTUAL TABLE IF NOT EXISTS operation_log_search
+     USING fts5(
+       id UNINDEXED,
+       cost_profile UNINDEXED,
+       search_text,
+       tokenize = 'unicode61'
+     );`
+  );
+
+  if (schemaVersion < 4) {
+    await execSql(sqlite3, db, 'DELETE FROM operation_log_search;');
+    await execSql(
+      sqlite3,
+      db,
+      `INSERT INTO operation_log_search (id, cost_profile, search_text)
+       SELECT id, cost_profile, search_text
+       FROM operation_log;`
+    );
+  }
+
+  await execSql(
+    sqlite3,
+    db,
+    `INSERT OR REPLACE INTO meta (key, value) VALUES
+      ('schema_version', '4'),
+      ('store_kind', 'lorevault.internal');`
   );
 }
 

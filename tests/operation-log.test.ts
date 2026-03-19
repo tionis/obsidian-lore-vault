@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseOperationLogJsonl, summarizeOperationLogRecord } from '../src/operation-log';
 import {
+  buildOperationLogFtsMatchQuery,
   buildOperationLogSearchText,
   tokenizeOperationLogSearchQuery
 } from '../src/operation-log-utils';
@@ -202,5 +203,12 @@ test('tokenizeOperationLogSearchQuery lowercases and splits whitespace', () => {
   assert.deepEqual(
     tokenizeOperationLogSearchQuery('  Story   Gates TIMEOUT  '),
     ['story', 'gates', 'timeout']
+  );
+});
+
+test('buildOperationLogFtsMatchQuery quotes tokens for AND matching', () => {
+  assert.equal(
+    buildOperationLogFtsMatchQuery(['story', 'gates', 'say "hello"']),
+    '"story" AND "gates" AND "say ""hello"""'
   );
 });

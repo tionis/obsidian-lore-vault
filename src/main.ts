@@ -970,6 +970,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         entries: [],
         issues: [],
         totalEntries: 0,
+        hasMoreEntries: false,
         backendLabel: 'Unavailable',
         legacyPath: this.getOperationLogPath(options.costProfile),
         warningMessage: ''

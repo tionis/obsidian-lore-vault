@@ -224,7 +224,7 @@ Reference design: `docs/planning.md`.
 - [x] Add vault-event-driven usage-ledger sync so Cost Analyzer/profile queries do not rescan the full canonical ledger tree on each reload.
 - [x] Move usage-ledger report aggregation and breakdown queries into SQLite (`GROUP BY` / totals) so Cost Analyzer does not materialize all matching ledger rows into JS first.
 - [x] Split operation-log list queries into summary rows vs detail fetches so the explorer list does not load heavy request/attempt/final-text payload columns for every visible row.
-- [ ] Replace operation-log `%LIKE%` search and exact `COUNT(*)` reload queries with a more scalable search/count strategy (for example FTS5 plus deferred or approximate counts).
+- [x] Replace operation-log `%LIKE%` search and exact `COUNT(*)` reload queries with a more scalable search/count strategy (for example FTS5 plus deferred or approximate counts).
 - [x] Cache known cost-profile lists and invalidate them only when ledger/settings data actually changes instead of recomputing them on every explorer/analyzer reload.
 - [ ] Add an incremental lorebook metadata index so scope discovery and related manager/query views do not repeatedly rescan all markdown notes after invalidation.
 - [ ] Reduce Story Chat vault-wide scans for conversation summaries and note-picker candidates with cached indexes or narrower folder/path tracking.

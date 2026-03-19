@@ -27,7 +27,8 @@ export interface OperationLogStoreQuery {
 export interface OperationLogLoadResult {
   entries: OperationLogListEntry[];
   issues: OperationLogParseIssue[];
-  totalEntries: number;
+  totalEntries: number | null;
+  hasMoreEntries: boolean;
   backendLabel: string;
   legacyPath: string;
   warningMessage: string;
@@ -158,6 +159,7 @@ export class OperationLogStore {
           })),
           issues: [],
           totalEntries: result.totalEntries,
+          hasMoreEntries: result.hasMoreEntries,
           backendLabel: `SQLite (${this.internalDbStatus.backendLabel || 'local'})`,
           legacyPath: this.getLegacyPath(resolvedProfile),
           warningMessage: ''
@@ -360,6 +362,7 @@ export class OperationLogStore {
         entries: [],
         issues: [],
         totalEntries: 0,
+        hasMoreEntries: false,
         backendLabel: 'JSONL fallback',
         legacyPath: path,
         warningMessage: this.buildFallbackWarningMessage()
@@ -387,9 +390,10 @@ export class OperationLogStore {
           summary: summarizeOperationLogRecord(entry.record),
           searchText: entry.searchText,
           detailRecord: entry
-        })),
+      })),
       issues: parsed.issues,
       totalEntries: filtered.length,
+      hasMoreEntries: filtered.length > request.limit,
       backendLabel: 'JSONL fallback',
       legacyPath: path,
       warningMessage: this.buildFallbackWarningMessage()

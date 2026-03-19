@@ -28,7 +28,8 @@ export interface OperationLogQueryRequest {
 
 export interface OperationLogQueryResult {
   entries: OperationLogRecordSummary[];
-  totalEntries: number;
+  totalEntries: number | null;
+  hasMoreEntries: boolean;
 }
 
 export interface OperationLogEntryDetailRequest {

@@ -667,6 +667,7 @@ Core contracts:
 - ledger sync strategy is vault-event-driven after the initial/root-change reconciliation: LoreVault performs one full canonical scan for the active ledger root, then applies create/modify events incrementally and triggers a full source-root replacement only for deletes, renames, or legacy-ledger file changes
 - Cost Analyzer report snapshots now come from SQLite aggregate queries (`SUM`/`GROUP BY`) when the local DB is available; warning text is still assembled in JS over those aggregate result sets so the user-visible budget semantics remain unchanged
 - plugin-level known-cost-profile discovery is memoized and invalidated only when relevant device state, settings, or ledger data changes so Operation Log Explorer / Cost Analyzer refreshes do not rebuild the same option lists on every reload
+- operation-log search uses an `fts5` side table (`operation_log_search`) joined against summary-row queries, and SQLite result pages now fetch `limit + 1` rows to report “more available” without running an exact `COUNT(*)` on every reload
 - usage report output dir defaults to `.obsidian/plugins/lore-vault/reports`
 - record fields are normalized and sorted deterministically on persist
 - cost source is explicit per record:
@@ -722,7 +723,7 @@ Explorer surface:
 - command: `Open LLM Operation Log Explorer`
 - view type: `lorevault-operation-log-view`
 - queries the local internal SQLite store when available and falls back to the configured legacy JSONL path otherwise
-- list refreshes preload the current result page from SQLite/JSONL as summary rows only; the full normalized record is fetched on first row expansion, and heavier request/attempt/final-text sections are only rendered into the DOM when those subsections are opened
+- list refreshes preload the current result page from SQLite/JSONL as summary rows only; the full normalized record is fetched on first row expansion, heavier request/attempt/final-text sections are only rendered into the DOM when those subsections are opened, and SQLite-backed searches rely on FTS plus a `hasMore` probe instead of exact count queries for truncated pages
 - text-bearing payload/detail fields render in readonly inputs/textareas with per-field `Copy` buttons instead of mixed paragraph/pre formatting
 - shows the active backend (`OPFS`, `IndexedDB`, or `JSONL fallback`) and malformed-line diagnostics when fallback/import parsing encounters bad lines
 - per-entry inspection includes parsed request message/tool sections (newline-preserving textboxes), attempt payloads/responses/errors, final output text, and normalized record JSON

@@ -192,6 +192,7 @@ If you prefer to build the plugin from source:
    - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads and current storage backend status without leaving Obsidian; the explorer preloads the current result page as summary rows, fetches full row detail on first expansion, heavy payload sections only render when opened, text/json fields include `Copy` buttons, and SQLite-backed searches use FTS with first-page reporting instead of exact recounts on every refresh
    - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings; shared usage-ledger records live in the vault, and LoreVault accelerates queries with a local SQLite index that stays in sync from vault events after its initial ledger scan and computes analyzer totals with DB aggregate queries
    - Lorebook Manager, Routing Debug, and Query Simulation refreshes now reuse an incremental lorebook metadata cache, so routine note edits do not require a full markdown-note rescan before those views update
+   - Story Chat note pickers reuse cached markdown-file indexes and conversation summaries between vault refreshes instead of rescanning all notes on each open
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
 5. **Open embedded help**

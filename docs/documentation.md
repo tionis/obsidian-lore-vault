@@ -545,6 +545,7 @@ Current implemented feature set:
 - when the local SQLite index is available, Cost Analyzer totals and breakdowns are computed with SQLite aggregate queries instead of loading every matching ledger row into JavaScript first
 - LoreVault also caches known cost-profile option lists until ledger or settings changes invalidate them, so explorer/analyzer refreshes do not recompute those profile sources every time
 - Lorebook manager/routing/query views reuse an incremental lorebook-note metadata cache that updates changed markdown paths individually, so normal note edits no longer force a full vault metadata rescan before those views refresh
+- Story Chat caches sorted markdown-note lists, basename lookups, chapter/author-note candidate sets, and conversation summaries between vault refreshes so opening its note pickers does not repeatedly rescan the whole vault
 - cost calculation uses:
   - provider-reported cost when available
   - model-specific pricing overrides when configured

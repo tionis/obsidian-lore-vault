@@ -182,6 +182,11 @@ export class StoryChatView extends ItemView {
   private noteContextRefs: string[] = [];
   private messages: ConversationMessage[] = [];
   private conversationSummaries: ConversationSummary[] = [];
+  private conversationSummariesDirty = true;
+  private sortedMarkdownFilesCache: TFile[] | null = null;
+  private markdownBasenameIndexCache: Map<string, TFile[]> | null = null;
+  private authorNoteCandidateFilesCache: TFile[] | null = null;
+  private chapterCandidateFilesCache: TFile[] | null = null;
   private isSending = false;
   private stopRequested = false;
   private saveTimer: number | null = null;
@@ -237,6 +242,8 @@ export class StoryChatView extends ItemView {
   }
 
   refresh(): void {
+    this.conversationSummariesDirty = true;
+    this.invalidateNotePickerCaches();
     // Avoid full rerenders from vault modify events while editing/sending.
     this.updateGenerationMonitor();
     if (Date.now() < this.ignoreRefreshUntil) {
@@ -257,6 +264,9 @@ export class StoryChatView extends ItemView {
 
     const folderChanged = this.chatFolder !== previousFolder;
     const pathChanged = this.activeConversationPath !== previousPath;
+    if (folderChanged) {
+      this.conversationSummariesDirty = true;
+    }
     if (!folderChanged && !pathChanged) {
       return;
     }
@@ -421,10 +431,44 @@ export class StoryChatView extends ItemView {
     };
   }
 
+  private invalidateNotePickerCaches(): void {
+    this.sortedMarkdownFilesCache = null;
+    this.markdownBasenameIndexCache = null;
+    this.authorNoteCandidateFilesCache = null;
+    this.chapterCandidateFilesCache = null;
+  }
+
+  private getSortedMarkdownFiles(): TFile[] {
+    if (!this.sortedMarkdownFilesCache) {
+      this.sortedMarkdownFilesCache = [...this.app.vault.getMarkdownFiles()]
+        .sort((left, right) => left.path.localeCompare(right.path));
+    }
+    return this.sortedMarkdownFilesCache;
+  }
+
+  private getMarkdownFilesByBasename(): Map<string, TFile[]> {
+    if (!this.markdownBasenameIndexCache) {
+      const index = new Map<string, TFile[]>();
+      for (const file of this.getSortedMarkdownFiles()) {
+        const key = file.basename.toLocaleLowerCase();
+        const bucket = index.get(key);
+        if (bucket) {
+          bucket.push(file);
+        } else {
+          index.set(key, [file]);
+        }
+      }
+      this.markdownBasenameIndexCache = index;
+    }
+    return this.markdownBasenameIndexCache;
+  }
+
   private async loadConversationSummaries(): Promise<void> {
+    if (!this.conversationSummariesDirty) {
+      return;
+    }
     const prefix = `${this.chatFolder}/`;
-    const files = this.app.vault
-      .getMarkdownFiles()
+    const files = this.getSortedMarkdownFiles()
       .filter(file => file.path.startsWith(prefix));
     const summaries: ConversationSummary[] = [];
 
@@ -459,6 +503,7 @@ export class StoryChatView extends ItemView {
     });
 
     this.conversationSummaries = summaries;
+    this.conversationSummariesDirty = false;
   }
 
   private async loadConversationByPath(path: string): Promise<boolean> {
@@ -527,6 +572,8 @@ export class StoryChatView extends ItemView {
 
     const path = await this.getUniqueConversationPath(document.title);
     await this.app.vault.create(path, serializeConversationMarkdown(document));
+    this.conversationSummariesDirty = true;
+    this.invalidateNotePickerCaches();
     this.applyConversationDocument(document, path);
     await this.persistSettingsState();
     await this.loadConversationSummaries();
@@ -548,6 +595,8 @@ export class StoryChatView extends ItemView {
     } else {
       await this.ensureFolderExists(this.chatFolder);
       await this.app.vault.create(this.activeConversationPath, markdown);
+      this.conversationSummariesDirty = true;
+      this.invalidateNotePickerCaches();
     }
 
     const existingSummary = this.conversationSummaries.find(summary => summary.path === this.activeConversationPath);
@@ -650,15 +699,19 @@ export class StoryChatView extends ItemView {
 
     const actions = row.createDiv({ cls: 'lorevault-chat-conversation-actions' });
     const openConversationButton = actions.createEl('button', { text: 'Open Conversation' });
-    openConversationButton.disabled = this.isSending || this.conversationSummaries.length === 0;
+    openConversationButton.disabled = this.isSending
+      || (!this.conversationSummariesDirty && this.conversationSummaries.length === 0);
     openConversationButton.addEventListener('click', () => {
-      if (this.conversationSummaries.length === 0) {
-        return;
-      }
-      const modal = new ConversationPickerModal(this.app, this.conversationSummaries, summary => {
-        void this.switchConversation(summary.path);
-      });
-      modal.open();
+      void (async () => {
+        await this.loadConversationSummaries();
+        if (this.conversationSummaries.length === 0) {
+          return;
+        }
+        const modal = new ConversationPickerModal(this.app, this.conversationSummaries, summary => {
+          void this.switchConversation(summary.path);
+        });
+        modal.open();
+      })();
     });
 
     const newButton = actions.createEl('button', { text: 'New Chat' });
@@ -826,9 +879,7 @@ export class StoryChatView extends ItemView {
     if (!basename) {
       return null;
     }
-    const byBasename = this.app.vault
-      .getMarkdownFiles()
-      .filter(file => file.basename.localeCompare(basename, undefined, { sensitivity: 'accent' }) === 0);
+    const byBasename = this.getMarkdownFilesByBasename().get(basename.toLocaleLowerCase()) ?? [];
     return byBasename.length === 1 ? byBasename[0] : null;
   }
 
@@ -923,9 +974,12 @@ export class StoryChatView extends ItemView {
   }
 
   private getAuthorNoteCandidateFiles(): TFile[] {
-    const files = [...this.app.vault.getMarkdownFiles()].sort((a, b) => a.path.localeCompare(b.path));
+    if (this.authorNoteCandidateFilesCache) {
+      return this.authorNoteCandidateFilesCache;
+    }
+    const files = this.getSortedMarkdownFiles();
     const backlinkCounts = this.buildAuthorNoteBacklinkCounts(files);
-    return files.filter(file => {
+    this.authorNoteCandidateFilesCache = files.filter(file => {
       const frontmatter = this.readFrontmatter(file);
       if (this.hasAuthorNoteDocType(frontmatter)) {
         return true;
@@ -936,6 +990,7 @@ export class StoryChatView extends ItemView {
       const linkedStory = asString(getFrontmatterValue(frontmatter, 'authorNoteLinkedStory'));
       return Boolean(linkedStory);
     });
+    return this.authorNoteCandidateFilesCache;
   }
 
   private addSteeringScopeRef(rawRef: string): void {
@@ -963,8 +1018,7 @@ export class StoryChatView extends ItemView {
       const selectedRefs = new Set(extractNoteRefsFromStoryChatSteeringRefs(this.steeringScopeRefs));
       const candidates = this.getAuthorNoteCandidateFiles()
         .filter(file => !selectedRefs.has(file.path));
-      const fallback = [...this.app.vault.getMarkdownFiles()]
-        .sort((a, b) => a.path.localeCompare(b.path))
+      const fallback = this.getSortedMarkdownFiles()
         .filter(file => !selectedRefs.has(file.path));
       const files = candidates.length > 0 ? candidates : fallback;
       if (files.length === 0) {
@@ -1056,6 +1110,15 @@ export class StoryChatView extends ItemView {
     return previousRefs.length > 0 || nextRefs.length > 0;
   }
 
+  private getChapterCandidateFiles(): TFile[] {
+    if (this.chapterCandidateFilesCache) {
+      return this.chapterCandidateFilesCache;
+    }
+    this.chapterCandidateFilesCache = this.getSortedMarkdownFiles()
+      .filter(file => this.isChapterLikeFile(file));
+    return this.chapterCandidateFilesCache;
+  }
+
   private addNoteContextRef(ref: string): void {
     const normalizedRef = ref.trim();
     if (!normalizedRef || this.noteContextRefs.includes(normalizedRef)) {
@@ -1088,8 +1151,8 @@ export class StoryChatView extends ItemView {
     const addChapterButton = notesButtons.createEl('button', { text: 'Add Chapter' });
     addChapterButton.addEventListener('click', () => {
       const selectedRefs = new Set(this.noteContextRefs);
-      const candidates = this.app.vault.getMarkdownFiles()
-        .filter(file => this.isChapterLikeFile(file) && !selectedRefs.has(file.path));
+      const candidates = this.getChapterCandidateFiles()
+        .filter(file => !selectedRefs.has(file.path));
       if (candidates.length === 0) {
         new Notice('No additional chapter notes available.');
         return;
@@ -1103,7 +1166,7 @@ export class StoryChatView extends ItemView {
     const addNoteButton = notesButtons.createEl('button', { text: 'Add Note' });
     addNoteButton.addEventListener('click', () => {
       const selectedRefs = new Set(this.noteContextRefs);
-      const files = this.app.vault.getMarkdownFiles()
+      const files = this.getSortedMarkdownFiles()
         .filter(file => !selectedRefs.has(file.path));
       if (files.length === 0) {
         new Notice('No additional notes available to add.');

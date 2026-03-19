@@ -669,6 +669,7 @@ Core contracts:
 - plugin-level known-cost-profile discovery is memoized and invalidated only when relevant device state, settings, or ledger data changes so Operation Log Explorer / Cost Analyzer refreshes do not rebuild the same option lists on every reload
 - operation-log search uses an `fts5` side table (`operation_log_search`) joined against summary-row queries, and SQLite result pages now fetch `limit + 1` rows to report “more available” without running an exact `COUNT(*)` on every reload
 - lorebook note metadata now lives behind an incremental path-aware cache; manager/routing/query views and live-context file-scope bookkeeping reuse that cache instead of calling `collectLorebookNoteMetadata()` across the whole vault after each markdown mutation
+- Story Chat keeps its own view-local markdown-file indexes (sorted files, basename lookup, author-note candidates, chapter candidates, conversation summaries) and invalidates them lazily on vault refreshes instead of rescanning `getMarkdownFiles()` for every picker open
 - usage report output dir defaults to `.obsidian/plugins/lore-vault/reports`
 - record fields are normalized and sorted deterministically on persist
 - cost source is explicit per record:

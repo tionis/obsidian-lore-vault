@@ -35,6 +35,7 @@ It turns tagged notes into lorebooks, exports canonical packs, and provides writ
 3. Open `LoreVault Manager` and run `Build/Export` for your target lorebook.
 4. Open `Story Writing Panel`.
 5. Link an author note from your story note (`authorNote: [[...]]`) using `Open/Create Author Note` or `Link Author Note`.
+   Quoted and unquoted Obsidian wikilinks are both supported in `authorNote` frontmatter.
 6. Use `Continue Story` to generate at the cursor.
 
 ## Core Note Model
@@ -101,6 +102,7 @@ The panel also shows:
 
 - active note + linked author note state
 - linked stories when an author note is active
+- the panel keeps targeting the last active markdown story note even when the Story Writing pane itself has focus, so linked author-note state and lorebook selection stay visible
 - active completion model
 - the editor right-click menu exposes `Insert Inline Directive` on non-author-note notes, even before an author note is linked
 - device profile selected from dropdown applies immediately (disabled with `Overridden by Author Note` when author-note override is active)

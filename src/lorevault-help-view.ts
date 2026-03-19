@@ -111,6 +111,8 @@ export class LorevaultHelpView extends ItemView {
       bullets: [
         'Use one note per chapter/scene for long-form stories.',
         'Link a shared author note with `authorNote: [[...]]`.',
+        'Quoted and unquoted Obsidian wikilinks are both accepted in `authorNote` frontmatter.',
+        'The Story Writing panel keeps the last active markdown story note as context even while the panel itself is focused.',
         'Optional persona context is set in Character Card Import (`Persona Note`) and baked into generated outputs at import time.',
         'Use `chapter`, `previousChapter`, and `nextChapter` for ordering.',
         'Add a `## Summary` section near the top for better memory injection.',

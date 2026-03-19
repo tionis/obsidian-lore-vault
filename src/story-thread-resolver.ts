@@ -66,8 +66,10 @@ export function parseStoryThreadNodeFromFrontmatter(
 ): StoryThreadNode | null {
   const normalizedFrontmatter = normalizeFrontmatter(frontmatter);
   const rawStoryId = asString(getFrontmatterValue(normalizedFrontmatter, 'storyId', 'story'));
-  const rawAuthorNoteRef = asString(getFrontmatterValue(normalizedFrontmatter, 'authorNote'));
-  const normalizedAuthorNoteRef = rawAuthorNoteRef ? normalizeChapterRef(rawAuthorNoteRef) : '';
+  const rawAuthorNoteRefs = asStringArray(getFrontmatterValue(normalizedFrontmatter, 'authorNote'));
+  const normalizedAuthorNoteRef = rawAuthorNoteRefs.length > 0
+    ? normalizeChapterRef(rawAuthorNoteRefs[0])
+    : '';
   const normalizedStoryId = rawStoryId ? normalizeStoryId(rawStoryId) : '';
   const threadAnchorId = normalizedAuthorNoteRef
     ? `author-note:${normalizedAuthorNoteRef}`

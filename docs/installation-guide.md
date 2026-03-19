@@ -167,12 +167,14 @@ If you prefer to build the plugin from source:
    - Optional semantic chapter recall can inject `Related Past Scenes` from prior chapter chunks when enabled in settings
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
+   - Quoted and unquoted Obsidian wikilinks are both supported for `authorNote`
    - Optional (character-card import only): set `Persona Note` in the import panel to bake protagonist/user context into generated story + author note output
    - Optional: run `Open Story Starter` to turn an idea + brainstorm notes into a chapter-1 story note and linked author note before you begin manual drafting
    - Author Note content is edited directly in the linked note (native Obsidian editor)
    - Optional: set `completionProfile: <preset-id>` in Author Note frontmatter (or via command `Set Author Note Completion Profile`) to override the completion profile for linked story operations
    - `Rewrite Author Note` supports an optional change prompt and shows a side-by-side source diff review before apply
    - Lorebook selection for continuation/chat resolves from linked Author Note frontmatter first, then story-note frontmatter fallback (no active-lorebook fallback)
+   - The Story Writing panel keeps using the last active markdown story note even when the panel itself is focused, so linked Author Note and lorebook state stay available while you use the panel controls
    - In Story Writing panel, the device completion profile is selected from a dropdown and applies immediately
    - Writing Completion settings under the selected preset, including thinking/reasoning options, persist with that preset when you switch profiles
    - Story Chat profile selection is separate and does not affect `Continue Story`; Story Writing uses author-note override first, then its own device preset, then base settings

@@ -13,8 +13,10 @@ import { normalizeLinkTarget } from './link-target-index';
 import {
   ensureParentVaultFolderForFile,
   getVaultBasename,
+  getVaultDirname,
   joinVaultPath,
   normalizeVaultPath,
+  normalizeVaultPathForComparison,
   normalizeVaultRelativePath
 } from './vault-path-utils';
 
@@ -48,6 +50,7 @@ const DEFAULT_AUTHOR_NOTE_FOLDER = 'LoreVault/author-notes';
 const AUTHOR_NOTE_FRONTMATTER_KEY = 'authorNote';
 const AUTHOR_NOTE_DOC_TYPE_KEY = 'lvDocType';
 const AUTHOR_NOTE_DOC_TYPE_VALUE = 'authorNote';
+const PENDING_AUTHOR_NOTE_OVERRIDE_MS = 15_000;
 
 function isVaultMarkdownFile(value: unknown): value is TFile {
   if (!value || typeof value !== 'object') {
@@ -229,6 +232,11 @@ function preserveFrontmatterWithBody(originalMarkdown: string, nextBody: string)
 export class StorySteeringStore {
   private app: App;
   private getFolderPath: () => string;
+  private pendingAuthorNoteOverrides = new Map<string, {
+    ref: string;
+    resolvedPath: string;
+    expiresAt: number;
+  }>();
 
   constructor(app: App, getFolderPath: () => string) {
     this.app = app;
@@ -267,6 +275,18 @@ export class StorySteeringStore {
       }
     }
 
+    if (normalizedTarget.startsWith('./') || normalizedTarget.startsWith('../')) {
+      const sourceDir = getVaultDirname(sourcePath);
+      const relativeTarget = normalizeVaultPathForComparison(joinVaultPath(sourceDir, normalizedTarget));
+      const relativeCandidates = [relativeTarget, `${relativeTarget}.md`];
+      for (const candidate of relativeCandidates) {
+        const found = this.app.vault.getAbstractFileByPath(candidate);
+        if (isVaultMarkdownFile(found)) {
+          return found;
+        }
+      }
+    }
+
     const basename = getVaultBasename(normalizedTarget);
     const byBasename = this.app.vault
       .getMarkdownFiles()
@@ -287,12 +307,48 @@ export class StorySteeringStore {
     return normalizeLinkLikeValue(asString(rawValue) ?? '');
   }
 
+  private getPendingAuthorNoteOverride(filePath: string): {
+    ref: string;
+    resolvedPath: string;
+  } | null {
+    const key = normalizeVaultPath(filePath);
+    const existing = this.pendingAuthorNoteOverrides.get(key);
+    if (!existing) {
+      return null;
+    }
+    if (existing.expiresAt <= Date.now()) {
+      this.pendingAuthorNoteOverrides.delete(key);
+      return null;
+    }
+    return {
+      ref: existing.ref,
+      resolvedPath: existing.resolvedPath
+    };
+  }
+
+  private setPendingAuthorNoteOverride(storyFilePath: string, authorNoteFilePath: string): void {
+    const normalizedStoryPath = normalizeVaultPath(storyFilePath);
+    const normalizedAuthorNotePath = normalizeVaultPath(authorNoteFilePath);
+    if (!normalizedStoryPath || !normalizedAuthorNotePath) {
+      return;
+    }
+    this.pendingAuthorNoteOverrides.set(normalizedStoryPath, {
+      ref: normalizeLinkTarget(normalizedAuthorNotePath),
+      resolvedPath: normalizedAuthorNotePath,
+      expiresAt: Date.now() + PENDING_AUTHOR_NOTE_OVERRIDE_MS
+    });
+  }
+
   public getAuthorNoteRefForStory(file: TFile | null): string {
     if (!file) {
       return '';
     }
     const frontmatter = this.readFrontmatter(file);
-    return this.resolveAuthorNoteTargetFromFrontmatter(frontmatter);
+    const frontmatterRef = this.resolveAuthorNoteTargetFromFrontmatter(frontmatter);
+    if (frontmatterRef) {
+      return frontmatterRef;
+    }
+    return this.getPendingAuthorNoteOverride(file.path)?.ref ?? '';
   }
 
   private resolveAuthorNoteFileForStoryWithRef(file: TFile | null): {file: TFile | null; ref: string} {
@@ -302,15 +358,33 @@ export class StorySteeringStore {
 
     const frontmatter = this.readFrontmatter(file);
     const ref = this.resolveAuthorNoteTargetFromFrontmatter(frontmatter);
-    if (!ref) {
-      return { file: null, ref };
+    if (ref) {
+      const resolved = this.resolveFileFromLinkTarget(ref, file.path);
+      if (resolved) {
+        return {
+          file: resolved,
+          ref
+        };
+      }
     }
 
-    const resolved = this.resolveFileFromLinkTarget(ref, file.path);
-    return {
-      file: resolved,
-      ref
-    };
+    const pendingOverride = this.getPendingAuthorNoteOverride(file.path);
+    if (pendingOverride) {
+      const direct = this.app.vault.getAbstractFileByPath(pendingOverride.resolvedPath);
+      if (isVaultMarkdownFile(direct)) {
+        return {
+          file: direct,
+          ref: pendingOverride.ref
+        };
+      }
+      const resolved = this.resolveFileFromLinkTarget(pendingOverride.ref, file.path);
+      return {
+        file: resolved,
+        ref: pendingOverride.ref
+      };
+    }
+
+    return { file: null, ref };
   }
 
   async resolveAuthorNoteFileForStory(file: TFile | null): Promise<TFile | null> {
@@ -373,12 +447,14 @@ export class StorySteeringStore {
     }
 
     await this.updateStoryAuthorNoteLink(storyFile, created);
+    this.setPendingAuthorNoteOverride(storyFile.path, created.path);
     return created;
   }
 
   async linkStoryToAuthorNote(storyFile: TFile, authorNoteFile: TFile): Promise<void> {
     await this.ensureAuthorNoteMetadata(authorNoteFile, storyFile);
     await this.updateStoryAuthorNoteLink(storyFile, authorNoteFile);
+    this.setPendingAuthorNoteOverride(storyFile.path, authorNoteFile.path);
   }
 
   async getLinkedStoryFilesForAuthorNote(authorNoteFile: TFile): Promise<TFile[]> {

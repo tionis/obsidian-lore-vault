@@ -4121,8 +4121,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     };
   }
 
-  public async openOrCreateLinkedAuthorNoteForActiveNote(): Promise<TFile | null> {
-    const activeFile = this.app.workspace.getActiveFile();
+  public async openOrCreateLinkedAuthorNoteForActiveNote(file?: TFile | null): Promise<TFile | null> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       new Notice('No active markdown note.');
       return null;
@@ -4191,8 +4191,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     return resultPromise;
   }
 
-  public async linkExistingAuthorNoteForActiveNote(): Promise<TFile | null> {
-    const activeFile = this.app.workspace.getActiveFile();
+  public async linkExistingAuthorNoteForActiveNote(file?: TFile | null): Promise<TFile | null> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       new Notice('No active markdown note.');
       return null;
@@ -4433,8 +4433,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     return parts.join('\n\n---\n\n');
   }
 
-  public async rewriteAuthorNoteFromActiveNote(): Promise<void> {
-    const activeFile = this.app.workspace.getActiveFile();
+  public async rewriteAuthorNoteFromActiveNote(file?: TFile | null): Promise<void> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       throw new Error('No active markdown note.');
     }
@@ -6419,8 +6419,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  public async generateSummaryForActiveNote(mode: GeneratedSummaryMode): Promise<void> {
-    const activeFile = this.app.workspace.getActiveFile();
+  public async generateSummaryForActiveNote(mode: GeneratedSummaryMode, file?: TFile | null): Promise<void> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       new Notice('No active markdown note.');
       return;
@@ -9175,8 +9175,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private noteHasAuthorNoteLink(file: TFile): boolean {
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = normalizeFrontmatter((cache?.frontmatter ?? {}) as FrontmatterData);
-    const authorNote = asString(getFrontmatterValue(frontmatter, 'authorNote')) ?? '';
-    return Boolean(authorNote.trim());
+    return asStringArray(getFrontmatterValue(frontmatter, 'authorNote')).length > 0;
   }
 
   private noteHasCharacterCardLink(file: TFile): boolean {
@@ -9811,16 +9810,16 @@ export default class LoreBookConverterPlugin extends Plugin {
     new Notice(`Character card source updated from meta note: ${sourceAbstract.path}`);
   }
 
-  public canCreateNextStoryChapterForActiveNote(): boolean {
-    const activeFile = this.app.workspace.getActiveFile();
+  public canCreateNextStoryChapterForActiveNote(file?: TFile | null): boolean {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       return false;
     }
     return this.noteHasChapterFrontmatter(activeFile);
   }
 
-  public canForkStoryForActiveNote(): boolean {
-    const activeFile = this.app.workspace.getActiveFile();
+  public canForkStoryForActiveNote(file?: TFile | null): boolean {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       return false;
     }
@@ -9914,8 +9913,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     return forkAuthorNote;
   }
 
-  public async forkStoryFromActiveNote(): Promise<void> {
-    const activeFile = this.app.workspace.getActiveFile();
+  public async forkStoryFromActiveNote(file?: TFile | null): Promise<void> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!(activeFile instanceof TFile)) {
       new Notice('Open a story note before forking.');
       return;
@@ -10513,8 +10512,8 @@ export default class LoreBookConverterPlugin extends Plugin {
     new Notice(`Created next chapter: ${chapterPath}`);
   }
 
-  public async createNextStoryChapterForActiveNote(): Promise<void> {
-    const activeFile = this.app.workspace.getActiveFile();
+  public async createNextStoryChapterForActiveNote(file?: TFile | null): Promise<void> {
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     if (!activeFile) {
       new Notice('Open a chapter note before creating the next chapter.');
       return;
@@ -11981,13 +11980,13 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
   }
 
-  async continueStoryWithContext(): Promise<void> {
+  async continueStoryWithContext(file?: TFile | null): Promise<void> {
     if (this.generationInFlight) {
       new Notice('LoreVault generation is already running.');
       return;
     }
 
-    const activeFile = this.app.workspace.getActiveFile();
+    const activeFile = file ?? this.app.workspace.getActiveFile();
     const markdownView = await this.resolveEditableMarkdownViewForFile(activeFile);
     if (!markdownView) {
       new Notice('No active markdown editor found.');

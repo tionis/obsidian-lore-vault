@@ -61,6 +61,21 @@ test('parseStoryThreadNodeFromFrontmatter prefers authorNote link as thread anch
   assert.equal(node?.chapter, 2);
 });
 
+test('parseStoryThreadNodeFromFrontmatter accepts YAML-parsed nested arrays for unquoted authorNote links', () => {
+  const node = parseStoryThreadNodeFromFrontmatter(
+    'story/ch02.md',
+    'Ch 2',
+    {
+      authorNote: [['Lore/Story Author Note']],
+      chapter: 2
+    }
+  );
+
+  assert.ok(node);
+  assert.equal(node?.storyId, 'author-note:lore/story author note');
+  assert.equal(node?.chapter, 2);
+});
+
 test('resolveStoryThread orders deterministically by chapter when no links exist', () => {
   const nodes: StoryThreadNode[] = [
     {

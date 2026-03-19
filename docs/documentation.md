@@ -374,6 +374,7 @@ Optional continuity frontmatter keys for editor continuation:
 Long-form story metadata (new):
 
 - `authorNote`: wikilink/markdown-link to the note-level Author Note for this story note (primary thread anchor)
+  - supports quoted or unquoted Obsidian wikilinks in frontmatter
 - `chapter`: chapter/scene index (numeric)
 - `chapterTitle`: optional chapter display title
 - `previousChapter` / `prevChapter`: optional links/paths to prior chapter notes
@@ -634,6 +635,7 @@ Capabilities:
   - optional per-author-note completion profile override (`completionProfile`) managed via command `Set Author Note Completion Profile`
   - rewrite flow uses optional change prompt + diff review
   - when an Author Note is active, panel lists linked chapters/stories (chapter-ordered when available)
+  - the panel keeps the last active markdown story note as its context even when the Story Writing pane itself is focused, so linked Author Note and lorebook state do not disappear on panel focus
 - completion profile controls:
   - device-local active preset selector (dropdown, applies immediately)
   - selector is disabled when Author Note `completionProfile` override is active and shows `Overridden by Author Note`

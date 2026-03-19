@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import { isActiveGenerationState } from './generation-state';
 import LoreBookConverterPlugin from './main';
+import { resolveStoryWritingContextPath, updateStoryWritingContextPath } from './story-writing-context';
 import { UsageLedgerReportSnapshot, UsageLedgerTotals } from './usage-ledger-report';
 import { formatRelativeTime } from './time-format';
 
@@ -105,9 +106,9 @@ export class StorySteeringView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    this.activeNotePath = this.app.workspace.getActiveFile()?.path ?? '';
+    this.activeNotePath = updateStoryWritingContextPath('', this.app.workspace.getActiveFile()?.path ?? '');
     this.registerEvent(this.app.workspace.on('file-open', file => {
-      const nextPath = file?.path ?? '';
+      const nextPath = updateStoryWritingContextPath(this.activeNotePath, file?.path ?? '');
       if (nextPath === this.activeNotePath) {
         return;
       }
@@ -115,7 +116,7 @@ export class StorySteeringView extends ItemView {
       void this.render(true);
     }));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-      const nextPath = this.app.workspace.getActiveFile()?.path ?? '';
+      const nextPath = updateStoryWritingContextPath(this.activeNotePath, this.app.workspace.getActiveFile()?.path ?? '');
       if (nextPath === this.activeNotePath) {
         return;
       }
@@ -202,9 +203,21 @@ export class StorySteeringView extends ItemView {
     return file instanceof TFile ? file : null;
   }
 
+  private getContextFile(): TFile | null {
+    const preferredPath = resolveStoryWritingContextPath(
+      this.app.workspace.getActiveFile()?.path ?? '',
+      this.activeNotePath
+    );
+    if (preferredPath && preferredPath !== this.activeNotePath) {
+      this.activeNotePath = preferredPath;
+    }
+    return this.getMarkdownFileByPath(preferredPath);
+  }
+
   private async openOrCreateAuthorNote(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.openOrCreateLinkedAuthorNoteForActiveNote();
+      await this.plugin.openOrCreateLinkedAuthorNoteForActiveNote(contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Failed to open/create author note: ${message}`);
@@ -214,8 +227,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async linkExistingAuthorNote(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.linkExistingAuthorNoteForActiveNote();
+      await this.plugin.linkExistingAuthorNoteForActiveNote(contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Failed to link author note: ${message}`);
@@ -249,8 +263,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async createNextChapter(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.createNextStoryChapterForActiveNote();
+      await this.plugin.createNextStoryChapterForActiveNote(contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Failed to create next chapter: ${message}`);
@@ -260,8 +275,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async forkStory(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.forkStoryFromActiveNote();
+      await this.plugin.forkStoryFromActiveNote(contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Failed to fork story: ${message}`);
@@ -271,8 +287,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async generateChapterSummary(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.generateSummaryForActiveNote('chapter');
+      await this.plugin.generateSummaryForActiveNote('chapter', contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Failed to generate chapter summary: ${message}`);
@@ -282,8 +299,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async rewriteAuthorNote(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.rewriteAuthorNoteFromActiveNote();
+      await this.plugin.rewriteAuthorNoteFromActiveNote(contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Author-note rewrite failed: ${message}`);
@@ -293,8 +311,9 @@ export class StorySteeringView extends ItemView {
   }
 
   private async continueStory(): Promise<void> {
+    const contextFile = this.getContextFile();
     try {
-      await this.plugin.continueStoryWithContext();
+      await this.plugin.continueStoryWithContext(contextFile);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(`Story continuation failed: ${message}`);
@@ -332,14 +351,12 @@ export class StorySteeringView extends ItemView {
     try {
       const telemetry = this.plugin.getGenerationTelemetry();
       const generationRunning = isActiveGenerationState(telemetry.state);
-      const workspaceContext = await this.plugin.resolveAuthorNoteWorkspaceContext();
+      const contextFile = this.getContextFile();
+      const workspaceContext = await this.plugin.resolveAuthorNoteWorkspaceContext(contextFile);
       const linkedStoryItems = workspaceContext.mode === 'author_note' && workspaceContext.authorNotePath
         ? await this.plugin.resolveLinkedStoryDisplayForAuthorNote(workspaceContext.authorNotePath)
         : [];
-      const workspaceFile = workspaceContext.activeFilePath
-        ? this.getMarkdownFileByPath(workspaceContext.activeFilePath)
-        : null;
-      const completionStatus = await this.plugin.getCompletionProfileWorkspaceStatus(workspaceFile);
+      const completionStatus = await this.plugin.getCompletionProfileWorkspaceStatus(contextFile);
       await this.maybeRefreshUsageSummary(completionStatus.effectiveCostProfile, forceUsageRefresh);
       const completionPresets = this.plugin.getCompletionPresetItems();
 
@@ -411,7 +428,7 @@ export class StorySteeringView extends ItemView {
       });
 
       const linkAuthorNoteButton = authorNoteActions.createEl('button', { text: 'Link Author Note' });
-      linkAuthorNoteButton.disabled = workspaceContext.mode !== 'story';
+      linkAuthorNoteButton.disabled = !workspaceContext.activeFilePath || workspaceContext.mode === 'author_note';
       linkAuthorNoteButton.addEventListener('click', () => {
         void this.linkExistingAuthorNote();
       });
@@ -424,19 +441,19 @@ export class StorySteeringView extends ItemView {
 
       const chapterActions = actionCard.createDiv({ cls: 'lorevault-manager-toolbar' });
       const chapterSummaryButton = chapterActions.createEl('button', { text: 'Generate Chapter Summary' });
-      chapterSummaryButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
+      chapterSummaryButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote(contextFile);
       chapterSummaryButton.addEventListener('click', () => {
         void this.generateChapterSummary();
       });
 
       const createNextChapterButton = chapterActions.createEl('button', { text: 'Create Next Chapter' });
-      createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote();
+      createNextChapterButton.disabled = generationRunning || !this.plugin.canCreateNextStoryChapterForActiveNote(contextFile);
       createNextChapterButton.addEventListener('click', () => {
         void this.createNextChapter();
       });
 
       const forkStoryButton = chapterActions.createEl('button', { text: 'Fork Story' });
-      forkStoryButton.disabled = generationRunning || !this.plugin.canForkStoryForActiveNote();
+      forkStoryButton.disabled = generationRunning || !this.plugin.canForkStoryForActiveNote(contextFile);
       forkStoryButton.addEventListener('click', () => {
         void this.forkStory();
       });

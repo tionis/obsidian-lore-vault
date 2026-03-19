@@ -28,3 +28,8 @@ test('asStringArray and uniqueStrings preserve non-English metadata values', () 
   const deduped = uniqueStrings(['герой', '東京', 'герой', '  東京 ', '']);
   assert.deepEqual(deduped, ['герой', '東京']);
 });
+
+test('asStringArray flattens nested YAML-style link arrays', () => {
+  const values = asStringArray([[['LoreVault/author-notes/main-author-note']], 'story/ch01']);
+  assert.deepEqual(values, ['LoreVault/author-notes/main-author-note', 'story/ch01']);
+});

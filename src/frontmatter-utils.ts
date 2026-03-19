@@ -80,11 +80,21 @@ export function asBoolean(value: unknown): boolean | undefined {
 
 export function asStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map(item => asString(item))
-      .filter((item): item is string => Boolean(item))
-      .map(item => item.trim())
-      .filter(item => item.length > 0);
+    const collected: string[] = [];
+    for (const item of value) {
+      if (Array.isArray(item)) {
+        collected.push(...asStringArray(item));
+        continue;
+      }
+      const scalar = asString(item);
+      if (scalar) {
+        const trimmed = scalar.trim();
+        if (trimmed.length > 0) {
+          collected.push(trimmed);
+        }
+      }
+    }
+    return collected;
   }
 
   if (typeof value === 'string') {

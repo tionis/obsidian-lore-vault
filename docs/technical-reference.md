@@ -60,8 +60,10 @@ This document is the implementation-level reference for core architecture and ru
   - placeholder warning detection for generated outputs
 - `src/story-steering.ts` + `src/story-steering-view.ts`
   - note-level author-note storage resolved from story frontmatter `authorNote` link
+  - `authorNote` frontmatter accepts quoted or unquoted Obsidian wikilinks (including YAML-parsed nested-array forms)
   - Story Writing panel combines writing controls, generation monitor, lorebook controls, context-item inspection, and compact cost summary
   - panel actions are grouped: continue/stop + inline directive, author-note controls (open/create/link/rewrite), and chapter controls (summary + next chapter)
+  - panel context is sticky to the last active markdown story note, so focusing the Story Writing pane does not clear linked author-note/lorebook state
   - when an Author Note is active, panel lists linked chapters/stories
   - markdown editing remains native Obsidian note editing for Author Note content
   - single note-level author-note layer only (no global/story/chapter scope hierarchy)

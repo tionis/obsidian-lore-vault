@@ -175,7 +175,7 @@ import {
   collectLorebookNoteMetadataForFile
 } from './lorebooks-manager-collector';
 import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
-import { UsageLedgerStore } from './usage-ledger-store';
+import { UsageLedgerStore, type UsageLedgerStoreStatus } from './usage-ledger-store';
 import { estimateUsageCostUsdWithRateSelection } from './cost-utils';
 import {
   serializeUsageLedgerEntriesCsv,
@@ -343,6 +343,13 @@ export interface StoryChatTurnResult {
   assistantText: string;
   contextMeta: StoryChatContextMeta;
   reasoning?: string;
+}
+
+export interface LoreVaultLocalStorageHealth {
+  operationLog: OperationLogStoreStatus;
+  usageLedger: UsageLedgerStoreStatus;
+  usageBytes: number | null;
+  quotaBytes: number | null;
 }
 
 export interface LinkedStoryDisplayItem {
@@ -1055,6 +1062,75 @@ export default class LoreBookConverterPlugin extends Plugin {
       };
     }
     return this.operationLogStore.getStatus(costProfile);
+  }
+
+  public async getUsageLedgerStorageStatus(): Promise<UsageLedgerStoreStatus> {
+    if (!this.usageLedgerStore) {
+      return {
+        internalDb: {
+          available: false,
+          backend: null,
+          backendLabel: 'uninitialized',
+          sqliteVersion: '',
+          storagePersisted: this.storagePersisted,
+          errorMessage: ''
+        },
+        canonicalRootPath: this.resolveUsageLedgerPath().replace(/\.json$/i, ''),
+        legacyFilePath: this.resolveUsageLedgerPath().toLowerCase().endsWith('.json')
+          ? this.resolveUsageLedgerPath()
+          : null,
+        knownRecordCount: 0,
+        pendingChangedRecordCount: 0,
+        staleSourceRootCount: 0,
+        lastSuccessfulSyncAt: 0
+      };
+    }
+    return this.usageLedgerStore.getStatus();
+  }
+
+  public async getLocalStorageHealth(): Promise<LoreVaultLocalStorageHealth> {
+    const [operationLog, usageLedger] = await Promise.all([
+      this.getOperationLogStorageStatus(),
+      this.getUsageLedgerStorageStatus()
+    ]);
+    let usageBytes: number | null = null;
+    let quotaBytes: number | null = null;
+    try {
+      const estimate = typeof navigator !== 'undefined'
+        ? await navigator.storage?.estimate?.()
+        : undefined;
+      usageBytes = typeof estimate?.usage === 'number' ? estimate.usage : null;
+      quotaBytes = typeof estimate?.quota === 'number' ? estimate.quota : null;
+    } catch (_error) {
+      usageBytes = null;
+      quotaBytes = null;
+    }
+    return {
+      operationLog,
+      usageLedger,
+      usageBytes,
+      quotaBytes
+    };
+  }
+
+  public async rebuildLocalIndexes(): Promise<void> {
+    await this.usageLedgerStore.rebuildLocalIndex();
+    this.invalidateKnownCostProfilesCache();
+    this.refreshOperationLogViews();
+    this.refreshCostAnalyzerViews();
+  }
+
+  public async resetLocalDb(): Promise<void> {
+    if (!this.internalDbClient) {
+      throw new Error('Local internal DB is not configured in this runtime.');
+    }
+    await this.internalDbClient.resetLocalDb();
+    this.operationLogStore?.resetInternalDbState();
+    this.usageLedgerStore.resetLocalIndexState();
+    await this.usageLedgerStore.initialize();
+    this.invalidateKnownCostProfilesCache();
+    this.refreshOperationLogViews();
+    this.refreshCostAnalyzerViews();
   }
 
   private getSecretStorage(): LoreVaultSecretStorage | null {

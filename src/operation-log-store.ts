@@ -100,6 +100,10 @@ export class OperationLogStore {
     }
   }
 
+  resetInternalDbState(): void {
+    this.importedLegacyProfiles.clear();
+  }
+
   async getStatus(costProfile?: string | null): Promise<OperationLogStoreStatus> {
     if (this.internalDbClient) {
       try {

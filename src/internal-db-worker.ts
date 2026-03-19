@@ -352,6 +352,21 @@ function rowToUsageLedgerEntry(row: Record<string, unknown>): UsageLedgerEntry {
   };
 }
 
+async function deleteUsageLedgerSourceRoot(sqlite3: any, db: number, sourceRoot: string): Promise<void> {
+  await execSql(
+    sqlite3,
+    db,
+    'DELETE FROM usage_ledger WHERE source_root = ?;',
+    [sourceRoot]
+  );
+}
+
+async function resetLocalDb(sqlite3: any, db: number): Promise<void> {
+  await execSql(sqlite3, db, 'DELETE FROM operation_log_search;');
+  await execSql(sqlite3, db, 'DELETE FROM operation_log;');
+  await execSql(sqlite3, db, 'DELETE FROM usage_ledger;');
+}
+
 function buildQuerySql(request: OperationLogQueryRequest): { joinSql: string; whereSql: string; bindings: unknown[] } {
   const clauses = ['operation_log.cost_profile = ?'];
   const bindings: unknown[] = [request.costProfile];
@@ -1103,6 +1118,18 @@ async function handleRequest(request: InternalDbRequest): Promise<unknown> {
       }
       return undefined;
     }
+    case 'deleteUsageLedgerSourceRoot': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      await workerState.sqlite3.exec(workerState.db, 'BEGIN IMMEDIATE;');
+      try {
+        await deleteUsageLedgerSourceRoot(workerState.sqlite3, workerState.db, request.sourceRoot);
+        await workerState.sqlite3.exec(workerState.db, 'COMMIT;');
+      } catch (error) {
+        await workerState.sqlite3.exec(workerState.db, 'ROLLBACK;');
+        throw error;
+      }
+      return undefined;
+    }
     case 'queryUsageLedger': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);
       return queryUsageLedgerRows(workerState, request);
@@ -1114,6 +1141,18 @@ async function handleRequest(request: InternalDbRequest): Promise<unknown> {
     case 'listUsageLedgerCostProfiles': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);
       return listUsageLedgerCostProfiles(workerState, request.sourceRoot);
+    }
+    case 'resetLocalDb': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      await workerState.sqlite3.exec(workerState.db, 'BEGIN IMMEDIATE;');
+      try {
+        await resetLocalDb(workerState.sqlite3, workerState.db);
+        await workerState.sqlite3.exec(workerState.db, 'COMMIT;');
+      } catch (error) {
+        await workerState.sqlite3.exec(workerState.db, 'ROLLBACK;');
+        throw error;
+      }
+      return undefined;
     }
     case 'close': {
       if (!statePromise) {

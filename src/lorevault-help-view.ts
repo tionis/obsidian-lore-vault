@@ -196,6 +196,7 @@ export class LorevaultHelpView extends ItemView {
         'Cost Analyzer uses shared immutable usage-ledger records stored in the vault and a local SQLite index when available; after the initial ledger sync, LoreVault keeps that index current from vault file events, computes totals/breakdowns with SQLite aggregate queries, and caches known cost-profile option lists until ledger/settings changes invalidate them.',
         'Lorebook Manager, Routing Debug, Query Simulation, and live-context file-scope bookkeeping reuse an incremental lorebook metadata cache so normal note edits do not force a full metadata rescan before those surfaces refresh.',
         'Story Chat reuses cached markdown-file indexes and conversation summaries between vault refreshes so author-note/chapter pickers do not rescan the whole vault every time you open them.',
+        'Settings now include local DB diagnostics plus `Rebuild Local Indexes` / `Reset Local DB` actions, so you can repair the worker-backed SQLite state without manually deleting plugin storage.',
         'Setting `LLM Operation Log Path` controls the legacy per-cost-profile JSONL path used for fallback writes, legacy import, and raw-file inspection.'
       ],
       actions: [

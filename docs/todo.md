@@ -229,10 +229,10 @@ Reference design: `docs/planning.md`.
 - [x] Add an incremental lorebook metadata index so scope discovery and related manager/query views do not repeatedly rescan all markdown notes after invalidation.
 - [x] Reduce Story Chat vault-wide scans for conversation summaries and note-picker candidates with cached indexes or narrower folder/path tracking.
 - [ ] Investigate replacing `sql.js` full-file pack reads with a `wa-sqlite`/streaming-style reader for synced lorebook `.db` inspection paths so reading exported packs no longer requires loading the entire file into memory.
-- [ ] Add explicit local-index maintenance tools (`Rebuild Local Indexes`, `Reset Local DB`) so derived SQLite state can be repaired without manual file surgery.
+- [x] Add explicit local-index maintenance tools (`Rebuild Local Indexes`, `Reset Local DB`) so derived SQLite state can be repaired without manual file surgery.
 - [ ] Persist usage-ledger import state instead of keeping imported record paths only in memory so restart/query paths do not need rediscovery scans.
-- [ ] Add pruning for stale local usage-ledger index rows when ledger roots change or canonical record files are removed.
-- [ ] Add storage-health diagnostics for local DB backends (backend type, persistence granted, quota/usage where available, last successful import/sync).
+- [x] Add pruning for stale local usage-ledger index rows when ledger roots change or canonical record files are removed.
+- [x] Add storage-health diagnostics for local DB backends (backend type, persistence granted, quota/usage where available, last successful import/sync).
 - [ ] Evaluate archival or compaction options for long-lived immutable usage-ledger histories so sync-friendly storage does not degrade into excessive tiny-file churn.
 - [ ] Add explicit internal-DB migration tests and recovery paths so schema upgrades are validated rather than relying only on additive `ensureSchema()` behavior.
 - [ ] Surface index freshness/lag in the UI (for example last indexed time, pending import count, or “local index behind vault” state).

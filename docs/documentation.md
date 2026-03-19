@@ -546,6 +546,7 @@ Current implemented feature set:
 - LoreVault also caches known cost-profile option lists until ledger or settings changes invalidate them, so explorer/analyzer refreshes do not recompute those profile sources every time
 - Lorebook manager/routing/query views reuse an incremental lorebook-note metadata cache that updates changed markdown paths individually, so normal note edits no longer force a full vault metadata rescan before those views refresh
 - Story Chat caches sorted markdown-note lists, basename lookups, chapter/author-note candidate sets, and conversation summaries between vault refreshes so opening its note pickers does not repeatedly rescan the whole vault
+- Settings expose local DB maintenance buttons (`Refresh Status`, `Rebuild Local Indexes`, `Reset Local DB`) and report backend type, persisted-storage state, origin usage/quota estimate, and last successful usage-ledger sync
 - cost calculation uses:
   - provider-reported cost when available
   - model-specific pricing overrides when configured

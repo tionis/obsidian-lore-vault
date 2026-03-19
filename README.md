@@ -318,6 +318,7 @@ Operations and reporting:
 - Usage-ledger records are stored as immutable vault JSON files for cross-device sync, then indexed locally in SQLite when available for faster Cost Analyzer queries; LoreVault does one canonical sync per session/root change, keeps that index current from vault file events, and computes Cost Analyzer totals/breakdowns from SQLite aggregate queries instead of materializing every matching row into JS first.
 - Lorebook manager/routing/query surfaces reuse an incremental lorebook-note metadata cache that updates per changed markdown path instead of rescanning the full vault after every note mutation.
 - Story Chat now caches sorted markdown-note lists, basename lookups, chapter/author-note candidates, and conversation summaries between vault refreshes so note pickers do not re-scan the full vault on every open.
+- Settings now expose local DB maintenance controls (`Refresh Status`, `Rebuild Local Indexes`, `Reset Local DB`) plus backend/persistence/usage/last-sync diagnostics for the worker-backed SQLite store.
 - Budget settings are stored per cost profile (`Budget Cost Profile` selector in settings).
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
 - LoreVault only creates missing secrets; it never overwrites an existing secret value.

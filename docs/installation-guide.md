@@ -193,6 +193,7 @@ If you prefer to build the plugin from source:
    - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings; shared usage-ledger records live in the vault, and LoreVault accelerates queries with a local SQLite index that stays in sync from vault events after its initial ledger scan and computes analyzer totals with DB aggregate queries
    - Lorebook Manager, Routing Debug, and Query Simulation refreshes now reuse an incremental lorebook metadata cache, so routine note edits do not require a full markdown-note rescan before those views update
    - Story Chat note pickers reuse cached markdown-file indexes and conversation summaries between vault refreshes instead of rescanning all notes on each open
+   - In settings, use `Refresh Status`, `Rebuild Local Indexes`, and `Reset Local DB` to inspect/repair the worker-backed local SQLite store without manual file deletion
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
 5. **Open embedded help**

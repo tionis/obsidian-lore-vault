@@ -20,6 +20,29 @@ import {
 import { cloneReasoningConfig } from './completion-settings';
 import { normalizeIgnoredCalloutTypes } from './callout-utils';
 
+function formatStorageBytes(value: number | null): string {
+  if (!Number.isFinite(value) || value === null || value < 0) {
+    return 'unknown';
+  }
+  if (value < 1024) {
+    return `${Math.round(value)} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatStatusTimestamp(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 'not synced yet';
+  }
+  return new Date(value).toLocaleString();
+}
+
 class FolderSuggestModal extends FuzzySuggestModal<string> {
   private readonly folders: string[];
   private readonly onChoosePath: (path: string) => void;
@@ -2133,6 +2156,69 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
           this.plugin.settings.costTracking.ledgerPath = value.trim();
           await this.plugin.saveSettings(this.plugin.settings);
         }));
+
+    const localDbStatusEl = containerEl.createEl('p', { cls: 'setting-item-description' });
+    const renderLocalDbStatus = async (): Promise<void> => {
+      localDbStatusEl.setText('Loading local storage status...');
+      try {
+        const health = await this.plugin.getLocalStorageHealth();
+        const backendLabel = health.operationLog.internalDb.available
+          ? health.operationLog.internalDb.backendLabel || 'local'
+          : 'unavailable';
+        const persistedLabel = health.operationLog.internalDb.storagePersisted === null
+          ? 'unknown'
+          : health.operationLog.internalDb.storagePersisted
+            ? 'yes'
+            : 'no';
+        const usageSummary = health.quotaBytes !== null
+          ? `${formatStorageBytes(health.usageBytes)} / ${formatStorageBytes(health.quotaBytes)}`
+          : formatStorageBytes(health.usageBytes);
+        const errorSuffix = health.operationLog.internalDb.errorMessage
+          ? ` | error: ${health.operationLog.internalDb.errorMessage}`
+          : '';
+        localDbStatusEl.setText(
+          `Local DB backend: ${backendLabel} | persisted: ${persistedLabel} | origin usage: ${usageSummary} | ledger sync: ${formatStatusTimestamp(health.usageLedger.lastSuccessfulSyncAt)} | pending record updates: ${health.usageLedger.pendingChangedRecordCount} | stale roots queued: ${health.usageLedger.staleSourceRootCount}${errorSuffix}`
+        );
+      } catch (error) {
+        localDbStatusEl.setText(`Failed to load local storage status: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
+
+    new Setting(containerEl)
+      .setName('Local DB Maintenance')
+      .setDesc('Inspect the worker-backed local DB, rebuild shared usage-ledger indexes, or fully reset local SQLite state used for logs/query acceleration.')
+      .addButton(button => button
+        .setButtonText('Refresh Status')
+        .onClick(() => {
+          void renderLocalDbStatus();
+        }))
+      .addButton(button => button
+        .setButtonText('Rebuild Local Indexes')
+        .onClick(async () => {
+          try {
+            await this.plugin.rebuildLocalIndexes();
+            new Notice('Rebuilt local usage-ledger indexes.');
+            await renderLocalDbStatus();
+          } catch (error) {
+            new Notice(`Failed to rebuild local indexes: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }))
+      .addButton(button => button
+        .setWarning()
+        .setButtonText('Reset Local DB')
+        .onClick(async () => {
+          if (!window.confirm('Reset the local DB? This clears local operation logs and rebuilds the current usage-ledger index from vault records.')) {
+            return;
+          }
+          try {
+            await this.plugin.resetLocalDb();
+            new Notice('Reset the local DB and rebuilt the current usage-ledger index.');
+            await renderLocalDbStatus();
+          } catch (error) {
+            new Notice(`Failed to reset local DB: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }));
+    void renderLocalDbStatus();
 
     new Setting(containerEl)
       .setName('Default Input Cost / 1M Tokens (USD)')

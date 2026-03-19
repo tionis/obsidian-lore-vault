@@ -200,6 +200,16 @@ type UsageLedgerStoreOptions = {
   storagePersisted?: boolean | null;
 };
 
+export interface UsageLedgerStoreStatus {
+  internalDb: InternalDbStatus;
+  canonicalRootPath: string;
+  legacyFilePath: string | null;
+  knownRecordCount: number;
+  pendingChangedRecordCount: number;
+  staleSourceRootCount: number;
+  lastSuccessfulSyncAt: number;
+}
+
 export class UsageLedgerStore {
   private readonly app: App;
   private filePath: string;
@@ -215,9 +225,11 @@ export class UsageLedgerStore {
   };
   private knownRecordPaths = new Set<string>();
   private pendingChangedRecordPaths = new Set<string>();
+  private staleSourceRoots = new Set<string>();
   private needsFullRescan = true;
   private legacyFileMtime = -1;
   private syncPromise: Promise<void> | null = null;
+  private lastSuccessfulSyncAt = 0;
 
   constructor(app: App, filePath: string, options: UsageLedgerStoreOptions = {}) {
     this.app = app;
@@ -243,11 +255,17 @@ export class UsageLedgerStore {
     if (this.filePath === normalized) {
       return;
     }
+    const previousRoot = this.resolveStoragePaths().canonicalRootPath;
     this.filePath = normalized;
+    const nextRoot = this.resolveStoragePaths().canonicalRootPath;
+    if (previousRoot && previousRoot !== nextRoot) {
+      this.staleSourceRoots.add(previousRoot);
+    }
     this.knownRecordPaths.clear();
     this.pendingChangedRecordPaths.clear();
     this.needsFullRescan = true;
     this.legacyFileMtime = -1;
+    this.lastSuccessfulSyncAt = 0;
   }
 
   async initialize(): Promise<void> {
@@ -380,6 +398,42 @@ export class UsageLedgerStore {
     return deleted || created;
   }
 
+  async getStatus(): Promise<UsageLedgerStoreStatus> {
+    if (this.internalDbClient) {
+      try {
+        this.internalDbStatus = await this.internalDbClient.getStatus();
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+    const { canonicalRootPath, legacyFilePath } = this.resolveStoragePaths();
+    return {
+      internalDb: this.internalDbStatus,
+      canonicalRootPath,
+      legacyFilePath,
+      knownRecordCount: this.knownRecordPaths.size,
+      pendingChangedRecordCount: this.pendingChangedRecordPaths.size,
+      staleSourceRootCount: this.staleSourceRoots.size,
+      lastSuccessfulSyncAt: this.lastSuccessfulSyncAt
+    };
+  }
+
+  async rebuildLocalIndex(): Promise<void> {
+    this.needsFullRescan = true;
+    this.pendingChangedRecordPaths.clear();
+    this.lastSuccessfulSyncAt = 0;
+    await this.ensureInternalDbSynchronized();
+  }
+
+  resetLocalIndexState(): void {
+    this.knownRecordPaths.clear();
+    this.pendingChangedRecordPaths.clear();
+    this.staleSourceRoots.clear();
+    this.needsFullRescan = true;
+    this.lastSuccessfulSyncAt = 0;
+    this.legacyFileMtime = -1;
+  }
+
   private resolveStoragePaths(): UsageLedgerStoragePaths {
     return {
       canonicalRootPath: resolveCanonicalRootPath(this.filePath),
@@ -483,10 +537,18 @@ export class UsageLedgerStore {
 
     while (true) {
       const { canonicalRootPath } = this.resolveStoragePaths();
+      if (this.staleSourceRoots.size > 0) {
+        const staleRoots = [...this.staleSourceRoots].sort((left, right) => left.localeCompare(right));
+        this.staleSourceRoots.clear();
+        for (const sourceRoot of staleRoots) {
+          await this.internalDbClient.deleteUsageLedgerSourceRoot(sourceRoot);
+        }
+      }
       if (this.needsFullRescan) {
         this.needsFullRescan = false;
         this.pendingChangedRecordPaths.clear();
         await this.replaceInternalDbFromVault(canonicalRootPath);
+        this.lastSuccessfulSyncAt = Date.now();
         continue;
       }
 
@@ -496,6 +558,7 @@ export class UsageLedgerStore {
       }
       this.pendingChangedRecordPaths.clear();
       await this.importChangedRecordPaths(canonicalRootPath, changedPaths);
+      this.lastSuccessfulSyncAt = Date.now();
     }
   }
 

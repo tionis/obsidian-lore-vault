@@ -129,6 +129,11 @@ export type InternalDbRequest =
     sourceRoot: string;
     entries: UsageLedgerEntry[];
   }
+  | {
+    id: number;
+    type: 'deleteUsageLedgerSourceRoot';
+    sourceRoot: string;
+  }
   | ({
     id: number;
     type: 'queryUsageLedger';
@@ -145,6 +150,10 @@ export type InternalDbRequest =
   | {
     id: number;
     type: 'getStatus';
+  }
+  | {
+    id: number;
+    type: 'resetLocalDb';
   }
   | {
     id: number;

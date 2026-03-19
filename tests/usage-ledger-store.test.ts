@@ -175,11 +175,15 @@ function createMockInternalDbClient() {
   const dbEntries = new Map<string, UsageLedgerEntry>();
   const importedBatches: Array<{ sourceRoot: string; entries: UsageLedgerEntry[] }> = [];
   const replacedBatches: Array<{ sourceRoot: string; entries: UsageLedgerEntry[] }> = [];
+  const deletedSourceRoots: string[] = [];
+  let resetCount = 0;
 
   return {
     dbEntries,
     importedBatches,
     replacedBatches,
+    deletedSourceRoots,
+    getResetCount: () => resetCount,
     client: {
       initialize: async () => ({
         available: true,
@@ -220,6 +224,9 @@ function createMockInternalDbClient() {
           });
         }
       },
+      deleteUsageLedgerSourceRoot: async (sourceRoot: string) => {
+        deletedSourceRoots.push(sourceRoot);
+      },
       queryUsageLedger: async (request: { sourceRoot: string; costProfile?: string | null }) => {
         return {
           entries: [...dbEntries.values()]
@@ -239,6 +246,10 @@ function createMockInternalDbClient() {
           ...entry,
           metadata: { ...entry.metadata }
         });
+      },
+      resetLocalDb: async () => {
+        resetCount += 1;
+        dbEntries.clear();
       }
     }
   };
@@ -527,6 +538,25 @@ test('UsageLedgerStore replaces internal DB rows after canonical record deletion
   );
   assert.ok(getListCallCount() > listCallsAfterInitialize);
   assert.equal(internalDb.replacedBatches.length, 2);
+});
+
+test('UsageLedgerStore prunes stale source roots after ledger path changes', async () => {
+  const { app } = createMockApp();
+  const initialLedgerPath = '.obsidian/plugins/lore-vault/cache/usage-ledger.json';
+  const nextLedgerPath = '.obsidian/plugins/lore-vault/cache/alternate-ledger.json';
+  const internalDb = createMockInternalDbClient();
+  const store = new UsageLedgerStore(app, initialLedgerPath, {
+    internalDbClient: internalDb.client as any
+  });
+
+  await store.initialize();
+  store.setFilePath(nextLedgerPath);
+  await store.initialize();
+
+  assert.deepEqual(
+    internalDb.deletedSourceRoots,
+    ['.obsidian/plugins/lore-vault/cache/usage-ledger']
+  );
 });
 
 test('UsageLedgerStore lists known cost profiles deterministically', async () => {

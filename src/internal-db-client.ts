@@ -199,6 +199,14 @@ export class InternalDbClient {
     });
   }
 
+  async deleteUsageLedgerSourceRoot(sourceRoot: string): Promise<void> {
+    await this.initialize();
+    await this.request<void>({
+      type: 'deleteUsageLedgerSourceRoot',
+      sourceRoot
+    });
+  }
+
   async queryUsageLedger(request: UsageLedgerQueryRequest): Promise<UsageLedgerQueryResult> {
     await this.initialize();
     return this.request<UsageLedgerQueryResult>({
@@ -221,6 +229,11 @@ export class InternalDbClient {
       type: 'listUsageLedgerCostProfiles',
       sourceRoot
     });
+  }
+
+  async resetLocalDb(): Promise<void> {
+    await this.initialize();
+    await this.request<void>({ type: 'resetLocalDb' });
   }
 
   async close(): Promise<void> {

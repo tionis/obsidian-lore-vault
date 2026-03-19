@@ -476,6 +476,21 @@ Notes:
 - begin with grid/random search; add Bayesian optimization only when tunable dimensionality justifies it
 - this remains offline/operator tooling first, not an always-on runtime auto-tuner
 
+## Longer-Term Storage and Operations Roadmap
+
+Post-stabilization work worth tracking, but not part of the current near-term execution sequence:
+
+- add fault-injection and recovery tests for storage failure modes:
+  - unavailable local DB backend
+  - corrupted local DB state
+  - malformed canonical record files
+  - partial legacy imports
+  - quota/persistence failures
+- add lightweight instrumentation for import/index/query timings so storage and indexing regressions are measurable over time
+- audit background-task cancellation and shutdown safety across long-running jobs (not only current DB/index paths) for unload, settings changes, and mobile suspend/restart cases
+- add visible migration/debug notices when LoreVault imports legacy data, rebuilds local indexes, or falls back from the preferred local backend
+- consider an optional privacy mode for usage-ledger history, complementing operation-log privacy controls, for users who want reduced local retention/detail
+
 ## Constraints
 
 - Keep deterministic export and traceable debug behavior.

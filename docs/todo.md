@@ -218,6 +218,33 @@ Reference design: `docs/planning.md`.
 
 - [x] Remove keyword-based hard split between `world_info` and `rag` from core routing.
 - [x] Include scoped notes as unified lore entries by default (`retrieval: none` remains hard exclusion).
+
+## Performance Follow-Ups
+
+- [ ] Add a persistent usage-ledger import manifest or vault-event-driven sync so Cost Analyzer/profile queries do not rescan the full canonical ledger tree on each reload.
+- [ ] Move usage-ledger report aggregation and breakdown queries into SQLite (`GROUP BY` / totals) so Cost Analyzer does not materialize all matching ledger rows into JS first.
+- [ ] Split operation-log list queries into summary rows vs detail fetches so the explorer list does not load heavy request/attempt/final-text payload columns for every visible row.
+- [ ] Replace operation-log `%LIKE%` search and exact `COUNT(*)` reload queries with a more scalable search/count strategy (for example FTS5 plus deferred or approximate counts).
+- [ ] Cache known cost-profile lists and invalidate them only when ledger/settings data actually changes instead of recomputing them on every explorer/analyzer reload.
+- [ ] Add an incremental lorebook metadata index so scope discovery and related manager/query views do not repeatedly rescan all markdown notes after invalidation.
+- [ ] Reduce Story Chat vault-wide scans for conversation summaries and note-picker candidates with cached indexes or narrower folder/path tracking.
+- [ ] Investigate replacing `sql.js` full-file pack reads with a `wa-sqlite`/streaming-style reader for synced lorebook `.db` inspection paths so reading exported packs no longer requires loading the entire file into memory.
+- [ ] Add explicit local-index maintenance tools (`Rebuild Local Indexes`, `Reset Local DB`) so derived SQLite state can be repaired without manual file surgery.
+- [ ] Persist usage-ledger import state instead of keeping imported record paths only in memory so restart/query paths do not need rediscovery scans.
+- [ ] Add pruning for stale local usage-ledger index rows when ledger roots change or canonical record files are removed.
+- [ ] Add storage-health diagnostics for local DB backends (backend type, persistence granted, quota/usage where available, last successful import/sync).
+- [ ] Evaluate archival or compaction options for long-lived immutable usage-ledger histories so sync-friendly storage does not degrade into excessive tiny-file churn.
+- [ ] Add explicit internal-DB migration tests and recovery paths so schema upgrades are validated rather than relying only on additive `ensureSchema()` behavior.
+- [ ] Surface index freshness/lag in the UI (for example last indexed time, pending import count, or “local index behind vault” state).
+- [ ] Add privacy controls for operation logging (redaction, metadata-only mode, stronger retention options) so users can trade debug depth against local sensitive-data storage.
+- [ ] Add repeatable large-vault performance benchmarks/regression fixtures covering note scans, large logs, and large usage-ledger histories.
+- [ ] Add clearer background-work budgeting/backpressure for expensive refresh jobs such as live-context index rebuilds, especially on mobile runtimes.
+- [ ] Consolidate plugin-local derived metadata into a more unified indexing architecture instead of optimizing Story Chat, lorebook metadata, usage ledger, and operation log independently.
+- [ ] Add cross-device correctness tests for synced canonical records covering concurrent writes, delayed sync, duplicate imports, ledger-path changes, reinstall flows, and local-index rebuild recovery.
+- [ ] Define an explicit retention/archive policy for synced usage-ledger history so long-lived vaults do not accumulate unbounded immutable record files forever.
+- [ ] Define delete/repair semantics for canonical usage-ledger records (including compaction/tombstone behavior) so local indexes and synced history stay consistent when records are intentionally removed or rewritten.
+- [ ] Add user-facing maintenance commands for storage troubleshooting (`Import Legacy Ledger Now`, `Show Canonical Ledger Folder`, optional local-diagnostics export/import).
+- [ ] Continue field validation on real Obsidian desktop/mobile runtimes for the worker-backed local DB/index architecture, especially around sync/restart/reinstall edge cases.
 - [x] Keep fallback retrieval (`off|auto|always`) as a secondary selector over the same canonical entries.
 - [x] Merge fallback-selected entries into the injected `world_info` context list.
 - [x] Add keyword-coverage diagnostics (missing explicit keyword counts/list) to Lorebook Auditor and manager views.

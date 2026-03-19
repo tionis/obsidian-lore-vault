@@ -175,7 +175,6 @@ import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-d
 import { UsageLedgerStore } from './usage-ledger-store';
 import { estimateUsageCostUsdWithRateSelection } from './cost-utils';
 import {
-  buildUsageLedgerReportSnapshot,
   serializeUsageLedgerEntriesCsv,
   UsageLedgerReportSnapshot
 } from './usage-ledger-report';
@@ -2359,14 +2358,12 @@ export default class LoreBookConverterPlugin extends Plugin {
     const selectedProfile = includeAllProfiles
       ? ''
       : (options.costProfile ?? this.getDeviceEffectiveCostProfileLabel() ?? '').trim();
-    const entries = await this.usageLedgerStore.listEntries({
-      costProfile: includeAllProfiles ? null : selectedProfile
-    });
     const nowMs = Date.now();
     const budgetSettings = includeAllProfiles
       ? this.createEmptyCostProfileBudgetSettings()
       : this.resolveCostProfileBudgetSettings(selectedProfile);
-    return buildUsageLedgerReportSnapshot(entries, {
+    return this.usageLedgerStore.getReportSnapshot({
+      costProfile: includeAllProfiles ? null : selectedProfile,
       nowMs,
       sessionStartAt: this.sessionStartedAt,
       dailyBudgetUsd: budgetSettings.dailyBudgetUsd,
@@ -8766,6 +8763,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     });
 
     this.registerEvent(this.app.vault.on('create', file => {
+      const usageLedgerChanged = this.usageLedgerStore.handleVaultCreate(file.path);
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
       this.invalidateCardMetaPathCache();
@@ -8775,9 +8773,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
+      if (usageLedgerChanged) {
+        this.refreshOperationLogViews();
+        this.refreshCostAnalyzerViews();
+      }
     }));
 
     this.registerEvent(this.app.vault.on('modify', file => {
+      const usageLedgerChanged = this.usageLedgerStore.handleVaultModify(file.path);
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
       this.invalidateCardMetaPathCache();
@@ -8787,9 +8790,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
+      if (usageLedgerChanged) {
+        this.refreshOperationLogViews();
+        this.refreshCostAnalyzerViews();
+      }
     }));
 
     this.registerEvent(this.app.vault.on('delete', file => {
+      const usageLedgerChanged = this.usageLedgerStore.handleVaultDelete(file.path);
       this.liveContextIndex.markFileChanged(file);
       this.chapterSummaryStore.invalidatePath(file.path);
       this.invalidateCardMetaPathCache();
@@ -8799,9 +8807,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
+      if (usageLedgerChanged) {
+        this.refreshOperationLogViews();
+        this.refreshCostAnalyzerViews();
+      }
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      const usageLedgerChanged = this.usageLedgerStore.handleVaultRename(file.path, oldPath);
       this.liveContextIndex.markRenamed(file, oldPath);
       this.chapterSummaryStore.invalidatePath(oldPath);
       this.chapterSummaryStore.invalidatePath(file.path);
@@ -8812,6 +8825,10 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshQuerySimulationViews();
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
+      if (usageLedgerChanged) {
+        this.refreshOperationLogViews();
+        this.refreshCostAnalyzerViews();
+      }
     }));
 
     void this.usageLedgerStore.initialize().catch(error => {

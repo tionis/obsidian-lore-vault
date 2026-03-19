@@ -17,9 +17,12 @@ import type {
   OperationLogQueryResult,
   UsageLedgerCostProfilesResult,
   UsageLedgerQueryRequest,
-  UsageLedgerQueryResult
+  UsageLedgerQueryResult,
+  UsageLedgerReportQueryRequest,
+  UsageLedgerReportQueryResult
 } from './internal-db-types';
 import { buildOperationLogSearchText } from './operation-log-utils';
+import { resolveUsageLedgerScopeKey } from './usage-ledger-report';
 import type { UsageLedgerEntry } from './usage-ledger-store';
 
 type WorkerState = {
@@ -220,6 +223,7 @@ async function insertUsageLedgerEntry(
       id,
       source_root,
       cost_profile,
+      scope_key,
       timestamp,
       operation,
       provider,
@@ -236,11 +240,12 @@ async function insertUsageLedgerEntry(
       pricing_rule,
       pricing_snapshot_at,
       metadata_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       entry.id,
       sourceRoot,
       normalizeUsageLedgerCostProfile(entry),
+      resolveUsageLedgerScopeKey(entry),
       Math.max(0, Math.floor(entry.timestamp)),
       entry.operation,
       entry.provider,
@@ -360,14 +365,7 @@ async function queryUsageLedgerRows(
   workerState: WorkerState,
   request: UsageLedgerQueryRequest
 ): Promise<UsageLedgerQueryResult> {
-  const bindings: unknown[] = [request.sourceRoot];
-  const clauses: string[] = ['source_root = ?'];
-  const normalizedCostProfile = (request.costProfile ?? '').trim();
-  if (normalizedCostProfile) {
-    clauses.push('cost_profile = ?');
-    bindings.push(normalizedCostProfile);
-  }
-  const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const { whereSql, bindings } = buildUsageLedgerWhereSql(request);
   const rows = await queryRows(
     workerState.sqlite3,
     workerState.db,
@@ -397,6 +395,205 @@ async function queryUsageLedgerRows(
   );
   return {
     entries: rows.map(row => rowToUsageLedgerEntry(row))
+  };
+}
+
+function buildUsageLedgerWhereSql(request: UsageLedgerQueryRequest): { whereSql: string; bindings: unknown[] } {
+  const bindings: unknown[] = [request.sourceRoot];
+  const clauses: string[] = ['source_root = ?'];
+  const normalizedCostProfile = (request.costProfile ?? '').trim();
+  if (normalizedCostProfile) {
+    clauses.push('cost_profile = ?');
+    bindings.push(normalizedCostProfile);
+  }
+  return {
+    whereSql: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '',
+    bindings
+  };
+}
+
+function rowToUsageLedgerTotals(row: Record<string, unknown>, prefix = '') {
+  return {
+    requests: Number(row[`${prefix}requests`] ?? 0),
+    promptTokens: Number(row[`${prefix}prompt_tokens`] ?? 0),
+    completionTokens: Number(row[`${prefix}completion_tokens`] ?? 0),
+    totalTokens: Number(row[`${prefix}total_tokens`] ?? 0),
+    costUsdKnown: Number(row[`${prefix}cost_usd_known`] ?? 0),
+    providerReportedCostUsd: Number(row[`${prefix}provider_reported_cost_usd`] ?? 0),
+    estimatedOnlyCostUsd: Number(row[`${prefix}estimated_only_cost_usd`] ?? 0),
+    providerReportedCount: Number(row[`${prefix}provider_reported_count`] ?? 0),
+    estimatedCount: Number(row[`${prefix}estimated_count`] ?? 0),
+    unknownCostCount: Number(row[`${prefix}unknown_cost_count`] ?? 0)
+  };
+}
+
+function rowToUsageLedgerBreakdownItem(row: Record<string, unknown>) {
+  return {
+    key: String(row.key ?? ''),
+    ...rowToUsageLedgerTotals(row)
+  };
+}
+
+async function queryUsageLedgerBreakdownRows(
+  workerState: WorkerState,
+  whereSql: string,
+  bindings: unknown[],
+  keySql: string
+) {
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT
+      ${keySql} AS key,
+      COUNT(*) AS requests,
+      COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+      COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+      COALESCE(SUM(total_tokens), 0) AS total_tokens,
+      COALESCE(SUM(COALESCE(estimated_cost_usd, reported_cost_usd)), 0) AS cost_usd_known,
+      COALESCE(SUM(CASE
+        WHEN cost_source = 'provider_reported' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS provider_reported_cost_usd,
+      COALESCE(SUM(CASE
+        WHEN cost_source = 'estimated' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS estimated_only_cost_usd,
+      COALESCE(SUM(CASE WHEN cost_source = 'provider_reported' THEN 1 ELSE 0 END), 0) AS provider_reported_count,
+      COALESCE(SUM(CASE WHEN cost_source = 'estimated' THEN 1 ELSE 0 END), 0) AS estimated_count,
+      COALESCE(SUM(CASE WHEN COALESCE(estimated_cost_usd, reported_cost_usd) IS NULL THEN 1 ELSE 0 END), 0) AS unknown_cost_count
+    FROM usage_ledger
+    ${whereSql}
+    GROUP BY key
+    ORDER BY cost_usd_known DESC, total_tokens DESC, key ASC;`,
+    bindings
+  );
+  return rows.map(row => rowToUsageLedgerBreakdownItem(row));
+}
+
+async function queryUsageLedgerReport(
+  workerState: WorkerState,
+  request: UsageLedgerReportQueryRequest
+): Promise<UsageLedgerReportQueryResult> {
+  const { whereSql, bindings } = buildUsageLedgerWhereSql(request);
+  const now = new Date(request.nowMs);
+  const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const utcDay = now.getUTCDay();
+  const weekOffset = utcDay === 0 ? 6 : utcDay - 1;
+  const weekStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - weekOffset);
+  const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const sessionStartAt = Math.max(0, Math.floor(request.sessionStartAt));
+  const totalsRows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT
+      COUNT(*) AS project_requests,
+      COALESCE(SUM(prompt_tokens), 0) AS project_prompt_tokens,
+      COALESCE(SUM(completion_tokens), 0) AS project_completion_tokens,
+      COALESCE(SUM(total_tokens), 0) AS project_total_tokens,
+      COALESCE(SUM(COALESCE(estimated_cost_usd, reported_cost_usd)), 0) AS project_cost_usd_known,
+      COALESCE(SUM(CASE
+        WHEN cost_source = 'provider_reported' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS project_provider_reported_cost_usd,
+      COALESCE(SUM(CASE
+        WHEN cost_source = 'estimated' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS project_estimated_only_cost_usd,
+      COALESCE(SUM(CASE WHEN cost_source = 'provider_reported' THEN 1 ELSE 0 END), 0) AS project_provider_reported_count,
+      COALESCE(SUM(CASE WHEN cost_source = 'estimated' THEN 1 ELSE 0 END), 0) AS project_estimated_count,
+      COALESCE(SUM(CASE WHEN COALESCE(estimated_cost_usd, reported_cost_usd) IS NULL THEN 1 ELSE 0 END), 0) AS project_unknown_cost_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS day_requests,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN prompt_tokens ELSE 0 END), 0) AS day_prompt_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN completion_tokens ELSE 0 END), 0) AS day_completion_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN total_tokens ELSE 0 END), 0) AS day_total_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN COALESCE(estimated_cost_usd, reported_cost_usd) ELSE 0 END), 0) AS day_cost_usd_known,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS day_provider_reported_cost_usd,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'estimated' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS day_estimated_only_cost_usd,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN 1 ELSE 0 END), 0) AS day_provider_reported_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'estimated' THEN 1 ELSE 0 END), 0) AS day_estimated_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND COALESCE(estimated_cost_usd, reported_cost_usd) IS NULL THEN 1 ELSE 0 END), 0) AS day_unknown_cost_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS week_requests,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN prompt_tokens ELSE 0 END), 0) AS week_prompt_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN completion_tokens ELSE 0 END), 0) AS week_completion_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN total_tokens ELSE 0 END), 0) AS week_total_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN COALESCE(estimated_cost_usd, reported_cost_usd) ELSE 0 END), 0) AS week_cost_usd_known,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS week_provider_reported_cost_usd,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'estimated' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS week_estimated_only_cost_usd,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN 1 ELSE 0 END), 0) AS week_provider_reported_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'estimated' THEN 1 ELSE 0 END), 0) AS week_estimated_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND COALESCE(estimated_cost_usd, reported_cost_usd) IS NULL THEN 1 ELSE 0 END), 0) AS week_unknown_cost_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS month_requests,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN prompt_tokens ELSE 0 END), 0) AS month_prompt_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN completion_tokens ELSE 0 END), 0) AS month_completion_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN total_tokens ELSE 0 END), 0) AS month_total_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN COALESCE(estimated_cost_usd, reported_cost_usd) ELSE 0 END), 0) AS month_cost_usd_known,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS month_provider_reported_cost_usd,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'estimated' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS month_estimated_only_cost_usd,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN 1 ELSE 0 END), 0) AS month_provider_reported_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'estimated' THEN 1 ELSE 0 END), 0) AS month_estimated_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND COALESCE(estimated_cost_usd, reported_cost_usd) IS NULL THEN 1 ELSE 0 END), 0) AS month_unknown_cost_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS session_requests,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN prompt_tokens ELSE 0 END), 0) AS session_prompt_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN completion_tokens ELSE 0 END), 0) AS session_completion_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN total_tokens ELSE 0 END), 0) AS session_total_tokens,
+      COALESCE(SUM(CASE WHEN timestamp >= ? THEN COALESCE(estimated_cost_usd, reported_cost_usd) ELSE 0 END), 0) AS session_cost_usd_known,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS session_provider_reported_cost_usd,
+      COALESCE(SUM(CASE
+        WHEN timestamp >= ? AND cost_source = 'estimated' THEN COALESCE(estimated_cost_usd, reported_cost_usd)
+        ELSE 0
+      END), 0) AS session_estimated_only_cost_usd,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'provider_reported' THEN 1 ELSE 0 END), 0) AS session_provider_reported_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND cost_source = 'estimated' THEN 1 ELSE 0 END), 0) AS session_estimated_count,
+      COALESCE(SUM(CASE WHEN timestamp >= ? AND COALESCE(estimated_cost_usd, reported_cost_usd) IS NULL THEN 1 ELSE 0 END), 0) AS session_unknown_cost_count
+    FROM usage_ledger
+    ${whereSql};`,
+    [
+      ...bindings,
+      dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart,
+      weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart,
+      monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart,
+      sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt,
+      sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt
+    ]
+  );
+  const totalsRow = totalsRows[0] ?? {};
+  const byOperation = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, 'operation');
+  const byModel = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, "provider || ':' || model");
+  const byScope = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, 'scope_key');
+  const byCostSource = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, 'cost_source');
+  return {
+    totals: {
+      project: rowToUsageLedgerTotals(totalsRow, 'project_'),
+      day: rowToUsageLedgerTotals(totalsRow, 'day_'),
+      week: rowToUsageLedgerTotals(totalsRow, 'week_'),
+      month: rowToUsageLedgerTotals(totalsRow, 'month_'),
+      session: rowToUsageLedgerTotals(totalsRow, 'session_')
+    },
+    byOperation,
+    byModel,
+    byScope,
+    byCostSource
   };
 }
 
@@ -545,6 +742,7 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
         id TEXT PRIMARY KEY,
         source_root TEXT NOT NULL DEFAULT '',
         cost_profile TEXT NOT NULL,
+        scope_key TEXT NOT NULL DEFAULT '(none)',
         timestamp INTEGER NOT NULL,
         operation TEXT NOT NULL,
         provider TEXT NOT NULL,
@@ -585,6 +783,14 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
        ADD COLUMN source_root TEXT NOT NULL DEFAULT '';`
     );
   }
+  if (!usageLedgerColumns.some(row => row.name === 'scope_key')) {
+    await execSql(
+      sqlite3,
+      db,
+      `ALTER TABLE usage_ledger
+       ADD COLUMN scope_key TEXT NOT NULL DEFAULT '(none)';`
+    );
+  }
 
   await execSql(
     sqlite3,
@@ -594,6 +800,8 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
         ON usage_ledger(source_root, cost_profile, timestamp ASC, id ASC);
       CREATE INDEX IF NOT EXISTS idx_usage_ledger_source_root_operation_time
         ON usage_ledger(source_root, operation, timestamp ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS idx_usage_ledger_source_root_scope_key_time
+        ON usage_ledger(source_root, scope_key, timestamp ASC, id ASC);
     `
   );
 }
@@ -780,9 +988,33 @@ async function handleRequest(request: InternalDbRequest): Promise<unknown> {
       }
       return undefined;
     }
+    case 'replaceUsageLedgerEntries': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      await workerState.sqlite3.exec(workerState.db, 'BEGIN IMMEDIATE;');
+      try {
+        await execSql(
+          workerState.sqlite3,
+          workerState.db,
+          'DELETE FROM usage_ledger WHERE source_root = ?;',
+          [request.sourceRoot]
+        );
+        for (const entry of request.entries) {
+          await insertUsageLedgerEntry(workerState.sqlite3, workerState.db, request.sourceRoot, entry);
+        }
+        await workerState.sqlite3.exec(workerState.db, 'COMMIT;');
+      } catch (error) {
+        await workerState.sqlite3.exec(workerState.db, 'ROLLBACK;');
+        throw error;
+      }
+      return undefined;
+    }
     case 'queryUsageLedger': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);
       return queryUsageLedgerRows(workerState, request);
+    }
+    case 'queryUsageLedgerReport': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return queryUsageLedgerReport(workerState, request);
     }
     case 'listUsageLedgerCostProfiles': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);

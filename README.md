@@ -313,7 +313,7 @@ Operations and reporting:
 - Explorer preloads the current page of records from SQLite/JSONL, but rows still open from summary metadata and only render heavy request/response payload sections when you open those subsections.
 - Operation-log text and JSON fields render in copy-friendly readonly controls with `Copy` buttons so old prompts/payloads can be extracted directly from the explorer.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
-- Usage-ledger records are stored as immutable vault JSON files for cross-device sync, then indexed locally in SQLite when available for faster Cost Analyzer queries.
+- Usage-ledger records are stored as immutable vault JSON files for cross-device sync, then indexed locally in SQLite when available for faster Cost Analyzer queries; LoreVault does one canonical sync per session/root change, keeps that index current from vault file events, and computes Cost Analyzer totals/breakdowns from SQLite aggregate queries instead of materializing every matching row into JS first.
 - Budget settings are stored per cost profile (`Budget Cost Profile` selector in settings).
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
 - LoreVault only creates missing secrets; it never overwrites an existing secret value.

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildUsageLedgerReportSnapshot,
+  createUsageLedgerReportSnapshot,
   serializeUsageLedgerEntriesCsv
 } from '../src/usage-ledger-report';
 import { UsageLedgerEntry } from '../src/usage-ledger-store';
@@ -135,6 +136,72 @@ test('buildUsageLedgerReportSnapshot aggregates totals deterministically', () =>
   assert.ok(snapshot.warnings.some(item => item.includes('Operation budget exceeded')));
   assert.ok(snapshot.warnings.some(item => item.includes('Model budget exceeded')));
   assert.ok(snapshot.warnings.some(item => item.includes('Scope budget exceeded')));
+});
+
+test('createUsageLedgerReportSnapshot preserves aggregates and warning semantics', () => {
+  const options = {
+    nowMs: Date.UTC(2026, 1, 27, 20, 0, 0),
+    sessionStartAt: Date.UTC(2026, 1, 27, 9, 0, 0),
+    dailyBudgetUsd: 0.0004,
+    sessionBudgetUsd: 0.0004,
+    budgetByOperationUsd: {
+      summary_world_info: 0.0001
+    },
+    budgetByModelUsd: {
+      'openrouter:model-a': 0.004
+    },
+    budgetByScopeUsd: {
+      'universe/main': 0.0001
+    }
+  };
+  const baseline = buildUsageLedgerReportSnapshot([
+    entry({
+      id: 'a',
+      timestamp: Date.UTC(2026, 1, 27, 10, 0, 0),
+      operation: 'summary_world_info',
+      totalTokens: 40,
+      promptTokens: 30,
+      completionTokens: 10,
+      estimatedCostUsd: 0.0005,
+      metadata: {
+        scope: 'universe/main'
+      }
+    }),
+    entry({
+      id: 'b',
+      timestamp: Date.UTC(2026, 1, 27, 11, 0, 0),
+      operation: 'story_chat_turn',
+      totalTokens: 200,
+      promptTokens: 130,
+      completionTokens: 70,
+      estimatedCostUsd: null,
+      reportedCostUsd: null,
+      costSource: 'unknown',
+      pricingSource: 'none',
+      inputCostPerMillionUsd: null,
+      outputCostPerMillionUsd: null,
+      pricingRule: null,
+      pricingSnapshotAt: null,
+      metadata: {
+        scopes: ['universe/main']
+      }
+    })
+  ], options);
+
+  const snapshot = createUsageLedgerReportSnapshot({
+    totals: baseline.totals,
+    byOperation: baseline.byOperation,
+    byModel: baseline.byModel,
+    byScope: baseline.byScope,
+    byCostSource: baseline.byCostSource
+  }, options);
+
+  assert.deepEqual(snapshot.totals, baseline.totals);
+  assert.deepEqual(snapshot.byOperation, baseline.byOperation);
+  assert.deepEqual(snapshot.byModel, baseline.byModel);
+  assert.deepEqual(snapshot.byScope, baseline.byScope);
+  assert.deepEqual(snapshot.byCostSource, baseline.byCostSource);
+  assert.deepEqual(snapshot.warnings, baseline.warnings);
 });
 
 test('serializeUsageLedgerEntriesCsv writes stable sorted rows', () => {

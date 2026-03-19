@@ -13,7 +13,9 @@ import type {
   OperationLogQueryResult,
   UsageLedgerCostProfilesResult,
   UsageLedgerQueryRequest,
-  UsageLedgerQueryResult
+  UsageLedgerQueryResult,
+  UsageLedgerReportQueryRequest,
+  UsageLedgerReportQueryResult
 } from './internal-db-types';
 import type { UsageLedgerEntry } from './usage-ledger-store';
 
@@ -188,10 +190,27 @@ export class InternalDbClient {
     });
   }
 
+  async replaceUsageLedgerEntries(sourceRoot: string, entries: UsageLedgerEntry[]): Promise<void> {
+    await this.initialize();
+    await this.request<void>({
+      type: 'replaceUsageLedgerEntries',
+      sourceRoot,
+      entries
+    });
+  }
+
   async queryUsageLedger(request: UsageLedgerQueryRequest): Promise<UsageLedgerQueryResult> {
     await this.initialize();
     return this.request<UsageLedgerQueryResult>({
       type: 'queryUsageLedger',
+      ...request
+    });
+  }
+
+  async queryUsageLedgerReport(request: UsageLedgerReportQueryRequest): Promise<UsageLedgerReportQueryResult> {
+    await this.initialize();
+    return this.request<UsageLedgerReportQueryResult>({
+      type: 'queryUsageLedgerReport',
       ...request
     });
   }

@@ -221,8 +221,8 @@ Reference design: `docs/planning.md`.
 
 ## Performance Follow-Ups
 
-- [ ] Add a persistent usage-ledger import manifest or vault-event-driven sync so Cost Analyzer/profile queries do not rescan the full canonical ledger tree on each reload.
-- [ ] Move usage-ledger report aggregation and breakdown queries into SQLite (`GROUP BY` / totals) so Cost Analyzer does not materialize all matching ledger rows into JS first.
+- [x] Add vault-event-driven usage-ledger sync so Cost Analyzer/profile queries do not rescan the full canonical ledger tree on each reload.
+- [x] Move usage-ledger report aggregation and breakdown queries into SQLite (`GROUP BY` / totals) so Cost Analyzer does not materialize all matching ledger rows into JS first.
 - [ ] Split operation-log list queries into summary rows vs detail fetches so the explorer list does not load heavy request/attempt/final-text payload columns for every visible row.
 - [ ] Replace operation-log `%LIKE%` search and exact `COUNT(*)` reload queries with a more scalable search/count strategy (for example FTS5 plus deferred or approximate counts).
 - [ ] Cache known cost-profile lists and invalidate them only when ledger/settings data actually changes instead of recomputing them on every explorer/analyzer reload.

@@ -664,6 +664,8 @@ Core contracts:
 - if the configured ledger path ends with `.json`, that file is treated as a legacy import source and the canonical shared record root is the sibling path without the suffix
 - canonical usage-ledger storage is one immutable JSON file per normalized record grouped by UTC date under `YYYY/MM/DD`
 - the local internal SQLite DB indexes canonical usage-ledger records for fast querying when available; the vault record files remain the cross-device source of truth
+- ledger sync strategy is vault-event-driven after the initial/root-change reconciliation: LoreVault performs one full canonical scan for the active ledger root, then applies create/modify events incrementally and triggers a full source-root replacement only for deletes, renames, or legacy-ledger file changes
+- Cost Analyzer report snapshots now come from SQLite aggregate queries (`SUM`/`GROUP BY`) when the local DB is available; warning text is still assembled in JS over those aggregate result sets so the user-visible budget semantics remain unchanged
 - usage report output dir defaults to `.obsidian/plugins/lore-vault/reports`
 - record fields are normalized and sorted deterministically on persist
 - cost source is explicit per record:

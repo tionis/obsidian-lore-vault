@@ -541,6 +541,8 @@ Current implemented feature set:
 - completion and summary requests capture usage when provider payload includes token usage
 - canonical usage-ledger records are written as immutable per-entry JSON files in the vault for cross-device sync
 - when available, LoreVault indexes those records in the local internal SQLite store for faster Cost Analyzer/profile queries
+- the local index does one canonical ledger reconciliation when the store starts or the ledger root changes, then follows vault create/modify/delete/rename events so repeated analyzer/profile reloads do not rescan the full ledger tree
+- when the local SQLite index is available, Cost Analyzer totals and breakdowns are computed with SQLite aggregate queries instead of loading every matching ledger row into JavaScript first
 - cost calculation uses:
   - provider-reported cost when available
   - model-specific pricing overrides when configured

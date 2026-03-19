@@ -2,6 +2,12 @@ import type { App } from 'obsidian';
 import type { UsageCostSource, UsagePricingSource } from './cost-utils';
 import { InternalDbClient } from './internal-db-client';
 import type { InternalDbStatus } from './internal-db-types';
+import {
+  buildUsageLedgerReportSnapshot,
+  createUsageLedgerReportSnapshot,
+  type UsageLedgerReportOptions,
+  type UsageLedgerReportSnapshot
+} from './usage-ledger-report';
 import { ensureParentVaultFolderForFile } from './vault-path-utils';
 
 export interface UsageLedgerEntry {
@@ -208,7 +214,10 @@ export class UsageLedgerStore {
     errorMessage: ''
   };
   private knownRecordPaths = new Set<string>();
+  private pendingChangedRecordPaths = new Set<string>();
+  private needsFullRescan = true;
   private legacyFileMtime = -1;
+  private syncPromise: Promise<void> | null = null;
 
   constructor(app: App, filePath: string, options: UsageLedgerStoreOptions = {}) {
     this.app = app;
@@ -236,6 +245,8 @@ export class UsageLedgerStore {
     }
     this.filePath = normalized;
     this.knownRecordPaths.clear();
+    this.pendingChangedRecordPaths.clear();
+    this.needsFullRescan = true;
     this.legacyFileMtime = -1;
   }
 
@@ -257,15 +268,16 @@ export class UsageLedgerStore {
       return;
     }
     const { canonicalRootPath } = this.resolveStoragePaths();
+    const filePath = this.buildRecordPath(normalized);
 
-    await this.writeCanonicalRecordFile(normalized);
+    await this.writeCanonicalRecordFile(normalized, filePath);
 
     if (this.internalDbClient) {
       try {
         await this.ensureInternalDbReady();
         if (this.internalDbStatus.available) {
           await this.internalDbClient.appendUsageLedgerEntry(canonicalRootPath, normalized);
-          this.knownRecordPaths.add(this.buildRecordPath(normalized));
+          this.knownRecordPaths.add(filePath);
         }
       } catch (error) {
         this.markInternalDbUnavailable(error);
@@ -325,11 +337,82 @@ export class UsageLedgerStore {
     return [...profiles].sort((left, right) => left.localeCompare(right));
   }
 
+  async getReportSnapshot(
+    options: UsageLedgerReportOptions & { costProfile?: string | null }
+  ): Promise<UsageLedgerReportSnapshot> {
+    const normalizedCostProfile = (options.costProfile ?? '').trim();
+    if (this.internalDbClient) {
+      try {
+        await this.ensureInternalDbSynchronized();
+        if (this.internalDbStatus.available) {
+          const aggregates = await this.internalDbClient.queryUsageLedgerReport({
+            sourceRoot: this.resolveStoragePaths().canonicalRootPath,
+            costProfile: normalizedCostProfile || null,
+            nowMs: options.nowMs,
+            sessionStartAt: options.sessionStartAt
+          });
+          return createUsageLedgerReportSnapshot(aggregates, options);
+        }
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    const entries = await this.listEntries({ costProfile: normalizedCostProfile || null });
+    return buildUsageLedgerReportSnapshot(entries, options);
+  }
+
+  handleVaultCreate(path: string): boolean {
+    return this.handleVaultFileMutation(path, 'create');
+  }
+
+  handleVaultModify(path: string): boolean {
+    return this.handleVaultFileMutation(path, 'modify');
+  }
+
+  handleVaultDelete(path: string): boolean {
+    return this.handleVaultFileMutation(path, 'delete');
+  }
+
+  handleVaultRename(path: string, oldPath: string): boolean {
+    const deleted = this.handleVaultDelete(oldPath);
+    const created = this.handleVaultCreate(path);
+    return deleted || created;
+  }
+
   private resolveStoragePaths(): UsageLedgerStoragePaths {
     return {
       canonicalRootPath: resolveCanonicalRootPath(this.filePath),
       legacyFilePath: resolveLegacyFilePath(this.filePath)
     };
+  }
+
+  private handleVaultFileMutation(path: string, mutation: 'create' | 'modify' | 'delete'): boolean {
+    const normalizedPath = normalizePath(path);
+    if (!normalizedPath) {
+      return false;
+    }
+    if (this.isLegacyLedgerFilePath(normalizedPath)) {
+      this.legacyFileMtime = -1;
+      this.needsFullRescan = true;
+      if (mutation === 'delete') {
+        this.pendingChangedRecordPaths.clear();
+      }
+      return true;
+    }
+    if (!this.isCanonicalRecordFilePath(normalizedPath)) {
+      return false;
+    }
+    if (mutation === 'delete') {
+      this.needsFullRescan = true;
+      this.knownRecordPaths.delete(normalizedPath);
+      this.pendingChangedRecordPaths.delete(normalizedPath);
+      return true;
+    }
+    if (!this.needsFullRescan) {
+      this.pendingChangedRecordPaths.add(normalizedPath);
+    }
+    return true;
   }
 
   private buildRecordPath(entry: UsageLedgerEntry): string {
@@ -342,8 +425,7 @@ export class UsageLedgerStore {
     return `${canonicalRootPath}/${year}/${month}/${day}/${timestamp}-${entry.id}.json`;
   }
 
-  private async writeCanonicalRecordFile(entry: UsageLedgerEntry): Promise<void> {
-    const filePath = this.buildRecordPath(entry);
+  private async writeCanonicalRecordFile(entry: UsageLedgerEntry, filePath = this.buildRecordPath(entry)): Promise<void> {
     const exists = await this.app.vault.adapter.exists(filePath);
     if (exists) {
       return;
@@ -379,10 +461,63 @@ export class UsageLedgerStore {
     if (!this.internalDbStatus.available) {
       return;
     }
+    if (this.syncPromise) {
+      await this.syncPromise;
+      return;
+    }
+
+    const syncPromise = this.synchronizeInternalDbNow()
+      .finally(() => {
+        if (this.syncPromise === syncPromise) {
+          this.syncPromise = null;
+        }
+      });
+    this.syncPromise = syncPromise;
+    await syncPromise;
+  }
+
+  private async synchronizeInternalDbNow(): Promise<void> {
+    if (!this.internalDbClient || !this.internalDbStatus.available) {
+      return;
+    }
+
+    while (true) {
+      const { canonicalRootPath } = this.resolveStoragePaths();
+      if (this.needsFullRescan) {
+        this.needsFullRescan = false;
+        this.pendingChangedRecordPaths.clear();
+        await this.replaceInternalDbFromVault(canonicalRootPath);
+        continue;
+      }
+
+      const changedPaths = [...this.pendingChangedRecordPaths].sort((left, right) => left.localeCompare(right));
+      if (changedPaths.length === 0) {
+        return;
+      }
+      this.pendingChangedRecordPaths.clear();
+      await this.importChangedRecordPaths(canonicalRootPath, changedPaths);
+    }
+  }
+
+  private async replaceInternalDbFromVault(canonicalRootPath: string): Promise<void> {
+    if (!this.internalDbClient) {
+      return;
+    }
+
+    await this.importLegacyLedgerFile();
+    const { entries, filePaths } = await this.loadCanonicalEntriesFromVault(canonicalRootPath);
+    await this.internalDbClient.replaceUsageLedgerEntries(canonicalRootPath, entries);
+    this.knownRecordPaths = new Set(filePaths);
+  }
+
+  private async importChangedRecordPaths(canonicalRootPath: string, changedPaths: string[]): Promise<void> {
+    if (!this.internalDbClient) {
+      return;
+    }
 
     const imports: UsageLedgerEntry[] = [];
-    for (const filePath of await this.listRecordFiles(this.resolveStoragePaths().canonicalRootPath)) {
-      if (this.knownRecordPaths.has(filePath)) {
+    for (const filePath of changedPaths) {
+      if (!this.isCanonicalRecordFilePath(filePath)) {
         continue;
       }
       const entry = await this.readCanonicalRecordFile(filePath);
@@ -393,16 +528,8 @@ export class UsageLedgerStore {
       this.knownRecordPaths.add(filePath);
     }
 
-    const legacyImports = await this.importLegacyLedgerFile();
-    if (legacyImports.length > 0) {
-      imports.push(...legacyImports);
-    }
-
     if (imports.length > 0) {
-      await this.internalDbClient.importUsageLedgerEntries(
-        this.resolveStoragePaths().canonicalRootPath,
-        dedupeEntries(imports)
-      );
+      await this.internalDbClient.importUsageLedgerEntries(canonicalRootPath, dedupeEntries(imports));
     }
   }
 
@@ -453,6 +580,23 @@ export class UsageLedgerStore {
     }));
   }
 
+  private async loadCanonicalEntriesFromVault(rootPath: string): Promise<{ entries: UsageLedgerEntry[]; filePaths: string[] }> {
+    const entries: UsageLedgerEntry[] = [];
+    const filePaths: string[] = [];
+    for (const filePath of await this.listRecordFiles(rootPath)) {
+      const entry = await this.readCanonicalRecordFile(filePath);
+      if (!entry) {
+        continue;
+      }
+      entries.push(entry);
+      filePaths.push(filePath);
+    }
+    return {
+      entries: dedupeEntries(entries),
+      filePaths
+    };
+  }
+
   private parseLegacyLedgerEntries(raw: string): UsageLedgerEntry[] {
     try {
       const parsed = JSON.parse(raw) as Partial<UsageLedgerPayload>;
@@ -478,6 +622,23 @@ export class UsageLedgerStore {
       console.error(`Failed to load usage ledger record ${filePath}:`, error);
       return null;
     }
+  }
+
+  private isCanonicalRecordFilePath(filePath: string): boolean {
+    const normalized = normalizePath(filePath);
+    const { canonicalRootPath } = this.resolveStoragePaths();
+    return Boolean(
+      normalized
+      && canonicalRootPath
+      && normalized.toLowerCase().endsWith('.json')
+      && normalized.startsWith(`${canonicalRootPath}/`)
+    );
+  }
+
+  private isLegacyLedgerFilePath(filePath: string): boolean {
+    const normalized = normalizePath(filePath);
+    const { legacyFilePath } = this.resolveStoragePaths();
+    return Boolean(legacyFilePath && normalized === legacyFilePath);
   }
 
   private async listRecordFiles(rootPath: string): Promise<string[]> {

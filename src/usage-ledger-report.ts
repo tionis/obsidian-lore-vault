@@ -34,6 +34,20 @@ export interface UsageLedgerReportSnapshot {
   warnings: string[];
 }
 
+export interface UsageLedgerReportAggregates {
+  totals: {
+    project: UsageLedgerTotals;
+    day: UsageLedgerTotals;
+    week: UsageLedgerTotals;
+    month: UsageLedgerTotals;
+    session: UsageLedgerTotals;
+  };
+  byOperation: UsageLedgerBreakdownItem[];
+  byModel: UsageLedgerBreakdownItem[];
+  byScope: UsageLedgerBreakdownItem[];
+  byCostSource: UsageLedgerBreakdownItem[];
+}
+
 export interface UsageLedgerReportOptions {
   nowMs: number;
   sessionStartAt: number;
@@ -198,7 +212,7 @@ function normalizeBudgetMap(raw: {[key: string]: number} | undefined): Map<strin
   return map;
 }
 
-function resolveScopeKey(entry: UsageLedgerEntry): string {
+export function resolveUsageLedgerScopeKey(entry: UsageLedgerEntry): string {
   const directScope = typeof entry.metadata?.scope === 'string'
     ? entry.metadata.scope.trim()
     : '';
@@ -217,6 +231,28 @@ function resolveScopeKey(entry: UsageLedgerEntry): string {
   }
 
   return '(none)';
+}
+
+export function createUsageLedgerReportSnapshot(
+  aggregates: UsageLedgerReportAggregates,
+  options: UsageLedgerReportOptions
+): UsageLedgerReportSnapshot {
+  return {
+    generatedAt: options.nowMs,
+    sessionStartAt: Math.max(0, Math.floor(options.sessionStartAt)),
+    totals: aggregates.totals,
+    byOperation: [...aggregates.byOperation],
+    byModel: [...aggregates.byModel],
+    byScope: [...aggregates.byScope],
+    byCostSource: [...aggregates.byCostSource],
+    warnings: buildWarnings(
+      aggregates.totals,
+      options,
+      aggregates.byOperation,
+      aggregates.byModel,
+      aggregates.byScope
+    )
+  };
 }
 
 export function buildUsageLedgerReportSnapshot(
@@ -266,7 +302,7 @@ export function buildUsageLedgerReportSnapshot(
     addEntryToTotals(modelTotals, entry);
     byModel.set(modelKey, modelTotals);
 
-    const scopeKey = resolveScopeKey(entry);
+    const scopeKey = resolveUsageLedgerScopeKey(entry);
     const scopeTotals = byScope.get(scopeKey) ?? createEmptyTotals();
     addEntryToTotals(scopeTotals, entry);
     byScope.set(scopeKey, scopeTotals);
@@ -290,16 +326,16 @@ export function buildUsageLedgerReportSnapshot(
   const sortedByScope = toSortedBreakdown(byScope);
   const sortedByCostSource = toSortedBreakdown(byCostSource);
 
-  return {
-    generatedAt: options.nowMs,
-    sessionStartAt,
+  return createUsageLedgerReportSnapshot({
     totals,
     byOperation: sortedByOperation,
     byModel: sortedByModel,
     byScope: sortedByScope,
-    byCostSource: sortedByCostSource,
-    warnings: buildWarnings(totals, options, sortedByOperation, sortedByModel, sortedByScope)
-  };
+    byCostSource: sortedByCostSource
+  }, {
+    ...options,
+    sessionStartAt
+  });
 }
 
 function escapeCsvCell(value: string): string {

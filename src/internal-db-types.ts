@@ -3,6 +3,7 @@ import type {
   CompletionOperationLogAttempt,
   CompletionOperationLogRecord
 } from './completion-provider';
+import type { UsageLedgerReportAggregates } from './usage-ledger-report';
 import type { UsageLedgerEntry } from './usage-ledger-store';
 
 export type InternalDbBackend = 'opfs' | 'idb';
@@ -63,6 +64,13 @@ export interface UsageLedgerCostProfilesResult {
   profiles: string[];
 }
 
+export interface UsageLedgerReportQueryRequest extends UsageLedgerQueryRequest {
+  nowMs: number;
+  sessionStartAt: number;
+}
+
+export type UsageLedgerReportQueryResult = UsageLedgerReportAggregates;
+
 export type InternalDbRequest =
   | {
     id: number;
@@ -113,10 +121,20 @@ export type InternalDbRequest =
     sourceRoot: string;
     entries: UsageLedgerEntry[];
   }
+  | {
+    id: number;
+    type: 'replaceUsageLedgerEntries';
+    sourceRoot: string;
+    entries: UsageLedgerEntry[];
+  }
   | ({
     id: number;
     type: 'queryUsageLedger';
   } & UsageLedgerQueryRequest)
+  | ({
+    id: number;
+    type: 'queryUsageLedgerReport';
+  } & UsageLedgerReportQueryRequest)
   | {
     id: number;
     type: 'listUsageLedgerCostProfiles';

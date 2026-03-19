@@ -21,6 +21,7 @@ function createMockApp() {
   const files = new Map<string, MockFileRecord>();
   const directories = new Set<string>();
   let nextMtime = 1;
+  let listCallCount = 0;
 
   function ensureDirectory(path: string): void {
     const normalized = normalizePath(path);
@@ -39,6 +40,10 @@ function createMockApp() {
     const normalized = normalizePath(path);
     ensureDirectory(getParentPath(normalized));
     files.set(normalized, { content, mtime: nextMtime++ });
+  }
+
+  function deleteFile(path: string): void {
+    files.delete(normalizePath(path));
   }
 
   const adapter = {
@@ -75,6 +80,7 @@ function createMockApp() {
       return null;
     },
     list: async (path: string) => {
+      listCallCount += 1;
       const normalized = normalizePath(path);
       const prefix = normalized ? `${normalized}/` : '';
       const folderEntries = [...directories]
@@ -121,7 +127,9 @@ function createMockApp() {
   return {
     app: { vault } as any,
     files,
-    setFile
+    setFile,
+    deleteFile,
+    getListCallCount: () => listCallCount
   };
 }
 
@@ -144,6 +152,95 @@ function buildEntry(overrides: Partial<Omit<UsageLedgerEntry, 'id'>>): Omit<Usag
     pricingSnapshotAt: 1700000000000,
     metadata: {},
     ...overrides
+  };
+}
+
+function buildCanonicalRecordPath(ledgerPath: string, entry: UsageLedgerEntry): string {
+  const root = normalizePath(ledgerPath).replace(/\.json$/i, '');
+  const date = new Date(entry.timestamp);
+  const year = date.getUTCFullYear().toString().padStart(4, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${root}/${year}/${month}/${day}/${entry.timestamp}-${entry.id}.json`;
+}
+
+function buildCanonicalRecordContent(entry: UsageLedgerEntry): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    entry
+  });
+}
+
+function createMockInternalDbClient() {
+  const dbEntries = new Map<string, UsageLedgerEntry>();
+  const importedBatches: Array<{ sourceRoot: string; entries: UsageLedgerEntry[] }> = [];
+  const replacedBatches: Array<{ sourceRoot: string; entries: UsageLedgerEntry[] }> = [];
+
+  return {
+    dbEntries,
+    importedBatches,
+    replacedBatches,
+    client: {
+      initialize: async () => ({
+        available: true,
+        backend: 'idb' as const,
+        backendLabel: 'IndexedDB',
+        sqliteVersion: 'test',
+        storagePersisted: true,
+        errorMessage: ''
+      }),
+      importUsageLedgerEntries: async (sourceRoot: string, entries: UsageLedgerEntry[]) => {
+        importedBatches.push({
+          sourceRoot,
+          entries: entries.map(entry => ({
+            ...entry,
+            metadata: { ...entry.metadata }
+          }))
+        });
+        for (const entry of entries) {
+          dbEntries.set(entry.id, {
+            ...entry,
+            metadata: { ...entry.metadata }
+          });
+        }
+      },
+      replaceUsageLedgerEntries: async (sourceRoot: string, entries: UsageLedgerEntry[]) => {
+        replacedBatches.push({
+          sourceRoot,
+          entries: entries.map(entry => ({
+            ...entry,
+            metadata: { ...entry.metadata }
+          }))
+        });
+        dbEntries.clear();
+        for (const entry of entries) {
+          dbEntries.set(entry.id, {
+            ...entry,
+            metadata: { ...entry.metadata }
+          });
+        }
+      },
+      queryUsageLedger: async (request: { sourceRoot: string; costProfile?: string | null }) => {
+        return {
+          entries: [...dbEntries.values()]
+            .filter(entry => !request.costProfile || entry.metadata.costProfile === request.costProfile)
+            .sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id))
+        };
+      },
+      listUsageLedgerCostProfiles: async (_sourceRoot: string) => ({
+        profiles: [...new Set(
+          [...dbEntries.values()]
+            .map(entry => typeof entry.metadata.costProfile === 'string' ? entry.metadata.costProfile : '')
+            .filter(Boolean)
+        )].sort((left, right) => left.localeCompare(right))
+      }),
+      appendUsageLedgerEntry: async (_sourceRoot: string, entry: UsageLedgerEntry) => {
+        dbEntries.set(entry.id, {
+          ...entry,
+          metadata: { ...entry.metadata }
+        });
+      }
+    }
   };
 }
 
@@ -271,52 +368,17 @@ test('UsageLedgerStore imports legacy JSON entries into the internal DB on initi
     ]
   }));
 
-  const importedBatches: Array<{ sourceRoot: string; entries: UsageLedgerEntry[] }> = [];
-  const dbEntries = new Map<string, UsageLedgerEntry>();
-  const internalDbClient = {
-    initialize: async () => ({
-      available: true,
-      backend: 'idb',
-      backendLabel: 'IndexedDB',
-      sqliteVersion: 'test',
-      storagePersisted: true,
-      errorMessage: ''
-    }),
-    importUsageLedgerEntries: async (sourceRoot: string, entries: UsageLedgerEntry[]) => {
-      importedBatches.push({
-        sourceRoot,
-        entries: entries.map(entry => ({
-          ...entry,
-          metadata: { ...entry.metadata }
-        }))
-      });
-      for (const entry of entries) {
-        dbEntries.set(entry.id, {
-          ...entry,
-          metadata: { ...entry.metadata }
-        });
-      }
-    },
-    queryUsageLedger: async (request: { sourceRoot: string; costProfile?: string | null }) => ({
-      entries: [...dbEntries.values()]
-        .filter(entry => !request.costProfile || entry.metadata.costProfile === request.costProfile)
-        .sort((left, right) => left.timestamp - right.timestamp || left.id.localeCompare(right.id))
-    }),
-    listUsageLedgerCostProfiles: async (_sourceRoot: string) => ({
-      profiles: []
-    }),
-    appendUsageLedgerEntry: async (_sourceRoot: string, _entry: UsageLedgerEntry) => undefined
-  };
+  const internalDb = createMockInternalDbClient();
 
   const store = new UsageLedgerStore(app, ledgerPath, {
-    internalDbClient: internalDbClient as any
+    internalDbClient: internalDb.client as any
   });
   await store.initialize();
 
-  assert.equal(importedBatches.length, 1);
-  assert.equal(importedBatches[0].sourceRoot, '.obsidian/plugins/lore-vault/cache/usage-ledger');
+  assert.equal(internalDb.replacedBatches.length, 1);
+  assert.equal(internalDb.replacedBatches[0].sourceRoot, '.obsidian/plugins/lore-vault/cache/usage-ledger');
   assert.deepEqual(
-    importedBatches[0].entries.map(entry => entry.id),
+    internalDb.replacedBatches[0].entries.map(entry => entry.id),
     ['legacy-a', 'legacy-b']
   );
 
@@ -325,6 +387,146 @@ test('UsageLedgerStore imports legacy JSON entries into the internal DB on initi
     entries.map(entry => entry.id),
     ['legacy-a', 'legacy-b']
   );
+});
+
+test('UsageLedgerStore avoids repeated canonical tree scans for repeated internal DB queries', async () => {
+  const { app, getListCallCount } = createMockApp();
+  const ledgerPath = '.obsidian/plugins/lore-vault/cache/usage-ledger.json';
+  const seedStore = new UsageLedgerStore(app, ledgerPath);
+  await seedStore.append({
+    id: 'alpha-entry',
+    ...buildEntry({
+      timestamp: 100,
+      metadata: {
+        costProfile: 'alpha'
+      }
+    })
+  } as UsageLedgerEntry);
+  await seedStore.append({
+    id: 'beta-entry',
+    ...buildEntry({
+      timestamp: 200,
+      metadata: {
+        costProfile: 'beta'
+      }
+    })
+  } as UsageLedgerEntry);
+
+  const internalDb = createMockInternalDbClient();
+  const store = new UsageLedgerStore(app, ledgerPath, {
+    internalDbClient: internalDb.client as any
+  });
+  await store.initialize();
+
+  const listCallsAfterInitialize = getListCallCount();
+  assert.equal(internalDb.replacedBatches.length, 1);
+
+  const entries = await store.listEntries();
+  const profiles = await store.listKnownCostProfiles();
+
+  assert.deepEqual(
+    entries.map(entry => entry.id),
+    ['alpha-entry', 'beta-entry']
+  );
+  assert.deepEqual(profiles, ['alpha', 'beta']);
+  assert.equal(getListCallCount(), listCallsAfterInitialize);
+});
+
+test('UsageLedgerStore incrementally imports created canonical record files without a full rescan', async () => {
+  const { app, setFile, getListCallCount } = createMockApp();
+  const ledgerPath = '.obsidian/plugins/lore-vault/cache/usage-ledger.json';
+  const seedStore = new UsageLedgerStore(app, ledgerPath);
+  await seedStore.append({
+    id: 'alpha-entry',
+    ...buildEntry({
+      timestamp: 100,
+      metadata: {
+        costProfile: 'alpha'
+      }
+    })
+  } as UsageLedgerEntry);
+
+  const internalDb = createMockInternalDbClient();
+  const store = new UsageLedgerStore(app, ledgerPath, {
+    internalDbClient: internalDb.client as any
+  });
+  await store.initialize();
+
+  const listCallsAfterInitialize = getListCallCount();
+  const importedBatchCount = internalDb.importedBatches.length;
+
+  const externalEntry: UsageLedgerEntry = {
+    id: 'external-entry',
+    ...buildEntry({
+      timestamp: 300,
+      metadata: {
+        costProfile: 'gamma'
+      }
+    })
+  };
+  const externalPath = buildCanonicalRecordPath(ledgerPath, externalEntry);
+  setFile(externalPath, buildCanonicalRecordContent(externalEntry));
+
+  assert.equal(store.handleVaultCreate(externalPath), true);
+
+  const entries = await store.listEntries();
+  assert.deepEqual(
+    entries.map(entry => entry.id),
+    ['alpha-entry', 'external-entry']
+  );
+  assert.equal(getListCallCount(), listCallsAfterInitialize);
+  assert.equal(internalDb.importedBatches.length, importedBatchCount + 1);
+  const lastImportedBatch = internalDb.importedBatches[internalDb.importedBatches.length - 1];
+  assert.deepEqual(
+    lastImportedBatch?.entries.map((entry: UsageLedgerEntry) => entry.id),
+    ['external-entry']
+  );
+});
+
+test('UsageLedgerStore replaces internal DB rows after canonical record deletion', async () => {
+  const { app, deleteFile, getListCallCount } = createMockApp();
+  const ledgerPath = '.obsidian/plugins/lore-vault/cache/usage-ledger.json';
+  const seedStore = new UsageLedgerStore(app, ledgerPath);
+  const alphaEntry: UsageLedgerEntry = {
+    id: 'alpha-entry',
+    ...buildEntry({
+      timestamp: 100,
+      metadata: {
+        costProfile: 'alpha'
+      }
+    })
+  };
+  const betaEntry: UsageLedgerEntry = {
+    id: 'beta-entry',
+    ...buildEntry({
+      timestamp: 200,
+      metadata: {
+        costProfile: 'beta'
+      }
+    })
+  };
+  await seedStore.append(alphaEntry);
+  await seedStore.append(betaEntry);
+
+  const internalDb = createMockInternalDbClient();
+  const store = new UsageLedgerStore(app, ledgerPath, {
+    internalDbClient: internalDb.client as any
+  });
+  await store.initialize();
+
+  const listCallsAfterInitialize = getListCallCount();
+  const alphaPath = buildCanonicalRecordPath(ledgerPath, alphaEntry);
+  deleteFile(alphaPath);
+
+  assert.equal(store.handleVaultDelete(alphaPath), true);
+
+  const entries = await store.listEntries();
+  assert.deepEqual(
+    entries.map(entry => entry.id),
+    ['beta-entry']
+  );
+  assert.ok(getListCallCount() > listCallsAfterInitialize);
+  assert.equal(internalDb.replacedBatches.length, 2);
 });
 
 test('UsageLedgerStore lists known cost profiles deterministically', async () => {

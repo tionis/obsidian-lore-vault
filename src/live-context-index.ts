@@ -7,6 +7,7 @@ import { buildScopePack } from './scope-pack-builder';
 import { EmbeddingService } from './embedding-service';
 import { sha256HexAsync } from './hash-utils';
 import { CompletionOperationLogger, CompletionUsageReport } from './completion-provider';
+import type { LorebookNoteMetadata } from './lorebooks-manager-data';
 
 interface RefreshTask {
   changedPaths: Set<string>;
@@ -41,15 +42,18 @@ export class LiveContextIndex {
   private embeddingSignature = '';
   private onEmbeddingOperationLog: CompletionOperationLogger | undefined;
   private onEmbeddingUsage: ((operationName: string, usage: CompletionUsageReport, metadata: Record<string, unknown>) => void | Promise<void>) | undefined;
+  private getLorebookMetadata: (() => LorebookNoteMetadata[]) | null;
 
   constructor(
     app: App,
     getSettings: () => ConverterSettings,
+    getLorebookMetadata?: (() => LorebookNoteMetadata[]) | null,
     onEmbeddingOperationLog?: CompletionOperationLogger,
     onEmbeddingUsage?: (operationName: string, usage: CompletionUsageReport, metadata: Record<string, unknown>) => void | Promise<void>
   ) {
     this.app = app;
     this.getSettings = getSettings;
+    this.getLorebookMetadata = getLorebookMetadata ?? null;
     this.onEmbeddingOperationLog = onEmbeddingOperationLog;
     this.onEmbeddingUsage = onEmbeddingUsage;
   }
@@ -254,7 +258,7 @@ export class LiveContextIndex {
   }
 
   private updateFileScopeIndex(settings: ConverterSettings): void {
-    const metadata = collectLorebookNoteMetadata(this.app, settings);
+    const metadata = this.getLorebookMetadata?.() ?? collectLorebookNoteMetadata(this.app, settings);
     const nextMap = new Map<string, string[]>();
 
     for (const item of metadata) {
@@ -323,7 +327,7 @@ export class LiveContextIndex {
       return;
     }
 
-    const currentMetadata = collectLorebookNoteMetadata(this.app, settings);
+    const currentMetadata = this.getLorebookMetadata?.() ?? collectLorebookNoteMetadata(this.app, settings);
     const currentScopesByPath = new Map<string, string[]>();
     for (const item of currentMetadata) {
       currentScopesByPath.set(item.path, item.scopes);

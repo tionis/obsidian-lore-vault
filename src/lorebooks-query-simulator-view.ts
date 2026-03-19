@@ -1,7 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from 'obsidian';
 import LoreBookConverterPlugin from './main';
 import { AssembledContext } from './context-query';
-import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
 import { buildScopeSummaries } from './lorebooks-manager-data';
 import { normalizeScope } from './lorebook-scoping';
 
@@ -102,7 +101,7 @@ export class LorebooksQuerySimulationView extends ItemView {
   }
 
   private discoverScopes(): string[] {
-    const notes = collectLorebookNoteMetadata(this.app, this.plugin.settings);
+    const notes = this.plugin.getCachedLorebookMetadata();
     const summaries = buildScopeSummaries(notes, this.plugin.settings);
     return summaries.map(summary => summary.scope).sort((a, b) => a.localeCompare(b));
   }

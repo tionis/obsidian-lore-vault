@@ -170,7 +170,10 @@ import { AuthorNoteLinkModal } from './author-note-link-modal';
 import { InlineDirectiveInsertModal } from './inline-directive-insert-modal';
 import { GreetingSelectorModal, GreetingOption } from './greeting-selector-modal';
 import { KeywordReviewModal, KeywordReviewResult } from './keyword-review-modal';
-import { collectLorebookNoteMetadata } from './lorebooks-manager-collector';
+import {
+  collectLorebookNoteMetadata,
+  collectLorebookNoteMetadataForFile
+} from './lorebooks-manager-collector';
 import { buildScopeSummaries, LorebookNoteMetadata } from './lorebooks-manager-data';
 import { UsageLedgerStore } from './usage-ledger-store';
 import { estimateUsageCostUsdWithRateSelection } from './cost-utils';
@@ -6341,7 +6344,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       return;
     }
 
-    const notes = collectLorebookNoteMetadata(this.app, this.settings);
+    const notes = this.getCachedLorebookMetadata();
     const summaries = buildScopeSummaries(notes, this.settings, scope);
     const summary = summaries[0];
     if (!summary) {
@@ -8158,6 +8161,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.liveContextIndex = new LiveContextIndex(
       this.app,
       () => this.settings,
+      () => this.getCachedLorebookMetadata(),
       record => this.appendEmbeddingOperationLog(record, {
         costProfile: this.resolveEffectiveCostProfileLabel(this.settings.embeddings.apiKey)
       }),
@@ -8171,6 +8175,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.chapterSummaryStore = new ChapterSummaryStore(this.app, () => this.getIgnoredLlmCalloutTypes());
     this.lorebookScopeCache = new LorebookScopeCache({
       computeNotes: () => collectLorebookNoteMetadata(this.app, this.settings),
+      computeNote: path => collectLorebookNoteMetadataForFile(this.app, this.settings, path),
       getActiveScope: () => this.settings.tagScoping.activeScope
     });
     this.exportScopeIndexByPath = new Map(
@@ -8985,7 +8990,12 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   private handleVaultMutationForExports(file: TAbstractFile | null, oldPath?: string): void {
-    this.invalidateLorebookScopeCache();
+    if (oldPath) {
+      this.lorebookScopeCache?.removePath(oldPath);
+    }
+    if (file instanceof TFile && file.path.toLowerCase().endsWith('.md')) {
+      this.lorebookScopeCache?.invalidatePath(file.path);
+    }
     const impactedScopes = this.collectImpactedScopesForChange(file, oldPath);
     this.queueBackgroundScopeRebuild(impactedScopes);
   }

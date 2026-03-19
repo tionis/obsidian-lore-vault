@@ -544,6 +544,7 @@ Current implemented feature set:
 - the local index does one canonical ledger reconciliation when the store starts or the ledger root changes, then follows vault create/modify/delete/rename events so repeated analyzer/profile reloads do not rescan the full ledger tree
 - when the local SQLite index is available, Cost Analyzer totals and breakdowns are computed with SQLite aggregate queries instead of loading every matching ledger row into JavaScript first
 - LoreVault also caches known cost-profile option lists until ledger or settings changes invalidate them, so explorer/analyzer refreshes do not recompute those profile sources every time
+- Lorebook manager/routing/query views reuse an incremental lorebook-note metadata cache that updates changed markdown paths individually, so normal note edits no longer force a full vault metadata rescan before those views refresh
 - cost calculation uses:
   - provider-reported cost when available
   - model-specific pricing overrides when configured

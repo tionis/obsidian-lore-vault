@@ -25,6 +25,7 @@ test('lorebook scope cache avoids repeated full scans until invalidated', () => 
       computeCalls += 1;
       return notes;
     },
+    computeNote: path => notes.find(note => note.path === path) ?? null,
     getActiveScope: () => 'universe'
   });
 
@@ -41,4 +42,49 @@ test('lorebook scope cache avoids repeated full scans until invalidated', () => 
   const afterInvalidate = cache.getScopes();
   assert.equal(computeCalls, 2);
   assert.deepEqual(afterInvalidate, firstScopes);
+});
+
+test('lorebook scope cache updates changed paths incrementally without a full rescan', () => {
+  const notes = [
+    makeNote(1),
+    makeNote(2)
+  ];
+  let computeCalls = 0;
+  let computeNoteCalls = 0;
+
+  const cache = new LorebookScopeCache({
+    computeNotes: () => {
+      computeCalls += 1;
+      return notes;
+    },
+    computeNote: path => {
+      computeNoteCalls += 1;
+      return notes.find(note => note.path === path) ?? null;
+    },
+    getActiveScope: () => ''
+  });
+
+  assert.equal(cache.getNotes().length, 2);
+  assert.equal(computeCalls, 1);
+
+  notes[1] = {
+    ...notes[1],
+    scopes: ['universe/world-99']
+  };
+  cache.invalidatePath(notes[1].path);
+
+  const updatedNotes = cache.getNotes();
+  assert.equal(computeCalls, 1);
+  assert.equal(computeNoteCalls, 1);
+  assert.deepEqual(
+    updatedNotes.find(note => note.path === notes[1].path)?.scopes,
+    ['universe/world-99']
+  );
+
+  cache.removePath(notes[0].path);
+  const remainingNotes = cache.getNotes();
+  assert.equal(computeCalls, 1);
+  assert.equal(computeNoteCalls, 1);
+  assert.equal(remainingNotes.length, 1);
+  assert.equal(remainingNotes[0].path, notes[1].path);
 });

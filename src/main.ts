@@ -740,6 +740,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private operationLogWriteQueue: Promise<void> = Promise.resolve();
   private operationLogViewRefreshTimer: number | null = null;
   private storagePersisted: boolean | null = null;
+  private knownCostProfilesCache: Promise<string[]> | null = null;
   // Note: the plugin keeps its own EmbeddingService for chapter-memory operations
   // (separate from the one inside LiveContextIndex) so that usage events are tagged
   // with source:'chapter_memory' rather than source:'live_context_index'.  Both
@@ -1274,30 +1275,41 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   public async listKnownCostProfiles(): Promise<string[]> {
-    const profiles = new Set<string>();
-    const deviceExplicit = this.deviceProfileState.activeCostProfile.trim();
-    if (deviceExplicit) {
-      profiles.add(deviceExplicit);
+    if (!this.knownCostProfilesCache) {
+      const cachePromise = (async () => {
+        const profiles = new Set<string>();
+        const deviceExplicit = this.deviceProfileState.activeCostProfile.trim();
+        if (deviceExplicit) {
+          profiles.add(deviceExplicit);
+        }
+        const deviceEffective = this.getDeviceEffectiveCostProfileLabel().trim();
+        if (deviceEffective) {
+          profiles.add(deviceEffective);
+        }
+        const configuredBudgetProfiles = this.settings.costTracking.budgetByCostProfileUsd ?? {};
+        for (const key of Object.keys(configuredBudgetProfiles)) {
+          const normalized = key.trim();
+          if (!normalized || normalized === '__default__') {
+            continue;
+          }
+          profiles.add(normalized);
+        }
+        const knownLedgerProfiles = await this.usageLedgerStore.listKnownCostProfiles();
+        for (const profile of knownLedgerProfiles) {
+          if (profile) {
+            profiles.add(profile);
+          }
+        }
+        return [...profiles].sort((left, right) => left.localeCompare(right));
+      })();
+      this.knownCostProfilesCache = cachePromise;
+      cachePromise.catch(() => {
+        if (this.knownCostProfilesCache === cachePromise) {
+          this.knownCostProfilesCache = null;
+        }
+      });
     }
-    const deviceEffective = this.getDeviceEffectiveCostProfileLabel().trim();
-    if (deviceEffective) {
-      profiles.add(deviceEffective);
-    }
-    const configuredBudgetProfiles = this.settings.costTracking.budgetByCostProfileUsd ?? {};
-    for (const key of Object.keys(configuredBudgetProfiles)) {
-      const normalized = key.trim();
-      if (!normalized || normalized === '__default__') {
-        continue;
-      }
-      profiles.add(normalized);
-    }
-    const knownLedgerProfiles = await this.usageLedgerStore.listKnownCostProfiles();
-    for (const profile of knownLedgerProfiles) {
-      if (profile) {
-        profiles.add(profile);
-      }
-    }
-    return [...profiles].sort((left, right) => left.localeCompare(right));
+    return [...await this.knownCostProfilesCache];
   }
 
   public async setDeviceActiveCompletionPresetId(presetId: string): Promise<void> {
@@ -1310,6 +1322,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     this.deviceProfileState.activeCompletionPresetId = nextId;
     await this.persistDeviceProfileState();
+    this.invalidateKnownCostProfilesCache();
     this.syncIdleGenerationTelemetryToSettings();
     this.refreshStorySteeringViews();
   }
@@ -1334,6 +1347,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     this.deviceProfileState.activeCostProfile = normalized;
     await this.persistDeviceProfileState();
+    this.invalidateKnownCostProfilesCache();
     this.refreshStorySteeringViews();
   }
 
@@ -2283,6 +2297,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         pricingSnapshotAt: cost.pricingSnapshotAt,
         metadata: enrichedMetadata
       });
+      this.invalidateKnownCostProfilesCache();
       this.refreshStorySteeringViews();
       this.refreshCostAnalyzerViews();
     } catch (error) {
@@ -2609,6 +2624,10 @@ export default class LoreBookConverterPlugin extends Plugin {
         leaf.view.refresh();
       }
     }
+  }
+
+  private invalidateKnownCostProfilesCache(): void {
+    this.knownCostProfilesCache = null;
   }
 
   private queueOperationLogViewRefresh(): void {
@@ -8774,6 +8793,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
       if (usageLedgerChanged) {
+        this.invalidateKnownCostProfilesCache();
         this.refreshOperationLogViews();
         this.refreshCostAnalyzerViews();
       }
@@ -8791,6 +8811,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
       if (usageLedgerChanged) {
+        this.invalidateKnownCostProfilesCache();
         this.refreshOperationLogViews();
         this.refreshCostAnalyzerViews();
       }
@@ -8808,6 +8829,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
       if (usageLedgerChanged) {
+        this.invalidateKnownCostProfilesCache();
         this.refreshOperationLogViews();
         this.refreshCostAnalyzerViews();
       }
@@ -8826,6 +8848,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       this.refreshStoryChatViews();
       this.refreshStorySteeringViews();
       if (usageLedgerChanged) {
+        this.invalidateKnownCostProfilesCache();
         this.refreshOperationLogViews();
         this.refreshCostAnalyzerViews();
       }
@@ -8914,6 +8937,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     await this.persistSettingsSnapshot();
     this.syncUsageLedgerStorePath();
+    this.invalidateKnownCostProfilesCache();
     this.invalidateLorebookScopeCache();
     this.exportScopeIndexByPath = new Map(
       this.getCachedLorebookMetadata()

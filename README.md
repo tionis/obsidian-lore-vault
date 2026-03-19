@@ -310,6 +310,7 @@ Operations and reporting:
 - The configured operation-log path remains the legacy per-cost-profile JSONL path used for fallback writes, legacy import, and raw-file inspection.
 - Default retention is `10000` entries per cost profile.
 - Operation Log Explorer includes a cost-profile selector, defaults to the active device profile, and shows whether the current runtime is using SQLite or JSONL fallback.
+- Known cost-profile lists for Operation Log Explorer and Cost Analyzer are cached until ledger or settings changes invalidate them, so routine refreshes do not rescan profile sources.
 - Explorer preloads the current page of records from SQLite/JSONL as summary rows only; the full request/attempt/final-text record is fetched on first row expansion, and heavy request/response payload sections still render only when you open those subsections.
 - Operation-log text and JSON fields render in copy-friendly readonly controls with `Copy` buttons so old prompts/payloads can be extracted directly from the explorer.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.

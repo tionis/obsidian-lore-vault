@@ -189,3 +189,85 @@ test('extractWikiPagesFromStory merges repeated page updates across chunks deter
   assert.ok(tower);
   assert.equal(tower?.path, 'wiki/extracted/location-old-tower.md');
 });
+
+test('extractWikiPagesFromStory adds deterministic wikilinks between generated pages', async () => {
+  const story = [
+    '# Chapter 1',
+    'Alice explores the tower with Rowan.'
+  ].join('\n');
+
+  const result = await extractWikiPagesFromStory({
+    storyMarkdown: story,
+    targetFolder: 'wiki/extracted',
+    defaultTagsRaw: 'wiki',
+    lorebookName: 'story/main',
+    tagPrefix: 'lorebook',
+    maxChunkChars: 600,
+    maxSummaryChars: 240,
+    maxOperationsPerChunk: 8,
+    maxExistingPagesInPrompt: 20,
+    callModel: async () => JSON.stringify({
+      operations: [
+        {
+          pageKey: 'character/alice',
+          title: 'Alice',
+          summary: 'Investigates the Tower with Rowan.',
+          keywords: ['Alice'],
+          aliases: [],
+          content: 'Alice investigates The Tower with Rowan.',
+          confidence: 0.9
+        },
+        {
+          pageKey: 'character/rowan',
+          title: 'Rowan',
+          summary: 'Guides Alice through the ruins.',
+          keywords: ['Rowan'],
+          aliases: [],
+          content: 'Rowan guides Alice through the Old Tower.',
+          confidence: 0.9
+        },
+        {
+          pageKey: 'location/old-tower',
+          title: 'Old Tower',
+          summary: 'A ruined watchtower.',
+          keywords: ['Old Tower'],
+          aliases: ['The Tower'],
+          content: 'A ruined watchtower tied to Rowan.',
+          confidence: 0.9
+        }
+      ]
+    })
+  });
+
+  const alice = result.pages.find(page => page.pageKey === 'character/alice');
+  const rowan = result.pages.find(page => page.pageKey === 'character/rowan');
+  const tower = result.pages.find(page => page.pageKey === 'location/old-tower');
+
+  assert.ok(alice);
+  assert.ok(rowan);
+  assert.ok(tower);
+  assert.match(
+    alice?.content ?? '',
+    /\[\[wiki\/extracted\/location-old-tower\|The Tower\]\]/
+  );
+  assert.match(
+    alice?.content ?? '',
+    /\[\[wiki\/extracted\/character-rowan\|Rowan\]\]/
+  );
+  assert.equal(
+    (alice?.content ?? '').includes('[[wiki/extracted/character-alice|Alice]]'),
+    false
+  );
+  assert.match(
+    rowan?.content ?? '',
+    /\[\[wiki\/extracted\/character-alice\|Alice\]\]/
+  );
+  assert.match(
+    rowan?.content ?? '',
+    /\[\[wiki\/extracted\/location-old-tower\|Old Tower\]\]/
+  );
+  assert.match(
+    tower?.content ?? '',
+    /\[\[wiki\/extracted\/character-rowan\|Rowan\]\]/
+  );
+});

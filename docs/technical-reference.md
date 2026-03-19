@@ -198,6 +198,7 @@ This document is the implementation-level reference for core architecture and ru
   - deterministic chunking
   - per-chunk extraction prompt/validation
   - iterative merge pipeline and final page rendering
+  - final render pass assigns note paths first, then adds deterministic Obsidian wikilinks between generated pages when unambiguous title/alias mentions are found in summaries/body markdown
   - progress callbacks for chunk and render stages
 - `src/lorevault-story-delta-view.ts`
   - story delta update panel (`Apply Story Delta to Existing Wiki`) with preview/apply flow
@@ -747,6 +748,7 @@ Implemented:
 - iterative existing-page state injection between chunks
 - deterministic merge behavior (single summary-candidate replacement, set unions, unique content append)
 - merged story summaries are written to note `## Summary` sections (legacy frontmatter summary treated as fallback input)
+- generated extraction notes auto-link clear cross-page title/alias mentions to the actual generated note paths (`[[folder/file-stem|Display Text]]`) so downstream wikilink graph ranking can use the extracted relationships immediately
 - extraction chunk/render progress callbacks surfaced in panel UI
 
 ## Phase 15 Story Delta Updates (Current Progress)

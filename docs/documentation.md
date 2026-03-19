@@ -837,6 +837,7 @@ Shared panel inputs:
   - default tags
   - lorebook name converted into a lorebook tag using configured `tagPrefix`
   - completion profile selector used for extraction model calls
+  - final rendered notes add deterministic Obsidian wikilinks to other generated pages when canonical titles or strong aliases are clearly mentioned, using the generated note paths as link targets so graph-based ranking can see the relationships immediately
 - `Apply Story Delta to Existing Wiki`:
   - source story input: inline markdown or `Source Story Note Path` (`Pick Note` / `Use Active Note`)
   - source range mode: `note` | `chapter` | `story` (deterministic expansion from selected source note)

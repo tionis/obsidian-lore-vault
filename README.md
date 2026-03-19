@@ -291,6 +291,7 @@ Import/extraction/update/story-starter panel behavior:
 - when a synced character-card meta note exists, generated story notes include `characterCardMeta: [[...]]` for backlink-based related-story tracing
 - story notes generated from image-based character cards include linked avatar metadata and an embedded image reference for visual vibe anchoring
 - default target folder for import/extraction/fork is `Default Lorebook Import Location` (default `LoreVault/import`)
+- story extraction now adds deterministic Obsidian wikilinks between generated pages when other generated page titles or strong aliases are mentioned, so extracted lore notes form a usable ranking graph immediately
 - story-delta change/conflict review renders side-by-side source diffs directly beside accept/reject decisions
 - story-starter panel (`Open Story Starter`) turns a premise + optional brainstorm notes into a first chapter note and linked author note with preview/apply and editable planned writes
 

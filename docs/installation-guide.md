@@ -281,6 +281,7 @@ If you prefer to build the plugin from source:
    - Monitor live chunk-stage progress while preview runs
    - Inspect planned pages and chunk diagnostics
    - Extracted summaries are written to note `## Summary` sections
+   - Generated notes also add deterministic Obsidian wikilinks to other extracted pages when their titles or strong aliases are clearly mentioned, using the generated note paths as the actual link targets
    - Click `Apply Preview` to write generated/updated wiki pages with live per-file progress
 
 11. **Apply Story Delta to Existing Wiki (Phase 15 foundation)**

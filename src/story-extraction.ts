@@ -1,6 +1,7 @@
 import { normalizeVaultPath } from './vault-path-utils';
 import { upsertSummarySectionInMarkdown } from './summary-utils';
 import { stripInlineLoreDirectives } from './inline-directives';
+import { normalizeLinkTarget } from './link-target-index';
 import {
   buildStructuredWikiBody,
   deriveWikiTitleFromPageKey,
@@ -80,6 +81,22 @@ interface PageState {
   aliases: string[];
   contentBlocks: string[];
 }
+
+interface RenderedPagePlan {
+  page: PageState;
+  path: string;
+}
+
+interface AutoLinkCandidate {
+  targetPageKey: string;
+  targetPath: string;
+  phrase: string;
+  normalizedPhrase: string;
+}
+
+const HEADING_LINE_PATTERN = /^\s{0,3}#{1,6}\s+\S/;
+const FENCED_CODE_LINE_PATTERN = /^\s*```/;
+const PROTECTED_INLINE_SPAN_PATTERN = /(\[\[[^\]]+\]\]|\[[^\]]+\]\([^)]+\)|`[^`]*`)/g;
 
 function normalizeTagPrefix(tagPrefix: string): string {
   const normalized = tagPrefix.trim().replace(/^#+/, '').replace(/^\/+|\/+$/g, '');
@@ -379,6 +396,208 @@ function normalizeSummaryLine(value: string): string {
     .trim();
 }
 
+function normalizeAutoLinkPhrase(value: string): string {
+  return value
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isWordCharacter(value: string): boolean {
+  return /[\p{L}\p{N}]/u.test(value);
+}
+
+function isValidLinkBoundary(text: string, start: number, end: number): boolean {
+  const before = start > 0 ? text[start - 1] : '';
+  const after = end < text.length ? text[end] : '';
+  if (before && isWordCharacter(before)) {
+    return false;
+  }
+  if (after && isWordCharacter(after)) {
+    return false;
+  }
+  return true;
+}
+
+function shouldUseAliasForAutoLink(alias: string, canonicalTitle: string): boolean {
+  const normalizedAlias = alias.trim();
+  if (normalizedAlias.length < 3) {
+    return false;
+  }
+  if (normalizeAutoLinkPhrase(normalizedAlias) === normalizeAutoLinkPhrase(canonicalTitle)) {
+    return false;
+  }
+  return /[A-Z0-9]/.test(normalizedAlias);
+}
+
+function buildAutoLinkCandidates(plans: RenderedPagePlan[]): Map<string, AutoLinkCandidate[]> {
+  const phraseToCandidate = new Map<string, AutoLinkCandidate>();
+  const ambiguousPhrases = new Set<string>();
+
+  for (const plan of plans) {
+    const phrases = uniqueStrings([
+      plan.page.title,
+      ...plan.page.aliases.filter(alias => shouldUseAliasForAutoLink(alias, plan.page.title))
+    ]);
+    for (const phrase of phrases) {
+      const normalizedPhrase = normalizeAutoLinkPhrase(phrase);
+      if (!normalizedPhrase || ambiguousPhrases.has(normalizedPhrase)) {
+        continue;
+      }
+
+      const nextCandidate: AutoLinkCandidate = {
+        targetPageKey: plan.page.pageKey,
+        targetPath: normalizeLinkTarget(plan.path),
+        phrase,
+        normalizedPhrase
+      };
+
+      const existing = phraseToCandidate.get(normalizedPhrase);
+      if (!existing) {
+        phraseToCandidate.set(normalizedPhrase, nextCandidate);
+        continue;
+      }
+
+      if (existing.targetPageKey !== nextCandidate.targetPageKey) {
+        phraseToCandidate.delete(normalizedPhrase);
+        ambiguousPhrases.add(normalizedPhrase);
+      }
+    }
+  }
+
+  const allCandidates = [...phraseToCandidate.values()];
+  const candidatesByPageKey = new Map<string, AutoLinkCandidate[]>();
+  for (const plan of plans) {
+    const candidates = allCandidates
+      .filter(candidate => candidate.targetPageKey !== plan.page.pageKey)
+      .sort((left, right) => (
+        right.phrase.length - left.phrase.length ||
+        left.phrase.localeCompare(right.phrase) ||
+        left.targetPageKey.localeCompare(right.targetPageKey)
+      ));
+    candidatesByPageKey.set(plan.page.pageKey, candidates);
+  }
+
+  return candidatesByPageKey;
+}
+
+function findNextAutoLinkMatch(
+  text: string,
+  searchStart: number,
+  candidates: AutoLinkCandidate[],
+  linkedTargets: Set<string>
+): { candidate: AutoLinkCandidate; start: number; end: number; matchedText: string } | null {
+  const lowerText = text.toLowerCase();
+  let bestMatch: { candidate: AutoLinkCandidate; start: number; end: number; matchedText: string } | null = null;
+
+  for (const candidate of candidates) {
+    if (linkedTargets.has(candidate.targetPageKey)) {
+      continue;
+    }
+
+    let cursor = searchStart;
+    while (cursor < text.length) {
+      const start = lowerText.indexOf(candidate.normalizedPhrase, cursor);
+      if (start < 0) {
+        break;
+      }
+      const end = start + candidate.phrase.length;
+      if (isValidLinkBoundary(text, start, end)) {
+        const matchedText = text.slice(start, end);
+        if (
+          !bestMatch ||
+          start < bestMatch.start ||
+          (start === bestMatch.start && candidate.phrase.length > bestMatch.candidate.phrase.length) ||
+          (
+            start === bestMatch.start &&
+            candidate.phrase.length === bestMatch.candidate.phrase.length &&
+            candidate.targetPageKey.localeCompare(bestMatch.candidate.targetPageKey) < 0
+          )
+        ) {
+          bestMatch = {
+            candidate,
+            start,
+            end,
+            matchedText
+          };
+        }
+        break;
+      }
+      cursor = start + 1;
+    }
+  }
+
+  return bestMatch;
+}
+
+function autoLinkPlainTextSegment(
+  text: string,
+  candidates: AutoLinkCandidate[],
+  linkedTargets: Set<string>
+): string {
+  if (!text.trim() || candidates.length === 0) {
+    return text;
+  }
+
+  let result = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const match = findNextAutoLinkMatch(text, cursor, candidates, linkedTargets);
+    if (!match) {
+      result += text.slice(cursor);
+      break;
+    }
+
+    result += text.slice(cursor, match.start);
+    result += `[[${match.candidate.targetPath}|${match.matchedText}]]`;
+    linkedTargets.add(match.candidate.targetPageKey);
+    cursor = match.end;
+  }
+  return result;
+}
+
+function autoLinkMarkdownText(
+  markdown: string,
+  candidates: AutoLinkCandidate[],
+  linkedTargets: Set<string>
+): string {
+  if (!markdown.trim() || candidates.length === 0) {
+    return markdown;
+  }
+
+  const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+  let insideCodeFence = false;
+
+  const rewrittenLines = lines.map(line => {
+    if (FENCED_CODE_LINE_PATTERN.test(line)) {
+      insideCodeFence = !insideCodeFence;
+      return line;
+    }
+    if (insideCodeFence || HEADING_LINE_PATTERN.test(line)) {
+      return line;
+    }
+
+    let rewritten = '';
+    let cursor = 0;
+    PROTECTED_INLINE_SPAN_PATTERN.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = PROTECTED_INLINE_SPAN_PATTERN.exec(line)) !== null) {
+      rewritten += autoLinkPlainTextSegment(
+        line.slice(cursor, match.index),
+        candidates,
+        linkedTargets
+      );
+      rewritten += match[0];
+      cursor = match.index + match[0].length;
+    }
+    rewritten += autoLinkPlainTextSegment(line.slice(cursor), candidates, linkedTargets);
+    return rewritten;
+  });
+
+  return rewrittenLines.join('\n');
+}
+
 function choosePreferredSummary(
   existing: string,
   existingConfidence: number,
@@ -509,6 +728,7 @@ function buildExtractionPrompts(
     'Prefer stable pageKey reuse when existing state already has a matching page.',
     'Focus on durable entities, places, factions, concepts, and state changes.',
     'Title must be canonical note title only. Do not prefix title with type labels like "Character:", "Location:", or "Faction:".',
+    'When the content refers to another durable extracted page, prefer explicit stable names over vague pronouns so cross-links can be added deterministically later.',
     'Content must be markdown body only (no frontmatter, no top-level # title heading).',
     'Prefer sectioned markdown with ## headings (for example ## Backstory, ## Overview, ## Relationships, ## Timeline).',
     'Do not invent facts outside the chunk.'
@@ -534,6 +754,7 @@ function buildExtractionPrompts(
 
 function buildPageContent(
   page: PageState,
+  autoLinkCandidates: AutoLinkCandidate[],
   tags: string[],
   maxSummaryChars: number
 ): string {
@@ -564,25 +785,33 @@ function buildPageContent(
   const rawBody = page.contentBlocks.length > 0
     ? page.contentBlocks.join('\n\n---\n\n').trim()
     : '(no extracted content)';
-  const structuredBody = buildStructuredWikiBody(
-    resolvedTitle,
-    page.pageKey,
-    rawBody,
-    '(no extracted content)'
+  const linkedTargets = new Set<string>();
+  const structuredBody = autoLinkMarkdownText(
+    buildStructuredWikiBody(
+      resolvedTitle,
+      page.pageKey,
+      rawBody,
+      '(no extracted content)'
+    ),
+    autoLinkCandidates,
+    linkedTargets
   );
   let summary = normalizeSummaryLine(page.summary);
   if (!summary && page.contentBlocks.length > 0) {
     summary = buildSummary(page.contentBlocks.join(' '), maxSummaryChars);
   }
+  const linkedSummary = summary
+    ? autoLinkMarkdownText(summary, autoLinkCandidates, linkedTargets)
+    : '';
   lines.push(`sourceType: "story_extraction"`);
   lines.push(`pageKey: ${JSON.stringify(page.pageKey)}`);
   lines.push('---');
 
   const baseContent = [...lines, '', structuredBody.trim(), ''].join('\n');
-  if (!summary) {
+  if (!linkedSummary) {
     return baseContent;
   }
-  return upsertSummarySectionInMarkdown(baseContent, summary);
+  return upsertSummarySectionInMarkdown(baseContent, linkedSummary);
 }
 
 function resolveUniquePath(
@@ -721,18 +950,26 @@ export async function extractWikiPagesFromStory(
 
   const pages = [...pagesByKey.values()]
     .sort((left, right) => left.pageKey.localeCompare(right.pageKey))
-    .map(page => {
-      return {
-        page,
-        stem: toSafeFileStem(page.pageKey || page.title)
-      };
-    });
+    .map(page => ({
+      page,
+      stem: toSafeFileStem(page.pageKey || page.title)
+    }));
 
   const usedPaths = new Set<string>();
-  const renderedPages: StoryExtractionPage[] = pages.map(({ page, stem }) => ({
-    path: resolveUniquePath(targetFolder, stem, usedPaths),
-    content: buildPageContent(page, tags, options.maxSummaryChars),
-    pageKey: page.pageKey
+  const pagePlans: RenderedPagePlan[] = pages.map(({ page, stem }) => ({
+    page,
+    path: resolveUniquePath(targetFolder, stem, usedPaths)
+  }));
+  const autoLinkCandidatesByPageKey = buildAutoLinkCandidates(pagePlans);
+  const renderedPages: StoryExtractionPage[] = pagePlans.map(plan => ({
+    path: plan.path,
+    content: buildPageContent(
+      plan.page,
+      autoLinkCandidatesByPageKey.get(plan.page.pageKey) ?? [],
+      tags,
+      options.maxSummaryChars
+    ),
+    pageKey: plan.page.pageKey
   }));
 
   options.onProgress?.({

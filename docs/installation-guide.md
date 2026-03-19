@@ -194,6 +194,8 @@ If you prefer to build the plugin from source:
    - Lorebook Manager, Routing Debug, and Query Simulation refreshes now reuse an incremental lorebook metadata cache, so routine note edits do not require a full markdown-note rescan before those views update
    - Story Chat note pickers reuse cached markdown-file indexes and conversation summaries between vault refreshes instead of rescanning all notes on each open
    - In settings, use `Refresh Status`, `Rebuild Local Indexes`, and `Reset Local DB` to inspect/repair the worker-backed local SQLite store without manual file deletion
+   - `Open Cost Analyzer` now also shows local index freshness (`backend`, `synced ... ago`, pending updates, stale roots) alongside the selected profile summary
+   - The same maintenance workflow is available from the command palette: `Rebuild Local Indexes`, `Reset Local DB`, `Import Legacy Usage Ledger Now`, `Show Canonical Usage Ledger Folder`
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 
 5. **Open embedded help**

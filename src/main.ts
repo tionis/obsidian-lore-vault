@@ -1133,6 +1133,31 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.refreshCostAnalyzerViews();
   }
 
+  public async importLegacyUsageLedgerNow(): Promise<number> {
+    const imported = await this.usageLedgerStore.importLegacyLedgerNow();
+    this.invalidateKnownCostProfilesCache();
+    this.refreshCostAnalyzerViews();
+    return imported;
+  }
+
+  public async revealCanonicalUsageLedgerFolder(): Promise<string> {
+    const canonicalRootPath = this.usageLedgerStore.getCanonicalRootPath();
+    if (!canonicalRootPath) {
+      return '';
+    }
+    const existing = this.app.vault.getAbstractFileByPath(canonicalRootPath);
+    if (!existing) {
+      await this.app.vault.createFolder(canonicalRootPath);
+    }
+    const folder = this.app.vault.getAbstractFileByPath(canonicalRootPath);
+    const explorerLeaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
+    const explorerView = explorerLeaf?.view as { revealInFolder?: (file: TAbstractFile) => void } | undefined;
+    if (folder && typeof explorerView?.revealInFolder === 'function') {
+      explorerView.revealInFolder(folder);
+    }
+    return canonicalRootPath;
+  }
+
   private getSecretStorage(): LoreVaultSecretStorage | null {
     // Obsidian does not expose a stable typed API for secret storage as of the
     // current SDK version.  We detect it via duck-typing so that the plugin
@@ -8458,6 +8483,65 @@ export default class LoreBookConverterPlugin extends Plugin {
       name: 'Open Cost Analyzer',
       callback: () => {
         void this.openCostAnalyzerView();
+      }
+    });
+
+    this.addCommand({
+      id: 'rebuild-local-indexes',
+      name: 'Rebuild Local Indexes',
+      callback: () => {
+        void this.rebuildLocalIndexes().then(() => {
+          new Notice('Rebuilt local usage-ledger indexes.');
+        }).catch(error => {
+          console.error('LoreVault: Failed to rebuild local indexes:', error);
+          new Notice(`Failed to rebuild local indexes: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
+      id: 'reset-local-db',
+      name: 'Reset Local DB',
+      callback: () => {
+        if (!window.confirm('Reset the local DB? This clears local operation logs and rebuilds the current usage-ledger index from vault records.')) {
+          return;
+        }
+        void this.resetLocalDb().then(() => {
+          new Notice('Reset the local DB and rebuilt the current usage-ledger index.');
+        }).catch(error => {
+          console.error('LoreVault: Failed to reset local DB:', error);
+          new Notice(`Failed to reset local DB: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
+      id: 'import-legacy-usage-ledger-now',
+      name: 'Import Legacy Usage Ledger Now',
+      callback: () => {
+        void this.importLegacyUsageLedgerNow().then(imported => {
+          new Notice(imported > 0
+            ? `Imported ${imported} legacy usage-ledger entr${imported === 1 ? 'y' : 'ies'}.`
+            : 'No legacy usage-ledger updates were found.');
+        }).catch(error => {
+          console.error('LoreVault: Failed to import legacy usage ledger:', error);
+          new Notice(`Failed to import legacy usage ledger: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    });
+
+    this.addCommand({
+      id: 'show-canonical-usage-ledger-folder',
+      name: 'Show Canonical Usage Ledger Folder',
+      callback: () => {
+        void this.revealCanonicalUsageLedgerFolder().then(path => {
+          if (path) {
+            new Notice(`Canonical usage-ledger folder: ${path}`);
+          }
+        }).catch(error => {
+          console.error('LoreVault: Failed to show canonical usage-ledger folder:', error);
+          new Notice(`Failed to show canonical usage-ledger folder: ${error instanceof Error ? error.message : String(error)}`);
+        });
       }
     });
 

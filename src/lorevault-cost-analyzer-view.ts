@@ -25,6 +25,7 @@ export class LorevaultCostAnalyzerView extends ItemView {
   private selectedCostProfile = '';
   private availableCostProfiles: string[] = [];
   private snapshot: UsageLedgerReportSnapshot | null = null;
+  private localIndexSummary = '';
   private loading = false;
   private loadError = '';
   private profileSelectEl: HTMLSelectElement | null = null;
@@ -145,9 +146,12 @@ export class LorevaultCostAnalyzerView extends ItemView {
       return;
     }
     this.statusEl.setText(
-      this.selectedCostProfile
-        ? `Showing usage for cost profile: ${this.selectedCostProfile}`
-        : 'No cost profile selected.'
+      [
+        this.selectedCostProfile
+          ? `Showing usage for cost profile: ${this.selectedCostProfile}`
+          : 'No cost profile selected.',
+        this.localIndexSummary
+      ].filter(Boolean).join(' | ')
     );
   }
 
@@ -235,7 +239,28 @@ export class LorevaultCostAnalyzerView extends ItemView {
     this.renderStatus();
     this.renderBody();
     try {
-      this.availableCostProfiles = await this.plugin.listKnownCostProfiles();
+      const [profiles, usageLedgerStatus] = await Promise.all([
+        this.plugin.listKnownCostProfiles(),
+        this.plugin.getUsageLedgerStorageStatus()
+      ]);
+      this.availableCostProfiles = profiles;
+      const localIndexParts = [
+        `Local index: ${usageLedgerStatus.internalDb.available
+          ? usageLedgerStatus.internalDb.backendLabel || 'local'
+          : 'unavailable'}`
+      ];
+      localIndexParts.push(
+        usageLedgerStatus.lastSuccessfulSyncAt > 0
+          ? `synced ${formatRelativeTime(usageLedgerStatus.lastSuccessfulSyncAt)}`
+          : 'not synced yet'
+      );
+      if (usageLedgerStatus.pendingChangedRecordCount > 0) {
+        localIndexParts.push(`pending ${usageLedgerStatus.pendingChangedRecordCount}`);
+      }
+      if (usageLedgerStatus.staleSourceRootCount > 0) {
+        localIndexParts.push(`stale roots ${usageLedgerStatus.staleSourceRootCount}`);
+      }
+      this.localIndexSummary = localIndexParts.join(' | ');
       this.renderCostProfileSelect();
       this.snapshot = this.selectedCostProfile
         ? await this.plugin.getUsageReportSnapshot({ costProfile: this.selectedCostProfile })
@@ -243,6 +268,7 @@ export class LorevaultCostAnalyzerView extends ItemView {
       this.loadError = '';
     } catch (error) {
       this.snapshot = null;
+      this.localIndexSummary = '';
       this.loadError = error instanceof Error ? error.message : String(error);
     } finally {
       this.loading = false;

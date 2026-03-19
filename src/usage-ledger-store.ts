@@ -398,6 +398,10 @@ export class UsageLedgerStore {
     return deleted || created;
   }
 
+  getCanonicalRootPath(): string {
+    return this.resolveStoragePaths().canonicalRootPath;
+  }
+
   async getStatus(): Promise<UsageLedgerStoreStatus> {
     if (this.internalDbClient) {
       try {
@@ -423,6 +427,16 @@ export class UsageLedgerStore {
     this.pendingChangedRecordPaths.clear();
     this.lastSuccessfulSyncAt = 0;
     await this.ensureInternalDbSynchronized();
+  }
+
+  async importLegacyLedgerNow(): Promise<number> {
+    const importedEntries = await this.importLegacyLedgerFile(true);
+    if (importedEntries.length > 0 && this.internalDbClient) {
+      this.needsFullRescan = true;
+      this.pendingChangedRecordPaths.clear();
+      await this.ensureInternalDbSynchronized();
+    }
+    return importedEntries.length;
   }
 
   resetLocalIndexState(): void {
@@ -596,7 +610,7 @@ export class UsageLedgerStore {
     }
   }
 
-  private async importLegacyLedgerFile(): Promise<UsageLedgerEntry[]> {
+  private async importLegacyLedgerFile(force = false): Promise<UsageLedgerEntry[]> {
     const { legacyFilePath } = this.resolveStoragePaths();
     if (!legacyFilePath) {
       return [];
@@ -606,7 +620,7 @@ export class UsageLedgerStore {
       this.legacyFileMtime = -1;
       return [];
     }
-    if (stat.mtime === this.legacyFileMtime) {
+    if (!force && stat.mtime === this.legacyFileMtime) {
       return [];
     }
 

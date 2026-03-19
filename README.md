@@ -319,6 +319,8 @@ Operations and reporting:
 - Lorebook manager/routing/query surfaces reuse an incremental lorebook-note metadata cache that updates per changed markdown path instead of rescanning the full vault after every note mutation.
 - Story Chat now caches sorted markdown-note lists, basename lookups, chapter/author-note candidates, and conversation summaries between vault refreshes so note pickers do not re-scan the full vault on every open.
 - Settings now expose local DB maintenance controls (`Refresh Status`, `Rebuild Local Indexes`, `Reset Local DB`) plus backend/persistence/usage/last-sync diagnostics for the worker-backed SQLite store.
+- Cost Analyzer now shows local usage-ledger index freshness inline (backend, last sync, pending updates, stale roots) so you can tell when the shared ledger cache is behind.
+- Storage troubleshooting is also available via commands: `Rebuild Local Indexes`, `Reset Local DB`, `Import Legacy Usage Ledger Now`, and `Show Canonical Usage Ledger Folder`.
 - Budget settings are stored per cost profile (`Budget Cost Profile` selector in settings).
 - Completion and embedding API keys are stored via Obsidian Secret Storage (not persisted in `data.json`).
 - LoreVault only creates missing secrets; it never overwrites an existing secret value.

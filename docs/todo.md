@@ -235,7 +235,7 @@ Reference design: `docs/planning.md`.
 - [x] Add storage-health diagnostics for local DB backends (backend type, persistence granted, quota/usage where available, last successful import/sync).
 - [ ] Evaluate archival or compaction options for long-lived immutable usage-ledger histories so sync-friendly storage does not degrade into excessive tiny-file churn.
 - [ ] Add explicit internal-DB migration tests and recovery paths so schema upgrades are validated rather than relying only on additive `ensureSchema()` behavior.
-- [ ] Surface index freshness/lag in the UI (for example last indexed time, pending import count, or “local index behind vault” state).
+- [x] Surface index freshness/lag in the UI (for example last indexed time, pending import count, or “local index behind vault” state).
 - [ ] Add privacy controls for operation logging (redaction, metadata-only mode, stronger retention options) so users can trade debug depth against local sensitive-data storage.
 - [ ] Add repeatable large-vault performance benchmarks/regression fixtures covering note scans, large logs, and large usage-ledger histories.
 - [ ] Add clearer background-work budgeting/backpressure for expensive refresh jobs such as live-context index rebuilds, especially on mobile runtimes.
@@ -243,7 +243,7 @@ Reference design: `docs/planning.md`.
 - [ ] Add cross-device correctness tests for synced canonical records covering concurrent writes, delayed sync, duplicate imports, ledger-path changes, reinstall flows, and local-index rebuild recovery.
 - [ ] Define an explicit retention/archive policy for synced usage-ledger history so long-lived vaults do not accumulate unbounded immutable record files forever.
 - [ ] Define delete/repair semantics for canonical usage-ledger records (including compaction/tombstone behavior) so local indexes and synced history stay consistent when records are intentionally removed or rewritten.
-- [ ] Add user-facing maintenance commands for storage troubleshooting (`Import Legacy Ledger Now`, `Show Canonical Ledger Folder`, optional local-diagnostics export/import).
+- [x] Add user-facing maintenance commands for storage troubleshooting (`Import Legacy Ledger Now`, `Show Canonical Ledger Folder`, optional local-diagnostics export/import).
 - [ ] Continue field validation on real Obsidian desktop/mobile runtimes for the worker-backed local DB/index architecture, especially around sync/restart/reinstall edge cases.
 - [x] Keep fallback retrieval (`off|auto|always`) as a secondary selector over the same canonical entries.
 - [x] Merge fallback-selected entries into the injected `world_info` context list.

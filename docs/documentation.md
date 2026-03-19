@@ -539,7 +539,8 @@ Current behavior:
 Current implemented feature set:
 
 - completion and summary requests capture usage when provider payload includes token usage
-- records are written to a local usage ledger JSON file
+- canonical usage-ledger records are written as immutable per-entry JSON files in the vault for cross-device sync
+- when available, LoreVault indexes those records in the local internal SQLite store for faster Cost Analyzer/profile queries
 - cost calculation uses:
   - provider-reported cost when available
   - model-specific pricing overrides when configured
@@ -566,7 +567,10 @@ Use `Budget Cost Profile` in settings to switch which profile's budget set you e
 
 Ledger default path:
 
-- `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+- configured legacy-compatible path: `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+- canonical shared record root for that default: `.obsidian/plugins/lore-vault/cache/usage-ledger`
+
+`Usage Ledger Path` stays vault-relative. If it ends with `.json`, LoreVault treats that file as a legacy import source and writes canonical per-entry records into the sibling folder without the `.json` suffix.
 
 Each record contains deterministic fields:
 

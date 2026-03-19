@@ -10,8 +10,12 @@ import type {
   InternalDbResponse,
   InternalDbStatus,
   OperationLogQueryRequest,
-  OperationLogQueryResult
+  OperationLogQueryResult,
+  UsageLedgerCostProfilesResult,
+  UsageLedgerQueryRequest,
+  UsageLedgerQueryResult
 } from './internal-db-types';
+import type { UsageLedgerEntry } from './usage-ledger-store';
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -160,6 +164,43 @@ export class InternalDbClient {
     return this.request<OperationLogEntryFinalTextResult>({
       type: 'getOperationLogEntryFinalText',
       ...request
+    });
+  }
+
+  async appendUsageLedgerEntry(sourceRoot: string, entry: UsageLedgerEntry): Promise<void> {
+    await this.initialize();
+    await this.request<void>({
+      type: 'appendUsageLedgerEntry',
+      sourceRoot,
+      entry
+    });
+  }
+
+  async importUsageLedgerEntries(sourceRoot: string, entries: UsageLedgerEntry[]): Promise<void> {
+    if (entries.length === 0) {
+      return;
+    }
+    await this.initialize();
+    await this.request<void>({
+      type: 'importUsageLedgerEntries',
+      sourceRoot,
+      entries
+    });
+  }
+
+  async queryUsageLedger(request: UsageLedgerQueryRequest): Promise<UsageLedgerQueryResult> {
+    await this.initialize();
+    return this.request<UsageLedgerQueryResult>({
+      type: 'queryUsageLedger',
+      ...request
+    });
+  }
+
+  async listUsageLedgerCostProfiles(sourceRoot: string): Promise<UsageLedgerCostProfilesResult> {
+    await this.initialize();
+    return this.request<UsageLedgerCostProfilesResult>({
+      type: 'listUsageLedgerCostProfiles',
+      sourceRoot
     });
   }
 

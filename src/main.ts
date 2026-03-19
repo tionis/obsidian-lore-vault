@@ -79,6 +79,7 @@ import {
   LorevaultCostAnalyzerView
 } from './lorevault-cost-analyzer-view';
 import internalDbWorkerSource from 'virtual:internal-db-worker-source';
+import { InternalDbClient } from './internal-db-client';
 import {
   OperationLogLoadResult,
   OperationLogStore,
@@ -735,6 +736,7 @@ export default class LoreBookConverterPlugin extends Plugin {
   private exportRebuildInFlight = false;
   private pendingExportScopes = new Set<string>();
   private internalDbWorkerObjectUrl: string | null = null;
+  private internalDbClient: InternalDbClient | null = null;
   private operationLogStore: OperationLogStore | null = null;
   private operationLogWriteQueue: Promise<void> = Promise.resolve();
   private operationLogViewRefreshTimer: number | null = null;
@@ -1290,11 +1292,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       }
       profiles.add(normalized);
     }
-    const entries = await this.usageLedgerStore.listEntries();
-    for (const entry of entries) {
-      const profile = typeof entry.metadata?.costProfile === 'string'
-        ? entry.metadata.costProfile.trim()
-        : '';
+    const knownLedgerProfiles = await this.usageLedgerStore.listKnownCostProfiles();
+    for (const profile of knownLedgerProfiles) {
       if (profile) {
         profiles.add(profile);
       }
@@ -2356,19 +2355,13 @@ export default class LoreBookConverterPlugin extends Plugin {
   }
 
   public async getUsageReportSnapshot(options: UsageReportSnapshotOptions = {}): Promise<UsageLedgerReportSnapshot> {
-    const allEntries = await this.usageLedgerStore.listEntries();
     const includeAllProfiles = options.includeAllProfiles === true;
     const selectedProfile = includeAllProfiles
       ? ''
       : (options.costProfile ?? this.getDeviceEffectiveCostProfileLabel() ?? '').trim();
-    const entries = includeAllProfiles || !selectedProfile
-      ? allEntries
-      : allEntries.filter(entry => {
-        const profile = typeof entry.metadata?.costProfile === 'string'
-          ? entry.metadata.costProfile.trim()
-          : '';
-        return profile === selectedProfile;
-      });
+    const entries = await this.usageLedgerStore.listEntries({
+      costProfile: includeAllProfiles ? null : selectedProfile
+    });
     const nowMs = Date.now();
     const budgetSettings = includeAllProfiles
       ? this.createEmptyCostProfileBudgetSettings()
@@ -8125,16 +8118,22 @@ export default class LoreBookConverterPlugin extends Plugin {
     }
     this.storagePersisted = await this.requestPersistentBrowserStorage();
     const internalDbWorkerUrl = this.createInternalDbWorkerUrl();
+    this.internalDbClient = internalDbWorkerUrl
+      ? new InternalDbClient(internalDbWorkerUrl, this.storagePersisted)
+      : null;
     this.operationLogStore = new OperationLogStore({
       app: this.app,
-      workerUrl: internalDbWorkerUrl,
+      internalDbClient: this.internalDbClient,
       storagePersisted: this.storagePersisted,
       getDeviceCostProfileLabel: () => this.getDeviceEffectiveCostProfileLabel(),
       getLegacyPath: costProfile => this.getOperationLogPath(costProfile),
       getMaxEntries: () => this.getOperationLogMaxEntries()
     });
     await this.operationLogStore.initialize();
-    this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath());
+    this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath(), {
+      internalDbClient: this.internalDbClient,
+      storagePersisted: this.storagePersisted
+    });
     this.storySteeringStore = new StorySteeringStore(
       this.app,
       () => this.getStorySteeringFolderPath()
@@ -8857,6 +8856,9 @@ export default class LoreBookConverterPlugin extends Plugin {
     // Flush any pending operation-log writes so entries are not silently dropped.
     await this.operationLogWriteQueue;
     await this.operationLogStore?.close();
+    await this.usageLedgerStore?.close();
+    await this.internalDbClient?.close();
+    this.internalDbClient = null;
     if (this.internalDbWorkerObjectUrl) {
       URL.revokeObjectURL(this.internalDbWorkerObjectUrl);
       this.internalDbWorkerObjectUrl = null;

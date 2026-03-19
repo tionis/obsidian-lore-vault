@@ -136,6 +136,7 @@ This document is the implementation-level reference for core architecture and ru
   - usage-cost estimation helpers (`provider_reported` vs `estimated` vs `unknown`)
 - `src/usage-ledger-store.ts`
   - persistent usage ledger storage with deterministic entry shape/order
+  - immutable vault record files for shared history + local SQLite indexing when available
 - `src/usage-ledger-report.ts`
   - deterministic aggregation/snapshot + CSV serialization
 - `src/sillytavern-import.ts`
@@ -658,7 +659,10 @@ Implemented scope:
 
 Core contracts:
 
-- ledger path defaults to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+- configured ledger path defaults to `.obsidian/plugins/lore-vault/cache/usage-ledger.json`
+- if the configured ledger path ends with `.json`, that file is treated as a legacy import source and the canonical shared record root is the sibling path without the suffix
+- canonical usage-ledger storage is one immutable JSON file per normalized record grouped by UTC date under `YYYY/MM/DD`
+- the local internal SQLite DB indexes canonical usage-ledger records for fast querying when available; the vault record files remain the cross-device source of truth
 - usage report output dir defaults to `.obsidian/plugins/lore-vault/reports`
 - record fields are normalized and sorted deterministically on persist
 - cost source is explicit per record:

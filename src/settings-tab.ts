@@ -2115,7 +2115,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Enable Cost Tracking')
-      .setDesc('Capture completion usage (tokens/cost metadata) into a local ledger file.')
+      .setDesc('Capture completion usage (tokens/cost metadata) into shared immutable vault ledger records.')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.costTracking.enabled)
         .onChange(async (value) => {
@@ -2125,7 +2125,7 @@ export class LoreBookConverterSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Usage Ledger Path')
-      .setDesc('Path to usage ledger JSON file inside your vault.')
+      .setDesc('Vault path for shared usage-ledger records. Legacy `.json` files are imported into the sibling ledger folder.')
       .addText(text => text
         .setPlaceholder('.obsidian/plugins/lore-vault/cache/usage-ledger.json')
         .setValue(this.plugin.settings.costTracking.ledgerPath)

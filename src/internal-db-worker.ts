@@ -14,9 +14,13 @@ import type {
   InternalDbResponse,
   InternalDbStatus,
   OperationLogQueryRequest,
-  OperationLogQueryResult
+  OperationLogQueryResult,
+  UsageLedgerCostProfilesResult,
+  UsageLedgerQueryRequest,
+  UsageLedgerQueryResult
 } from './internal-db-types';
 import { buildOperationLogSearchText } from './operation-log-utils';
+import type { UsageLedgerEntry } from './usage-ledger-store';
 
 type WorkerState = {
   sqlite3: any;
@@ -197,6 +201,94 @@ function rowToOperationLogRecord(row: Record<string, unknown>): CompletionOperat
   };
 }
 
+function normalizeUsageLedgerCostProfile(entry: UsageLedgerEntry): string {
+  return typeof entry.metadata?.costProfile === 'string'
+    ? entry.metadata.costProfile.trim()
+    : '';
+}
+
+async function insertUsageLedgerEntry(
+  sqlite3: any,
+  db: number,
+  sourceRoot: string,
+  entry: UsageLedgerEntry
+): Promise<void> {
+  await execSql(
+    sqlite3,
+    db,
+    `INSERT OR REPLACE INTO usage_ledger (
+      id,
+      source_root,
+      cost_profile,
+      timestamp,
+      operation,
+      provider,
+      model,
+      prompt_tokens,
+      completion_tokens,
+      total_tokens,
+      reported_cost_usd,
+      estimated_cost_usd,
+      cost_source,
+      pricing_source,
+      input_cost_per_million_usd,
+      output_cost_per_million_usd,
+      pricing_rule,
+      pricing_snapshot_at,
+      metadata_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      entry.id,
+      sourceRoot,
+      normalizeUsageLedgerCostProfile(entry),
+      Math.max(0, Math.floor(entry.timestamp)),
+      entry.operation,
+      entry.provider,
+      entry.model,
+      Math.max(0, Math.floor(entry.promptTokens)),
+      Math.max(0, Math.floor(entry.completionTokens)),
+      Math.max(0, Math.floor(entry.totalTokens)),
+      entry.reportedCostUsd,
+      entry.estimatedCostUsd,
+      entry.costSource,
+      entry.pricingSource,
+      entry.inputCostPerMillionUsd,
+      entry.outputCostPerMillionUsd,
+      entry.pricingRule,
+      entry.pricingSnapshotAt,
+      JSON.stringify(entry.metadata ?? {})
+    ]
+  );
+}
+
+function rowToUsageLedgerEntry(row: Record<string, unknown>): UsageLedgerEntry {
+  return {
+    id: String(row.id ?? ''),
+    timestamp: Number(row.timestamp ?? 0),
+    operation: String(row.operation ?? ''),
+    provider: String(row.provider ?? ''),
+    model: String(row.model ?? ''),
+    promptTokens: Number(row.prompt_tokens ?? 0),
+    completionTokens: Number(row.completion_tokens ?? 0),
+    totalTokens: Number(row.total_tokens ?? 0),
+    reportedCostUsd: typeof row.reported_cost_usd === 'number' ? row.reported_cost_usd : null,
+    estimatedCostUsd: typeof row.estimated_cost_usd === 'number' ? row.estimated_cost_usd : null,
+    costSource: row.cost_source === 'provider_reported' || row.cost_source === 'estimated'
+      ? row.cost_source
+      : 'unknown',
+    pricingSource: row.pricing_source === 'provider_reported'
+      || row.pricing_source === 'model_override'
+      || row.pricing_source === 'default_rates'
+      ? row.pricing_source
+      : 'none',
+    inputCostPerMillionUsd: typeof row.input_cost_per_million_usd === 'number' ? row.input_cost_per_million_usd : null,
+    outputCostPerMillionUsd: typeof row.output_cost_per_million_usd === 'number' ? row.output_cost_per_million_usd : null,
+    pricingRule: typeof row.pricing_rule === 'string' && row.pricing_rule.trim() ? row.pricing_rule.trim() : null,
+    pricingSnapshotAt: typeof row.pricing_snapshot_at === 'number' ? row.pricing_snapshot_at : null,
+    metadata: parseJsonOr(row.metadata_json, {})
+  };
+}
+
 function buildQueryWhere(request: OperationLogQueryRequest): { whereSql: string; bindings: unknown[] } {
   const clauses = ['cost_profile = ?'];
   const bindings: unknown[] = [request.costProfile];
@@ -261,6 +353,71 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
   return {
     entries: entryRows.map(row => rowToOperationLogRecord(row)),
     totalEntries
+  };
+}
+
+async function queryUsageLedgerRows(
+  workerState: WorkerState,
+  request: UsageLedgerQueryRequest
+): Promise<UsageLedgerQueryResult> {
+  const bindings: unknown[] = [request.sourceRoot];
+  const clauses: string[] = ['source_root = ?'];
+  const normalizedCostProfile = (request.costProfile ?? '').trim();
+  if (normalizedCostProfile) {
+    clauses.push('cost_profile = ?');
+    bindings.push(normalizedCostProfile);
+  }
+  const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT
+      id,
+      cost_profile,
+      timestamp,
+      operation,
+      provider,
+      model,
+      prompt_tokens,
+      completion_tokens,
+      total_tokens,
+      reported_cost_usd,
+      estimated_cost_usd,
+      cost_source,
+      pricing_source,
+      input_cost_per_million_usd,
+      output_cost_per_million_usd,
+      pricing_rule,
+      pricing_snapshot_at,
+      metadata_json
+    FROM usage_ledger
+    ${whereSql}
+    ORDER BY timestamp ASC, id ASC;`,
+    bindings
+  );
+  return {
+    entries: rows.map(row => rowToUsageLedgerEntry(row))
+  };
+}
+
+async function listUsageLedgerCostProfiles(
+  workerState: WorkerState,
+  sourceRoot: string
+): Promise<UsageLedgerCostProfilesResult> {
+  const rows = await queryRows(
+    workerState.sqlite3,
+    workerState.db,
+    `SELECT DISTINCT cost_profile
+    FROM usage_ledger
+    WHERE source_root = ?
+      AND cost_profile <> ''
+    ORDER BY cost_profile ASC;`,
+    [sourceRoot]
+  );
+  return {
+    profiles: rows
+      .map(row => typeof row.cost_profile === 'string' ? row.cost_profile.trim() : '')
+      .filter(Boolean)
   };
 }
 
@@ -384,13 +541,59 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
         usage_json TEXT,
         search_text TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS usage_ledger (
+        id TEXT PRIMARY KEY,
+        source_root TEXT NOT NULL DEFAULT '',
+        cost_profile TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        operation TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prompt_tokens INTEGER NOT NULL,
+        completion_tokens INTEGER NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        reported_cost_usd REAL,
+        estimated_cost_usd REAL,
+        cost_source TEXT NOT NULL,
+        pricing_source TEXT NOT NULL,
+        input_cost_per_million_usd REAL,
+        output_cost_per_million_usd REAL,
+        pricing_rule TEXT,
+        pricing_snapshot_at INTEGER,
+        metadata_json TEXT NOT NULL
+      );
       CREATE INDEX IF NOT EXISTS idx_operation_log_cost_profile_time
         ON operation_log(cost_profile, started_at DESC, finished_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS idx_operation_log_kind_status
         ON operation_log(cost_profile, kind, status, started_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_usage_ledger_cost_profile_time
+        ON usage_ledger(cost_profile, timestamp ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS idx_usage_ledger_operation_time
+        ON usage_ledger(operation, timestamp ASC, id ASC);
       INSERT OR REPLACE INTO meta (key, value) VALUES
-        ('schema_version', '1'),
-        ('store_kind', 'lorevault.internal.operation_log');
+        ('schema_version', '3'),
+        ('store_kind', 'lorevault.internal');
+    `
+  );
+
+  const usageLedgerColumns = await queryRows(sqlite3, db, 'PRAGMA table_info(usage_ledger);');
+  if (!usageLedgerColumns.some(row => row.name === 'source_root')) {
+    await execSql(
+      sqlite3,
+      db,
+      `ALTER TABLE usage_ledger
+       ADD COLUMN source_root TEXT NOT NULL DEFAULT '';`
+    );
+  }
+
+  await execSql(
+    sqlite3,
+    db,
+    `
+      CREATE INDEX IF NOT EXISTS idx_usage_ledger_source_root_cost_profile_time
+        ON usage_ledger(source_root, cost_profile, timestamp ASC, id ASC);
+      CREATE INDEX IF NOT EXISTS idx_usage_ledger_source_root_operation_time
+        ON usage_ledger(source_root, operation, timestamp ASC, id ASC);
     `
   );
 }
@@ -547,6 +750,43 @@ async function handleRequest(request: InternalDbRequest): Promise<unknown> {
     case 'getOperationLogEntryFinalText': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);
       return getOperationLogEntryFinalText(workerState, request);
+    }
+    case 'appendUsageLedgerEntry': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      await workerState.sqlite3.exec(workerState.db, 'BEGIN IMMEDIATE;');
+      try {
+        await insertUsageLedgerEntry(workerState.sqlite3, workerState.db, request.sourceRoot, request.entry);
+        await workerState.sqlite3.exec(workerState.db, 'COMMIT;');
+      } catch (error) {
+        await workerState.sqlite3.exec(workerState.db, 'ROLLBACK;');
+        throw error;
+      }
+      return undefined;
+    }
+    case 'importUsageLedgerEntries': {
+      if (!request.entries.length) {
+        return undefined;
+      }
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      await workerState.sqlite3.exec(workerState.db, 'BEGIN IMMEDIATE;');
+      try {
+        for (const entry of request.entries) {
+          await insertUsageLedgerEntry(workerState.sqlite3, workerState.db, request.sourceRoot, entry);
+        }
+        await workerState.sqlite3.exec(workerState.db, 'COMMIT;');
+      } catch (error) {
+        await workerState.sqlite3.exec(workerState.db, 'ROLLBACK;');
+        throw error;
+      }
+      return undefined;
+    }
+    case 'queryUsageLedger': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return queryUsageLedgerRows(workerState, request);
+    }
+    case 'listUsageLedgerCostProfiles': {
+      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
+      return listUsageLedgerCostProfiles(workerState, request.sourceRoot);
     }
     case 'close': {
       if (!statePromise) {

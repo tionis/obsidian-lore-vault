@@ -193,6 +193,7 @@ export class LorevaultHelpView extends ItemView {
         'Explorer shows full completion, streaming, tool-planner, and optional embedding payloads with search and status filters.',
         'The explorer preloads the current result page; expanding a row is immediate, heavy request/response payload sections only render when you open those subsections, and text/json fields include `Copy` buttons.',
         'LoreVault prefers a local SQLite-backed operation-log store and the explorer shows whether the current runtime is using `OPFS`, `IndexedDB`, or legacy JSONL fallback.',
+        'Cost Analyzer uses shared immutable usage-ledger records stored in the vault and a local SQLite index when available for faster per-profile queries.',
         'Setting `LLM Operation Log Path` controls the legacy per-cost-profile JSONL path used for fallback writes, legacy import, and raw-file inspection.'
       ],
       actions: [

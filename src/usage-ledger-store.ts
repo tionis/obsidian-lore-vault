@@ -1,5 +1,8 @@
 import type { App } from 'obsidian';
 import type { UsageCostSource, UsagePricingSource } from './cost-utils';
+import { InternalDbClient } from './internal-db-client';
+import type { InternalDbStatus } from './internal-db-types';
+import { ensureParentVaultFolderForFile } from './vault-path-utils';
 
 export interface UsageLedgerEntry {
   id: string;
@@ -24,6 +27,11 @@ export interface UsageLedgerEntry {
 interface UsageLedgerPayload {
   schemaVersion: number;
   entries: UsageLedgerEntry[];
+}
+
+interface UsageLedgerRecordFile {
+  schemaVersion: number;
+  entry: UsageLedgerEntry;
 }
 
 function fnv1a32(input: string): string {
@@ -103,212 +111,416 @@ function buildEntryId(entry: Omit<UsageLedgerEntry, 'id'>): string {
   return fnv1a32(key);
 }
 
+function dedupeEntries(entries: UsageLedgerEntry[]): UsageLedgerEntry[] {
+  const map = new Map<string, UsageLedgerEntry>();
+  for (const entry of entries) {
+    map.set(entry.id, entry);
+  }
+  return sortEntries([...map.values()]);
+}
+
+function normalizeEntry(entry: Omit<UsageLedgerEntry, 'id'> | UsageLedgerEntry): UsageLedgerEntry | null {
+  const normalized: Omit<UsageLedgerEntry, 'id'> = {
+    timestamp: normalizeNumber(entry.timestamp),
+    operation: String(entry.operation ?? '').trim(),
+    provider: String(entry.provider ?? '').trim(),
+    model: String(entry.model ?? '').trim(),
+    promptTokens: normalizeNumber(entry.promptTokens),
+    completionTokens: normalizeNumber(entry.completionTokens),
+    totalTokens: normalizeNumber(entry.totalTokens),
+    reportedCostUsd: normalizeMoney(entry.reportedCostUsd),
+    estimatedCostUsd: normalizeMoney(entry.estimatedCostUsd),
+    costSource: entry.costSource === 'provider_reported' || entry.costSource === 'estimated'
+      ? entry.costSource
+      : 'unknown',
+    pricingSource: (
+      entry.pricingSource === 'provider_reported'
+      || entry.pricingSource === 'model_override'
+      || entry.pricingSource === 'default_rates'
+    )
+      ? entry.pricingSource
+      : 'none',
+    inputCostPerMillionUsd: normalizeMoney(entry.inputCostPerMillionUsd),
+    outputCostPerMillionUsd: normalizeMoney(entry.outputCostPerMillionUsd),
+    pricingRule: (entry.pricingRule ?? '').toString().trim() || null,
+    pricingSnapshotAt: normalizeTimestamp(entry.pricingSnapshotAt),
+    metadata: normalizeMetadata(entry.metadata)
+  };
+
+  if (!normalized.operation || !normalized.provider || !normalized.model) {
+    return null;
+  }
+
+  if (normalized.totalTokens <= 0) {
+    normalized.totalTokens = normalized.promptTokens + normalized.completionTokens;
+  }
+
+  const rawId = 'id' in entry ? String(entry.id ?? '').trim() : '';
+  return {
+    id: rawId || buildEntryId(normalized),
+    ...normalized
+  };
+}
+
+function normalizePath(value: string): string {
+  return value.trim().replace(/\\/g, '/');
+}
+
+function resolveCanonicalRootPath(filePath: string): string {
+  const normalized = normalizePath(filePath);
+  return normalized.toLowerCase().endsWith('.json')
+    ? normalized.slice(0, -'.json'.length)
+    : normalized;
+}
+
+function resolveLegacyFilePath(filePath: string): string | null {
+  const normalized = normalizePath(filePath);
+  return normalized.toLowerCase().endsWith('.json') ? normalized : null;
+}
+
+function resolveEntryCostProfile(entry: UsageLedgerEntry): string {
+  return typeof entry.metadata?.costProfile === 'string'
+    ? entry.metadata.costProfile.trim()
+    : '';
+}
+
+type UsageLedgerStoragePaths = {
+  canonicalRootPath: string;
+  legacyFilePath: string | null;
+};
+
+type UsageLedgerStoreOptions = {
+  internalDbClient?: InternalDbClient | null;
+  storagePersisted?: boolean | null;
+};
+
 export class UsageLedgerStore {
   private readonly app: App;
   private filePath: string;
-  private loaded = false;
-  private entries: UsageLedgerEntry[] = [];
+  private readonly internalDbClient: InternalDbClient | null;
+  private readonly ownsInternalDbClient: boolean;
+  private internalDbStatus: InternalDbStatus = {
+    available: false,
+    backend: null,
+    backendLabel: 'unavailable',
+    sqliteVersion: '',
+    storagePersisted: null,
+    errorMessage: ''
+  };
+  private knownRecordPaths = new Set<string>();
+  private legacyFileMtime = -1;
 
-  constructor(app: App, filePath: string) {
+  constructor(app: App, filePath: string, options: UsageLedgerStoreOptions = {}) {
     this.app = app;
-    this.filePath = filePath;
+    this.filePath = normalizePath(filePath);
+    this.internalDbStatus.storagePersisted = options.storagePersisted ?? null;
+    if (options.internalDbClient) {
+      this.internalDbClient = options.internalDbClient;
+      this.ownsInternalDbClient = false;
+    } else {
+      this.internalDbClient = null;
+      this.ownsInternalDbClient = false;
+    }
+  }
+
+  async close(): Promise<void> {
+    if (this.ownsInternalDbClient) {
+      await this.internalDbClient?.close();
+    }
   }
 
   setFilePath(filePath: string): void {
-    if (this.filePath === filePath) {
+    const normalized = normalizePath(filePath);
+    if (this.filePath === normalized) {
       return;
     }
-    this.filePath = filePath;
-    this.loaded = false;
-    this.entries = [];
-  }
-
-  private parentDirectory(pathValue: string): string {
-    const normalized = pathValue.replace(/\\/g, '/');
-    const index = normalized.lastIndexOf('/');
-    if (index <= 0) {
-      return '';
-    }
-    return normalized.slice(0, index);
-  }
-
-  private isPathAlreadyExistsError(error: unknown): boolean {
-    const maybe = error as { code?: string; message?: string };
-    const code = typeof maybe?.code === 'string' ? maybe.code.toUpperCase() : '';
-    if (code === 'EEXIST') {
-      return true;
-    }
-    const message = typeof maybe?.message === 'string' ? maybe.message.toLowerCase() : String(error ?? '').toLowerCase();
-    return message.includes('already exists');
-  }
-
-  private async ensureDirectory(pathValue: string): Promise<void> {
-    const normalizedParts = pathValue
-      .split('/')
-      .map(part => part.trim())
-      .filter(Boolean);
-    if (normalizedParts.length === 0) {
-      return;
-    }
-
-    let current = '';
-    for (const part of normalizedParts) {
-      current = current ? `${current}/${part}` : part;
-      const exists = await this.app.vault.adapter.exists(current);
-      if (!exists) {
-        try {
-          await this.app.vault.adapter.mkdir(current);
-        } catch (error) {
-          if (!this.isPathAlreadyExistsError(error)) {
-            throw error;
-          }
-        }
-      }
-    }
-  }
-
-  private async ensureLoaded(): Promise<void> {
-    if (this.loaded) {
-      return;
-    }
-    this.loaded = true;
-    this.entries = [];
-
-    const exists = await this.app.vault.adapter.exists(this.filePath);
-    if (!exists) {
-      return;
-    }
-
-    try {
-      const raw = await this.app.vault.adapter.read(this.filePath);
-      const parsed = JSON.parse(raw) as Partial<UsageLedgerPayload>;
-      const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : [];
-      for (const rawEntry of rawEntries) {
-        if (!rawEntry || typeof rawEntry !== 'object') {
-          continue;
-        }
-        const timestamp = normalizeNumber((rawEntry as UsageLedgerEntry).timestamp);
-        const operation = String((rawEntry as UsageLedgerEntry).operation ?? '').trim();
-        const provider = String((rawEntry as UsageLedgerEntry).provider ?? '').trim();
-        const model = String((rawEntry as UsageLedgerEntry).model ?? '').trim();
-        if (!operation || !provider || !model) {
-          continue;
-        }
-        const promptTokens = normalizeNumber((rawEntry as UsageLedgerEntry).promptTokens);
-        const completionTokens = normalizeNumber((rawEntry as UsageLedgerEntry).completionTokens);
-        const totalTokensRaw = normalizeNumber((rawEntry as UsageLedgerEntry).totalTokens);
-        const totalTokens = totalTokensRaw > 0 ? totalTokensRaw : promptTokens + completionTokens;
-        const costSourceValue = String((rawEntry as UsageLedgerEntry).costSource ?? '').trim();
-        const costSource: UsageCostSource = costSourceValue === 'provider_reported' || costSourceValue === 'estimated'
-          ? costSourceValue
-          : 'unknown';
-        const pricingSourceValue = String((rawEntry as UsageLedgerEntry).pricingSource ?? '').trim();
-        const pricingSource: UsagePricingSource = (
-          pricingSourceValue === 'provider_reported' ||
-          pricingSourceValue === 'model_override' ||
-          pricingSourceValue === 'default_rates'
-        )
-          ? pricingSourceValue
-          : 'none';
-        const pricingRuleValue = String((rawEntry as UsageLedgerEntry).pricingRule ?? '').trim();
-
-        const withoutId: Omit<UsageLedgerEntry, 'id'> = {
-          timestamp,
-          operation,
-          provider,
-          model,
-          promptTokens,
-          completionTokens,
-          totalTokens,
-          reportedCostUsd: normalizeMoney((rawEntry as UsageLedgerEntry).reportedCostUsd),
-          estimatedCostUsd: normalizeMoney((rawEntry as UsageLedgerEntry).estimatedCostUsd),
-          costSource,
-          pricingSource,
-          inputCostPerMillionUsd: normalizeMoney((rawEntry as UsageLedgerEntry).inputCostPerMillionUsd),
-          outputCostPerMillionUsd: normalizeMoney((rawEntry as UsageLedgerEntry).outputCostPerMillionUsd),
-          pricingRule: pricingRuleValue || null,
-          pricingSnapshotAt: normalizeTimestamp((rawEntry as UsageLedgerEntry).pricingSnapshotAt),
-          metadata: normalizeMetadata((rawEntry as UsageLedgerEntry).metadata)
-        };
-
-        const id = String((rawEntry as UsageLedgerEntry).id ?? '').trim() || buildEntryId(withoutId);
-        this.entries.push({
-          id,
-          ...withoutId
-        });
-      }
-      this.entries = sortEntries(this.entries);
-    } catch (error) {
-      console.error('Failed to load usage ledger:', error);
-      this.entries = [];
-    }
+    this.filePath = normalized;
+    this.knownRecordPaths.clear();
+    this.legacyFileMtime = -1;
   }
 
   async initialize(): Promise<void> {
-    await this.ensureLoaded();
-  }
-
-  async append(entry: Omit<UsageLedgerEntry, 'id'>): Promise<void> {
-    await this.ensureLoaded();
-    const normalized: Omit<UsageLedgerEntry, 'id'> = {
-      timestamp: normalizeNumber(entry.timestamp),
-      operation: String(entry.operation ?? '').trim(),
-      provider: String(entry.provider ?? '').trim(),
-      model: String(entry.model ?? '').trim(),
-      promptTokens: normalizeNumber(entry.promptTokens),
-      completionTokens: normalizeNumber(entry.completionTokens),
-      totalTokens: normalizeNumber(entry.totalTokens),
-      reportedCostUsd: normalizeMoney(entry.reportedCostUsd),
-      estimatedCostUsd: normalizeMoney(entry.estimatedCostUsd),
-      costSource: entry.costSource === 'provider_reported' || entry.costSource === 'estimated'
-        ? entry.costSource
-        : 'unknown',
-      pricingSource: (
-        entry.pricingSource === 'provider_reported' ||
-        entry.pricingSource === 'model_override' ||
-        entry.pricingSource === 'default_rates'
-      )
-        ? entry.pricingSource
-        : 'none',
-      inputCostPerMillionUsd: normalizeMoney(entry.inputCostPerMillionUsd),
-      outputCostPerMillionUsd: normalizeMoney(entry.outputCostPerMillionUsd),
-      pricingRule: (entry.pricingRule ?? '').toString().trim() || null,
-      pricingSnapshotAt: normalizeTimestamp(entry.pricingSnapshotAt),
-      metadata: normalizeMetadata(entry.metadata)
-    };
-
-    if (!normalized.operation || !normalized.provider || !normalized.model) {
+    if (this.internalDbClient) {
+      await this.ensureInternalDbSynchronized();
+      if (!this.internalDbStatus.available) {
+        await this.importLegacyLedgerFile();
+      }
       return;
     }
 
-    if (normalized.totalTokens <= 0) {
-      normalized.totalTokens = normalized.promptTokens + normalized.completionTokens;
-    }
-
-    const id = buildEntryId(normalized);
-    this.entries.push({
-      id,
-      ...normalized
-    });
-    this.entries = sortEntries(this.entries);
-    await this.persist();
+    await this.importLegacyLedgerFile();
   }
 
-  async listEntries(): Promise<UsageLedgerEntry[]> {
-    await this.ensureLoaded();
-    return this.entries.map(entry => ({
+  async append(entry: Omit<UsageLedgerEntry, 'id'>): Promise<void> {
+    const normalized = normalizeEntry(entry);
+    if (!normalized) {
+      return;
+    }
+    const { canonicalRootPath } = this.resolveStoragePaths();
+
+    await this.writeCanonicalRecordFile(normalized);
+
+    if (this.internalDbClient) {
+      try {
+        await this.ensureInternalDbReady();
+        if (this.internalDbStatus.available) {
+          await this.internalDbClient.appendUsageLedgerEntry(canonicalRootPath, normalized);
+          this.knownRecordPaths.add(this.buildRecordPath(normalized));
+        }
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+  }
+
+  async listEntries(options: { costProfile?: string | null } = {}): Promise<UsageLedgerEntry[]> {
+    const normalizedCostProfile = (options.costProfile ?? '').trim();
+    if (this.internalDbClient) {
+      try {
+        await this.ensureInternalDbSynchronized();
+        if (this.internalDbStatus.available) {
+          const result = await this.internalDbClient.queryUsageLedger({
+            sourceRoot: this.resolveStoragePaths().canonicalRootPath,
+            costProfile: normalizedCostProfile || null
+          });
+          return result.entries.map(entry => ({
+            ...entry,
+            metadata: { ...entry.metadata }
+          }));
+        }
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    const entries = await this.loadEntriesFromVault();
+    if (!normalizedCostProfile) {
+      return entries;
+    }
+    return entries.filter(entry => resolveEntryCostProfile(entry) === normalizedCostProfile);
+  }
+
+  async listKnownCostProfiles(): Promise<string[]> {
+    if (this.internalDbClient) {
+      try {
+        await this.ensureInternalDbSynchronized();
+        if (this.internalDbStatus.available) {
+          const result = await this.internalDbClient.listUsageLedgerCostProfiles(
+            this.resolveStoragePaths().canonicalRootPath
+          );
+          return result.profiles;
+        }
+      } catch (error) {
+        this.markInternalDbUnavailable(error);
+      }
+    }
+
+    const profiles = new Set<string>();
+    for (const entry of await this.loadEntriesFromVault()) {
+      const profile = resolveEntryCostProfile(entry);
+      if (profile) {
+        profiles.add(profile);
+      }
+    }
+    return [...profiles].sort((left, right) => left.localeCompare(right));
+  }
+
+  private resolveStoragePaths(): UsageLedgerStoragePaths {
+    return {
+      canonicalRootPath: resolveCanonicalRootPath(this.filePath),
+      legacyFilePath: resolveLegacyFilePath(this.filePath)
+    };
+  }
+
+  private buildRecordPath(entry: UsageLedgerEntry): string {
+    const { canonicalRootPath } = this.resolveStoragePaths();
+    const timestamp = Math.max(0, Math.floor(entry.timestamp));
+    const date = new Date(timestamp);
+    const year = date.getUTCFullYear().toString().padStart(4, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${canonicalRootPath}/${year}/${month}/${day}/${timestamp}-${entry.id}.json`;
+  }
+
+  private async writeCanonicalRecordFile(entry: UsageLedgerEntry): Promise<void> {
+    const filePath = this.buildRecordPath(entry);
+    const exists = await this.app.vault.adapter.exists(filePath);
+    if (exists) {
+      return;
+    }
+
+    const payload: UsageLedgerRecordFile = {
+      schemaVersion: 1,
+      entry
+    };
+    await ensureParentVaultFolderForFile(this.app, filePath);
+    await this.app.vault.adapter.write(filePath, JSON.stringify(payload));
+  }
+
+  private async ensureInternalDbReady(): Promise<void> {
+    if (!this.internalDbClient) {
+      return;
+    }
+    if (this.internalDbStatus.available) {
+      return;
+    }
+    try {
+      this.internalDbStatus = await this.internalDbClient.initialize();
+    } catch (error) {
+      this.markInternalDbUnavailable(error);
+    }
+  }
+
+  private async ensureInternalDbSynchronized(): Promise<void> {
+    if (!this.internalDbClient) {
+      return;
+    }
+    await this.ensureInternalDbReady();
+    if (!this.internalDbStatus.available) {
+      return;
+    }
+
+    const imports: UsageLedgerEntry[] = [];
+    for (const filePath of await this.listRecordFiles(this.resolveStoragePaths().canonicalRootPath)) {
+      if (this.knownRecordPaths.has(filePath)) {
+        continue;
+      }
+      const entry = await this.readCanonicalRecordFile(filePath);
+      if (!entry) {
+        continue;
+      }
+      imports.push(entry);
+      this.knownRecordPaths.add(filePath);
+    }
+
+    const legacyImports = await this.importLegacyLedgerFile();
+    if (legacyImports.length > 0) {
+      imports.push(...legacyImports);
+    }
+
+    if (imports.length > 0) {
+      await this.internalDbClient.importUsageLedgerEntries(
+        this.resolveStoragePaths().canonicalRootPath,
+        dedupeEntries(imports)
+      );
+    }
+  }
+
+  private async importLegacyLedgerFile(): Promise<UsageLedgerEntry[]> {
+    const { legacyFilePath } = this.resolveStoragePaths();
+    if (!legacyFilePath) {
+      return [];
+    }
+    const stat = await this.app.vault.adapter.stat(legacyFilePath);
+    if (!stat || stat.type !== 'file') {
+      this.legacyFileMtime = -1;
+      return [];
+    }
+    if (stat.mtime === this.legacyFileMtime) {
+      return [];
+    }
+
+    const raw = await this.app.vault.adapter.read(legacyFilePath);
+    const entries = this.parseLegacyLedgerEntries(raw);
+    for (const entry of entries) {
+      await this.writeCanonicalRecordFile(entry);
+      this.knownRecordPaths.add(this.buildRecordPath(entry));
+    }
+    this.legacyFileMtime = stat.mtime;
+    return entries;
+  }
+
+  private async loadEntriesFromVault(): Promise<UsageLedgerEntry[]> {
+    await this.importLegacyLedgerFile();
+
+    const entries: UsageLedgerEntry[] = [];
+    for (const filePath of await this.listRecordFiles(this.resolveStoragePaths().canonicalRootPath)) {
+      const entry = await this.readCanonicalRecordFile(filePath);
+      if (entry) {
+        entries.push(entry);
+      }
+    }
+
+    const { legacyFilePath } = this.resolveStoragePaths();
+    if (legacyFilePath && await this.app.vault.adapter.exists(legacyFilePath)) {
+      const raw = await this.app.vault.adapter.read(legacyFilePath);
+      entries.push(...this.parseLegacyLedgerEntries(raw));
+    }
+
+    return dedupeEntries(entries).map(entry => ({
       ...entry,
       metadata: { ...entry.metadata }
     }));
   }
 
-  private async persist(): Promise<void> {
-    const payload: UsageLedgerPayload = {
-      schemaVersion: 1,
-      entries: this.entries
+  private parseLegacyLedgerEntries(raw: string): UsageLedgerEntry[] {
+    try {
+      const parsed = JSON.parse(raw) as Partial<UsageLedgerPayload>;
+      const rawEntries = Array.isArray(parsed.entries) ? parsed.entries : [];
+      return rawEntries
+        .map(item => normalizeEntry(item as UsageLedgerEntry))
+        .filter((entry): entry is UsageLedgerEntry => Boolean(entry));
+    } catch (error) {
+      console.error('Failed to load legacy usage ledger:', error);
+      return [];
+    }
+  }
+
+  private async readCanonicalRecordFile(filePath: string): Promise<UsageLedgerEntry | null> {
+    try {
+      const raw = await this.app.vault.adapter.read(filePath);
+      const parsed = JSON.parse(raw) as Partial<UsageLedgerRecordFile | UsageLedgerEntry>;
+      const candidate = (parsed && typeof parsed === 'object' && 'entry' in parsed)
+        ? parsed.entry
+        : parsed;
+      return normalizeEntry(candidate as UsageLedgerEntry);
+    } catch (error) {
+      console.error(`Failed to load usage ledger record ${filePath}:`, error);
+      return null;
+    }
+  }
+
+  private async listRecordFiles(rootPath: string): Promise<string[]> {
+    const normalizedRoot = normalizePath(rootPath);
+    if (!normalizedRoot) {
+      return [];
+    }
+
+    const stat = await this.app.vault.adapter.stat(normalizedRoot);
+    if (!stat || stat.type !== 'folder') {
+      return [];
+    }
+
+    const collected: string[] = [];
+    const queue = [normalizedRoot];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) {
+        continue;
+      }
+      const listed = await this.app.vault.adapter.list(current);
+      for (const folder of listed.folders) {
+        queue.push(normalizePath(folder));
+      }
+      for (const file of listed.files) {
+        const normalizedFile = normalizePath(file);
+        if (normalizedFile.toLowerCase().endsWith('.json')) {
+          collected.push(normalizedFile);
+        }
+      }
+    }
+    return collected.sort((left, right) => left.localeCompare(right));
+  }
+
+  private markInternalDbUnavailable(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.internalDbStatus = {
+      available: false,
+      backend: null,
+      backendLabel: 'unavailable',
+      sqliteVersion: '',
+      storagePersisted: this.internalDbStatus.storagePersisted,
+      errorMessage: message
     };
-    const parent = this.parentDirectory(this.filePath);
-    await this.ensureDirectory(parent);
-    await this.app.vault.adapter.write(this.filePath, JSON.stringify(payload, null, 2));
   }
 }

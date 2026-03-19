@@ -40,7 +40,8 @@ export interface OperationLogStoreStatus {
 
 type OperationLogStoreOptions = {
   app: App;
-  workerUrl: string | null;
+  internalDbClient?: InternalDbClient | null;
+  workerUrl?: string | null;
   storagePersisted: boolean | null;
   getDeviceCostProfileLabel: () => string;
   getLegacyPath: (costProfile?: string | null) => string;
@@ -53,6 +54,7 @@ export class OperationLogStore {
   private readonly getLegacyPath: (costProfile?: string | null) => string;
   private readonly getMaxEntries: () => number;
   private readonly internalDbClient: InternalDbClient | null;
+  private readonly ownsInternalDbClient: boolean;
   private internalDbStatus: InternalDbStatus = {
     available: false,
     backend: null,
@@ -69,9 +71,15 @@ export class OperationLogStore {
     this.getLegacyPath = options.getLegacyPath;
     this.getMaxEntries = options.getMaxEntries;
     this.internalDbStatus.storagePersisted = options.storagePersisted;
-    this.internalDbClient = options.workerUrl
-      ? new InternalDbClient(options.workerUrl, options.storagePersisted)
-      : null;
+    if (options.internalDbClient) {
+      this.internalDbClient = options.internalDbClient;
+      this.ownsInternalDbClient = false;
+    } else {
+      this.internalDbClient = options.workerUrl
+        ? new InternalDbClient(options.workerUrl, options.storagePersisted)
+        : null;
+      this.ownsInternalDbClient = Boolean(this.internalDbClient);
+    }
   }
 
   async initialize(): Promise<void> {
@@ -86,7 +94,9 @@ export class OperationLogStore {
   }
 
   async close(): Promise<void> {
-    await this.internalDbClient?.close();
+    if (this.ownsInternalDbClient) {
+      await this.internalDbClient?.close();
+    }
   }
 
   async getStatus(costProfile?: string | null): Promise<OperationLogStoreStatus> {

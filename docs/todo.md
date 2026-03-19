@@ -119,6 +119,7 @@ Reference design: `docs/planning.md`.
 - [x] Add OpenRouter usage capture hooks (input/output tokens and provider response metadata).
 - [x] Add cost estimation model that maps usage to estimated USD cost per request/turn/export.
 - [x] Add persistent usage ledger with deterministic records (timestamp, model, scope/chat operation, usage, cost estimate).
+- [x] Migrate usage ledger storage to immutable vault record files plus a local SQLite index so shared history syncs cleanly across devices without whole-file rewrites.
 - [x] Add optional UI surface for session/day/project cost totals and budget warnings.
 - [x] Add export/report format for external analysis (CSV/JSON).
 - [x] Add tests for deterministic aggregation and fallback behavior when pricing metadata is missing.

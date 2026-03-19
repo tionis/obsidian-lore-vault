@@ -1007,6 +1007,7 @@ Capabilities:
 
 - dedicated retrieval simulation view separated from routing diagnostics
 - multi-lorebook selection (query one or many lorebooks in a single run)
+- multi-lorebook runs reuse one shared query embedding request and execute per-scope retrieval work in parallel
 - total token budget split evenly per selected lorebook
 - optional override knobs:
   - `maxGraphHops`

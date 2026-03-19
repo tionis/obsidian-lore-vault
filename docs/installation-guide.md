@@ -166,6 +166,7 @@ If you prefer to build the plugin from source:
    - `Story Continuity Aggressiveness` in settings controls how strongly chapter memory expands (depth + style excerpts) in both Continue Story and Story Chat
    - Optional semantic chapter recall can inject `Related Past Scenes` from prior chapter chunks when enabled in settings
    - With embeddings enabled, long query windows are chunked and averaged for semantic query embedding; if embedding calls fail, LoreVault continues with lexical retrieval fallback
+   - Multi-scope retrieval surfaces reuse a single query-embedding request per run instead of re-embedding the same query for each selected lorebook
    - Link your story note to an Author Note via frontmatter `authorNote: [[path/to/author-note]]` (or run `Open or Create Linked Author Note`)
    - Quoted and unquoted Obsidian wikilinks are both supported for `authorNote`
    - Optional (character-card import only): set `Persona Note` in the import panel to bake protagonist/user context into generated story + author note output

@@ -317,6 +317,7 @@ Fallback ranking:
 - lexical score over entry title/path/content projections
 - optional semantic boost from embeddings cache/chunk vectors
 - query embedding uses deterministic long-text chunking + weighted-average vector merge
+- multi-scope retrieval callers can precompute one shared query embedding and reuse it across per-scope ranking passes
 - embedding-call failures degrade to lexical fallback (query continues without semantic boosts)
 - optional semantic paragraph reranking for world_info body excerpt fallback
 - deterministic tie-breaks: `score DESC`, then `path/title/uid`

@@ -8,6 +8,7 @@ import { EmbeddingService } from './embedding-service';
 import { sha256HexAsync } from './hash-utils';
 import { CompletionOperationLogger, CompletionUsageReport } from './completion-provider';
 import type { LorebookNoteMetadata } from './lorebooks-manager-data';
+import { resolveQueryEmbedding } from './query-embedding-utils';
 
 interface RefreshTask {
   changedPaths: Set<string>;
@@ -227,6 +228,26 @@ export class LiveContextIndex {
     }
 
     return this.embeddingService;
+  }
+
+  async computeQueryEmbedding(queryText: string): Promise<number[] | null> {
+    const normalizedQuery = queryText.trim();
+    if (!normalizedQuery) {
+      return null;
+    }
+
+    const settings = this.getSettings();
+    const embeddingService = this.getEmbeddingService(settings);
+    if (!embeddingService) {
+      return null;
+    }
+
+    try {
+      return await embeddingService.embedQuery(normalizedQuery);
+    } catch (error) {
+      console.warn('LoreVault: Query embedding failed; continuing without semantic boost.', error);
+      return null;
+    }
   }
 
   private async buildScope(
@@ -486,9 +507,10 @@ export class LiveContextIndex {
     const settings = this.getSettings();
     const embeddingService = this.getEmbeddingService(settings);
     const worldInfoBodyLiftEnabled = options.worldInfoBodyLiftEnabled ?? true;
-    let queryEmbedding: number[] | null = null;
+    const hasPrecomputedQueryEmbedding = options.queryEmbedding !== undefined;
+    let queryEmbedding: number[] | null = options.queryEmbedding ?? null;
 
-    const shouldComputeQueryEmbedding = Boolean(
+    const shouldComputeQueryEmbedding = !hasPrecomputedQueryEmbedding && Boolean(
       embeddingService &&
       options.queryText.trim().length > 0 &&
       (
@@ -497,14 +519,11 @@ export class LiveContextIndex {
       )
     );
 
-    if (embeddingService && shouldComputeQueryEmbedding) {
-      try {
-        queryEmbedding = await embeddingService.embedQuery(options.queryText);
-      } catch (error) {
-        console.warn('LoreVault: Query embedding failed; continuing without semantic boost.', error);
-        queryEmbedding = null;
-      }
-    }
+    queryEmbedding = await resolveQueryEmbedding(
+      options.queryEmbedding,
+      shouldComputeQueryEmbedding,
+      () => this.computeQueryEmbedding(options.queryText)
+    );
 
     if (queryEmbedding && embeddingService && pack.ragChunks.length > 0 && pack.ragChunkEmbeddings.length > 0) {
       const chunkScores = embeddingService.scoreChunks(queryEmbedding, pack.ragChunks, pack.ragChunkEmbeddings);

@@ -817,25 +817,28 @@ export class LorebooksQuerySimulationView extends ItemView {
 
     try {
       const perScopeBudget = Math.max(64, Math.floor(this.getEffectiveTokenBudget() / scopes.length));
-      const options = this.buildQueryOptions(perScopeBudget);
-      const nextResults: ScopeQueryResult[] = [];
-      for (const scope of scopes) {
+      const queryEmbedding = await this.plugin.liveContextIndex.computeQueryEmbedding(query);
+      const options = {
+        ...this.buildQueryOptions(perScopeBudget),
+        queryEmbedding
+      };
+      const nextResults: ScopeQueryResult[] = await Promise.all(scopes.map(async (scope) => {
         try {
           const result = await this.plugin.liveContextIndex.query(options, scope);
-          nextResults.push({
+          return {
             scope,
             result,
             error: ''
-          });
+          };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          nextResults.push({
+          return {
             scope,
             result: null,
             error: `Simulation failed: ${message}`
-          });
+          };
         }
-      }
+      }));
       this.results = nextResults;
     } finally {
       this.running = false;

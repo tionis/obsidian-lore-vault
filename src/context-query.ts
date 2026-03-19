@@ -13,6 +13,7 @@ export interface ScopeContextPack {
 
 export interface ContextQueryOptions {
   queryText: string;
+  queryEmbedding?: number[] | null;
   tokenBudget: number;
   maxWorldInfoEntries?: number;
   maxRagDocuments?: number;

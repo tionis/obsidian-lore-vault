@@ -252,8 +252,10 @@ export class LorevaultStoryStarterView extends ItemView {
     const maxInputTokens = Math.max(512, completion.contextWindowTokens - completion.maxOutputTokens);
     const totalBudget = Math.max(320, Math.min(9000, Math.floor(maxInputTokens * 0.28)));
     const perScopeBudget = Math.max(120, Math.floor(totalBudget / Math.max(1, scopes.length)));
+    const queryEmbedding = await this.plugin.liveContextIndex.computeQueryEmbedding(queryText);
     const contexts: AssembledContext[] = await Promise.all(scopes.map(scope => this.plugin.liveContextIndex.query({
       queryText,
+      queryEmbedding,
       tokenBudget: perScopeBudget,
       maxWorldInfoEntries: 12,
       maxRagDocuments: 8

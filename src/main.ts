@@ -6700,6 +6700,7 @@ export default class LoreBookConverterPlugin extends Plugin {
     let usedContextTokens = 0;
     let lorebookContextBudget = 0;
     if (useLorebookContext) {
+      const sharedQueryEmbedding = await this.liveContextIndex.computeQueryEmbedding(querySeed || request.userMessage);
       let contextBudget = Math.max(
         64,
         Math.min(
@@ -6716,6 +6717,7 @@ export default class LoreBookConverterPlugin extends Plugin {
         const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
         contexts = await Promise.all(selectedScopes.map(scope => this.liveContextIndex.query({
           queryText: querySeed || request.userMessage,
+          queryEmbedding: sharedQueryEmbedding,
           tokenBudget: perScopeBudget,
           maxWorldInfoEntries: perScopeWorldInfoLimit,
           maxRagDocuments: perScopeRagLimit
@@ -11773,9 +11775,11 @@ export default class LoreBookConverterPlugin extends Plugin {
     const targetScopes = scopesToQuery.length > 0 ? scopesToQuery : [''];
     const budget = Math.max(128, Math.floor(this.settings.textCommands.maxContextTokens));
     const perScopeBudget = Math.max(96, Math.floor(budget / Math.max(1, targetScopes.length)));
+    const queryEmbedding = await this.liveContextIndex.computeQueryEmbedding(selectionText);
 
     const contexts: AssembledContext[] = await Promise.all(targetScopes.map(scope => this.liveContextIndex.query({
       queryText: selectionText,
+      queryEmbedding,
       tokenBudget: perScopeBudget
     }, scope)));
 
@@ -12187,12 +12191,14 @@ export default class LoreBookConverterPlugin extends Plugin {
       let remainingInputTokens = maxInputTokens - completion.promptReserveTokens - instructionOverhead - steeringNonSystemTokens - storyTokens;
       let usedContextTokens = 0;
       if (targetScopes.length > 0) {
+        const sharedQueryEmbedding = await this.liveContextIndex.computeQueryEmbedding(scopedQuery);
         for (let attempt = 0; attempt < 4; attempt += 1) {
           const perScopeBudget = Math.max(64, Math.floor(contextBudget / Math.max(1, targetScopes.length)));
           const perScopeWorldInfoLimit = Math.max(8, Math.min(80, Math.floor(perScopeBudget / 900)));
           const perScopeRagLimit = Math.max(6, Math.min(48, Math.floor(perScopeBudget / 1800)));
           contexts = await Promise.all(targetScopes.map(scope => this.liveContextIndex.query({
             queryText: scopedQuery,
+            queryEmbedding: sharedQueryEmbedding,
             tokenBudget: perScopeBudget,
             maxWorldInfoEntries: perScopeWorldInfoLimit,
             maxRagDocuments: perScopeRagLimit

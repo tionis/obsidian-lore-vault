@@ -314,6 +314,7 @@ Operations and reporting:
 - Operation Log Explorer includes a cost-profile selector, defaults to the active device profile, and shows whether the current runtime is using SQLite or JSONL fallback.
 - Known cost-profile lists for Operation Log Explorer and Cost Analyzer are cached until ledger or settings changes invalidate them, so routine refreshes do not rescan profile sources.
 - Explorer preloads the current page of records from SQLite/JSONL as summary rows only; the full request/attempt/final-text record is fetched on first row expansion, and heavy request/response payload sections still render only when you open those subsections.
+- Multi-scope retrieval flows such as Query Simulation, Story Starter, text-command lore context, Continue Story, and Story Chat now reuse one shared query-embedding request per run instead of re-embedding the same query once per selected lorebook.
 - SQLite-backed search uses an internal FTS index and avoids exact total-count queries on truncated result pages; when more matches exist than the current row limit, the explorer reports that it is showing the first page rather than blocking on a full recount.
 - Operation-log text and JSON fields render in copy-friendly readonly controls with `Copy` buttons so old prompts/payloads can be extracted directly from the explorer.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.

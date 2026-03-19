@@ -227,6 +227,7 @@ Reference design: `docs/planning.md`.
 - [x] Replace operation-log `%LIKE%` search and exact `COUNT(*)` reload queries with a more scalable search/count strategy (for example FTS5 plus deferred or approximate counts).
 - [x] Cache known cost-profile lists and invalidate them only when ledger/settings data actually changes instead of recomputing them on every explorer/analyzer reload.
 - [x] Add an incremental lorebook metadata index so scope discovery and related manager/query views do not repeatedly rescan all markdown notes after invalidation.
+- [x] Reuse one shared query-embedding request across multi-scope retrieval runs (Query Simulation, Story Starter, Story Chat, Continue Story, text-command lore context) instead of re-embedding the same query once per scope.
 - [x] Reduce Story Chat vault-wide scans for conversation summaries and note-picker candidates with cached indexes or narrower folder/path tracking.
 - [ ] Investigate replacing `sql.js` full-file pack reads with a `wa-sqlite`/streaming-style reader for synced lorebook `.db` inspection paths so reading exported packs no longer requires loading the entire file into memory.
 - [x] Add explicit local-index maintenance tools (`Rebuild Local Indexes`, `Reset Local DB`) so derived SQLite state can be repaired without manual file surgery.

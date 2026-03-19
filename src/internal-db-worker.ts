@@ -22,6 +22,7 @@ import type {
   UsageLedgerReportQueryResult
 } from './internal-db-types';
 import { buildOperationLogSearchText } from './operation-log-utils';
+import type { OperationLogRecordSummary } from './operation-log';
 import { resolveUsageLedgerScopeKey } from './usage-ledger-report';
 import type { UsageLedgerEntry } from './usage-ledger-store';
 
@@ -204,6 +205,29 @@ function rowToOperationLogRecord(row: Record<string, unknown>): CompletionOperat
   };
 }
 
+function rowToOperationLogSummary(row: Record<string, unknown>): OperationLogRecordSummary {
+  const costProfile = typeof row.cost_profile === 'string' ? row.cost_profile.trim() : '';
+  return {
+    id: String(row.id ?? ''),
+    ...(costProfile ? { costProfile } : {}),
+    kind: row.kind === 'completion_stream' || row.kind === 'tool_planner' || row.kind === 'embedding'
+      ? row.kind
+      : 'completion',
+    operationName: String(row.operation_name ?? ''),
+    provider: row.provider === 'ollama' || row.provider === 'openai_compatible'
+      ? row.provider
+      : 'openrouter',
+    model: String(row.model ?? ''),
+    endpoint: String(row.endpoint ?? ''),
+    startedAt: Number(row.started_at ?? 0),
+    finishedAt: Number(row.finished_at ?? 0),
+    durationMs: Number(row.duration_ms ?? 0),
+    status: row.status === 'error' ? 'error' : 'ok',
+    aborted: Number(row.aborted ?? 0) !== 0,
+    ...(typeof row.error_text === 'string' && row.error_text.trim() ? { error: row.error_text.trim() } : {})
+  };
+}
+
 function normalizeUsageLedgerCostProfile(entry: UsageLedgerEntry): string {
   return typeof entry.metadata?.costProfile === 'string'
     ? entry.metadata.costProfile.trim()
@@ -343,11 +367,7 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
       duration_ms,
       status,
       aborted,
-      error_text,
-      request_json,
-      attempts_json,
-      final_text,
-      usage_json
+      error_text
     FROM operation_log
     ${whereSql}
     ORDER BY started_at DESC, finished_at DESC, id DESC
@@ -356,7 +376,7 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
   );
 
   return {
-    entries: entryRows.map(row => rowToOperationLogRecord(row)),
+    entries: entryRows.map(row => rowToOperationLogSummary(row)),
     totalEntries
   };
 }

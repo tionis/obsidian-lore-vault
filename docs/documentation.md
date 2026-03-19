@@ -1121,7 +1121,7 @@ Operation log defaults:
 - The configured `LLM Operation Log Path` remains the legacy per-cost-profile JSONL base path used for fallback writes, legacy import, and raw-file inspection.
 - default retention is `10000` entries per cost profile.
 
-Use command `Open LLM Operation Log Explorer` to inspect/search entries, choose a cost profile, view the active storage backend, and open the raw legacy per-profile JSONL file when needed. The explorer preloads the current result page from SQLite/JSONL, opens rows immediately from summary metadata, and only renders the heavy request/response payload sections when you open those subsections. Text/JSON payload fields are shown in copy-friendly readonly controls with `Copy` buttons so old prompts or raw payloads can be extracted directly.
+Use command `Open LLM Operation Log Explorer` to inspect/search entries, choose a cost profile, view the active storage backend, and open the raw legacy per-profile JSONL file when needed. The explorer preloads the current result page from SQLite/JSONL as summary rows only, fetches the full record on first row expansion, and only renders the heavy request/response payload sections when you open those subsections. Text/JSON payload fields are shown in copy-friendly readonly controls with `Copy` buttons so old prompts or raw payloads can be extracted directly.
 
 ## Story Chat Panel
 

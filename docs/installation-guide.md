@@ -189,7 +189,7 @@ If you prefer to build the plugin from source:
      - `Continue Story` (toggles to `Stop` during generation) + `Insert Directive`
      - `Open/Create Author Note`, `Link Author Note`, `Rewrite Author Note`
      - `Generate Chapter Summary`, `Create Next Chapter`, `Fork Story`
-   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads and current storage backend status without leaving Obsidian; the explorer preloads the current result page, rows open immediately from summary metadata, heavy payload sections only render when opened, and text/json fields include `Copy` buttons
+   - Use command `Open LLM Operation Log Explorer` to inspect full completion/planner/embedding payloads and current storage backend status without leaving Obsidian; the explorer preloads the current result page as summary rows, fetches full row detail on first expansion, heavy payload sections only render when opened, and text/json fields include `Copy` buttons
    - Use command `Open Cost Analyzer` for per-profile cost breakdowns and budget warnings; shared usage-ledger records live in the vault, and LoreVault accelerates queries with a local SQLite index that stays in sync from vault events after its initial ledger scan and computes analyzer totals with DB aggregate queries
    - Open "Open Story Writing Panel" for writing controls + generation/cost telemetry, or "Open Story Chat" for in-chat telemetry
 

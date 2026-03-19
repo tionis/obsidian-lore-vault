@@ -153,13 +153,8 @@ export class OperationLogStore {
         return {
           entries: result.entries.map(record => ({
             lineNumber: 0,
-            summary: summarizeOperationLogRecord(record),
-            searchText: buildOperationLogSearchText(record),
-            detailRecord: {
-              lineNumber: 0,
-              record,
-              searchText: buildOperationLogSearchText(record)
-            }
+            summary: record,
+            searchText: ''
           })),
           issues: [],
           totalEntries: result.totalEntries,

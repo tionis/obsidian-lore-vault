@@ -310,7 +310,7 @@ Operations and reporting:
 - The configured operation-log path remains the legacy per-cost-profile JSONL path used for fallback writes, legacy import, and raw-file inspection.
 - Default retention is `10000` entries per cost profile.
 - Operation Log Explorer includes a cost-profile selector, defaults to the active device profile, and shows whether the current runtime is using SQLite or JSONL fallback.
-- Explorer preloads the current page of records from SQLite/JSONL, but rows still open from summary metadata and only render heavy request/response payload sections when you open those subsections.
+- Explorer preloads the current page of records from SQLite/JSONL as summary rows only; the full request/attempt/final-text record is fetched on first row expansion, and heavy request/response payload sections still render only when you open those subsections.
 - Operation-log text and JSON fields render in copy-friendly readonly controls with `Copy` buttons so old prompts/payloads can be extracted directly from the explorer.
 - Optional usage ledger tracks requests/tokens/cost with session/day/week/month/project aggregation.
 - Usage-ledger records are stored as immutable vault JSON files for cross-device sync, then indexed locally in SQLite when available for faster Cost Analyzer queries; LoreVault does one canonical sync per session/root change, keeps that index current from vault file events, and computes Cost Analyzer totals/breakdowns from SQLite aggregate queries instead of materializing every matching row into JS first.

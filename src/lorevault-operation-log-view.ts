@@ -2,7 +2,8 @@ import { ItemView, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import type LoreBookConverterPlugin from './main';
 import {
   OperationLogListEntry,
-  OperationLogParseIssue
+  OperationLogParseIssue,
+  ParsedOperationLogEntry
 } from './operation-log';
 import type { CompletionOperationKind, CompletionOperationLogAttempt } from './completion-provider';
 
@@ -962,13 +963,56 @@ export class LorevaultOperationLogView extends ItemView {
         return;
       }
       rendered = true;
-      this.renderEntryDetailBody(bodyEl, entry);
+      void this.renderEntryDetailBody(bodyEl, entry);
     });
   }
 
-  private renderEntryDetailBody(container: HTMLElement, entry: OperationLogListEntry): void {
+  private async renderEntryDetailBody(container: HTMLElement, entry: OperationLogListEntry): Promise<void> {
+    const detail = entry.detailRecord ?? await this.loadEntryDetail(entry, container);
+    if (detail) {
+      entry.detailRecord = detail;
+    }
+    container.empty();
+    this.renderResolvedEntryDetailBody(container, entry, detail);
+  }
+
+  private async loadEntryDetail(
+    entry: OperationLogListEntry,
+    container: HTMLElement
+  ): Promise<ParsedOperationLogEntry | null> {
+    const loadVersion = this.loadVersion;
+    container.empty();
+    container.createEl('p', {
+      cls: 'lorevault-operation-log-subtle',
+      text: 'Loading details...'
+    });
+    try {
+      const detail = await this.plugin.loadOperationLogEntryDetail({
+        costProfile: this.getEntryCostProfile(entry),
+        id: entry.summary.id
+      });
+      if (loadVersion !== this.loadVersion || !container.isConnected) {
+        return null;
+      }
+      return detail;
+    } catch (error) {
+      if (loadVersion === this.loadVersion && container.isConnected) {
+        container.empty();
+        container.createEl('p', {
+          cls: 'lorevault-operation-log-error',
+          text: `Failed to load details: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
+      return null;
+    }
+  }
+
+  private renderResolvedEntryDetailBody(
+    container: HTMLElement,
+    entry: OperationLogListEntry,
+    detail: ParsedOperationLogEntry | null | undefined
+  ): void {
     const summary = entry.summary;
-    const detail = entry.detailRecord;
     this.createReadonlyInlineField(container, [
       `ID: ${summary.id}`,
       `Cost profile: ${summary.costProfile || '(none)'}`,
@@ -989,7 +1033,7 @@ export class LorevaultOperationLogView extends ItemView {
     if (!detail) {
       container.createEl('p', {
         cls: 'lorevault-operation-log-error',
-        text: 'Detailed record data is unavailable for this entry.'
+      text: 'Detailed record data is unavailable for this entry.'
       });
       return;
     }

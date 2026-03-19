@@ -3,6 +3,7 @@ import type {
   CompletionOperationLogAttempt,
   CompletionOperationLogRecord
 } from './completion-provider';
+import type { OperationLogRecordSummary } from './operation-log';
 import type { UsageLedgerReportAggregates } from './usage-ledger-report';
 import type { UsageLedgerEntry } from './usage-ledger-store';
 
@@ -26,7 +27,7 @@ export interface OperationLogQueryRequest {
 }
 
 export interface OperationLogQueryResult {
-  entries: CompletionOperationLogRecord[];
+  entries: OperationLogRecordSummary[];
   totalEntries: number;
 }
 

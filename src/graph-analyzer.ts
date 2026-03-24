@@ -179,7 +179,14 @@ export class GraphAnalyzer {
     maxPageRank = maxPageRank || 1; // Avoid division by zero
     
     // Calculate betweenness centrality using graphology-metrics
-    const betweennessResult = betweenness(this.graph);
+    let betweennessResult: {[node: string]: number} = {};
+    if (this.graph.order > 0) {
+      try {
+        betweennessResult = betweenness(this.graph);
+      } catch (e) {
+        console.error("Betweenness centrality calculation failed:", e);
+      }
+    }
     
     // Convert the results from node strings to numeric UIDs
     const betweennessByUID: {[key: number]: number} = {};

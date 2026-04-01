@@ -75,106 +75,100 @@ export type UsageLedgerReportQueryResult = UsageLedgerReportAggregates;
 
 export type InternalDbRequest =
   | {
-    id: number;
+    _requestId: number;
     type: 'init';
     storagePersisted: boolean | null;
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'appendOperationLog';
     record: CompletionOperationLogRecord;
     maxEntries: number;
   }
-  | {
-    id: number;
-    type: 'importOperationLogRecords';
-    records: CompletionOperationLogRecord[];
-    maxEntries: number;
-  }
   | ({
-    id: number;
+    _requestId: number;
     type: 'queryOperationLog';
   } & OperationLogQueryRequest)
   | ({
-    id: number;
+    _requestId: number;
     type: 'getOperationLogEntryDetail';
   } & OperationLogEntryDetailRequest)
   | ({
-    id: number;
+    _requestId: number;
     type: 'getOperationLogEntryRequestPayload';
   } & OperationLogEntryDetailRequest)
   | ({
-    id: number;
+    _requestId: number;
     type: 'getOperationLogEntryAttempts';
   } & OperationLogEntryDetailRequest)
   | ({
-    id: number;
+    _requestId: number;
     type: 'getOperationLogEntryFinalText';
   } & OperationLogEntryDetailRequest)
   | {
-    id: number;
+    _requestId: number;
     type: 'appendUsageLedgerEntry';
     sourceRoot: string;
     entry: UsageLedgerEntry;
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'importUsageLedgerEntries';
     sourceRoot: string;
     entries: UsageLedgerEntry[];
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'replaceUsageLedgerEntries';
     sourceRoot: string;
     entries: UsageLedgerEntry[];
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'deleteUsageLedgerSourceRoot';
     sourceRoot: string;
   }
   | ({
-    id: number;
+    _requestId: number;
     type: 'queryUsageLedger';
   } & UsageLedgerQueryRequest)
   | ({
-    id: number;
+    _requestId: number;
     type: 'queryUsageLedgerReport';
   } & UsageLedgerReportQueryRequest)
   | {
-    id: number;
+    _requestId: number;
     type: 'listUsageLedgerCostProfiles';
     sourceRoot: string;
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'getStatus';
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'resetLocalDb';
   }
   | {
-    id: number;
+    _requestId: number;
     type: 'close';
   };
 
 export type InternalDbRequestPayload =
   InternalDbRequest extends infer Request
-    ? Request extends { id: number }
-      ? Omit<Request, 'id'>
+    ? Request extends { _requestId: number }
+      ? Omit<Request, '_requestId'>
       : never
     : never;
 
 export type InternalDbResponse =
   | {
-    id: number;
+    _requestId: number;
     ok: true;
     result?: unknown;
   }
   | {
-    id: number;
+    _requestId: number;
     ok: false;
     error: string;
   };

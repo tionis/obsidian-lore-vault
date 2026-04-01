@@ -115,18 +115,6 @@ export class InternalDbClient {
     });
   }
 
-  async importOperationLogRecords(records: CompletionOperationLogRecord[], maxEntries: number): Promise<void> {
-    if (records.length === 0) {
-      return;
-    }
-    await this.initialize();
-    await this.request<void>({
-      type: 'importOperationLogRecords',
-      records,
-      maxEntries
-    });
-  }
-
   async queryOperationLog(request: OperationLogQueryRequest): Promise<OperationLogQueryResult> {
     await this.initialize();
     return this.request<OperationLogQueryResult>({
@@ -258,20 +246,20 @@ export class InternalDbClient {
       throw new Error('Internal DB worker is not running.');
     }
 
-    const id = this.nextRequestId++;
-    const request = { id, ...payload } as InternalDbRequest;
+    const requestId = this.nextRequestId++;
+    const message = { ...payload, _requestId: requestId };
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      worker.postMessage(request);
+      this.pending.set(requestId, { resolve, reject });
+      worker.postMessage(message);
     });
   }
 
   private handleWorkerMessage(response: InternalDbResponse): void {
-    const pending = this.pending.get(response.id);
+    const pending = this.pending.get(response._requestId);
     if (!pending) {
       return;
     }
-    this.pending.delete(response.id);
+    this.pending.delete(response._requestId);
     if (response.ok) {
       pending.resolve(response.result);
       return;

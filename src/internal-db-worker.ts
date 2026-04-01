@@ -403,7 +403,7 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
     sqlite3,
     db,
     `SELECT
-      id,
+      operation_log.id,
       cost_profile,
       kind,
       operation_name,
@@ -419,7 +419,7 @@ async function queryOperationLogRows(workerState: WorkerState, request: Operatio
     FROM operation_log
     ${joinSql}
     ${whereSql}
-    ORDER BY started_at DESC, finished_at DESC, id DESC
+    ORDER BY started_at DESC, finished_at DESC, operation_log.id DESC
     LIMIT ?;`,
     [...bindings, fetchLimit + 1]
   );
@@ -843,6 +843,37 @@ async function ensureSchema(sqlite3: any, db: number): Promise<void> {
     `
   );
 
+  // Ensure operation_log has the full column set; if not, drop and recreate (alpha — no migration needed).
+  const opLogColumns = await queryRows(sqlite3, db, 'PRAGMA table_info(operation_log);');
+  if (opLogColumns.length > 0 && !opLogColumns.some(row => row.name === 'request_json')) {
+    await execSql(sqlite3, db, 'DROP TABLE IF EXISTS operation_log;');
+    await execSql(sqlite3, db, 'DROP TABLE IF EXISTS operation_log_search;');
+    await execSql(
+      sqlite3,
+      db,
+      `CREATE TABLE IF NOT EXISTS operation_log (
+        id TEXT PRIMARY KEY,
+        cost_profile TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        operation_name TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        aborted INTEGER NOT NULL,
+        error_text TEXT,
+        request_json TEXT NOT NULL,
+        attempts_json TEXT NOT NULL,
+        final_text TEXT,
+        usage_json TEXT,
+        search_text TEXT NOT NULL
+      );`
+    );
+  }
+
   const metaRows = await queryRows(
     sqlite3,
     db,
@@ -1026,29 +1057,6 @@ async function handleRequest(request: InternalDbRequest): Promise<unknown> {
       }
       return undefined;
     }
-    case 'importOperationLogRecords': {
-      const workerState = await initializeWorkerState(lastStatus.storagePersisted);
-      const touchedProfiles = new Set<string>();
-      await workerState.sqlite3.exec(workerState.db, 'BEGIN IMMEDIATE;');
-      try {
-        for (const record of request.records) {
-          const costProfile = (record.costProfile ?? '').trim() || 'default';
-          touchedProfiles.add(costProfile);
-          await insertOperationLogRecord(workerState.sqlite3, workerState.db, {
-            ...record,
-            costProfile
-          });
-        }
-        for (const costProfile of touchedProfiles) {
-          await pruneOperationLogForProfile(workerState.sqlite3, workerState.db, costProfile, request.maxEntries);
-        }
-        await workerState.sqlite3.exec(workerState.db, 'COMMIT;');
-      } catch (error) {
-        await workerState.sqlite3.exec(workerState.db, 'ROLLBACK;');
-        throw error;
-      }
-      return undefined;
-    }
     case 'queryOperationLog': {
       const workerState = await initializeWorkerState(lastStatus.storagePersisted);
       return queryOperationLogRows(workerState, request);
@@ -1183,13 +1191,13 @@ self.addEventListener('message', event => {
       try {
         const result = await handleRequest(request);
         postResponse({
-          id: request.id,
+          _requestId: request._requestId,
           ok: true,
           result
         });
       } catch (error) {
         postResponse({
-          id: request.id,
+          _requestId: request._requestId,
           ok: false,
           error: error instanceof Error ? error.message : String(error)
         });
@@ -1197,7 +1205,7 @@ self.addEventListener('message', event => {
     })
     .catch(error => {
       postResponse({
-        id: request.id,
+        _requestId: request._requestId,
         ok: false,
         error: error instanceof Error ? error.message : String(error)
       });

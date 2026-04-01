@@ -373,11 +373,6 @@ export class LorevaultOperationLogView extends ItemView {
       void this.reloadEntries();
     });
 
-    const openFileButton = controls.createEl('button', { text: 'Open Legacy JSONL' });
-    openFileButton.addEventListener('click', () => {
-      void this.openRawLogFile();
-    });
-
     const autoRefreshLabel = controls.createEl('label', { cls: 'lorevault-operation-log-auto-refresh' });
     const autoRefreshToggle = autoRefreshLabel.createEl('input');
     autoRefreshToggle.type = 'checkbox';
@@ -1119,14 +1114,4 @@ export class LorevaultOperationLogView extends ItemView {
     });
   }
 
-  private async openRawLogFile(): Promise<void> {
-    const path = this.legacyPath || this.plugin.getOperationLogPath(this.selectedCostProfile);
-    const abstract = this.app.vault.getAbstractFileByPath(path);
-    if (!(abstract instanceof TFile)) {
-      new Notice(`Legacy operation-log JSONL file does not exist yet: ${clampPreview(path, 180)}`);
-      return;
-    }
-    const leaf = this.app.workspace.getLeaf(true);
-    await leaf.openFile(abstract);
-  }
 }

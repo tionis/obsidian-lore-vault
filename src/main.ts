@@ -1125,7 +1125,6 @@ export default class LoreBookConverterPlugin extends Plugin {
       throw new Error('Local internal DB is not configured in this runtime.');
     }
     await this.internalDbClient.resetLocalDb();
-    this.operationLogStore?.resetInternalDbState();
     this.usageLedgerStore.resetLocalIndexState();
     await this.usageLedgerStore.initialize();
     this.invalidateKnownCostProfilesCache();
@@ -8244,15 +8243,15 @@ export default class LoreBookConverterPlugin extends Plugin {
     this.internalDbClient = internalDbWorkerUrl
       ? new InternalDbClient(internalDbWorkerUrl, this.storagePersisted)
       : null;
-    this.operationLogStore = new OperationLogStore({
-      app: this.app,
-      internalDbClient: this.internalDbClient,
-      storagePersisted: this.storagePersisted,
-      getDeviceCostProfileLabel: () => this.getDeviceEffectiveCostProfileLabel(),
-      getLegacyPath: costProfile => this.getOperationLogPath(costProfile),
-      getMaxEntries: () => this.getOperationLogMaxEntries()
-    });
-    await this.operationLogStore.initialize();
+    if (this.internalDbClient) {
+      this.operationLogStore = new OperationLogStore({
+        internalDbClient: this.internalDbClient,
+        getDeviceCostProfileLabel: () => this.getDeviceEffectiveCostProfileLabel(),
+        getLegacyPath: costProfile => this.getOperationLogPath(costProfile),
+        getMaxEntries: () => this.getOperationLogMaxEntries()
+      });
+      await this.operationLogStore.initialize();
+    }
     this.usageLedgerStore = new UsageLedgerStore(this.app, this.resolveUsageLedgerPath(), {
       internalDbClient: this.internalDbClient,
       storagePersisted: this.storagePersisted

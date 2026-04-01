@@ -729,16 +729,11 @@ export class LorevaultOperationLogView extends ItemView {
       ? rawValue
       : (placeholder ?? '[No text content]');
     const wrapper = container.createDiv({ cls: 'lorevault-operation-log-copyable' });
-    const actions = wrapper.createDiv({ cls: 'lorevault-operation-log-copyable-actions' });
-    const copyButton = actions.createEl('button', { text: 'Copy' });
-    copyButton.disabled = rawValue.length === 0;
-    copyButton.addEventListener('click', () => {
-      void this.copyTextToClipboard(rawValue);
-    });
     const textArea = wrapper.createEl('textarea', { cls: 'lorevault-operation-log-textbox' });
     textArea.value = textValue;
     textArea.readOnly = true;
     textArea.rows = Math.max(4, Math.min(20, textValue.split('\n').length + 1));
+    this.addCopyIcon(wrapper, rawValue);
   }
 
   private describeEntryCount(verb: 'Loaded' | 'Showing'): string {
@@ -757,17 +752,26 @@ export class LorevaultOperationLogView extends ItemView {
     const textValue = rawValue.trim().length > 0
       ? rawValue
       : (placeholder ?? '[No text content]');
-    const wrapper = container.createDiv({ cls: 'lorevault-operation-log-copyable' });
-    const actions = wrapper.createDiv({ cls: 'lorevault-operation-log-copyable-actions' });
-    const copyButton = actions.createEl('button', { text: 'Copy' });
-    copyButton.disabled = rawValue.length === 0;
-    copyButton.addEventListener('click', () => {
-      void this.copyTextToClipboard(rawValue);
-    });
+    const wrapper = container.createDiv({ cls: 'lorevault-operation-log-copyable lorevault-operation-log-copyable-inline' });
     const input = wrapper.createEl('input', { cls: 'lorevault-operation-log-inline-field' });
     input.type = 'text';
     input.value = textValue;
     input.readOnly = true;
+    this.addCopyIcon(wrapper, rawValue);
+  }
+
+  private addCopyIcon(wrapper: HTMLElement, rawValue: string): void {
+    if (!rawValue.trim()) {
+      return;
+    }
+    const btn = wrapper.createEl('button', {
+      cls: 'lorevault-operation-log-copy-icon',
+      attr: { 'aria-label': 'Copy to clipboard' }
+    });
+    setIcon(btn, 'copy');
+    btn.addEventListener('click', () => {
+      void this.copyTextToClipboard(rawValue);
+    });
   }
 
   private async copyTextToClipboard(value: string): Promise<void> {

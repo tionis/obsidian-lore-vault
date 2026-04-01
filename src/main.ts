@@ -37,7 +37,6 @@ import {
   resolveDeviceCompletionFallback
 } from './completion-settings';
 import {
-  buildThinkingCallout,
   normalizeIgnoredCalloutTypes,
   stripIgnoredCallouts
 } from './callout-utils';
@@ -12523,6 +12522,8 @@ export default class LoreBookConverterPlugin extends Plugin {
       let lastStatusUpdate = 0;
       let completionUsage: CompletionUsageReport | null = null;
       let pendingDelta = '';
+      let pendingReasoningDelta = '';
+      let reasoningStarted = false;
       let flushTimer: number | null = null;
       let knownDocLength = editor.getValue().length;
       let applyingInsert = false;
@@ -12596,7 +12597,41 @@ export default class LoreBookConverterPlugin extends Plugin {
         }
       };
 
+      const flushPendingReasoningDelta = (force = false): void => {
+        if (!pendingReasoningDelta) {
+          return;
+        }
+        const mostRecentInteraction = Math.max(lastUserEditAt, lastUserViewportInteractionAt);
+        if (!force && Date.now() - mostRecentInteraction < 260) {
+          scheduleDeltaFlush();
+          return;
+        }
+        let chunk = pendingReasoningDelta;
+        pendingReasoningDelta = '';
+
+        let textToInsert: string;
+        if (!reasoningStarted) {
+          reasoningStarted = true;
+          textToInsert = '> [!lv-thinking]- Thinking\n> ' + chunk.replace(/\n/g, '\n> ');
+        } else {
+          textToInsert = chunk.replace(/\n/g, '\n> ');
+        }
+
+        const insertPos = editor.offsetToPos(clampOffset(thinkingInsertOffset));
+        applyingInsert = true;
+        const ok = this.replaceRangePreservingViewport(editor, markdownView, textToInsert, insertPos, {
+          preserveViewport: true
+        });
+        applyingInsert = false;
+        if (ok) {
+          thinkingInsertOffset = clampOffset(thinkingInsertOffset + textToInsert.length);
+          insertOffset = clampOffset(insertOffset + textToInsert.length);
+          knownDocLength = editor.getValue().length;
+        }
+      };
+
       const flushPendingDelta = (force = false): void => {
+        flushPendingReasoningDelta(force);
         if (!pendingDelta) {
           return;
         }
@@ -12673,6 +12708,9 @@ export default class LoreBookConverterPlugin extends Plugin {
               return;
             }
             reasoningText += delta;
+            pendingReasoningDelta += delta;
+            updateOutputTelemetry();
+            scheduleDeltaFlush();
           },
           abortSignal: this.generationAbortController.signal
         });
@@ -12713,19 +12751,13 @@ export default class LoreBookConverterPlugin extends Plugin {
       if (!generatedText.trim()) {
         throw new Error('Completion provider returned empty output.');
       }
-      const shouldInsertThinkingCallout = completion.reasoning?.enabled && completion.reasoning.exclude !== true;
-      const thinkingCallout = shouldInsertThinkingCallout
-        ? buildThinkingCallout(reasoningText)
-        : '';
-      if (thinkingCallout) {
-        const thinkingInsertPos = editor.offsetToPos(clampOffset(thinkingInsertOffset));
-        const thinkingBlock = `${thinkingCallout}\n\n`;
-        const insertedThinking = this.replaceRangePreservingViewport(editor, markdownView, thinkingBlock, thinkingInsertPos);
-        if (insertedThinking) {
-          insertOffset = clampOffset(insertOffset + thinkingBlock.length);
+      if (reasoningStarted) {
+        const closingNewlines = '\n\n';
+        const thinkingEndPos = editor.offsetToPos(clampOffset(thinkingInsertOffset));
+        const insertedClose = this.replaceRangePreservingViewport(editor, markdownView, closingNewlines, thinkingEndPos);
+        if (insertedClose) {
+          insertOffset = clampOffset(insertOffset + closingNewlines.length);
           knownDocLength = editor.getValue().length;
-        } else {
-          new Notice('Could not insert returned thinking callout into the story note.');
         }
       }
       if (detachedDeltaBuffer.length > 0) {

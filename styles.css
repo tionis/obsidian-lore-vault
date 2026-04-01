@@ -1543,15 +1543,48 @@
 }
 
 .lorevault-operation-log-copyable {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  position: relative;
   margin: 6px 0;
 }
 
-.lorevault-operation-log-copyable-actions {
+.lorevault-operation-log-copyable-inline {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.lorevault-operation-log-copy-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+
+.lorevault-operation-log-copyable-inline .lorevault-operation-log-copy-icon {
+  position: static;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.lorevault-operation-log-copyable:hover .lorevault-operation-log-copy-icon {
+  opacity: 0.7;
+}
+
+.lorevault-operation-log-copy-icon:hover {
+  opacity: 1 !important;
+  color: var(--text-normal);
+}
+
+.lorevault-operation-log-copy-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .lorevault-operation-log-inline-field,

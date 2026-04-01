@@ -1,6 +1,6 @@
 {
     "name": "lore-vault",
-    "version": "1.0.0",
+    "version": "0.0.31",
     "description": "Convert Obsidian vault to Lorebook JSON format",
     "main": "main.js",
     "scripts": {

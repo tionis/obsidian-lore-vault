@@ -641,12 +641,12 @@ async function queryUsageLedgerReport(
     FROM usage_ledger
     ${whereSql};`,
     [
-      ...bindings,
       dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart, dayStart,
       weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart, weekStart,
       monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart, monthStart,
       sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt,
-      sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt
+      sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt, sessionStartAt,
+      ...bindings
     ]
   );
   const totalsRow = totalsRows[0] ?? {};

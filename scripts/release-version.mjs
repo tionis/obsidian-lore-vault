@@ -164,8 +164,10 @@ function main() {
     }
   }
 
+  const packagePath = 'package.json';
   const manifestPath = 'manifest.json';
   const versionsPath = 'versions.json';
+  const pkg = readJson(packagePath);
   const manifest = readJson(manifestPath);
   const versionsRaw = readJson(versionsPath);
   const versions = versionsRaw && typeof versionsRaw === 'object' ? versionsRaw : {};
@@ -192,6 +194,7 @@ function main() {
     fail('manifest minAppVersion is missing');
   }
 
+  pkg.version = requestedVersion;
   manifest.version = requestedVersion;
   versions[requestedVersion] = minAppVersion;
   const orderedVersions = Object.fromEntries(
@@ -199,19 +202,22 @@ function main() {
   );
 
   if (options.dryRun) {
+    console.log(`[dry-run] Would update ${packagePath}: ${currentVersion} -> ${requestedVersion}`);
     console.log(`[dry-run] Would update ${manifestPath}: ${currentVersion} -> ${requestedVersion}`);
     console.log(`[dry-run] Would update ${versionsPath}: ${requestedVersion} -> ${minAppVersion}`);
     console.log('[dry-run] Would run git add/commit/tag/push');
     return;
   }
 
+  writeJson(packagePath, pkg);
   writeJson(manifestPath, manifest);
   writeJson(versionsPath, orderedVersions);
 
+  console.log(`Updated ${packagePath}: ${currentVersion} -> ${requestedVersion}`);
   console.log(`Updated ${manifestPath}: ${currentVersion} -> ${requestedVersion}`);
   console.log(`Updated ${versionsPath}: ${requestedVersion} -> ${minAppVersion}`);
 
-  runGit(['add', manifestPath, versionsPath]);
+  runGit(['add', packagePath, manifestPath, versionsPath]);
   runGit(['commit', '-m', `release ${requestedVersion}`]);
   runGit(['tag', requestedVersion]);
   runGit(['push', options.remote, options.branch, requestedVersion]);

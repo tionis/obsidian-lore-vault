@@ -1,7 +1,7 @@
 {
   "id": "lore-vault",
   "name": "LoreVault",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "minAppVersion": "1.11.4",
   "description": "Build lorebook world info and RAG context packs from Obsidian notes",
   "author": "tionis.dev",

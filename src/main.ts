@@ -435,6 +435,7 @@ interface CompletionProfileWorkspaceStatus {
 interface UsageReportSnapshotOptions {
   costProfile?: string | null;
   includeAllProfiles?: boolean;
+  breakdownTimeframe?: import('./internal-db-types').UsageLedgerBreakdownTimeframe;
 }
 
 interface OperationLogAppendOptions {
@@ -2484,6 +2485,7 @@ export default class LoreBookConverterPlugin extends Plugin {
       costProfile: includeAllProfiles ? null : selectedProfile,
       nowMs,
       sessionStartAt: this.sessionStartedAt,
+      breakdownTimeframe: options.breakdownTimeframe,
       dailyBudgetUsd: budgetSettings.dailyBudgetUsd,
       sessionBudgetUsd: budgetSettings.sessionBudgetUsd,
       budgetByOperationUsd: budgetSettings.budgetByOperationUsd,

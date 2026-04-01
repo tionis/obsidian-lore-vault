@@ -650,10 +650,27 @@ async function queryUsageLedgerReport(
     ]
   );
   const totalsRow = totalsRows[0] ?? {};
-  const byOperation = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, 'operation');
-  const byModel = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, "provider || ':' || model");
-  const byScope = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, 'scope_key');
-  const byCostSource = await queryUsageLedgerBreakdownRows(workerState, whereSql, bindings, 'cost_source');
+
+  // Apply optional timeframe filter to breakdown queries.
+  let breakdownWhereSql = whereSql;
+  let breakdownBindings = bindings;
+  const tf = request.breakdownTimeframe ?? 'project';
+  if (tf !== 'project') {
+    const cutoff = tf === 'day' ? dayStart
+      : tf === 'week' ? weekStart
+      : tf === 'month' ? monthStart
+      : sessionStartAt;
+    const timeClause = 'timestamp >= ?';
+    breakdownWhereSql = whereSql
+      ? `${whereSql} AND ${timeClause}`
+      : `WHERE ${timeClause}`;
+    breakdownBindings = [...bindings, cutoff];
+  }
+
+  const byOperation = await queryUsageLedgerBreakdownRows(workerState, breakdownWhereSql, breakdownBindings, 'operation');
+  const byModel = await queryUsageLedgerBreakdownRows(workerState, breakdownWhereSql, breakdownBindings, "provider || ':' || model");
+  const byScope = await queryUsageLedgerBreakdownRows(workerState, breakdownWhereSql, breakdownBindings, 'scope_key');
+  const byCostSource = await queryUsageLedgerBreakdownRows(workerState, breakdownWhereSql, breakdownBindings, 'cost_source');
   return {
     totals: {
       project: rowToUsageLedgerTotals(totalsRow, 'project_'),

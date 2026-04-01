@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf, setIcon } from 'obsidian';
+import type { UsageLedgerBreakdownTimeframe } from './internal-db-types';
 import LoreBookConverterPlugin from './main';
 import { UsageLedgerBreakdownItem, UsageLedgerReportSnapshot, UsageLedgerTotals } from './usage-ledger-report';
 import { formatRelativeTime } from './time-format';
@@ -23,12 +24,14 @@ function formatCostSummaryValue(totals: UsageLedgerTotals): string {
 export class LorevaultCostAnalyzerView extends ItemView {
   private plugin: LoreBookConverterPlugin;
   private selectedCostProfile = '';
+  private selectedTimeframe: UsageLedgerBreakdownTimeframe = 'project';
   private availableCostProfiles: string[] = [];
   private snapshot: UsageLedgerReportSnapshot | null = null;
   private localIndexSummary = '';
   private loading = false;
   private loadError = '';
   private profileSelectEl: HTMLSelectElement | null = null;
+  private timeframeSelectEl: HTMLSelectElement | null = null;
   private statusEl: HTMLElement | null = null;
   private bodyEl: HTMLElement | null = null;
 
@@ -87,6 +90,27 @@ export class LorevaultCostAnalyzerView extends ItemView {
       void this.reload();
     });
     this.profileSelectEl = profileSelect;
+
+    const timeframeLabel = controls.createEl('label', { cls: 'lorevault-cost-analyzer-profile-label' });
+    timeframeLabel.createSpan({ text: 'Breakdown period' });
+    const timeframeSelect = timeframeLabel.createEl('select');
+    timeframeSelect.addClass('dropdown');
+    const timeframeOptions: Array<{ value: UsageLedgerBreakdownTimeframe; label: string }> = [
+      { value: 'project', label: 'All time' },
+      { value: 'month', label: 'This month' },
+      { value: 'week', label: 'This week' },
+      { value: 'day', label: 'Today' },
+      { value: 'session', label: 'This session' }
+    ];
+    for (const opt of timeframeOptions) {
+      timeframeSelect.createEl('option', { text: opt.label, value: opt.value });
+    }
+    timeframeSelect.value = this.selectedTimeframe;
+    timeframeSelect.addEventListener('change', () => {
+      this.selectedTimeframe = timeframeSelect.value as UsageLedgerBreakdownTimeframe;
+      void this.reload();
+    });
+    this.timeframeSelectEl = timeframeSelect;
 
     this.statusEl = contentEl.createDiv({ cls: 'lorevault-cost-analyzer-status' });
     this.bodyEl = contentEl.createDiv({ cls: 'lorevault-cost-analyzer-body' });
@@ -263,7 +287,10 @@ export class LorevaultCostAnalyzerView extends ItemView {
       this.localIndexSummary = localIndexParts.join(' | ');
       this.renderCostProfileSelect();
       this.snapshot = this.selectedCostProfile
-        ? await this.plugin.getUsageReportSnapshot({ costProfile: this.selectedCostProfile })
+        ? await this.plugin.getUsageReportSnapshot({
+            costProfile: this.selectedCostProfile,
+            breakdownTimeframe: this.selectedTimeframe
+          })
         : null;
       this.loadError = '';
     } catch (error) {

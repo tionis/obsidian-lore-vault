@@ -48,9 +48,12 @@ export interface UsageLedgerReportAggregates {
   byCostSource: UsageLedgerBreakdownItem[];
 }
 
+export type { UsageLedgerBreakdownTimeframe } from './internal-db-types';
+
 export interface UsageLedgerReportOptions {
   nowMs: number;
   sessionStartAt: number;
+  breakdownTimeframe?: import('./internal-db-types').UsageLedgerBreakdownTimeframe;
   dailyBudgetUsd: number;
   sessionBudgetUsd: number;
   budgetByOperationUsd?: {[operation: string]: number};
@@ -278,6 +281,13 @@ export function buildUsageLedgerReportSnapshot(
     left.timestamp - right.timestamp || left.id.localeCompare(right.id)
   ));
 
+  const tf = options.breakdownTimeframe ?? 'project';
+  const breakdownCutoff = tf === 'day' ? dayStart
+    : tf === 'week' ? weekStart
+    : tf === 'month' ? monthStart
+    : tf === 'session' ? sessionStartAt
+    : 0;
+
   for (const entry of ordered) {
     addEntryToTotals(project, entry);
     if (entry.timestamp >= dayStart) {
@@ -291,6 +301,10 @@ export function buildUsageLedgerReportSnapshot(
     }
     if (entry.timestamp >= sessionStartAt) {
       addEntryToTotals(session, entry);
+    }
+
+    if (entry.timestamp < breakdownCutoff) {
+      continue;
     }
 
     const operationTotals = byOperation.get(entry.operation) ?? createEmptyTotals();

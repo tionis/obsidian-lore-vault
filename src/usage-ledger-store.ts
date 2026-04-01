@@ -367,7 +367,8 @@ export class UsageLedgerStore {
             sourceRoot: this.resolveStoragePaths().canonicalRootPath,
             costProfile: normalizedCostProfile || null,
             nowMs: options.nowMs,
-            sessionStartAt: options.sessionStartAt
+            sessionStartAt: options.sessionStartAt,
+            breakdownTimeframe: options.breakdownTimeframe
           });
           return createUsageLedgerReportSnapshot(aggregates, options);
         }

@@ -66,9 +66,12 @@ export interface UsageLedgerCostProfilesResult {
   profiles: string[];
 }
 
+export type UsageLedgerBreakdownTimeframe = 'project' | 'month' | 'week' | 'day' | 'session';
+
 export interface UsageLedgerReportQueryRequest extends UsageLedgerQueryRequest {
   nowMs: number;
   sessionStartAt: number;
+  breakdownTimeframe?: UsageLedgerBreakdownTimeframe;
 }
 
 export type UsageLedgerReportQueryResult = UsageLedgerReportAggregates;
